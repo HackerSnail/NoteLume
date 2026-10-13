@@ -22,22 +22,22 @@
   --quote-bar: #3a4048;
   --hover: #262b33;
 }
-/* 吸血鬼主题：近黑暖底 + 骨白文字 + 血红点缀 */
+/* 吸血鬼主题 = Dracula 官方配色 */
 :root[data-theme='vampire'] {
-  --bg: #0e0a0b;
-  --bg-panel: #171112;
-  --fg: #ece2e3;
-  --muted: #9b8184;
-  --border: #3a2327;
-  --accent: #cf1435;
-  --code-bg: #1a1315;
-  --quote-bar: #6e1f2a;
-  --hover: #241a1c;
+  --bg: #282a36;
+  --bg-panel: #21222c;
+  --fg: #f8f8f2;
+  --muted: #6272a4;
+  --border: #44475a;
+  --accent: #bd93f9;
+  --code-bg: #21222c;
+  --quote-bar: #6272a4;
+  --hover: #44475a;
 }
-/* 吸血鬼：血红选中高亮，选中文字像被浸染 */
+/* 吸血鬼：Dracula 选中色 */
 :root[data-theme='vampire'] ::selection {
-  background: rgba(207, 20, 53, 0.4);
-  color: #fff;
+  background: #44475a;
+  color: #f8f8f2;
 }
 
 * {
@@ -365,7 +365,7 @@ body {
   opacity: 0.9;
 }
 [data-theme='vampire'] .ProseMirror pre[data-language]::after {
-  color: #b8a0a3;
+  color: #6272a4;
 }
 .ProseMirror pre code {
   background: none;
@@ -655,6 +655,46 @@ body {
 [data-dark] .hljs-symbol,
 [data-dark] .hljs-bullet {
   color: #ffa657;
+}
+/* 吸血鬼主题代码高亮 = Dracula 官方语法色（放在 [data-dark] 之后以覆盖） */
+[data-theme='vampire'] .hljs-comment,
+[data-theme='vampire'] .hljs-quote {
+  color: #6272a4;
+}
+[data-theme='vampire'] .hljs-keyword,
+[data-theme='vampire'] .hljs-selector-tag,
+[data-theme='vampire'] .hljs-type,
+[data-theme='vampire'] .hljs-name,
+[data-theme='vampire'] .hljs-tag {
+  color: #ff79c6;
+}
+[data-theme='vampire'] .hljs-built_in,
+[data-theme='vampire'] .hljs-title.class_,
+[data-theme='vampire'] .hljs-class .hljs-title {
+  color: #8be9fd;
+}
+[data-theme='vampire'] .hljs-string,
+[data-theme='vampire'] .hljs-template-variable,
+[data-theme='vampire'] .hljs-addition {
+  color: #f1fa8c;
+}
+[data-theme='vampire'] .hljs-number,
+[data-theme='vampire'] .hljs-literal,
+[data-theme='vampire'] .hljs-variable,
+[data-theme='vampire'] .hljs-deletion {
+  color: #bd93f9;
+}
+[data-theme='vampire'] .hljs-function .hljs-title,
+[data-theme='vampire'] .hljs-title.function_ {
+  color: #50fa7b;
+}
+[data-theme='vampire'] .hljs-params {
+  color: #f8f8f2;
+}
+[data-theme='vampire'] .hljs-meta,
+[data-theme='vampire'] .hljs-symbol,
+[data-theme='vampire'] .hljs-bullet {
+  color: #ffb86c;
 }
 
 /* ==================== P2：知识图谱 ==================== */
