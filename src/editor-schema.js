@@ -181,7 +181,9 @@ const extendedNodes = baseSchema.spec.nodes
       },
     ],
   })
-  // 代码块：显示语言标签（Typora 风格，右下角）
+  // 代码块：右上角可点击语言标签（Typora 式）。
+  // 语言只存于 attrs.params（即围栏 info string ```lang），绝不进入正文；
+  // 标签渲染为空 span（文本由 CSS ::after 从 data-lang 取），故 parseDOM 读 pre 不会把它当代码内容。
   .update('code_block', {
     content: 'text*',
     marks: 'code',
@@ -192,7 +194,8 @@ const extendedNodes = baseSchema.spec.nodes
     parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }],
     toDOM(node) {
       const lang = (node.attrs.params || '').trim().split(/\s+/)[0]
-      return ['pre', lang ? { 'data-language': lang } : {}, ['code', 0]]
+      const label = ['span', { class: 'nl-code-lang', 'data-lang': lang, 'data-empty': lang ? '0' : '1', contenteditable: 'false' }]
+      return ['pre', lang ? { 'data-language': lang } : {}, label, ['code', 0]]
     },
   })
   // Obsidian callout：`> [!TYPE] Title` 渲染为带标题的彩色卡片。

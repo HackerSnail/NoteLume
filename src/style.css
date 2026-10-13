@@ -1126,31 +1126,95 @@ body {
   position: relative;
   line-height: 1.5;
 }
-/* Typora 风格：右上角语言标签（顶部留白避免与首行代码重叠） */
+/* Typora 风格：右上角可点击语言标签（点开弹语言选择；语言存于围栏 info string，不入正文） */
 .ProseMirror pre[data-language] {
   padding-top: 28px;
 }
-.ProseMirror pre[data-language]::after {
-  content: attr(data-language);
+.nl-code-lang {
   position: absolute;
-  top: 7px;
-  right: 10px;
+  top: 6px;
+  right: 8px;
   font-size: 11px;
   font-family: -apple-system, "Segoe UI", sans-serif;
   color: var(--muted);
-  pointer-events: none;
-  user-select: none;
-  opacity: 0.85;
   line-height: 1;
   letter-spacing: 0.3px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.85;
+}
+.nl-code-lang::after {
+  content: attr(data-lang);
+}
+/* 未设语言：默认隐藏，悬停代码块才显出「＋语言」提示 */
+.nl-code-lang[data-empty='1'] {
+  opacity: 0;
+  pointer-events: none;
+}
+.nl-code-lang[data-empty='1']::after {
+  content: '＋语言';
+}
+.ProseMirror pre:hover .nl-code-lang[data-empty='1'] {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+.nl-code-lang:hover {
+  background: var(--hover);
+  color: var(--fg);
+  opacity: 1;
 }
 /* 深色族（暗黑/吸血鬼）代码背景深，提亮标签保证可读 */
-[data-dark] .ProseMirror pre[data-language]::after {
+[data-dark] .nl-code-lang {
   color: #a7b0bd;
-  opacity: 0.9;
 }
-[data-theme='vampire'] .ProseMirror pre[data-language]::after {
+[data-theme='vampire'] .nl-code-lang {
   color: #6272a4;
+}
+/* 语言选择下拉（复用 .nl-suggest 观感） */
+.nl-codelang-menu {
+  position: fixed;
+  z-index: 1002;
+  width: 200px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 6px;
+}
+.nl-codelang-filter {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--fg);
+  outline: none;
+  margin-bottom: 4px;
+}
+.nl-codelang-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.nl-codelang-item {
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nl-codelang-item:hover {
+  background: var(--hover);
+}
+.nl-codelang-item.active {
+  background: var(--accent);
+  color: #fff;
 }
 .ProseMirror pre code {
   background: none;

@@ -17,6 +17,7 @@ import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
 import { mermaidPlugin } from './mermaid-preview.js'
+import { attachCodeLangPicker } from './code-lang-picker.js'
 
 /**
  * 创建编辑器实例。
@@ -173,6 +174,9 @@ export function createEditor(opts) {
 
   // 表格单元格右键：增删行列 / 对齐 / 切换表头 / 删表（复用 .cv-menu 样式）
   attachTableContextMenu(view)
+
+  // 代码块右上角语言标签：点击弹可搜索语言列表（Typora 式，语言存围栏 info string 不入正文）
+  attachCodeLangPicker(view)
 
   // 点击 [[链接]]：拦截跳转（链接节点 contenteditable=false）
   view.dom.addEventListener('click', (e) => {
