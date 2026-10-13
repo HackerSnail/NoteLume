@@ -103,9 +103,9 @@ function markDirty(d) {
   if (d) scheduleAutosave()
 }
 
-// —— 主题 ——（浅色 → 暗黑 → 吸血鬼 三态循环）
+// —— 主题 ——（浅色 → 暗黑 → 吸血鬼 三态循环；按钮显示当前主题名，与界面实际一致）
 const THEMES = ['light', 'dark', 'vampire']
-const THEME_LABEL = { light: '🌙 暗黑', dark: '🧛 吸血鬼', vampire: '☀️ 浅色' }
+const THEME_LABEL = { light: '☀️ 浅色', dark: '🌙 暗黑', vampire: '🧛 吸血鬼' }
 function applyTheme(theme) {
   if (!THEMES.includes(theme)) theme = 'light'
   document.documentElement.setAttribute('data-theme', theme)
@@ -314,6 +314,7 @@ async function openCanvas(path) {
 async function newCanvas() {
   if (!state.vaultRoot) {
     setStatus('请先打开知识库文件夹')
+    await messageDialog('新建画布前请先打开一个知识库文件夹（画布会保存为库内的 .canvas 文件）。', 'info')
     return
   }
   if (state.dirty) {
