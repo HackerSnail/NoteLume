@@ -426,6 +426,11 @@ export function createCanvasView(deps) {
     }
   }
   function fitView() {
+    const r = svg.getBoundingClientRect()
+    if (r.width < 10 || r.height < 10) {
+      requestAnimationFrame(fitView) // 容器尚未完成布局（0×0），下一帧再试，避免用零尺寸算出负平移把卡片甩出屏幕
+      return
+    }
     if (!data.nodes.length) {
       view.k = 1
       view.tx = 40
@@ -440,9 +445,8 @@ export function createCanvasView(deps) {
       maxX = Math.max(maxX, n.x + n.width)
       maxY = Math.max(maxY, n.y + n.height)
     }
-    const r = svg.getBoundingClientRect()
     const pad = 60
-    const k = Math.min(3, Math.max(0.2, Math.min((r.width - pad * 2) / (maxX - minX || 1), (r.height - pad * 2) / (maxY - minY || 1))))
+    const k = Math.min(1, Math.max(0.2, Math.min((r.width - pad * 2) / (maxX - minX || 1), (r.height - pad * 2) / (maxY - minY || 1))))
     view.k = k
     view.tx = (r.width - (maxX + minX) * k) / 2
     view.ty = (r.height - (maxY + minY) * k) / 2
@@ -538,13 +542,11 @@ export function createCanvasView(deps) {
     dirty = true
     onDirty && onDirty(true)
     selected.clear()
-    render()
     view.k = 1
-    view.tx = 60
-    view.ty = 60
+    view.tx = 80
+    view.ty = 80
     applyView()
-    const c = centerWorld()
-    addNode(c.x - DEFAULT_SIZE.width / 2, c.y - DEFAULT_SIZE.height / 2)
+    addNode(0, 0) // 固定放在世界原点 → 屏幕 (80,80)，不依赖容器尺寸，永不出屏
   }
 
   async function save() {
