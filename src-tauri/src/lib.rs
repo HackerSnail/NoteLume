@@ -73,6 +73,19 @@ fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
     ensure_inside_root(&root, &p)
 }
 
+/// 库内相对路径（`/` 分隔）-> 绝对路径，纯词法拼接（不要求已存在），拒绝 `..` 跳出。
+/// 用于新建文件/文件夹/重命名目标等「路径尚未存在」的场景；存在性/越界由调用方另行校验。
+fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let mut p = root.to_path_buf();
+    for seg in rel.split('/').filter(|s| !s.is_empty()) {
+        if seg == ".." {
+            return Err("非法路径：不允许跳出知识库根目录".into());
+        }
+        p.push(seg);
+    }
+    Ok(p)
+}
+
 /// 递归扫描目录树：仅收集 md 文件与文件夹，同层"文件夹在前、按名称排序"
 fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
     let mut out = Vec::new();
@@ -238,6 +251,55 @@ fn delete_file(vault_root: String, path: String) -> Result<(), String> {
         return Err("不支持删除文件夹".into());
     }
     trash::delete(&abs).map_err(|e| format!("移入回收站失败：{}", e))?;
+    Ok(())
+}
+
+/// 新建文件夹：路径限库内（父目录建后校验在根内），拒绝 `..` 越界、拒绝已存在。
+#[tauri::command]
+fn create_dir(vault_root: String, path: String) -> Result<(), String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let rel = path.trim().replace('\\', "/");
+    if rel.is_empty() {
+        return Err("文件夹名不能为空".into());
+    }
+    let abs = vault_join(&root, &rel)?;
+    if abs.exists() {
+        return Err("目标已存在".into());
+    }
+    let parent = abs.parent().ok_or_else(|| "非法路径".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let pc = fs::canonicalize(parent).map_err(|e| e.to_string())?;
+    if !pc.starts_with(&root) {
+        return Err("非法路径：目标不在知识库根目录内".into());
+    }
+    fs::create_dir(&abs).map_err(|e| format!("创建文件夹失败：{}", e))?;
+    Ok(())
+}
+
+/// 重命名 / 移动库内条目（文件或文件夹，一次 fs::rename 完成）。from 必须已存在且在库内；
+/// to 的父目录必须已存在且在库内，to 不能已存在（不静默覆盖），不允许把文件夹移入自身内部。
+#[tauri::command]
+fn rename_item(vault_root: String, from: String, to: String) -> Result<(), String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let abs_from = abs_in_vault(&vault_root, &from)?;
+    let rel_to = to.trim().replace('\\', "/");
+    if rel_to.is_empty() {
+        return Err("新名称不能为空".into());
+    }
+    let abs_to = vault_join(&root, &rel_to)?;
+    if abs_to.exists() {
+        return Err("目标已存在，无法重命名 / 移动".into());
+    }
+    let parent = abs_to.parent().ok_or_else(|| "非法路径".to_string())?;
+    let pc = fs::canonicalize(parent).map_err(|e| format!("目标目录不存在：{}", e))?;
+    if !pc.starts_with(&root) {
+        return Err("非法路径：目标不在知识库根目录内".into());
+    }
+    // 不允许把文件夹移动到它自身或自己的子目录下
+    if abs_from.is_dir() && abs_to.starts_with(&abs_from) {
+        return Err("不能把文件夹移动到自身内部".into());
+    }
+    fs::rename(&abs_from, &abs_to).map_err(|e| format!("重命名失败：{}", e))?;
     Ok(())
 }
 
@@ -1371,6 +1433,50 @@ mod tests {
     }
 
     #[test]
+    fn create_dir_makes_dir_and_rejects_escape_and_exists() {
+        let tmp = std::env::temp_dir().join(format!("notelume-mkdir-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let root = tmp.to_string_lossy().to_string();
+
+        // 正常新建（多层父目录自动建）
+        assert!(create_dir(root.clone(), "a/b".to_string()).is_ok());
+        assert!(tmp.join("a").join("b").is_dir());
+        // 同名已存在 → 拒
+        assert!(create_dir(root.clone(), "a".to_string()).is_err());
+        // .. 越界 → 拒
+        assert!(create_dir(root.clone(), "../evil".to_string()).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn rename_item_renames_and_rejects_escape_and_exists() {
+        let tmp = std::env::temp_dir().join(format!("notelume-rename-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("note.md"), "# hi\n").unwrap();
+        fs::create_dir_all(tmp.join("dir")).unwrap();
+        fs::write(tmp.join("dir").join("taken.md"), "x").unwrap();
+        let root = tmp.to_string_lossy().to_string();
+
+        // 重命名（同目录）
+        assert!(rename_item(root.clone(), "note.md".into(), "renamed.md".into()).is_ok());
+        assert!(tmp.join("renamed.md").exists() && !tmp.join("note.md").exists());
+        // 移动（跨目录）
+        assert!(rename_item(root.clone(), "renamed.md".into(), "dir/moved.md".into()).is_ok());
+        assert!(tmp.join("dir").join("moved.md").exists());
+        // 目标已存在 → 拒（不静默覆盖）
+        assert!(rename_item(root.clone(), "dir/moved.md".into(), "dir/taken.md".into()).is_err());
+        // to 借 .. 越界 → 拒
+        assert!(rename_item(root.clone(), "dir/taken.md".into(), "../out.md".into()).is_err());
+        // from 不存在 → 拒
+        assert!(rename_item(root.clone(), "ghost.md".into(), "x.md".into()).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn read_backup_reads_inside_and_rejects_outside() {
         // 临时库：写一份 .notelume-backup/<day>/<stem>-HH-MM-SS.md 快照
         let tmp = std::env::temp_dir().join(format!("notelume-backup-test-{}", std::process::id()));
@@ -1517,6 +1623,8 @@ pub fn run() {
             resolve_wiki_link,
             create_md_file,
             delete_file,
+            create_dir,
+            rename_item,
             copy_image_asset,
             save_image_bytes,
             read_image_data_uri,

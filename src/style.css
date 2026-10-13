@@ -323,6 +323,72 @@ body {
   word-break: break-word;
 }
 
+/* 应用内单行输入模态（新建 / 重命名） */
+.nl-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.nl-prompt {
+  width: min(420px, 86vw);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nl-prompt-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nl-prompt-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+}
+.nl-prompt-input:focus {
+  border-color: var(--accent);
+}
+.nl-prompt-input.invalid {
+  border-color: #e5484d;
+}
+.nl-prompt-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.nl-prompt-btn {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nl-prompt-btn:hover {
+  border-color: var(--accent);
+}
+.nl-prompt-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 /* 编辑区 */
 .editor-pane {
   flex: 1;

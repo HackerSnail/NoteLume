@@ -14,6 +14,8 @@ import {
   resolveWikiLink,
   createMdFile,
   deleteFile,
+  createDir,
+  renameItem,
   confirmDialog,
   messageDialog,
   rebuildIndex,
@@ -28,6 +30,7 @@ import {
 } from './tauri-bridge.js'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
+import { promptDialog } from './prompt-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createCanvasView } from './canvas-view.js'
 import MarkdownIt from 'markdown-it'
@@ -239,14 +242,34 @@ function renderTree(nodes) {
   nodes.forEach((n) => ul.appendChild(renderNode(n)))
   els.tree.innerHTML = ''
   els.tree.appendChild(ul)
+  bindTreeBgMenu()
+}
+
+// 文件树空白区右键→在库根新建（子节点的 contextmenu 已 stopPropagation，只有真空白会到达这里）
+let treeBgBound = false
+function bindTreeBgMenu() {
+  if (treeBgBound) return
+  treeBgBound = true
+  els.tree.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    showTreeBgMenu(e.clientX, e.clientY)
+  })
 }
 
 function renderNode(node) {
   if (node.type === 'folder') {
     const details = document.createElement('details')
     details.open = true
+    details.className = 'tree-folder'
+    details.dataset.path = node.path
     const summary = document.createElement('summary')
     summary.textContent = node.name
+    summary.title = node.path
+    summary.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      showTreeMenu(e.clientX, e.clientY, node)
+    })
     details.appendChild(summary)
     const ul = document.createElement('ul')
     ;(node.children || []).forEach((c) => ul.appendChild(renderNode(c)))
@@ -262,7 +285,7 @@ function renderNode(node) {
   li.addEventListener('contextmenu', (e) => {
     e.preventDefault()
     e.stopPropagation()
-    showTreeMenu(e.clientX, e.clientY, node.path, node.name)
+    showTreeMenu(e.clientX, e.clientY, node)
   })
   return li
 }
@@ -273,31 +296,7 @@ function closeTreeMenu() {
   if (treeMenuEl && treeMenuEl.parentNode) treeMenuEl.parentNode.removeChild(treeMenuEl)
   treeMenuEl = null
 }
-function showTreeMenu(clientX, clientY, rel, name) {
-  closeTreeMenu()
-  const menu = document.createElement('div')
-  menu.className = 'cv-menu tree-menu'
-  const mkItem = (label, fn, danger) => {
-    const b = document.createElement('button')
-    b.className = 'cv-menu-item' + (danger ? ' danger' : '')
-    const chk = document.createElement('span')
-    chk.className = 'cv-menu-check'
-    b.appendChild(chk)
-    const lab = document.createElement('span')
-    lab.className = 'cv-menu-label'
-    lab.textContent = label
-    b.appendChild(lab)
-    b.addEventListener('click', () => {
-      closeTreeMenu()
-      fn()
-    })
-    return b
-  }
-  menu.appendChild(mkItem('打开', () => openFile(rel)))
-  const sep = document.createElement('div')
-  sep.className = 'cv-menu-sep'
-  menu.appendChild(sep)
-  menu.appendChild(mkItem('删除', () => deleteVaultFile(rel, name), true))
+function placeMenu(menu, clientX, clientY) {
   document.body.appendChild(menu)
   const mw = menu.offsetWidth
   const mh = menu.offsetHeight
@@ -308,6 +307,155 @@ function showTreeMenu(clientX, clientY, rel, name) {
   menu.style.left = x + 'px'
   menu.style.top = y + 'px'
   treeMenuEl = menu
+}
+function makeMenuItem(label, fn, danger) {
+  const b = document.createElement('button')
+  b.className = 'cv-menu-item' + (danger ? ' danger' : '')
+  const chk = document.createElement('span')
+  chk.className = 'cv-menu-check'
+  b.appendChild(chk)
+  const lab = document.createElement('span')
+  lab.className = 'cv-menu-label'
+  lab.textContent = label
+  b.appendChild(lab)
+  b.addEventListener('click', () => {
+    closeTreeMenu()
+    fn()
+  })
+  return b
+}
+function menuSep() {
+  const d = document.createElement('div')
+  d.className = 'cv-menu-sep'
+  return d
+}
+
+// —— 文件 / 文件夹右键菜单 ——
+function showTreeMenu(clientX, clientY, node) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  if (node.type === 'file') {
+    menu.appendChild(makeMenuItem('打开', () => openFile(node.path)))
+    menu.appendChild(makeMenuItem('重命名 / 移动…', () => renameEntry(node.path, node.name, false)))
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem('移入回收站', () => deleteVaultFile(node.path, node.name), true))
+  } else {
+    menu.appendChild(makeMenuItem('新建文件…', () => newFileIn(node.path)))
+    menu.appendChild(makeMenuItem('新建文件夹…', () => newFolderIn(node.path)))
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem('重命名 / 移动…', () => renameEntry(node.path, node.name, true)))
+  }
+  placeMenu(menu, clientX, clientY)
+}
+
+// —— 文件树空白区右键：在库根新建 ——
+function showTreeBgMenu(clientX, clientY) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  menu.appendChild(makeMenuItem('新建文件…', () => newFileIn('')))
+  menu.appendChild(makeMenuItem('新建文件夹…', () => newFolderIn('')))
+  placeMenu(menu, clientX, clientY)
+}
+
+function parentOf(rel) {
+  const i = rel.lastIndexOf('/')
+  return i < 0 ? '' : rel.slice(0, i)
+}
+function joinRel(dir, name) {
+  return dir ? dir + '/' + name : name
+}
+function baseName(rel) {
+  return rel.slice(rel.lastIndexOf('/') + 1)
+}
+function extOf(name) {
+  const m = /\.[^.]+$/.exec(name)
+  return m ? m[0] : ''
+}
+function errText(e) {
+  return (e && e.message) || String(e)
+}
+
+async function newFileIn(dirRel) {
+  if (!state.vaultRoot) return
+  const name = await promptDialog({
+    title: '新建 Markdown 文件' + (dirRel ? '（于 ' + dirRel + '）' : '（库根）'),
+    placeholder: '文件名（可不带 .md）',
+  })
+  if (!name) return
+  let rel = joinRel(dirRel, name)
+  if (!rel.toLowerCase().endsWith('.md')) rel += '.md'
+  const seed = '# ' + baseName(rel).replace(/\.md$/i, '') + '\n\n'
+  try {
+    await writeMdFile(state.vaultRoot, rel, seed)
+    renderTree(await scanVault(state.vaultRoot))
+    try { await updateIndexDoc(rel, seed) } catch (_) {}
+    await openFile(rel)
+    setStatus('已新建：' + rel)
+  } catch (e) {
+    await messageDialog('新建失败：' + errText(e))
+  }
+}
+
+async function newFolderIn(dirRel) {
+  if (!state.vaultRoot) return
+  const name = await promptDialog({
+    title: '新建文件夹' + (dirRel ? '（于 ' + dirRel + '）' : '（库根）'),
+    placeholder: '文件夹名',
+  })
+  if (!name) return
+  if (name.includes('/') || name.includes('\\')) {
+    await messageDialog('文件夹名不能包含路径分隔符')
+    return
+  }
+  const rel = joinRel(dirRel, name)
+  try {
+    await createDir(state.vaultRoot, rel)
+    renderTree(await scanVault(state.vaultRoot))
+    setStatus('已新建文件夹：' + rel)
+  } catch (e) {
+    await messageDialog('新建文件夹失败：' + errText(e))
+  }
+}
+
+async function renameEntry(rel, name, isFolder) {
+  if (!state.vaultRoot) return
+  const input = await promptDialog({
+    title: isFolder ? '重命名 / 移动文件夹' : '重命名 / 移动文件',
+    defaultValue: name,
+  })
+  if (input === null) return
+  const newName = input.trim()
+  if (!newName || newName === name) return
+  let to = joinRel(parentOf(rel), newName)
+  if (!isFolder) {
+    const origExt = extOf(name)
+    if (origExt && !to.toLowerCase().endsWith(origExt.toLowerCase())) to += origExt
+  }
+  if (to === rel) return
+  try {
+    await renameItem(state.vaultRoot, rel, to)
+    remapCurrentAfterRename(rel, to, isFolder)
+    renderTree(await scanVault(state.vaultRoot))
+    startIndexPolling() // 索引重建，反映改名 / 移动后的新路径
+    setStatus('已重命名 / 移动：' + rel + ' → ' + to)
+  } catch (e) {
+    await messageDialog('重命名失败：' + errText(e))
+  }
+}
+
+function remapCurrentAfterRename(from, to, isFolder) {
+  const cf = state.currentFile
+  if (!cf) return
+  let newCf = null
+  if (cf === from) newCf = to
+  else if (isFolder && cf.startsWith(from + '/')) newCf = to + cf.slice(from.length)
+  if (!newCf) return
+  // 内容未变，仅路径变了：保留编辑器缓冲与脏状态，只更新当前路径标识
+  state.currentFile = newCf
+  els.filename.textContent = newCf
+  highlightActiveFile()
 }
 
 async function deleteVaultFile(rel, name) {

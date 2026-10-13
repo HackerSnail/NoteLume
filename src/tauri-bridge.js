@@ -66,6 +66,16 @@ export function deleteFile(vaultRoot, path) {
   return invoke('delete_file', { vaultRoot, path })
 }
 
+/** 新建文件夹（限库内） */
+export function createDir(vaultRoot, path) {
+  return invoke('create_dir', { vaultRoot, path })
+}
+
+/** 重命名 / 移动库内条目（文件或文件夹）：from 已存在，to 不存在 */
+export function renameItem(vaultRoot, from, to) {
+  return invoke('rename_item', { vaultRoot, from, to })
+}
+
 /**
  * 保存剪贴板/拖拽的图片字节到库内 assets/，返回可写入 md 的相对链接。
  * file 为浏览器 File 对象。

@@ -16,7 +16,7 @@
 | 批次 | 功能 | 新增依赖 | 风险 | 状态 |
 |---|---|---|---|---|
 | 1 | Frontmatter（YAML 头）保留 + 编辑面板 | `js-yaml` | 低 | ✅ 已完成 |
-| 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ⬜ 待做 |
+| 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ⏳ 进行中（2A 完成） |
 | 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ⬜ 待做 |
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 plugin，可选 suggest 库） | 中 | ⬜ 待做 |
 | 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列表 / 列宽拖拽 | `prosemirror-tables` | 中 | ⬜ 待做 |
@@ -72,7 +72,11 @@
 
 ---
 
-## 2. 文件树基础操作 ⬜
+## 2. 文件树基础操作 ⏳
+
+> **2A 已完成**（本批上半）：新 Rust 命令 `create_dir` / `rename_item`（重命名与移动合一，走 `vault_join`/`abs_in_vault` 限库内 + 拒绝 `..` + 不静默覆盖 + 禁止文件夹移入自身，附 `cargo test` 单测）；前端右键菜单补齐——文件项「打开 / 重命名·移动 / 移入回收站」、文件夹「新建文件 / 新建文件夹 / 重命名·移动」、树空白区「库根新建」；新建应用内单行输入模态 `src/prompt-dialog.js`（Tauri webview 下 `window.prompt` 不可靠）；重命名/移动后走 `startIndexPolling()` 重建索引，并 `remapCurrentAfterRename` 保内容不重加载只改当前路径标识。`npm run build:web` 151 modules 通过、往返 18 passed、`cargo test` 13 passed。
+>
+> **2B 待做**（本批下半）：① 内部拖拽移动（拖文件到文件夹，HTML5 drag + 目标高亮，落点调 `rename_item`）；② 从系统拖入外部 `.md`/图片导入库（`@tauri-apps/api/webview` `onDragDropEvent` 拿绝对路径 → 复用 `copy_image_asset` 思路拷贝入内）。
 
 **目标**：右键菜单补齐 新建文件 / 新建文件夹 / 重命名 / 移动（拖拽到文件夹）；支持从系统拖入 `.md` / 图片导入到库。
 
