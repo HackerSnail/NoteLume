@@ -22,6 +22,7 @@
 
 - **图片无法显示**：编辑器内 `![](./assets/x.png)` 等相对路径图片此前全部碎图。根因：Tauri webview 中 `<img src=相对>` 会解析到应用自身 origin（`http://tauri.localhost/`）而非磁盘，必然 404。修复：为 `image` 节点新增 NodeView，通过新 Rust command `read_image_data_uri(vault_root, md_rel, src)` 读图片字节返回 `data:` URL（手写 base64 编码，无新依赖；路径用 canonicalize + `ensure_inside_root` 限定库内，允许 `..` 但拒绝逃逸）；http/data/blob 直接透传。此方案不依赖 asset 协议 scope/跨域，最稳。序列化仍用原始相对 src（attrs 不变），写盘/往返无损；结果按绝对键缓存，切文件不重读。`tauri.conf.json` 保留 `assetProtocol` 启用（无害，供其他场景）
 - 补充修复：图片链接遵循 URL 规范，文件名里的空格被编码为 `%20`（如 `image%201.png`），而磁盘真实名是 `image 1.png`。`resolve_media_abs` 新增 `percent_decode`，解析前先还原 `%XX`（否则中文目录/含空格附件图永远 404）
+- **画布初始化崩溃**：`canvas-view.js` 中 `zoomLabel` 声明在 `buildToolbar()` 调用之后，而 `buildToolbar` 内会赋值 `zoomLabel`，触发暂时性死区（“Cannot access 'zoomLabel' before initialization”）导致整个应用启动失败。将 `let zoomLabel = null` 上提到状态区（先于调用）
 
 ## [0.3.0] - 2026-10-13
 

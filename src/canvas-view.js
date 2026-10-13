@@ -41,6 +41,7 @@ export function createCanvasView(deps) {
   const selected = new Set()
   let drag = null // 进行中的交互
   let editing = null // 正在编辑文本的 textarea
+  let zoomLabel = null // 工具条缩放百分比标签（buildToolbar 内赋值，需先于调用声明）
 
   // —— DOM 骨架 ——
   mountEl.classList.add('canvas-view')
@@ -460,7 +461,6 @@ export function createCanvasView(deps) {
   document.addEventListener('keydown', onKeyDown)
 
   // —— 工具条 ——
-  let zoomLabel = null
   function buildToolbar() {
     const mk = (label, title, fn) => {
       const b = document.createElement('button')
