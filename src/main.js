@@ -11,6 +11,7 @@ import {
   writeMdFile,
   resolveWikiLink,
   createMdFile,
+  deleteFile,
   confirmDialog,
   messageDialog,
   rebuildIndex,
@@ -253,7 +254,79 @@ function renderNode(node) {
   li.dataset.path = node.path
   li.title = node.path
   li.addEventListener('click', () => openFile(node.path))
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    showTreeMenu(e.clientX, e.clientY, node.path, node.name)
+  })
   return li
+}
+
+// —— 文件树右键菜单（复用画布 .cv-menu 样式）——
+let treeMenuEl = null
+function closeTreeMenu() {
+  if (treeMenuEl && treeMenuEl.parentNode) treeMenuEl.parentNode.removeChild(treeMenuEl)
+  treeMenuEl = null
+}
+function showTreeMenu(clientX, clientY, rel, name) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  const mkItem = (label, fn, danger) => {
+    const b = document.createElement('button')
+    b.className = 'cv-menu-item' + (danger ? ' danger' : '')
+    const chk = document.createElement('span')
+    chk.className = 'cv-menu-check'
+    b.appendChild(chk)
+    const lab = document.createElement('span')
+    lab.className = 'cv-menu-label'
+    lab.textContent = label
+    b.appendChild(lab)
+    b.addEventListener('click', () => {
+      closeTreeMenu()
+      fn()
+    })
+    return b
+  }
+  menu.appendChild(mkItem('打开', () => openFile(rel)))
+  const sep = document.createElement('div')
+  sep.className = 'cv-menu-sep'
+  menu.appendChild(sep)
+  menu.appendChild(mkItem('删除', () => deleteVaultFile(rel, name), true))
+  document.body.appendChild(menu)
+  const mw = menu.offsetWidth
+  const mh = menu.offsetHeight
+  let x = clientX
+  let y = clientY
+  if (x + mw > window.innerWidth - 4) x = Math.max(4, window.innerWidth - mw - 4)
+  if (y + mh > window.innerHeight - 4) y = Math.max(4, window.innerHeight - mh - 4)
+  menu.style.left = x + 'px'
+  menu.style.top = y + 'px'
+  treeMenuEl = menu
+}
+
+async function deleteVaultFile(rel, name) {
+  if (!state.vaultRoot) return
+  const ok = await confirmDialog(`确定删除「${name}」？此操作会直接从磁盘删除该文件，不可撤销。`, '删除文件')
+  if (!ok) return
+  try {
+    await deleteFile(state.vaultRoot, rel)
+    if (state.currentFile === rel) {
+      // 删的是当前打开文档：清空编辑区，回到无文档态
+      state.dirty = false
+      state.currentFile = null
+      setMode('md')
+      editor.setMarkdown('')
+      els.filename.textContent = '（无打开文档）'
+      els.filename.classList.remove('dirty')
+      refreshLinkPanels()
+      if (snapshotPanel) snapshotPanel.refresh()
+    }
+    renderTree(await scanVault(state.vaultRoot))
+    setStatus('已删除：' + rel)
+  } catch (e) {
+    await messageDialog('删除失败：' + ((e && e.message) || e))
+  }
 }
 
 function highlightActiveFile() {
@@ -730,6 +803,11 @@ async function boot() {
     }
   })
   bindShortcuts()
+
+  // 文件树右键菜单：点击菜单外任意处即关闭
+  document.addEventListener('pointerdown', (e) => {
+    if (treeMenuEl && !treeMenuEl.contains(e.target)) closeTreeMenu()
+  }, true)
 
   setStatus('第一步：点「打开知识库」选择一个本地文件夹')
 }

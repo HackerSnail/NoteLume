@@ -61,6 +61,11 @@ export function createMdFile(vaultRoot, path, content) {
   return invoke('create_md_file', { vaultRoot, args: { path, content } })
 }
 
+/** 删除库内单个文件（md / canvas），限库内路径 */
+export function deleteFile(vaultRoot, path) {
+  return invoke('delete_file', { vaultRoot, path })
+}
+
 /**
  * 保存剪贴板/拖拽的图片字节到库内 assets/，返回可写入 md 的相对链接。
  * file 为浏览器 File 对象。

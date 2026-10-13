@@ -230,6 +230,17 @@ fn create_md_file(vault_root: String, args: CreateDocArgs) -> Result<String, Str
     Ok(rel)
 }
 
+/// 删除库内单个文件（md / canvas）：路径经 abs_in_vault 限定库内，拒绝目录与越界。
+#[tauri::command]
+fn delete_file(vault_root: String, path: String) -> Result<(), String> {
+    let abs = abs_in_vault(&vault_root, &path)?;
+    if abs.is_dir() {
+        return Err("不支持删除文件夹".into());
+    }
+    fs::remove_file(&abs).map_err(|e| format!("删除失败：{}", e))?;
+    Ok(())
+}
+
 /// FNV-1a 64 位哈希：用于图片内容去重（同名不同内容时追加内容指纹）
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -1278,6 +1289,29 @@ mod tests {
     }
 
     #[test]
+    fn delete_file_removes_inside_and_rejects_escape() {
+        let tmp = std::env::temp_dir().join(format!("notelume-del-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("note.md"), "# hi\n").unwrap();
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("sub").join("a.md"), "a").unwrap();
+        let root = tmp.to_string_lossy().to_string();
+
+        // 借 .. 越权跳出被 abs_in_vault 拒绝
+        assert!(delete_file(root.clone(), "../outside.md".to_string()).is_err());
+        // 目录被拒（仅允许删文件）
+        assert!(delete_file(root.clone(), "sub".to_string()).is_err());
+        // 不存在的文件被拒
+        assert!(delete_file(root.clone(), "ghost.md".to_string()).is_err());
+        // 正常删除库内文件
+        delete_file(root.clone(), "note.md".to_string()).unwrap();
+        assert!(!tmp.join("note.md").exists());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn read_backup_reads_inside_and_rejects_outside() {
         // 临时库：写一份 .notelume-backup/<day>/<stem>-HH-MM-SS.md 快照
         let tmp = std::env::temp_dir().join(format!("notelume-backup-test-{}", std::process::id()));
@@ -1423,6 +1457,7 @@ pub fn run() {
             write_md_file,
             resolve_wiki_link,
             create_md_file,
+            delete_file,
             copy_image_asset,
             save_image_bytes,
             read_image_data_uri,

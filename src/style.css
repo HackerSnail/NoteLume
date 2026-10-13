@@ -327,6 +327,11 @@ body {
   gap: 2px;
   font-size: 13px;
 }
+.tree-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 132px;
+}
 .cv-menu-item {
   display: flex;
   align-items: center;
