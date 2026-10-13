@@ -179,6 +179,11 @@ body {
   background: var(--accent);
   color: #fff;
 }
+/* 图片附件：树里加个小图标，点击单独查看 */
+.tree-file.is-img::before {
+  content: '🖼 ';
+  opacity: 0.7;
+}
 
 /* 拖拽移动 / 外部导入：目标高亮 */
 .tree-file[draggable] {
@@ -1790,6 +1795,87 @@ body {
 .plugin-cmd:hover {
   background: var(--accent);
   color: #fff;
+}
+
+/* ==================== 图片附件查看器（文件树点开单独放大） ==================== */
+.nl-imgv {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.72);
+}
+.nl-imgv.hidden {
+  display: none;
+}
+.nl-imgv-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.35);
+  color: #e8eaed;
+}
+.nl-imgv-title {
+  font-size: 13px;
+  color: #d8dee6;
+  max-width: 55vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nl-imgv-spacer {
+  flex: 1;
+}
+.nl-imgv-btn,
+.nl-imgv-close {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8eaed;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.nl-imgv-btn:hover,
+.nl-imgv-close:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.nl-imgv-zoom {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nl-imgv-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: block;
+}
+.nl-imgv-img {
+  display: block;
+  margin: auto;
+  height: auto;
+  user-select: none;
+  image-rendering: auto;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.45);
+  background:
+    repeating-conic-gradient(#c9ccd1 0% 25%, #ffffff 0% 50%) 50% / 20px 20px;
+}
+.nl-imgv-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #e8eaed;
+  font-size: 14px;
+  pointer-events: none;
 }
 
 

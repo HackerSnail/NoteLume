@@ -49,6 +49,12 @@ fn is_canvas(name: &str) -> bool {
     name.to_ascii_lowercase().ends_with(".canvas")
 }
 
+/// 图片附件（与 IMG_EXTS 白名单一致）：进文件树供单独查看，但不进索引
+fn is_image(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    IMG_EXTS.iter().any(|e| lower.ends_with(&format!(".{}", e)))
+}
+
 /// 拒绝越出库根的恶意路径（`..` 逃逸等）；root 与 target 均已 canonicalize
 fn ensure_inside_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
     let target = fs::canonicalize(target)
@@ -86,7 +92,7 @@ fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
-/// 递归扫描目录树：仅收集 md 文件与文件夹，同层"文件夹在前、按名称排序"
+/// 递归扫描目录树：收集 md / canvas / 图片文件与文件夹，同层"文件夹在前、按名称排序"
 fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
     let mut out = Vec::new();
     if depth > 12 {
@@ -107,7 +113,7 @@ fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
         let child_rel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
         if path.is_dir() {
             dirs.push((name, child_rel, path));
-        } else if path.is_file() && (is_md(&name) || is_canvas(&name)) {
+        } else if path.is_file() && (is_md(&name) || is_canvas(&name) || is_image(&name)) {
             files.push(TreeNode { name, path: child_rel, kind: "file".into(), children: None });
         }
     }

@@ -17,6 +17,7 @@ import {
   createDir,
   renameItem,
   isImportableFileName,
+  isImagePath,
   importVaultFileFrom,
   confirmDialog,
   messageDialog,
@@ -37,6 +38,7 @@ import { createSnapshotPanel } from './snapshot-panel.js'
 import { promptDialog } from './prompt-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createCanvasView } from './canvas-view.js'
+import { openImage } from './img-viewer.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -435,6 +437,7 @@ function renderNode(node) {
   li.textContent = node.name
   li.dataset.path = node.path
   li.dataset.kind = 'file'
+  if (isImagePath(node.path)) li.classList.add('is-img')
   li.draggable = true
   li.title = node.path
   li.addEventListener('click', () => openFile(node.path))
@@ -655,6 +658,11 @@ function cssEscape(s) {
 // —— 打开/切换文档 ——
 async function openFile(rel) {
   if (!state.vaultRoot) return
+  // 图片附件：走独立查看器单独放大查看，不切换当前文档、不触发脏状态确认
+  if (isImagePath(rel)) {
+    openImage(rel, { vaultRoot: state.vaultRoot })
+    return
+  }
   if (rel === state.currentFile) return
   if (state.dirty) {
     const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '切换文档')

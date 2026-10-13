@@ -78,6 +78,13 @@ export function renameItem(vaultRoot, from, to) {
 
 const IMG_EXT_SET = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'])
 
+/** 判断一个库内路径是否图片附件（与 Rust scan_dir 的 IMG_EXTS 白名单一致）：点击时走图片查看器 */
+export function isImagePath(p) {
+  const n = (p || '').toLowerCase()
+  const dot = n.lastIndexOf('.')
+  return dot > 0 && IMG_EXT_SET.has(n.slice(dot + 1))
+}
+
 /** 判断一个外部拖入的文件是否可导入（与文件树一致的 .md/.canvas + 图片白名单） */
 export function isImportableFileName(name) {
   const n = (name || '').toLowerCase()
