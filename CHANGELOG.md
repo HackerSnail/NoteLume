@@ -23,6 +23,7 @@
 - **画布增强：缩略图 minimap**（P2）：画布右下角全局小地图，按节点包围盒自适应缩放到 180×120，把每张卡片（分组框虚线）绘为小矩形并高亮选中项；叠加一个**视口框**实时反映当前可见区域。在缩略图上点击/拖拽即可平移主视口到对应区域（setPointerCapture 支持连续拖动）。工具条 ▦ 按钮显隐，选择记 localStorage。纯前端 SVG，复用现有渲染/变换，零新依赖；`applyView`（平移/缩放）与 `render`（节点变化）分别只刷新视口框/节点层，`destroy` 清理拖拽监听
 - **文件树右键删除（移入回收站）**：在左侧文件树的文档/画布上右键弹出菜单（打开 / **删除**），不再只能调出浏览器原生菜单。删除是**移入系统回收站**（可从回收站恢复），前弹原生确认框；若删的是当前打开文档则自动清空编辑区回到无文档态；删后重扫文件树。新 Rust command `delete_file(vault_root, path)`（经 `abs_in_vault` 限定库内、拒绝 `..` 越界与目录，调 `trash::delete` 移入回收站；附单测 `delete_file_rejects_escape_dir_and_missing`）；菜单复用画布已有的 `.cv-menu` 样式。新增依赖 `trash`（跨平台回收站，Windows 走 Shell API）
 - **删除时同步清理索引**：文件移入回收站后，索引（`VaultIndex`）会即时移除这条文档，无需全量重建。新 Rust command `remove_index_doc(path)`：删 `docs` 条目、清掉它写入他人 `backlinks` 的 outgoing 贡献、并移除自身作为 target 的 `backlinks`（`ready=false` 时跳过，交由 rebuild）；抽为纯函数 `remove_doc_from_index` 附单测 `remove_doc_from_index_clears_entry_and_backlinks`。前端在 `deleteFile` 成功后调 `removeIndexDoc`（canvas 不在索引内，为空操作），与保存后的 `updateIndexDoc` 对称
+- **Frontmatter（YAML 头）保留 + 编辑面板**（P3 首批）：读写 md 不再破坏文件开头的 `---\n<yaml>\n---` 头——解析前剥离、序列化前**逐字节原样补回**（用户手写的键顺序/注释/引号风格不丢，只有显式编辑才重排）。新纯模块 `src/frontmatter.js`（`splitFrontmatter`/`joinFrontmatter`，仅识别文件绝对开头的围栏，未闭合/无 fm 安全降级为不改动）；`editor-view.js` 在边界接住（`setMarkdown` 剥离、`getMarkdown` 补回，新增 `getFrontmatter()`/`setFrontmatter()`）。侧栏新增「文档属性」面板（`src/frontmatter-panel.js`）：已解析字段只读摘要 + 源码 textarea 编辑（应用前用 js-yaml 校验，失败不落盘）+ 显式「重新格式化」（可能改动注释/顺序，故不自动）。导出 HTML 自动剔除 frontmatter。YAML 解析引入新依赖 `js-yaml`（成熟、稳）；`roundtrip.test.mjs` 新增 frontmatter 往返幂等 + 边界用例
 
 ### 计划中（P2 未完项）
 

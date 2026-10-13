@@ -8,6 +8,8 @@ import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
 import { schema, parseMarkdown, serializeMarkdown } from './editor-schema.js'
+import { splitFrontmatter, joinFrontmatter } from './frontmatter.js'
+import * as yaml from 'js-yaml'
 import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
@@ -21,9 +23,11 @@ import { attachWikiHover } from './wiki-hover.js'
  * @param {(name:string)=>void} opts.onOpenWiki 点击 [[链接]]
  * @param {(tags:string[])=>void} opts.onMetaChange 大纲/标签变化回调
  * @param {(dirty:boolean)=>void} opts.onDirty 脏标记回调
+ * @param {() => void} [opts.onFrontmatterChange] frontmatter 变化（打开/编辑）回调，供属性面板刷新
  */
 export function createEditor(opts) {
   let dirty = false
+  let fmRaw = null // 当前文档 YAML frontmatter 原文（不含围栏）；null=无
 
   // —— 行内输入规则：[[目标]] 与 #标签 触发即转成节点 ——
   const inputRulesPlugin = new Plugin({
@@ -175,13 +179,36 @@ export function createEditor(opts) {
   return {
     view,
     setMarkdown(md) {
-      view.updateState(EditorState.create({ schema, doc: parseMarkdown(md), plugins: view.state.plugins }))
+      // 剥离开头 frontmatter，只把正文交给模型；原始 yaml 存于 fmRaw 供原样补回
+      const { yaml: fm, body } = splitFrontmatter(md)
+      fmRaw = fm
+      view.updateState(EditorState.create({ schema, doc: parseMarkdown(body), plugins: view.state.plugins }))
       dirty = false
       opts.onDirty && opts.onDirty(false)
       emitMeta(view, opts)
+      opts.onFrontmatterChange && opts.onFrontmatterChange()
     },
     getMarkdown() {
-      return serializeMarkdown(view.state.doc)
+      return joinFrontmatter(fmRaw, serializeMarkdown(view.state.doc))
+    },
+    // frontmatter：读原始文本 + 解析后的对象；解析失败/非对象时降级为 {}（不抛，原文仍在 raw）
+    getFrontmatter() {
+      if (fmRaw == null) return { raw: null, data: {} }
+      let data = {}
+      try {
+        const d = yaml.load(fmRaw)
+        if (d && typeof d === 'object' && !Array.isArray(d)) data = d
+      } catch (_) {
+        data = {}
+      }
+      return { raw: fmRaw, data }
+    },
+    // 面板编辑后写回：raw=null 表示移除 frontmatter；置脏并触发自动保存与面板刷新
+    setFrontmatter(raw) {
+      fmRaw = raw == null ? null : String(raw)
+      dirty = true
+      opts.onDirty && opts.onDirty(true)
+      opts.onFrontmatterChange && opts.onFrontmatterChange()
     },
     markSaved() {
       dirty = false

@@ -15,6 +15,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "highlight.js": "^11.9.0",
+    "js-yaml": "^5.4.3",
     "katex": "^0.16.9",
     "markdown-it": "^14.1.0",
     "prosemirror-commands": "^1.6.0",

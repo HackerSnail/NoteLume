@@ -2,6 +2,8 @@
 // P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
 // 自动保存 + 库内备份、HTML 导出、打印。
 import { createEditor } from './editor-view.js'
+import { createFrontmatterPanel } from './frontmatter-panel.js'
+import { splitFrontmatter } from './frontmatter.js'
 import {
   pickFolder,
   pickFile,
@@ -56,6 +58,7 @@ const $ = (id) => document.getElementById(id)
 const els = {
   tree: $('filetree'),
   outline: $('outline'),
+  frontmatter: $('frontmatter'),
   tags: $('tags'),
   editor: $('editor'),
   filename: $('filename'),
@@ -86,6 +89,7 @@ const els = {
 
 let editor
 let snapshotPanel = null
+let frontmatterPanel = null
 let pluginManager = null
 let canvasView = null
 
@@ -380,6 +384,7 @@ function setMode(mode) {
   const canvasOn = mode === 'canvas'
   els.editor.classList.toggle('hidden', canvasOn)
   els.canvasMount.classList.toggle('hidden', !canvasOn)
+  if (frontmatterPanel) frontmatterPanel.refresh() // 画布态下属性面板转为占位
 }
 
 async function openCanvas(path) {
@@ -634,7 +639,9 @@ async function exportHTML() {
     return
   }
   try {
-    const md = editor.getMarkdown()
+    const full = editor.getMarkdown()
+    // 导出不含 frontmatter：渲染与取标题都只看正文（frontmatter 非正文）
+    const md = splitFrontmatter(full).body
     const body = exportMd.render(md)
     const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
     const html = buildExportHtml(title, body)
@@ -741,8 +748,18 @@ async function boot() {
     onOpenWiki,
     onMetaChange,
     onDirty: markDirty,
+    onFrontmatterChange: () => frontmatterPanel && frontmatterPanel.refresh(),
     onDocChange: (doc, prev) => pluginManager && pluginManager.fireDocChange(doc, prev),
   })
+
+  // 文档属性（frontmatter）面板：查看 / 编辑当前 md 文档的 YAML 头
+  frontmatterPanel = createFrontmatterPanel({
+    container: els.frontmatter,
+    getFm: () => editor.getFrontmatter(),
+    setFm: (raw) => editor.setFrontmatter(raw),
+    isEditable: () => state.mode === 'md' && !!state.currentFile,
+  })
+  frontmatterPanel.refresh()
 
   applyTheme(localStorage.getItem('nl-theme') || 'light')
 

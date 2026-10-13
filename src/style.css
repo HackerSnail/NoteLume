@@ -233,6 +233,96 @@ body {
   font-size: 12px;
 }
 
+/* 文档属性（frontmatter）面板 */
+.frontmatter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fm-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fm-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.fm-key {
+  color: var(--accent);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-key::after {
+  content: ':';
+}
+.fm-val {
+  color: var(--fg);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  tab-size: 2;
+}
+.fm-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.fm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fm-btn {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.fm-btn:hover {
+  border-color: var(--accent);
+}
+.fm-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.fm-btn.danger {
+  color: #e5484d;
+}
+.fm-error {
+  color: #e5484d;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 编辑区 */
 .editor-pane {
   flex: 1;

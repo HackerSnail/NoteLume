@@ -6,6 +6,7 @@
 
 import assert from 'node:assert'
 import { parseMarkdown, serializeMarkdown } from '../editor-schema.js'
+import { splitFrontmatter, joinFrontmatter } from '../frontmatter.js'
 
 const SAMPLES = {
   headings: '# H1\n## H2\n### H3\n',
@@ -66,6 +67,52 @@ const mBlkDoc = parseMarkdown('$$\nx+y\\ge 0\n$$\n')
 let foundMathBlk = false
 mBlkDoc.descendants((n) => { if (n.type.name === 'math_block') { foundMathBlk = true; assert.strictEqual(n.attrs.latex, 'x+y\\ge 0', '块公式 latex 应无损') } })
 assert.ok(foundMathBlk, '应解析出 math_block 节点')
+
+// —— frontmatter 剥离/补回：字节级往返 + 幂等 ——
+const FM_CASES = [
+  '---\ntitle: Hi\ntags: [a, b]\n---\n\n正文一\n',
+  '---\na: 1\n---\nbody',
+  '# 无 frontmatter，正文以标题开头\n---\n分隔线\n',
+  '---\n# 注释\nc: 3  # 行尾注释\n---\n\nbody\n',
+  '---\n---\nbody\n',
+  '---\nunclosed: 1\n正文没有收尾围栏\n',
+]
+for (const md of FM_CASES) {
+  try {
+    const { yaml } = splitFrontmatter(md)
+    const joined = joinFrontmatter(yaml, splitFrontmatter(md).body)
+    const second = splitFrontmatter(joined)
+    const again = joinFrontmatter(second.yaml, second.body)
+    assert.strictEqual(joined, again, `frontmatter 往返不幂等：\n${joined}\n---\n${again}`)
+    // 能识别 frontmatter 的，补回后应与原文逐字节相等（保留原文）
+    if (yaml != null) assert.strictEqual(joined, md, `应原样还原：\n${joined}\n≠\n${md}`)
+    else assert.strictEqual(joined, md, `无 fm 情形不应改动原文`)
+    console.log('✅ frontmatter 往返')
+    pass++
+  } catch (e) {
+    console.error(`❌ frontmatter(${JSON.stringify(md)}): ${e.message}`)
+    fail++
+  }
+}
+// 具体断言：正常剥离与 body 归属
+{
+  const { yaml, body } = splitFrontmatter('---\ntitle: Hi\n---\n\n正文\n')
+  assert.strictEqual(yaml, 'title: Hi\n', '应剥离出 yaml 原文（不含围栏）')
+  assert.strictEqual(body, '\n正文\n', 'body 为闭合围栏之后')
+  assert.strictEqual(joinFrontmatter(yaml, body), '---\ntitle: Hi\n---\n\n正文\n', '补回应与原文一致')
+}
+// 未闭合：当作无 frontmatter，正文不被吞
+{
+  const { yaml, body } = splitFrontmatter('---\nunclosed: 1\n正文\n')
+  assert.strictEqual(yaml, null, '未闭合应识别为无 frontmatter')
+  assert.strictEqual(body, '---\nunclosed: 1\n正文\n', '原文不动')
+}
+// 空 yaml 也能无损往返
+{
+  const { yaml, body } = splitFrontmatter('---\n---\nbody\n')
+  assert.strictEqual(yaml, '')
+  assert.strictEqual(joinFrontmatter(yaml, body), '---\n---\nbody\n')
+}
 
 console.log(`\n结果：${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

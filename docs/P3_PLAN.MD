@@ -15,7 +15,7 @@
 
 | 批次 | 功能 | 新增依赖 | 风险 | 状态 |
 |---|---|---|---|---|
-| 1 | Frontmatter（YAML 头）保留 + 编辑面板 | `js-yaml` | 低 | ⏳ 进行中 |
+| 1 | Frontmatter（YAML 头）保留 + 编辑面板 | `js-yaml` | 低 | ✅ 已完成 |
 | 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ⬜ 待做 |
 | 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ⬜ 待做 |
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 plugin，可选 suggest 库） | 中 | ⬜ 待做 |
@@ -43,7 +43,9 @@
 
 ---
 
-## 1. Frontmatter（YAML 头）保留 + 编辑面板 ⏳
+## 1. Frontmatter（YAML 头）保留 + 编辑面板 ✅
+
+> 落地：新纯模块 `src/frontmatter.js`（split/join，字节级往返，未闭合安全降级）+ `src/editor-view.js` 边界接线（setMarkdown 剥离 / getMarkdown 补回 / getFrontmatter / setFrontmatter）+ 侧栏「文档属性」面板 `src/frontmatter-panel.js`（只读摘要 + 源码 textarea + 校验应用 + 显式重排）+ `index.html`/`style.css`。导出剔除 frontmatter。新增依赖 `js-yaml`（注意其 ESM 无 default 导出，需 `import * as yaml`）。`roundtrip.test.mjs` 新增 6 例往返；`npm run build:web` 150 modules 通过。
 
 **目标**：读写 md 时保留并原样往返 `---\n<yaml>\n---` 头，并提供专门面板编辑字段（Obsidian 用户用它放 tags/date/status 等，不保留会被判定"会弄坏我的库"）。
 
