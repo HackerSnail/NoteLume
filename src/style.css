@@ -279,6 +279,11 @@ body {
   opacity: 0.7;
   line-height: 1;
 }
+/* 暗色模式下代码背景深，提亮标签保证可读 */
+[data-theme='dark'] .ProseMirror pre[data-language]::after {
+  color: #a7b0bd;
+  opacity: 0.9;
+}
 .ProseMirror pre code {
   background: none;
   padding: 0;
