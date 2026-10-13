@@ -1034,6 +1034,29 @@ body {
 .ProseMirror .nl-callout-cite {
   --callout-hue: var(--muted);
 }
+/* Mermaid 图表预览（挂在 ```mermaid 代码块下方的 widget decoration） */
+.ProseMirror .nl-mermaid {
+  display: block;
+  margin: 0.2em 0 1em;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  text-align: center;
+  color: var(--muted);
+  overflow-x: auto;
+}
+.ProseMirror .nl-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.ProseMirror .nl-mermaid-error {
+  color: #e5534b;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+}
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.6em;

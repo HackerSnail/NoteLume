@@ -16,6 +16,7 @@ import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
+import { mermaidPlugin } from './mermaid-preview.js'
 
 /**
  * 创建编辑器实例。
@@ -140,6 +141,7 @@ export function createEditor(opts) {
       inputRulesPlugin,
       pasteImagesPlugin,
       highlightPlugin(),
+      mermaidPlugin(),
       ...tablePlugins(),
     ],
   })

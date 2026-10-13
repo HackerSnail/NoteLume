@@ -32,6 +32,8 @@ const SAMPLES = {
   callout_multiblock: '> [!WARNING] 注意\n>\n> 段落一\n>\n> - 列表项\n> - 第二项\n',
   callout_empty: '> [!quote]\n',
   callout_inline: '> [!INFO] 见 [[页]] 与 `code`\n> 正文 **粗** 结尾。\n',
+  // 批次 7（mermaid）：```mermaid 围栏作为普通 code_block(params='mermaid') 往返，不丢图定义
+  mermaid: '```mermaid\ngraph TD\n  A[开始] --> B{判断}\n  B -->|是| C[处理]\n  B -->|否| D[跳过]\n```\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }
@@ -95,6 +97,18 @@ assert.ok(foundMathBlk, '应解析出 math_block 节点')
   assert.ok(fcallout && fcallout.attrs.fold === '-', '折叠标记 - 应落入 fold attr')
   assert.ok(fcallout.attrs.type === 'tip', '小写 type 也应保留')
   console.log('✅ callout 节点 attrs/拆分')
+  pass++
+}
+
+// 具体断言：mermaid 围栏落在 code_block 上且 params 保留 'mermaid'（渲染插件据此识别）
+{
+  const mDoc = parseMarkdown('> 图：\n\n```mermaid\nflowchart LR\nX-->Y\n```\n')
+  let cb = null
+  mDoc.descendants((n) => { if (n.type.name === 'code_block' && !cb) cb = n })
+  assert.ok(cb, '应解析出 code_block')
+  assert.strictEqual((cb.attrs.params || '').trim().split(/\s+/)[0].toLowerCase(), 'mermaid', 'code_block.params 应保留 mermaid')
+  assert.ok(cb.textContent.includes('flowchart LR'), '图定义文本应无损保留')
+  console.log('✅ mermaid 围栏→code_block params')
   pass++
 }
 

@@ -21,7 +21,7 @@
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 suggest 插件） | 中 | ✅ 已完成 |
 | 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列菜单 / 列宽拖拽 | `prosemirror-tables` | 中 | ✅ 已完成 |
 | 6 | Obsidian callout `> [!NOTE]` 渲染 | 无（自定义块规则 + CSS） | 低 | ✅ 已完成 |
-| 7 | Mermaid 图表（` ```mermaid ` 代码块渲染） | `mermaid`（重，bundle 大） | 中高 | ⬜ 待做 |
+| 7 | Mermaid 图表（` ```mermaid ` 代码块渲染） | `mermaid`（懒加载，主包不变） | 中高 | ✅ 已完成 |
 
 图例：⬜ 待做 · ⏳ 进行中 · ✅ 已完成（已 commit+push）
 
@@ -145,15 +145,16 @@
 
 ---
 
-## 7. Mermaid 图表 ⬜
+## 7. Mermaid 图表 ✅
+
+>
+> 落地：**不新增 schema 节点**——```mermaid 围栏就是普通 `code_block`（lang=mermaid），parse/serialize 走原生 fence↔code_block，GFM 往返零风险。新模块 `src/mermaid-preview.js`：一个纯 Decoration 插件（与 hl-decorations 同构），在每个 mermaid 块**下方**挂 `Decoration.widget`（side:1）渲染图；源码仍可编辑、仍参与高亮。`mermaid` 走 `await import('mermaid')` 动态加载（vite 自动拆为 `mermaid.core-*.js` + 按图类型子块，只在真渲染时拉取；主 bundle 仅 +~3 kB）。按 `data-theme` 选 theme（dark/vampire→dark），按主题缓存 SVG；`main.js` 的 `applyTheme` 派发 `nl-theme-change` 事件→插件清缓存+发 meta 事务重建。
+>
+> **顺带修复既有重大 bug**：`d703f05`（代码块语言标签）用 `.update('code_block', {…})` 整体覆盖了基 schema 的 spec 却没带 `content:'text*'`/`marks:'code'`，导致 **加载任何含 ``` 围栏的 md 时代码块内容被丢弃**（roundtrip 因空→空幂等一直掩盖）。已补回 `content:'text*'`+`marks:'code'`；代码块与语法高亮恢复正常，30 passed。
+>
+> 边界：MVP 为“代码块下方展示预览”（非 Typora 式失焦隐源码）；错误图定义显错信不致崩；subgraph/特殊符号等取决于 mermaid 自身。
 
 **目标**：` ```mermaid ` 代码块渲染成图。迁移 Obsidian 用户的关键开关。
-
-**方案（草案）**：
-- `npm i mermaid`（**重**，动态 `import()` 懒加载避免拖慢首屏）。
-- 代码块 `params` 语言为 `mermaid` 时，nodeView 异步 `mermaid.render()` 成 SVG 插入（仿 `math-nodeviews.js` 的 nodeView 模式）。
-- 导出/打印 HTML 需一并渲染或降级为代码；`.canvas` 卡片 markdown 渲染里若出现 mermaid 是否渲染（暂可降级）。
-- 主题/深色适配：mermaid `themeVariables` 对齐三主题。
 
 ---
 

@@ -18,6 +18,7 @@
     "js-yaml": "^5.4.3",
     "katex": "^0.16.9",
     "markdown-it": "^14.1.0",
+    "mermaid": "^12.2.0",
     "prosemirror-commands": "^1.6.0",
     "prosemirror-history": "^1.4.1",
     "prosemirror-keymap": "^1.2.2",

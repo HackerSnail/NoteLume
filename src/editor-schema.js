@@ -183,6 +183,8 @@ const extendedNodes = baseSchema.spec.nodes
   })
   // 代码块：显示语言标签（Typora 风格，右下角）
   .update('code_block', {
+    content: 'text*',
+    marks: 'code',
     group: 'block',
     code: true,
     defining: true,

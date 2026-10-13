@@ -130,6 +130,8 @@ function applyTheme(theme) {
   document.documentElement.toggleAttribute('data-dark', theme === 'dark' || theme === 'vampire')
   localStorage.setItem('nl-theme', theme)
   els.btnTheme.textContent = THEME_LABEL[theme]
+  // 通知视图层按新主题重渲染依赖配色的部件（如 mermaid 图表）
+  window.dispatchEvent(new Event('nl-theme-change'))
 }
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') || 'light'
