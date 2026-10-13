@@ -236,6 +236,37 @@ const extendedNodes = baseSchema.spec.nodes
       ]
     },
   })
+  // 图片：在默认 image 基础上增加 embed 标记，无损承载 Obsidian 的 ![[图片.png]] 嵌入语法
+  .update('image', {
+    inline: true,
+    group: 'inline',
+    draggable: true,
+    attrs: {
+      src: {},
+      alt: { default: null },
+      title: { default: null },
+      embed: { default: false },
+    },
+    parseDOM: [
+      {
+        tag: 'img[src]',
+        getAttrs(dom) {
+          return {
+            src: dom.getAttribute('src'),
+            title: dom.getAttribute('title'),
+            alt: dom.getAttribute('alt'),
+            embed: dom.getAttribute('data-embed') === '1',
+          }
+        },
+      },
+    ],
+    toDOM(node) {
+      const { src, alt, title, embed } = node.attrs
+      const attrs = { src, alt: alt || null, title: title || null }
+      if (embed) attrs['data-embed'] = '1'
+      return ['img', attrs]
+    },
+  })
 
 const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
   parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
@@ -250,20 +281,37 @@ export const schema = new Schema({ nodes: extendedNodes, marks: extendedMarks })
 // commonmark 基底 + 开启 table / strikethrough，再叠加 wikilink / tag 自定义行内规则。
 const tokenizer = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
 
-// [[Target]] 或 [[Target|显示文字]]
+// [[Target]] 或 [[Target|显示文字]]；![[图片]] 为 Obsidian 图片嵌入（仅当扩展名是图片时）
+const WIKI_IMG_RE = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i
 tokenizer.inline.ruler.push('wikilink', (state, silent) => {
   const src = state.src
   const pos = state.pos
-  if (src.charCodeAt(pos) !== 0x5b /* [ */ || src.charCodeAt(pos + 1) !== 0x5b) return false
-  const end = src.indexOf(']]', pos + 2)
+  // 嵌入形态 ![[...]]：仅当目标看起来是图片文件时才当图片处理，否则退回普通链接（![[笔记]]）
+  const isEmbed =
+    src.charCodeAt(pos) === 0x21 /* ! */ &&
+    src.charCodeAt(pos + 1) === 0x5b /* [ */ &&
+    src.charCodeAt(pos + 2) === 0x5b /* [ */
+  const isLink = src.charCodeAt(pos) === 0x5b /* [ */ && src.charCodeAt(pos + 1) === 0x5b
+  if (!isEmbed && !isLink) return false
+  const open = pos + (isEmbed ? 3 : 2)
+  const end = src.indexOf(']]', open)
   if (end < 0) return false
-  const inner = src.slice(pos + 2, end)
+  const inner = src.slice(open, end)
   if (!inner || inner.includes('[') || inner.includes('\n')) return false
+  const bar = inner.indexOf('|')
+  const target = (bar < 0 ? inner : inner.slice(0, bar)).trim()
+  const alias = bar < 0 ? null : inner.slice(bar + 1)
+  if (isEmbed && !WIKI_IMG_RE.test(target)) return false // 非图片的 ![[..]]：让 ! 落为文本、[[..]] 走链接
   if (!silent) {
-    const token = state.push('wiki_link', 'span', 0)
-    const bar = inner.indexOf('|')
-    token.attrSet('target', bar < 0 ? inner : inner.slice(0, bar).trim())
-    token.attrSet('label', bar < 0 ? null : inner.slice(bar + 1))
+    if (isEmbed) {
+      const token = state.push('wiki_img', 'img', 0)
+      token.attrSet('src', target)
+      token.attrSet('alt', alias || target)
+    } else {
+      const token = state.push('wiki_link', 'span', 0)
+      token.attrSet('target', target)
+      token.attrSet('label', alias)
+    }
   }
   state.pos = end + 2
   return true
@@ -409,6 +457,10 @@ const parserTokens = {
   wiki_link: {
     node: 'wikiLink',
     getAttrs: (tok) => ({ target: tok.attrGet('target'), label: tok.attrGet('label') }),
+  },
+  wiki_img: {
+    node: 'image',
+    getAttrs: (tok) => ({ src: tok.attrGet('src'), alt: tok.attrGet('alt'), title: null, embed: true }),
   },
   tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
   math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
@@ -556,6 +608,15 @@ const serializerNodes = {
     state.renderContent(node)
   },
   table: serializeTable,
+  // 图片：embed（Obsidian ![[..]]）原样写回 `![[src|别名]]`；否则走默认 `![alt](src "title")`
+  image(state, node) {
+    if (node.attrs.embed) {
+      const alt = node.attrs.alt && node.attrs.alt !== node.attrs.src ? '|' + node.attrs.alt : ''
+      state.write('![[' + node.attrs.src + alt + ']]')
+      return
+    }
+    defaultMarkdownSerializer.nodes.image(state, node)
+  },
   wikiLink(state, node) {
     const label = node.attrs.label
     state.write(label && label !== node.attrs.target ? `[[${node.attrs.target}|${label}]]` : `[[${node.attrs.target}]]`)

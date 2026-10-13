@@ -34,6 +34,11 @@ const SAMPLES = {
   callout_inline: '> [!INFO] 见 [[页]] 与 `code`\n> 正文 **粗** 结尾。\n',
   // 批次 7（mermaid）：```mermaid 围栏作为普通 code_block(params='mermaid') 往返，不丢图定义
   mermaid: '```mermaid\ngraph TD\n  A[开始] --> B{判断}\n  B -->|是| C[处理]\n  B -->|否| D[跳过]\n```\n',
+  // 图片附件查看：Obsidian ![[图片]] 嵌入无损往返（裸名 / 带别名 / 带路径）；非图片的 ![[笔记]] 仍走链接
+  wiki_img_embed: '![[Pasted image 2026.PNG]]\n',
+  wiki_img_alias: '看这张 ![[diagram.png|架构图]] 图\n',
+  wiki_img_path: '![[./assets/x.png]]\n',
+  wiki_note_embed: '参见 ![[另一篇笔记]] 结尾。\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }
@@ -109,6 +114,29 @@ assert.ok(foundMathBlk, '应解析出 math_block 节点')
   assert.strictEqual((cb.attrs.params || '').trim().split(/\s+/)[0].toLowerCase(), 'mermaid', 'code_block.params 应保留 mermaid')
   assert.ok(cb.textContent.includes('flowchart LR'), '图定义文本应无损保留')
   console.log('✅ mermaid 围栏→code_block params')
+  pass++
+}
+
+// 具体断言：Obsidian ![[图片]] 嵌入→image 节点且 embed=true；非图片 ![[笔记]] 不当图；普通 ![]() embed=false
+{
+  const eDoc = parseMarkdown('看这张 ![[diagram.png|架构图]] 图\n')
+  let img = null
+  eDoc.descendants((n) => { if (n.type.name === 'image' && !img) img = n })
+  assert.ok(img, '![[图片]] 应解析为 image 节点')
+  assert.strictEqual(img.attrs.embed, true, 'embed 应为 true')
+  assert.strictEqual(img.attrs.src, 'diagram.png', 'src 应为目标')
+  assert.strictEqual(img.attrs.alt, '架构图', '别名应落入 alt')
+
+  const nDoc = parseMarkdown('参见 ![[另一篇笔记]]。\n')
+  let img2 = null
+  nDoc.descendants((n) => { if (n.type.name === 'image' && !img2) img2 = n })
+  assert.ok(!img2, '非图片的 ![[笔记]] 不应解析为 image')
+
+  const sDoc = parseMarkdown('![图注](./assets/pic.png)\n')
+  let img3 = null
+  sDoc.descendants((n) => { if (n.type.name === 'image' && !img3) img3 = n })
+  assert.ok(img3 && img3.attrs.embed === false, '标准 ![]() 图 embed 应为 false')
+  console.log('✅ Obsidian ![[图片]] 嵌入解析/标记')
   pass++
 }
 

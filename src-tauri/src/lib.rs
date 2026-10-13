@@ -549,10 +549,52 @@ fn resolve_media_abs(vault_root: &str, md_rel: &str, src: &str) -> Result<PathBu
     ensure_inside_root(&root, &p) // canonicalize 解析 .. 并校验未逸出库根
 }
 
+/// 库内按文件名（不区分大小写）递归查找一个文件，返回绝对路径。
+/// 用于 Obsidian 裸文件名 / 最短路径嵌入（如 `![[Pasted image xxx.PNG]]`）的默认回退解析：
+/// 先浅后深（逐层扫完当前目录文件再下钻），靠近库根的优先命中。
+fn find_asset_by_name(dir: &Path, name: &str, depth: usize) -> Option<PathBuf> {
+    if depth > 12 {
+        return None;
+    }
+    let entries = fs::read_dir(dir).ok()?;
+    let mut subdirs = Vec::new();
+    for e in entries.flatten() {
+        let fname = e.file_name().to_string_lossy().to_string();
+        if fname.starts_with('.') {
+            continue;
+        }
+        let p = e.path();
+        if p.is_dir() {
+            if SKIP_DIRS.contains(&fname.as_str()) {
+                continue;
+            }
+            subdirs.push(p);
+        } else if fname.eq_ignore_ascii_case(name) {
+            return Some(p);
+        }
+    }
+    for d in subdirs {
+        if let Some(found) = find_asset_by_name(&d, name, depth + 1) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 /// 读图片字节并返回 data: URL（供前端 <img> 直接显示，绕开 asset 协议 scope/跨域问题）。
 #[tauri::command]
 fn read_image_data_uri(vault_root: String, md_rel: String, src: String) -> Result<String, String> {
-    let abs = resolve_media_abs(&vault_root, &md_rel, &src)?;
+    // 先按常规解析（相对当前 md / 绝对路径）；失败则按文件名在库内回退查找（Obsidian 嵌入）。
+    let abs = match resolve_media_abs(&vault_root, &md_rel, &src) {
+        Ok(a) => a,
+        Err(_) => {
+            let decoded = percent_decode(&src);
+            let base = decoded.rsplit(['/', '\\']).next().unwrap_or(&decoded);
+            let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+            find_asset_by_name(&root, base, 0)
+                .ok_or_else(|| format!("找不到图片：{}", src))?
+        }
+    };
     let ext = abs
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
