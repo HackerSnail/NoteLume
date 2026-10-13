@@ -309,6 +309,43 @@ body {
   background: var(--hover);
   color: var(--accent);
 }
+
+/* 输入自动补全下拉（[[ 文档 / # 标签） */
+.nl-suggest {
+  position: fixed;
+  z-index: 1001;
+  min-width: 180px;
+  max-width: 340px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 4px;
+}
+.nl-suggest-head {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 8px 4px;
+}
+.nl-suggest-item {
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nl-suggest-item:hover {
+  background: var(--hover);
+}
+.nl-suggest-item.active {
+  background: var(--accent);
+  color: #fff;
+}
 .muted {
   color: var(--muted);
   font-size: 12px;

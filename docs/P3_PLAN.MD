@@ -18,7 +18,7 @@
 | 1 | Frontmatter（YAML 头）保留 + 编辑面板 | `js-yaml` | 低 | ✅ 已完成 |
 | 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ✅ 已完成 |
 | 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ✅ 已完成 |
-| 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 plugin，可选 suggest 库） | 中 | ⬜ 待做 |
+| 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 suggest 插件） | 中 | ✅ 已完成 |
 | 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列表 / 列宽拖拽 | `prosemirror-tables` | 中 | ⬜ 待做 |
 | 6 | Obsidian callout `> [!NOTE]` 渲染 | 无（自定义块规则 + CSS） | 低 | ⬜ 待做 |
 | 7 | Mermaid 图表（` ```mermaid ` 代码块渲染） | `mermaid`（重，bundle 大） | 中高 | ⬜ 待做 |
@@ -109,14 +109,13 @@
 
 ---
 
-## 4. wikilink / tag 自动补全 ⬜
+## 4. wikilink / tag 自动补全 ✅
+
+> 落地：新独立模块 `src/suggest-plugin.js`（手搓 ProseMirror `Plugin`，零新依赖）——不抢文本输入，每次 doc/选区变化后在光标前正则识别 `[[query` 或 `#query`，命中候选则弹 `position:fixed` 下拉；↑/↓ 移动、Enter/Tab 选当前、Esc 关闭、点项选中；选中后用 schema 已有的 `wikiLink`（`target`,`label:null`）/ `tag`（`tag`）节点 `replaceWith` 替换原始 `[[…`/`#…` 文本（与手敲成环走同一批节点，无第二条序列化路径）。候选数据源：`[[` 走全库 `.md` 文件名主干（`renderTree` 里 `collectDocNames` 递归收集入 `state.docNames`），`#` 走全库标签（`refreshGlobalTags` 把 `list_all_tags` 结果写入 `state.tagNames`），前端 `filterItems` 子串过滤 + 前缀优先 + 去重截断 12 条。插件装配在 `editor-view.js` 的 `history()` 之后、`keymapPlugin`/`base` 之前（保证补全的 Enter 先于段落切分被 `handleKeyDown` 处理）。`createEditor` 通过 `opts.suggestDocs/suggestTags` provider 惰性取数。`npm run build:web` 152 modules、`roundtrip` 18 passed。零新依赖。
+>
+> 遗留/近似：`#` 补全要求 `#` 前是行首或空白/括号（避免误伤标题、`C#` 之类）；候选来源目前只统计正文 `#tag`（与批次 3 同源，frontmatter `tags:` 未纳入）。
 
 **目标**：输入 `[[` 弹文档名模糊匹配下拉；输入 `#` 弹已有标签补全。Obsidian 核心手感。
-
-**方案（草案）**：
-- ProseMirror `Plugin`：监听 `handleTextInput`/`handleKeyDown`，检测到 `[[`（或 `#`）后进入"补全态"，弹下拉（复用 `.cv-menu` 风格或新样式），ArrowUp/Down + Enter/Tab/Esc。
-- 数据源：文档列表走索引（`search_vault` 或新 `list_docs`）前端缓存 + 模糊匹配；标签源同批次 3。
-- 可评估 `prosemirror-suggest` 库；先手搓保持可控。
 
 ---
 

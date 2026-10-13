@@ -49,6 +49,8 @@ const state = {
   mode: 'md', // 'md' 编辑器 | 'canvas' 画布
   dirty: false,
   indexReady: false,
+  docNames: [], // 全库 .md 文件名（去 .md）——供 [[ 自动补全
+  tagNames: [], // 全库标签——供 # 自动补全
   autosave: {
     enabled: localStorage.getItem('nl-autosave') === '1',
     idleTimer: null,
@@ -244,6 +246,7 @@ function renderSingleFileTree(name) {
 
 // —— 渲染文件树（folder 用 <details> 折叠，file 用可点击项）——
 function renderTree(nodes) {
+  state.docNames = collectDocNames(nodes)
   const ul = document.createElement('ul')
   ul.className = 'tree-root'
   nodes.forEach((n) => ul.appendChild(renderNode(n)))
@@ -384,6 +387,22 @@ async function importDroppedFiles(files, destDir) {
     startIndexPolling()
     setStatus('已导入 ' + imported.length + ' 个文件')
   }
+}
+
+// 递归收集库内所有 .md 的文件名主干（去 .md），供 [[ 自动补全候选
+function collectDocNames(nodes) {
+  const out = []
+  const walk = (arr) => {
+    ;(arr || []).forEach((n) => {
+      if (n.type === 'file') {
+        if (/\.md$/i.test(n.path)) out.push(baseName(n.path).replace(/\.md$/i, ''))
+      } else if (n.type === 'folder') {
+        walk(n.children)
+      }
+    })
+  }
+  walk(nodes)
+  return out
 }
 
 function renderNode(node) {
@@ -859,6 +878,7 @@ async function refreshGlobalTags() {
     box.innerHTML = '<div class="muted">标签加载失败</div>'
     return
   }
+  state.tagNames = (tags || []).map((t) => t.tag)
   if (!tags.length) {
     box.innerHTML = '<div class="muted">暂无标签</div>'
     return
@@ -1113,6 +1133,8 @@ async function boot() {
     onOpenWiki,
     onMetaChange,
     onDirty: markDirty,
+    suggestDocs: () => state.docNames,
+    suggestTags: () => state.tagNames,
     onFrontmatterChange: () => frontmatterPanel && frontmatterPanel.refresh(),
     onDocChange: (doc, prev) => pluginManager && pluginManager.fireDocChange(doc, prev),
   })

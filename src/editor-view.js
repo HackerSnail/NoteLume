@@ -14,6 +14,7 @@ import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { attachWikiHover } from './wiki-hover.js'
+import { createSuggestPlugin } from './suggest-plugin.js'
 
 /**
  * 创建编辑器实例。
@@ -126,7 +127,18 @@ export function createEditor(opts) {
   const state = EditorState.create({
     schema,
     doc: parseMarkdown(''),
-    plugins: [history(), keymapPlugin, base, inputRulesPlugin, pasteImagesPlugin, highlightPlugin()],
+    plugins: [
+      history(),
+      createSuggestPlugin({
+        getDocs: opts.suggestDocs || (() => []),
+        getTags: opts.suggestTags || (() => []),
+      }),
+      keymapPlugin,
+      base,
+      inputRulesPlugin,
+      pasteImagesPlugin,
+      highlightPlugin(),
+    ],
   })
 
   const view = new EditorView(opts.mountEl, {
