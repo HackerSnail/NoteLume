@@ -667,6 +667,54 @@ export function createCanvasView(deps) {
     data.nodes = data.nodes.filter((n) => !ids.includes(n.id))
     selected.clear(); markDirty(); render()
   }
+  // —— 复制 / 粘贴 / 重复 ——
+  let clipboard = { nodes: [], edges: [] }
+  function clone(v) {
+    return JSON.parse(JSON.stringify(v, (k, val) => (k.startsWith('_') ? undefined : val)))
+  }
+  function copySelection() {
+    const ids = new Set(selected)
+    if (!ids.size) return
+    const nodes = data.nodes.filter((n) => ids.has(n.id)).map(clone)
+    const edges = data.edges.filter((e) => ids.has(e.fromNode) && ids.has(e.toNode)).map(clone)
+    clipboard = { nodes, edges }
+    setStatus && setStatus('已复制 ' + nodes.length + ' 个元素')
+  }
+  function pasteClipboard() {
+    if (!clipboard.nodes.length) return
+    pushUndo(snapshot())
+    const idMap = {}
+    const newNodes = clipboard.nodes.map((n) => {
+      const id = uid()
+      idMap[n.id] = id
+      const c = clone(n)
+      c.id = id
+      c.x = (n.x || 0) + 24
+      c.y = (n.y || 0) + 24
+      return c
+    })
+    const newEdges = clipboard.edges
+      .map((e) => {
+        const c = clone(e)
+        c.id = uid()
+        c.fromNode = idMap[e.fromNode]
+        c.toNode = idMap[e.toNode]
+        return c
+      })
+      .filter((e) => e.fromNode && e.toNode)
+    data.nodes.push(...newNodes)
+    data.edges.push(...newEdges)
+    selected.clear()
+    newNodes.forEach((n) => selected.add(n.id))
+    clipboard = { nodes: newNodes.map(clone), edges: newEdges.map(clone) } // 连续粘贴逐级错开
+    markDirty()
+    render()
+  }
+  function duplicateSelection() {
+    if (!selected.size) return
+    copySelection()
+    pasteClipboard()
+  }
   function fitView() {
     const r = svg.getBoundingClientRect()
     if (r.width < 10 || r.height < 10) {
@@ -695,6 +743,32 @@ export function createCanvasView(deps) {
     applyView()
   }
 
+  // 缩放控件：以视口中心为锚（键盘/按钮用）
+  function zoomAt(factor, sx, sy) {
+    const r = svg.getBoundingClientRect()
+    if (sx == null) {
+      sx = r.width / 2
+      sy = r.height / 2
+    }
+    const wx = (sx - view.tx) / view.k
+    const wy = (sy - view.ty) / view.k
+    view.k = Math.min(3, Math.max(0.2, view.k * factor))
+    view.tx = sx - wx * view.k
+    view.ty = sy - wy * view.k
+    applyView()
+  }
+  function resetZoom() {
+    const r = svg.getBoundingClientRect()
+    const sx = r.width / 2
+    const sy = r.height / 2
+    const wx = (sx - view.tx) / view.k
+    const wy = (sy - view.ty) / view.k
+    view.k = 1
+    view.tx = sx - wx
+    view.ty = sy - wy
+    applyView()
+  }
+
   // —— 键盘 ——
   function onKeyDown(e) {
     if (mountEl.classList.contains('hidden')) return
@@ -716,6 +790,36 @@ export function createCanvasView(deps) {
       selected.clear()
       for (const n of data.nodes) if (n.type !== 'group') selected.add(n.id)
       render()
+      return
+    }
+    if (mod && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault()
+      copySelection()
+      return
+    }
+    if (mod && (e.key === 'v' || e.key === 'V')) {
+      e.preventDefault()
+      pasteClipboard()
+      return
+    }
+    if (mod && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault()
+      duplicateSelection()
+      return
+    }
+    if (mod && (e.key === '=' || e.key === '+')) {
+      e.preventDefault()
+      zoomAt(1.2)
+      return
+    }
+    if (mod && (e.key === '-' || e.key === '_')) {
+      e.preventDefault()
+      zoomAt(1 / 1.2)
+      return
+    }
+    if (mod && e.key === '0') {
+      e.preventDefault()
+      resetZoom()
       return
     }
     if (e.key.indexOf('Arrow') === 0 && selected.size) {
@@ -794,9 +898,14 @@ export function createCanvasView(deps) {
     const sp = document.createElement('span')
     sp.className = 'spacer'
     toolbar.appendChild(sp)
+    toolbar.appendChild(mk('−', '缩小（Ctrl -）', () => zoomAt(1 / 1.2)))
     zoomLabel = document.createElement('span')
     zoomLabel.className = 'cv-zoom'
+    zoomLabel.title = '点击重置为 100%（Ctrl+0）'
+    zoomLabel.style.cursor = 'pointer'
+    zoomLabel.addEventListener('click', resetZoom)
     toolbar.appendChild(zoomLabel)
+    toolbar.appendChild(mk('＋', '放大（Ctrl+）', () => zoomAt(1.2)))
   }
   function colorSwatch(c, title) {
     const s = document.createElement('button')
