@@ -15,6 +15,7 @@ import { highlightPlugin } from './hl-decorations.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
+import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
 
 /**
  * 创建编辑器实例。
@@ -133,11 +134,13 @@ export function createEditor(opts) {
         getDocs: opts.suggestDocs || (() => []),
         getTags: opts.suggestTags || (() => []),
       }),
+      tableKeymap(),
       keymapPlugin,
       base,
       inputRulesPlugin,
       pasteImagesPlugin,
       highlightPlugin(),
+      ...tablePlugins(),
     ],
   })
 
@@ -165,6 +168,9 @@ export function createEditor(opts) {
 
   // [[链接]] hover 悬浮预览（仅存在 vault 时才有意义，卡片自己判取 ctx）
   attachWikiHover(view.dom, () => opts.getVault())
+
+  // 表格单元格右键：增删行列 / 对齐 / 切换表头 / 删表（复用 .cv-menu 样式）
+  attachTableContextMenu(view)
 
   // 点击 [[链接]]：拦截跳转（链接节点 contenteditable=false）
   view.dom.addEventListener('click', (e) => {

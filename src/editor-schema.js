@@ -17,14 +17,29 @@ import {
   defaultMarkdownSerializer,
 } from 'prosemirror-markdown'
 import MarkdownIt from 'markdown-it'
+import { tableNodes } from 'prosemirror-tables'
 
 // —— 1. 扩展 schema ————————————————————————————————————————————————
 // 复用默认 schema 的 OrderedMap，追加/覆写节点与标记，避免重写 DOM 规格。
 
-function alignmentStyle(node) {
-  const a = node.attrs.alignment
-  return a ? { style: `text-align:${a}` } : {}
-}
+// prosemirror-tables 的表格节点 spec：cell 只允许行内内容（对齐 GFM），
+// alignment 通过 cellAttributes 读写（getFromDOM 读 style.textAlign，setDOMAttr 写回）。
+// GFM 不支持合并单元格，故表格编辑只暴露 1×1 网格可无损往返的操作（不接 merge/split）。
+const nlTableNodes = tableNodes({
+  tableGroup: 'block',
+  cellContent: 'inline*',
+  cellAttributes: {
+    alignment: {
+      default: null,
+      getFromDOM(dom) {
+        return (dom && dom.style && dom.style.textAlign) || null
+      },
+      setDOMAttr(value, attrs) {
+        if (value) attrs.style = (attrs.style ? attrs.style + ';' : '') + 'text-align:' + value
+      },
+    },
+  },
+})
 
 const extendedNodes = baseSchema.spec.nodes
   // 任务列表：list_item 增加 checked 属性（null=普通项，true/false=任务项）
@@ -58,54 +73,13 @@ const extendedNodes = baseSchema.spec.nodes
       return ['li', 0]
     },
   })
-  // 表格（GFM 单元格仅支持行内内容，故 cell content = inline*）
-  .addToEnd('table', {
-    content: 'table_row+',
-    group: 'block',
-    isolating: true,
-    parseDOM: [{ tag: 'table' }],
-    toDOM() {
-      return ['table', ['tbody', 0]]
-    },
-  })
-  .addToEnd('table_row', {
-    content: '(table_cell | table_header)+',
-    isolating: true,
-    parseDOM: [{ tag: 'tr' }],
-    toDOM() {
-      return ['tr', 0]
-    },
-  })
-  .addToEnd('table_header', {
-    content: 'inline*',
-    attrs: { alignment: { default: null } },
-    parseDOM: [
-      {
-        tag: 'th',
-        getAttrs(dom) {
-          return { alignment: dom.style.textAlign || null }
-        },
-      },
-    ],
-    toDOM(node) {
-      return ['th', alignmentStyle(node), 0]
-    },
-  })
-  .addToEnd('table_cell', {
-    content: 'inline*',
-    attrs: { alignment: { default: null } },
-    parseDOM: [
-      {
-        tag: 'td',
-        getAttrs(dom) {
-          return { alignment: dom.style.textAlign || null }
-        },
-      },
-    ],
-    toDOM(node) {
-      return ['td', alignmentStyle(node), 0]
-    },
-  })
+  // 表格：采用 prosemirror-tables 生成的 spec（带 colspan/rowspan/colwidth + TableMap），
+  // 使增删行列 / Tab 跨格 / 列宽拖拽可用；节点名仍为 table/table_row/table_header/table_cell，
+  // 故 Markdown 解析 tokens 与 serializeTable 无需改动。
+  .addToEnd('table', nlTableNodes.table)
+  .addToEnd('table_row', nlTableNodes.table_row)
+  .addToEnd('table_header', nlTableNodes.table_header)
+  .addToEnd('table_cell', nlTableNodes.table_cell)
   // [[wikilink]] —— 行内叶节点
   .addToEnd('wikiLink', {
     inline: true,

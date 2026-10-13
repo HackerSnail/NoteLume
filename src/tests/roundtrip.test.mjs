@@ -20,6 +20,10 @@ const SAMPLES = {
   tag: '本文打标记 #work 和 #study-notes，C# 语言里的井号不应误判。\n',
   table:
     '| 名称 | 数量 | 说明 |\n| --- | :---: | ---: |\n| 苹果 | 3 | 红 |\n| 香蕉 | 10 | 黄 |\n',
+  // 批次 5（prosemirror-tables）边界：空单元格 / 仅表头行 / 单元格内联标记，均须幂等
+  table_empty: '| A | B | C |\n| --- | --- | --- |\n|  | b |  |\n| x |  | y |\n',
+  table_header_only: '| A | B | C |\n| --- | :---: | ---: |\n',
+  table_inline: '| 列 | 值 |\n| --- | --- |\n| **粗** | `c` |\n| [链](https://a.b) | ~~删~~ |\n',
   math_inline: '行内公式 $e^{i\\pi}+1=0$ 与 价格 $5 不是公式（开导后空白不匹配）。\n',
   math_block: '块公式：\n\n$$\n\\int_{0}^{\\infty} e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\n$$\n\n正文。\n',
   combined:
@@ -67,6 +71,24 @@ const mBlkDoc = parseMarkdown('$$\nx+y\\ge 0\n$$\n')
 let foundMathBlk = false
 mBlkDoc.descendants((n) => { if (n.type.name === 'math_block') { foundMathBlk = true; assert.strictEqual(n.attrs.latex, 'x+y\\ge 0', '块公式 latex 应无损') } })
 assert.ok(foundMathBlk, '应解析出 math_block 节点')
+
+// 具体断言：表格对齐属性无损 + prosemirror-tables 结构 attrs 默认值齐备
+{
+  const tDoc = parseMarkdown(SAMPLES.table)
+  const aligns = []
+  let cellShapeOk = true
+  tDoc.descendants((n) => {
+    if (n.type.name === 'table_header' || n.type.name === 'table_cell') {
+      aligns.push(n.attrs.alignment)
+      if (n.attrs.colspan !== 1 || n.attrs.rowspan !== 1 || n.attrs.colwidth !== null) cellShapeOk = false
+    }
+  })
+  // 表头三列对齐依次是 null(默认左)、center、right
+  assert.deepStrictEqual(aligns.slice(0, 3), [null, 'center', 'right'], '对齐分隔行应解析到 alignment 属性')
+  assert.ok(cellShapeOk, 'cell 应带 colspan=1/rowspan=1/colwidth=null（prosemirror-tables 依赖）')
+  console.log('✅ table 对齐/结构 attrs')
+  pass++
+}
 
 // —— frontmatter 剥离/补回：字节级往返 + 幂等 ——
 const FM_CASES = [

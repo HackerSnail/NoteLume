@@ -1067,19 +1067,58 @@ body {
   border-radius: 4px;
   background: var(--hover);
 }
+.ProseMirror .tableWrapper {
+  margin: 1em 0;
+  overflow-x: auto;
+}
 .ProseMirror table {
   border-collapse: collapse;
-  margin: 1em 0;
+  table-layout: fixed;
   width: 100%;
+  overflow: hidden;
 }
 .ProseMirror th,
 .ProseMirror td {
   border: 1px solid var(--border);
   padding: 6px 10px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
 }
 .ProseMirror th {
   background: var(--bg-panel);
   font-weight: 600;
+}
+/* 列宽拖拽手柄 + 拖拽光标 + 选中单元格覆盖（prosemirror-tables columnResizing/tableEditing） */
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  z-index: 20;
+  background-color: var(--accent);
+  pointer-events: none;
+}
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+.ProseMirror .selectedCell:after {
+  z-index: 2;
+  position: absolute;
+  content: '';
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  pointer-events: none;
+}
+/* 表格右键菜单（复用 .cv-menu，fixed 定位避开编辑区内部滚动偏移） */
+.table-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 160px;
 }
 .ProseMirror a {
   color: var(--accent);

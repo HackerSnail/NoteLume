@@ -19,7 +19,7 @@
 | 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ✅ 已完成 |
 | 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ✅ 已完成 |
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 suggest 插件） | 中 | ✅ 已完成 |
-| 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列表 / 列宽拖拽 | `prosemirror-tables` | 中 | ⬜ 待做 |
+| 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列菜单 / 列宽拖拽 | `prosemirror-tables` | 中 | ✅ 已完成 |
 | 6 | Obsidian callout `> [!NOTE]` 渲染 | 无（自定义块规则 + CSS） | 低 | ⬜ 待做 |
 | 7 | Mermaid 图表（` ```mermaid ` 代码块渲染） | `mermaid`（重，bundle 大） | 中高 | ⬜ 待做 |
 
@@ -119,15 +119,13 @@
 
 ---
 
-## 5. 表格完整编辑 ⬜
+## 5. 表格完整编辑 ✅
+
+> 落地：用 `prosemirror-tables` 的 `tableNodes({ tableGroup:'block', cellContent:'inline*', cellAttributes:{ alignment } })` **接管现有自建 `table/table_row/table_header/table_cell` spec**（节点名不变，Markdown 解析 tokens 与 `serializeTable` 零改动），cell 从此自带 `colspan/rowspan/colwidth` attrs + `TableMap`（命令依赖）。新模块 `src/table-editing.js`：`tablePlugins()`（`columnResizing()` + `tableEditing()`）、`tableKeymap()`（Tab/Shift-Tab → `goToNextCell`，仅表内生效）、`attachTableContextMenu(view)`（单元格右键弹菜单，复用 `.cv-menu`，接 addRowBefore/After、deleteRow、addColumnBefore/After、deleteColumn、`setCellAttr('alignment',…)`、toggleHeaderRow、deleteTable）。`editor-view.js` 把 tableKeymap 放在普通 keymap 之前、tablePlugins 放在数组末尾。`style.css` 新增 `.tableWrapper`（`TableView` 包裹层）/`column-resize-handle`/`selectedCell`/`.table-menu`。新增依赖 `prosemirror-tables`。`npm run build:web` 154 modules（bundle +~35 kB）、`roundtrip` 22 passed（+3 表格边界用例 +1 对齐/结构 attrs 断言）。
+>
+> 边界（有意不做）：GFM 无法表达合并单元格，故**不接 merge/split**（会写出丢不掉的 colspan/rowspan）；列宽拖拽写入 `colwidth` 但 GFM 不持久化（仅视口内有效，重开重置）；从外部粘贴带合并的 HTML 表格时 merge 不保留（GFM 局限）。
 
 **目标**：接 `prosemirror-tables`，做增删行列、Tab 跨格跳转、右键行/列操作、列宽拖拽。
-
-**方案（草案）**：
-- `npm i prosemirror-tables`。
-- **关键风险**：现有自建 `table/table_row/table_header/table_cell` spec 与 prosemirror-tables 期望的 cell 结构（`colspan/rowspan` 等 attrs、`TableMap`）需调和；`cellToMarkdown/serializeTable` 往返要保 GFM 无损。
-- 接入：`tableKeymap`（Tab/Enter 等）、列宽 `columnResizing`、右键复用 `.cv-menu` 风格调 `addRowAfter/addColumnBefore/deleteRow/...`。
-- 回归：`roundtrip.test.mjs` 的 `table` 样例必须仍幂等；新增含合并单元格/空表用例。
 
 ---
 
