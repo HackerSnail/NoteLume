@@ -3,7 +3,7 @@
 // 点击链接跳转、大纲与标签提取。纯渲染/交互层，模型转换在 editor-schema.js。
 
 import { EditorView } from 'prosemirror-view'
-import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
@@ -23,7 +23,7 @@ export function createEditor(opts) {
   let dirty = false
 
   // —— 行内输入规则：[[目标]] 与 #标签 触发即转成节点 ——
-  const inputRulesPlugin = {
+  const inputRulesPlugin = new Plugin({
     props: {
       handleTextInput(view, from, to, text) {
         const state = view.state
@@ -68,10 +68,10 @@ export function createEditor(opts) {
         return false
       },
     },
-  }
+  })
 
   // —— 粘贴图片 ——
-  const pasteImagesPlugin = {
+  const pasteImagesPlugin = new Plugin({
     props: {
       handlePaste(view, event) {
         const files = imageFiles(event.clipboardData)
@@ -80,7 +80,7 @@ export function createEditor(opts) {
         return true
       },
     },
-  }
+  })
 
   const keymapPlugin = keymap({
     'Mod-z': undo,

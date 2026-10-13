@@ -39,6 +39,24 @@
       </div>
     </div>
 
+    <script>
+      // 全局错误可视化：任何未捕获异常 / Promise 拒绝都写进状态栏，
+      // 避免“白屏无反应”时看不到原因（模块加载失败也能捕获）。
+      window.__nlError = function (msg) {
+        var s = document.getElementById('status')
+        if (s) {
+          s.textContent = '⚠ ' + msg
+          s.style.color = '#c0392b'
+        }
+      }
+      window.addEventListener('error', function (e) {
+        window.__nlError('启动错误：' + (e.message || e.error))
+      })
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason
+        window.__nlError('异步错误：' + ((r && r.message) || r))
+      })
+    </script>
     <script type="module" src="/main.js"></script>
   </body>
 </html>

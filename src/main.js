@@ -49,15 +49,17 @@ function toggleTheme() {
 
 // —— 打开文件夹作为知识库 ——
 async function openFolder() {
-  const root = await pickFolder()
-  if (!root) return
-  state.vaultRoot = root
   try {
+    const root = await pickFolder()
+    if (!root) return
+    state.vaultRoot = root
     const tree = await scanVault(root)
     renderTree(tree)
     setStatus('知识库已加载：' + root)
   } catch (e) {
-    await messageDialog('扫描知识库失败：' + e)
+    const msg = (e && e.message) || e
+    setStatus('打开失败：' + msg)
+    await messageDialog('打开知识库失败：' + msg)
   }
 }
 
@@ -236,4 +238,7 @@ async function boot() {
   setStatus('第一步：点「打开知识库」选择一个本地文件夹')
 }
 
-boot()
+boot().catch((e) => {
+  console.error(e)
+  if (window.__nlError) window.__nlError('初始化失败：' + ((e && e.message) || e))
+})
