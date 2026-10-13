@@ -3,8 +3,14 @@
 //   { nodes:[{id,type:"text"|"file",x,y,width,height,color?,text?|file?}],
 //     edges:[{id,fromNode,fromSide?,toNode,toSide?,label?,color?}] }
 // 渲染：SVG + 视口变换（平移/缩放）；交互：拖拽移动、端口连线、角点缩放、双击编辑、删除。
+// 文本卡片以 markdown-lite 渲染（.canvas 仍存原始 markdown，往返无损、与 Obsidian 卡片渲染对齐）。
 // 文件读写在本模块内完成（复用通用文本命令），脏标记经 onDirty 上报给 main.js 统一驱动保存/切换确认。
 import { readMdFile, writeMdFile } from './tauri-bridge.js'
+import MarkdownIt from 'markdown-it'
+
+// 卡片文本的 markdown-lite 渲染器（与导出/编辑器同用 markdown-it，零新依赖）：
+// html:false 转义原始 HTML（防注入）；breaks 让换行生效；linkify 自动识别裸链；开删除线/表格。
+const mdLite = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true }).enable(['strikethrough', 'table'])
 
 const SVGNS = 'http://www.w3.org/2000/svg'
 const PALETTE = {
@@ -193,7 +199,17 @@ export function createCanvasView(deps) {
       box.textContent = '📄 ' + name
       box.title = n.file || ''
     } else {
-      box.textContent = n.text || ''
+      // markdown-lite 渲染：按 text 缓存 HTML（存于下划线临时字段 _md/_mdSrc，save/snapshot 会剔除）
+      if (n._mdSrc !== n.text) {
+        try {
+          n._md = mdLite.render(n.text || '')
+        } catch (err) {
+          n._md = null
+        }
+        n._mdSrc = n.text
+      }
+      if (n._md != null) box.innerHTML = n._md
+      else box.textContent = n.text || ''
     }
     fo.appendChild(box)
     g.appendChild(fo)
