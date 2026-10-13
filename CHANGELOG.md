@@ -18,6 +18,10 @@
 - 画布 / 白板
 - 移动端适配
 
+### Fixed
+
+- **图片无法显示**：编辑器内 `![](./assets/x.png)` 等相对路径图片此前全部碎图。根因：Tauri webview 中 `<img src=相对>` 会解析到应用自身 origin（`http://tauri.localhost/`）而非磁盘，必然 404。修复：① `tauri.conf.json` 启用 `assetProtocol`（scope `["**"]`）；② 为 `image` 节点新增 NodeView，按当前文档目录将相对路径拼成绝对路径（处理 `.`/`..`/Windows 盘符）后走 `convertFileSrc`；http/data/blob 直接透传，file: 转 asset。序列化仍用原始相对 src（attrs 不变），写盘/往返无损
+
 ## [0.3.0] - 2026-10-13
 
 P2 首项落地：简易知识图谱（零外部依赖，基于现有索引，单文件 264 行）。

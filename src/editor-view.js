@@ -7,6 +7,7 @@ import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { schema, parseMarkdown, serializeMarkdown } from './editor-schema.js'
 import { saveImageFromFile } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
@@ -130,6 +131,7 @@ export function createEditor(opts) {
     nodeViews: {
       math_inline: mathInlineView,
       math_block: mathBlockView,
+      image: makeImageNodeView(() => opts.getVault()),
     },
     dispatchTransaction(tr) {
       const prevDoc = view.state.doc
@@ -201,6 +203,85 @@ export function createEditor(opts) {
 
 function isImage(file) {
   return file && file.type && file.type.startsWith('image/')
+}
+
+// —— 图片显示：markdown 里存的是相对当前文档的路径（如 ./assets/x.png），
+// 而 Tauri webview 直接 <img src=相对> 会解析到应用自身 origin 而 404。
+// NodeView 把相对路径按当前文档目录拼成绝对路径，再走 asset 协议 convertFileSrc。
+// 序列化仍用原始相对 src（attrs 不变），故写盘/往返无损。
+function makeImageNodeView(getVault) {
+  return (node) => {
+    const img = document.createElement('img')
+    const apply = (n) => {
+      img.setAttribute('src', resolveImageSrc(n.attrs.src, getVault))
+      if (n.attrs.alt) img.setAttribute('alt', n.attrs.alt)
+      else img.removeAttribute('alt')
+      if (n.attrs.title) img.setAttribute('title', n.attrs.title)
+      else img.removeAttribute('title')
+    }
+    apply(node)
+    return {
+      dom: img,
+      ignoreMutation: () => true,
+      update(next) {
+        if (next.type.name !== 'image') return false
+        apply(next)
+        return true
+      },
+      selectNode() {
+        img.classList.add('ProseMirror-selectednode')
+      },
+      deselectNode() {
+        img.classList.remove('ProseMirror-selectednode')
+      },
+    }
+  }
+}
+
+function resolveImageSrc(src, getVault) {
+  if (!src) return src
+  // 远程 / 内联 / 已是 asset 协议地址：直接透传
+  if (/^(https?:|data:|blob:|asset:|http:\/\/asset\.|tauri:)/i.test(src)) return src
+  // file: 本地绝对路径 → 转 asset
+  if (/^file:/i.test(src)) {
+    try {
+      return convertFileSrc(decodeURIComponent(src.replace(/^file:\/\/\/?/i, '')))
+    } catch (_) {
+      return src
+    }
+  }
+  const ctx = getVault()
+  if (!ctx || !ctx.vaultRoot || !ctx.mdRel) return src // 未打开库：无从解析，原样返回
+  try {
+    return convertFileSrc(joinLocal(ctx.vaultRoot, ctx.mdRel, src))
+  } catch (_) {
+    return src
+  }
+}
+
+// 把相对当前 md 的路径拼成规范化后的绝对路径（处理 . / .. 与 Windows 盘符）
+function joinLocal(vaultRoot, mdRel, src) {
+  const norm = (p) => String(p).replace(/\\/g, '/')
+  const root = norm(vaultRoot)
+  const r = norm(mdRel)
+  const mdDir = r.includes('/') ? r.slice(0, r.lastIndexOf('/')) : ''
+  let s = norm(src).replace(/^\.\//, '')
+  let base
+  if (/^[a-zA-Z]:\//.test(s) || s.startsWith('/')) base = s
+  else base = root + (mdDir ? '/' + mdDir : '') + '/' + s
+  const leadingSlash = base.startsWith('/')
+  const driveMatch = /^([a-zA-Z]:)/.exec(base)
+  const body = driveMatch ? base.slice(driveMatch[1].length) : base
+  const out = []
+  for (const seg of body.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') {
+      if (out.length) out.pop()
+      continue
+    }
+    out.push(seg)
+  }
+  return (driveMatch ? driveMatch[1] : '') + (leadingSlash || driveMatch ? '/' : '') + out.join('/')
 }
 
 // 插入行内/块级公式：有选区就用选区内容作为 latex，否则给一个占位例子
