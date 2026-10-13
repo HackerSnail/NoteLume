@@ -20,7 +20,7 @@
 
 ### Fixed
 
-- **图片无法显示**：编辑器内 `![](./assets/x.png)` 等相对路径图片此前全部碎图。根因：Tauri webview 中 `<img src=相对>` 会解析到应用自身 origin（`http://tauri.localhost/`）而非磁盘，必然 404。修复：① `tauri.conf.json` 启用 `assetProtocol`（scope `["**"]`）；② 为 `image` 节点新增 NodeView，按当前文档目录将相对路径拼成绝对路径（处理 `.`/`..`/Windows 盘符）后走 `convertFileSrc`；http/data/blob 直接透传，file: 转 asset。序列化仍用原始相对 src（attrs 不变），写盘/往返无损
+- **图片无法显示**：编辑器内 `![](./assets/x.png)` 等相对路径图片此前全部碎图。根因：Tauri webview 中 `<img src=相对>` 会解析到应用自身 origin（`http://tauri.localhost/`）而非磁盘，必然 404。修复：为 `image` 节点新增 NodeView，通过新 Rust command `read_image_data_uri(vault_root, md_rel, src)` 读图片字节返回 `data:` URL（手写 base64 编码，无新依赖；路径用 canonicalize + `ensure_inside_root` 限定库内，允许 `..` 但拒绝逃逸）；http/data/blob 直接透传。此方案不依赖 asset 协议 scope/跨域，最稳。序列化仍用原始相对 src（attrs 不变），写盘/往返无损；结果按绝对键缓存，切文件不重读。`tauri.conf.json` 保留 `assetProtocol` 启用（无害，供其他场景）
 
 ## [0.3.0] - 2026-10-13
 

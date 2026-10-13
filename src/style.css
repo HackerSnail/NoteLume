@@ -380,6 +380,13 @@ body {
 .ProseMirror img {
   max-width: 100%;
 }
+.ProseMirror img.nl-img-missing {
+  min-width: 120px;
+  min-height: 28px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: var(--hover);
+}
 .ProseMirror table {
   border-collapse: collapse;
   margin: 1em 0;

@@ -161,6 +161,11 @@ export function readPlugin(vaultRoot, pluginRel) {
   return invoke('read_plugin', { vaultRoot, pluginRel })
 }
 
+/** 读图片字节返回 data: URL（src 相对当前 md 或绝对，限库内） */
+export function readImageDataUri(vaultRoot, mdRel, src) {
+  return invoke('read_image_data_uri', { vaultRoot, mdRel, src })
+}
+
 /** 导出到库外任意路径（由系统保存对话框给出） */
 export function exportFile(absPath, content) {
   return invoke('export_file', { args: { absPath, content } })

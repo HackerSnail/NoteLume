@@ -320,6 +320,76 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
     Ok(format!("./assets/{}", file_name))
 }
 
+/// 手写 base64 编码（项目不引入 base64 crate；与 save_image_bytes 里的手写解码对称）
+fn b64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[(n >> 18) as usize & 63] as char);
+        out.push(TABLE[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { TABLE[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+fn mime_for_ext(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "avif" => "image/avif",
+        _ => "application/octet-stream",
+    }
+}
+
+/// 将相对当前 md（或绝对）的图片路径解析为绝对路径，允许 `..` 但 canonicalize 后必须在库内。
+fn resolve_media_abs(vault_root: &str, md_rel: &str, src: &str) -> Result<PathBuf, String> {
+    let root = fs::canonicalize(vault_root).map_err(|e| e.to_string())?;
+    let src_clean = src.trim_start_matches("./");
+    let bytes = src_clean.as_bytes();
+    let is_abs = src_clean.starts_with('/')
+        || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':');
+    let p = if is_abs {
+        PathBuf::from(src_clean)
+    } else {
+        let mut base = root.clone();
+        if let Some((d, _)) = md_rel.rsplit_once('/') {
+            for seg in d.split('/').filter(|s| !s.is_empty()) {
+                base.push(seg);
+            }
+        }
+        for seg in src_clean.split(['/', '\\']).filter(|s| !s.is_empty()) {
+            base.push(seg);
+        }
+        base
+    };
+    ensure_inside_root(&root, &p) // canonicalize 解析 .. 并校验未逸出库根
+}
+
+/// 读图片字节并返回 data: URL（供前端 <img> 直接显示，绕开 asset 协议 scope/跨域问题）。
+#[tauri::command]
+fn read_image_data_uri(vault_root: String, md_rel: String, src: String) -> Result<String, String> {
+    let abs = resolve_media_abs(&vault_root, &md_rel, &src)?;
+    let ext = abs
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if !IMG_EXTS.contains(&ext.as_str()) {
+        return Err(format!("不支持的图片类型：{}", ext));
+    }
+    let bytes = fs::read(&abs).map_err(|e| format!("读取图片失败：{}", e))?;
+    Ok(format!("data:{};base64,{}", mime_for_ext(&ext), b64_encode(&bytes)))
+}
+
 // ==================== P1 新增：知识库索引 / 双向链接 / 搜索 / 预览 / 备份 / 导出 ====================
 
 /// 内部：每个 md 一条 DocEntry（含原文用于快速搜索与片段）
@@ -1227,6 +1297,50 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
     }
+
+    #[test]
+    fn read_image_data_uri_encodes_and_guards_path() {
+        let tmp = std::env::temp_dir().join(format!("notelume-img-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let notes = tmp.join("notes");
+        fs::create_dir_all(notes.join("assets")).unwrap();
+        fs::create_dir_all(tmp.join("secret")).unwrap();
+        // 3 字节 -> base64 无 padding："QUJD" == "ABC"
+        fs::write(notes.join("assets").join("x.png"), b"ABC").unwrap();
+        fs::write(tmp.join("secret").join("s.png"), b"SECRET").unwrap();
+        let root_str = tmp.to_string_lossy().to_string();
+
+        // 相对当前 md（notes/a.md）的 ./assets/x.png → 正常编码
+        let uri = read_image_data_uri(
+            root_str.clone(),
+            "notes/a.md".into(),
+            "./assets/x.png".into(),
+        )
+        .unwrap();
+        assert_eq!(uri, "data:image/png;base64,QUJD");
+
+        // 库内 .. 跳转（从 notes 上跳到 secret）允许，但仍在库内
+        let up = read_image_data_uri(
+            root_str.clone(),
+            "notes/a.md".into(),
+            "../secret/s.png".into(),
+        );
+        assert!(up.is_ok(), "库内 .. 应允许：{:?}", up);
+
+        // 逸出库根被 ensure_inside_root 拒绝
+        let esc = read_image_data_uri(
+            root_str.clone(),
+            "notes/a.md".into(),
+            "../../../../Windows/win.ini".into(),
+        );
+        assert!(esc.is_err());
+
+        // 非图片扩展名拒绝
+        fs::write(notes.join("assets").join("x.txt"), b"hi").unwrap();
+        assert!(read_image_data_uri(root_str.clone(), "notes/a.md".into(), "./assets/x.txt".into()).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1243,6 +1357,7 @@ pub fn run() {
             create_md_file,
             copy_image_asset,
             save_image_bytes,
+            read_image_data_uri,
             // P1
             rebuild_index,
             get_index_status,

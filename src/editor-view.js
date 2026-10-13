@@ -7,9 +7,8 @@ import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import { schema, parseMarkdown, serializeMarkdown } from './editor-schema.js'
-import { saveImageFromFile } from './tauri-bridge.js'
+import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { attachWikiHover } from './wiki-hover.js'
@@ -207,17 +206,19 @@ function isImage(file) {
 
 // —— 图片显示：markdown 里存的是相对当前文档的路径（如 ./assets/x.png），
 // 而 Tauri webview 直接 <img src=相对> 会解析到应用自身 origin 而 404。
-// NodeView 把相对路径按当前文档目录拼成绝对路径，再走 asset 协议 convertFileSrc。
-// 序列化仍用原始相对 src（attrs 不变），故写盘/往返无损。
+// NodeView 通过 Rust read_image_data_uri 读字节转 data: URL（最稳，不依赖 asset 协议/scope/跨域）。
+// 序列化仍用原始相对 src（attrs 不变），故写盘/往返无损。结果按绝对键缓存，切文件不重读。
+const imgDataCache = new Map() // key(vault|md|src) -> dataUri
+
 function makeImageNodeView(getVault) {
   return (node) => {
     const img = document.createElement('img')
     const apply = (n) => {
-      img.setAttribute('src', resolveImageSrc(n.attrs.src, getVault))
       if (n.attrs.alt) img.setAttribute('alt', n.attrs.alt)
       else img.removeAttribute('alt')
       if (n.attrs.title) img.setAttribute('title', n.attrs.title)
       else img.removeAttribute('title')
+      loadImgSrc(img, n.attrs.src, getVault)
     }
     apply(node)
     return {
@@ -238,50 +239,43 @@ function makeImageNodeView(getVault) {
   }
 }
 
-function resolveImageSrc(src, getVault) {
-  if (!src) return src
-  // 远程 / 内联 / 已是 asset 协议地址：直接透传
-  if (/^(https?:|data:|blob:|asset:|http:\/\/asset\.|tauri:)/i.test(src)) return src
-  // file: 本地绝对路径 → 转 asset
-  if (/^file:/i.test(src)) {
-    try {
-      return convertFileSrc(decodeURIComponent(src.replace(/^file:\/\/\/?/i, '')))
-    } catch (_) {
-      return src
-    }
+// 异步把 src 装到 img 上；用 img.__key 防止 update 竞态下旧请求覆盖新图
+function loadImgSrc(img, src, getVault) {
+  if (!src) {
+    img.removeAttribute('src')
+    img.__key = null
+    return
+  }
+  // 远程 / 内联 / 剪贴板 blob：直接透传
+  if (/^(https?:|data:|blob:)/i.test(src)) {
+    img.__key = null
+    img.src = src
+    return
   }
   const ctx = getVault()
-  if (!ctx || !ctx.vaultRoot || !ctx.mdRel) return src // 未打开库：无从解析，原样返回
-  try {
-    return convertFileSrc(joinLocal(ctx.vaultRoot, ctx.mdRel, src))
-  } catch (_) {
-    return src
+  if (!ctx || !ctx.vaultRoot || !ctx.mdRel) {
+    img.src = src // 未打开库：无从解析，原样交给浏览器
+    img.__key = null
+    return
   }
-}
-
-// 把相对当前 md 的路径拼成规范化后的绝对路径（处理 . / .. 与 Windows 盘符）
-function joinLocal(vaultRoot, mdRel, src) {
-  const norm = (p) => String(p).replace(/\\/g, '/')
-  const root = norm(vaultRoot)
-  const r = norm(mdRel)
-  const mdDir = r.includes('/') ? r.slice(0, r.lastIndexOf('/')) : ''
-  let s = norm(src).replace(/^\.\//, '')
-  let base
-  if (/^[a-zA-Z]:\//.test(s) || s.startsWith('/')) base = s
-  else base = root + (mdDir ? '/' + mdDir : '') + '/' + s
-  const leadingSlash = base.startsWith('/')
-  const driveMatch = /^([a-zA-Z]:)/.exec(base)
-  const body = driveMatch ? base.slice(driveMatch[1].length) : base
-  const out = []
-  for (const seg of body.split('/')) {
-    if (seg === '' || seg === '.') continue
-    if (seg === '..') {
-      if (out.length) out.pop()
-      continue
-    }
-    out.push(seg)
+  const key = ctx.vaultRoot + '|' + ctx.mdRel + '|' + src
+  img.__key = key
+  const cached = imgDataCache.get(key)
+  if (cached) {
+    img.src = cached
+    return
   }
-  return (driveMatch ? driveMatch[1] : '') + (leadingSlash || driveMatch ? '/' : '') + out.join('/')
+  readImageDataUri(ctx.vaultRoot, ctx.mdRel, src)
+    .then((uri) => {
+      imgDataCache.set(key, uri)
+      if (img.__key === key) img.src = uri
+    })
+    .catch(() => {
+      if (img.__key === key) {
+        img.removeAttribute('src')
+        img.classList.add('nl-img-missing')
+      }
+    })
 }
 
 // 插入行内/块级公式：有选区就用选区内容作为 latex，否则给一个占位例子
