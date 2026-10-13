@@ -74,15 +74,21 @@ function setStatus(msg) {
   els.status.textContent = msg
 }
 
-// —— 主题 ——
+// —— 主题 ——（浅色 → 暗黑 → 吸血鬼 三态循环）
+const THEMES = ['light', 'dark', 'vampire']
+const THEME_LABEL = { light: '🌙 暗黑', dark: '🧛 吸血鬼', vampire: '☀️ 浅色' }
 function applyTheme(theme) {
+  if (!THEMES.includes(theme)) theme = 'light'
   document.documentElement.setAttribute('data-theme', theme)
+  // 深色族（暗黑 / 吸血鬼）共享一套派生样式，用 data-dark 统一命中
+  document.documentElement.toggleAttribute('data-dark', theme === 'dark' || theme === 'vampire')
   localStorage.setItem('nl-theme', theme)
-  els.btnTheme.textContent = theme === 'dark' ? '☀️ 浅色' : '🌙 暗黑'
+  els.btnTheme.textContent = THEME_LABEL[theme]
 }
 function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
-  applyTheme(cur)
+  const cur = document.documentElement.getAttribute('data-theme') || 'light'
+  const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]
+  applyTheme(next)
 }
 
 // —— 打开文件夹作为知识库 ——

@@ -22,6 +22,23 @@
   --quote-bar: #3a4048;
   --hover: #262b33;
 }
+/* 吸血鬼主题：近黑暖底 + 骨白文字 + 血红点缀 */
+:root[data-theme='vampire'] {
+  --bg: #0e0a0b;
+  --bg-panel: #171112;
+  --fg: #ece2e3;
+  --muted: #9b8184;
+  --border: #3a2327;
+  --accent: #cf1435;
+  --code-bg: #1a1315;
+  --quote-bar: #6e1f2a;
+  --hover: #241a1c;
+}
+/* 吸血鬼：血红选中高亮，选中文字像被浸染 */
+:root[data-theme='vampire'] ::selection {
+  background: rgba(207, 20, 53, 0.4);
+  color: #fff;
+}
 
 * {
   box-sizing: border-box;
@@ -316,10 +333,13 @@ body {
   opacity: 0.7;
   line-height: 1;
 }
-/* 暗色模式下代码背景深，提亮标签保证可读 */
-[data-theme='dark'] .ProseMirror pre[data-language]::after {
+/* 深色族（暗黑/吸血鬼）代码背景深，提亮标签保证可读 */
+[data-dark] .ProseMirror pre[data-language]::after {
   color: #a7b0bd;
   opacity: 0.9;
+}
+[data-theme='vampire'] .ProseMirror pre[data-language]::after {
+  color: #b8a0a3;
 }
 .ProseMirror pre code {
   background: none;
@@ -578,36 +598,36 @@ body {
 .hljs-bullet {
   color: #e36209;
 }
-[data-theme='dark'] .hljs-comment,
-[data-theme='dark'] .hljs-quote {
+[data-dark] .hljs-comment,
+[data-dark] .hljs-quote {
   color: #7b828d;
 }
-[data-theme='dark'] .hljs-keyword,
-[data-theme='dark'] .hljs-selector-tag,
-[data-theme='dark'] .hljs-type,
-[data-theme='dark'] .hljs-built_in,
-[data-theme='dark'] .hljs-name,
-[data-theme='dark'] .hljs-tag {
+[data-dark] .hljs-keyword,
+[data-dark] .hljs-selector-tag,
+[data-dark] .hljs-type,
+[data-dark] .hljs-built_in,
+[data-dark] .hljs-name,
+[data-dark] .hljs-tag {
   color: #ff7b72;
 }
-[data-theme='dark'] .hljs-string,
-[data-theme='dark'] .hljs-template-variable,
-[data-theme='dark'] .hljs-addition {
+[data-dark] .hljs-string,
+[data-dark] .hljs-template-variable,
+[data-dark] .hljs-addition {
   color: #a5d6ff;
 }
-[data-theme='dark'] .hljs-number,
-[data-theme='dark'] .hljs-literal,
-[data-theme='dark'] .hljs-variable,
-[data-theme='dark'] .hljs-deletion {
+[data-dark] .hljs-number,
+[data-dark] .hljs-literal,
+[data-dark] .hljs-variable,
+[data-dark] .hljs-deletion {
   color: #79c0ff;
 }
-[data-theme='dark'] .hljs-params,
-[data-theme='dark'] .hljs-function .hljs-title {
+[data-dark] .hljs-params,
+[data-dark] .hljs-function .hljs-title {
   color: #d2a8ff;
 }
-[data-theme='dark'] .hljs-meta,
-[data-theme='dark'] .hljs-symbol,
-[data-theme='dark'] .hljs-bullet {
+[data-dark] .hljs-meta,
+[data-dark] .hljs-symbol,
+[data-dark] .hljs-bullet {
   color: #ffa657;
 }
 
