@@ -955,6 +955,18 @@ fn list_backups(vault_root: String, doc_rel: Option<String>) -> Result<Vec<Backu
     Ok(out)
 }
 
+/// 读取 .notelume-backup 下某个快照全文（P2 版本快照 UI 预览 / 回滚用）。
+/// 仅允许读取备份目录内文件，前缀白名单 + abs_in_vault 双重防路径穿越。
+#[tauri::command]
+fn read_backup(vault_root: String, backup_rel: String) -> Result<String, String> {
+    let norm = backup_rel.replace('\\', "/");
+    if !norm.starts_with(".notelume-backup/") {
+        return Err("非法路径：只能读取备份目录内的快照".into());
+    }
+    let abs = abs_in_vault(&vault_root, &norm)?;
+    fs::read_to_string(&abs).map_err(|e| format!("读取备份失败：{}", e))
+}
+
 /// 导出 HTML 到库外任意路径；仅接受由原生保存对话框返回的绝对路径
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1119,6 +1131,28 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
     }
+
+    #[test]
+    fn read_backup_reads_inside_and_rejects_outside() {
+        // 临时库：写一份 .notelume-backup/<day>/<stem>-HH-MM-SS.md 快照
+        let tmp = std::env::temp_dir().join(format!("notelume-backup-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let day = tmp.join(".notelume-backup").join("2026-01-01");
+        fs::create_dir_all(&day).unwrap();
+        fs::write(day.join("note-12-00-00.md"), "# hello snapshot\n").unwrap();
+        let root_str = tmp.to_string_lossy().to_string();
+
+        // 目录内快照可读
+        let ok = read_backup(root_str.clone(), ".notelume-backup/2026-01-01/note-12-00-00.md".to_string()).unwrap();
+        assert_eq!(ok, "# hello snapshot\n");
+
+        // 非备份目录前缀被白名单拒绝
+        assert!(read_backup(root_str.clone(), "secret.md".to_string()).is_err());
+        // 借 .. 越权跳出被 abs_in_vault 拒绝
+        assert!(read_backup(root_str.clone(), ".notelume-backup/../../escape.md".to_string()).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1146,6 +1180,7 @@ pub fn run() {
             update_index_doc,
             backup_write,
             list_backups,
+            read_backup,
             export_file,
             get_graph_data
         ])

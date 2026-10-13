@@ -146,6 +146,11 @@ export function listBackups(vaultRoot, docRel) {
   return invoke('list_backups', { vaultRoot, docRel: docRel || null })
 }
 
+/** 读取一个快照全文（backupRel 必须位于 .notelume-backup/ 下） */
+export function readBackup(vaultRoot, backupRel) {
+  return invoke('read_backup', { vaultRoot, backupRel })
+}
+
 /** 导出到库外任意路径（由系统保存对话框给出） */
 export function exportFile(absPath, content) {
   return invoke('export_file', { args: { absPath, content } })

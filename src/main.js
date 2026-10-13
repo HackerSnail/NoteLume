@@ -23,6 +23,7 @@ import {
   exportFile,
 } from './tauri-bridge.js'
 import { openGraph } from './graph-view.js'
+import { createSnapshotPanel } from './snapshot-panel.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -66,9 +67,17 @@ const els = {
   searchResults: $('search-results'),
   backlinks: $('backlinks'),
   outgoing: $('outgoing'),
+  snapshots: $('snapshots'),
+  snapshotModal: $('snapshot-modal'),
+  snapshotPreview: $('snapshot-preview'),
+  snapshotLabel: $('snapshot-label'),
+  snapshotMeta: $('snapshot-meta'),
+  snapshotRollback: $('snapshot-rollback'),
+  snapshotClose: $('snapshot-close'),
 }
 
 let editor
+let snapshotPanel = null
 
 function setStatus(msg) {
   els.status.textContent = msg
@@ -156,6 +165,7 @@ async function openSingleFile() {
     editor.focus()
     // 单文件也后台索引：库根就是同目录，反查更方便
     startIndexPolling()
+    if (snapshotPanel) snapshotPanel.refresh()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开文件失败：' + msg)
@@ -237,6 +247,7 @@ async function openFile(rel) {
     setStatus('已打开：' + rel)
     editor.focus()
     refreshLinkPanels()
+    if (snapshotPanel) snapshotPanel.refresh()
     resetBackupTimer()
   } catch (e) {
     await messageDialog('打开失败：' + e)
@@ -263,6 +274,7 @@ async function saveCurrent(manual = true) {
     }
     // 备份：手动保存一定做一次；自动保存受间隔约束（在 scheduleAutosave 里）
     await maybeBackup(md, manual)
+    if (snapshotPanel && manual) snapshotPanel.refresh()
   } catch (e) {
     if (manual) await messageDialog('保存失败：' + e)
     else console.warn('自动保存失败', e)
@@ -556,6 +568,25 @@ async function boot() {
   })
 
   applyTheme(localStorage.getItem('nl-theme') || 'light')
+
+  // P2 版本快照面板：列表 / 预览 / 回滚（依赖已装配的 editor 与导出用 markdown-it）
+  snapshotPanel = createSnapshotPanel({
+    listEl: els.snapshots,
+    modalEl: els.snapshotModal,
+    previewEl: els.snapshotPreview,
+    labelEl: els.snapshotLabel,
+    metaEl: els.snapshotMeta,
+    rollbackBtn: els.snapshotRollback,
+    closeBtn: els.snapshotClose,
+    getVaultRoot: () => state.vaultRoot,
+    getCurrentFile: () => state.currentFile,
+    editor,
+    renderMarkdown: (md) => exportMd.render(md),
+    escapeHtml,
+    setStatus,
+    onAfterRollback: () => refreshLinkPanels(),
+  })
+  snapshotPanel.refresh()
 
   els.chkAutosave.checked = state.autosave.enabled
   els.chkAutosave.addEventListener('change', () => {

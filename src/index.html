@@ -50,6 +50,10 @@
             <div class="bl-h3">本文档引用</div>
             <div id="outgoing" class="link-list"></div>
           </section>
+          <section class="panel">
+            <h2>📦 历史版本</h2>
+            <div id="snapshots" class="snapshots"></div>
+          </section>
         </aside>
 
         <main class="editor-pane">
@@ -66,6 +70,21 @@
           <button id="graph-close" class="graph-close" title="关闭 (Esc)">✕</button>
         </div>
         <canvas id="graph-canvas" class="graph-canvas"></canvas>
+      </div>
+    </div>
+
+    <div id="snapshot-modal" class="snapshot-modal hidden" role="dialog" aria-label="历史版本预览">
+      <div class="snapshot-panel">
+        <div class="snapshot-head">
+          <span class="snapshot-title">📦 <span id="snapshot-label"></span></span>
+          <button id="snapshot-close" class="snapshot-close" title="关闭 (Esc)">✕</button>
+        </div>
+        <div id="snapshot-preview" class="snapshot-preview ProseMirror"></div>
+        <div class="snapshot-foot">
+          <span id="snapshot-meta" class="snapshot-meta"></span>
+          <span class="spacer"></span>
+          <button id="snapshot-rollback" class="btn-primary">↩ 回滚到此版本</button>
+        </div>
       </div>
     </div>
 
