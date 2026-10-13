@@ -99,6 +99,7 @@ interface PluginContext {
 - Rust **未新增 `read_canvas`/`write_canvas`**：画布 IO 复用已有通用文本命令 `read_md_file`/`write_md_file`（本质是通用读写 + 路径安全），降低攻击面与维护成本；Rust 仅新增 `is_canvas` 让 `scan_vault` 把 `.canvas` 纳入文件树（进树不进索引，附单测 `scan_includes_canvas_but_not_other_types`）
 - 前端 `src/canvas-view.js`（~565 行）：SVG 渲染 + 视口变换（平移/以光标为锚缩放）、拖拽移动（shift 多选）、端口拖拽连线、角点 resize、双击编辑/新建、六色色板、适应视图、Delete 删除；文件节点双击跳转。IO 与脏标记在本模块内完成，`onDirty`/`onOpenFile` 回调交给 main.js 统一驱动
 - main.js 按 `state.mode`（`md`/`canvas`）分流 openFile / saveCurrent / openSingleFile；工具条 🗺 新画布一键新建并落盘
+- **多选对齐 + 分组增强**（已补）：工具条新增六向对齐（左/水平居中/右/顶/垂直居中/底，选中≥２）、水平/垂直等距分布（选中≥３）、编组/解组。分组用 **JSON Canvas / Obsidian 兼容的 `type:"group"` 节点**（往返无损）：分组框垫底渲染、半透填充可点击穿透（仅边框/标签可选）、虚线边框选中变实线；拖动分组框连带框内成员（按中心判定）一起移动；双击顶部编辑标签；连线目标排除分组框
 
 ---
 

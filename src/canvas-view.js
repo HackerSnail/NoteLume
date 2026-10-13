@@ -137,7 +137,9 @@ export function createCanvasView(deps) {
         edgeLayer.appendChild(t)
       }
     }
-    for (const n of data.nodes) {
+    // 分组框先画（垫底），普通卡片后画（在上）
+    const ordered = [...data.nodes].sort((a, b) => (a.type === 'group' ? 0 : 1) - (b.type === 'group' ? 0 : 1))
+    for (const n of ordered) {
       nodeLayer.appendChild(renderNode(n))
     }
   }
@@ -147,6 +149,26 @@ export function createCanvasView(deps) {
     if (selected.has(n.id)) g.classList.add('selected')
     if (drag && drag.kind === 'connect' && drag.hover === n.id) g.classList.add('cv-connect-target')
     const col = resolveColor(n.color)
+    if (n.type === 'group') {
+      // 分组框（Obsidian 兼容 type:"group"）：填充可穿透，仅边框/标签可点选
+      const fill = el('rect', { width: n.width, height: n.height, rx: 14, class: 'cv-group-fill' })
+      fill.style.pointerEvents = 'none'
+      g.appendChild(fill)
+      const border = el('rect', { width: n.width, height: n.height, rx: 14, class: 'cv-group-border' })
+      if (col) border.setAttribute('stroke', col)
+      g.appendChild(border)
+      if (n.label) {
+        const t = el('text', { x: 14, y: -10, class: 'cv-group-label' })
+        if (col) t.setAttribute('fill', col)
+        t.textContent = n.label
+        g.appendChild(t)
+      }
+      if (selected.has(n.id)) {
+        const rh = el('rect', { x: n.width - 8, y: n.height - 8, width: 12, height: 12, rx: 2, class: 'cv-resize', 'data-resize': '1' })
+        g.appendChild(rh)
+      }
+      return g
+    }
     const rect = el('rect', { width: n.width, height: n.height, rx: 10, class: 'cv-node-rect' })
     if (col) {
       rect.setAttribute('stroke', col)
@@ -214,6 +236,13 @@ export function createCanvasView(deps) {
       for (const nid of selected) {
         const nn = nodeById(nid)
         if (nn) starts[nid] = { x: nn.x, y: nn.y }
+      }
+      // 拖动分组框时，把落在框内的成员一并带上
+      for (const nid of selected) {
+        const nn = nodeById(nid)
+        if (nn && nn.type === 'group') {
+          for (const m of membersOf(nn)) if (!starts[m.id]) starts[m.id] = { x: m.x, y: m.y }
+        }
       }
       drag = { kind: 'move', starts, origin: w, moved: false }
     } else {
@@ -295,6 +324,7 @@ export function createCanvasView(deps) {
   function hitNode(w, margin = 0) {
     for (let i = data.nodes.length - 1; i >= 0; i--) {
       const n = data.nodes[i]
+      if (n.type === 'group') continue // 连线目标不含分组框
       if (w.x >= n.x - margin && w.x <= n.x + n.width + margin && w.y >= n.y - margin && w.y <= n.y + n.height + margin) return n
     }
     return null
@@ -328,7 +358,7 @@ export function createCanvasView(deps) {
         onOpenFile && onOpenFile(n.file)
         return
       }
-      startEdit(n)
+      startEdit(n, n.type === 'group' ? 'label' : 'text')
       return
     }
     const w = screenToWorld(e.clientX, e.clientY)
@@ -355,21 +385,21 @@ export function createCanvasView(deps) {
   )
 
   // —— 文本编辑浮层 ——
-  function startEdit(n) {
+  function startEdit(n, field = 'text') {
     commitEdit()
     const ta = document.createElement('textarea')
     ta.className = 'cv-edit'
-    ta.value = n.text || ''
+    ta.value = n[field] || ''
     const sx = n.x * view.k + view.tx
     const sy = n.y * view.k + view.ty
     ta.style.left = sx + 'px'
-    ta.style.top = sy + 'px'
-    ta.style.width = n.width * view.k + 'px'
-    ta.style.height = n.height * view.k + 'px'
+    ta.style.top = (field === 'label' ? sy - 30 : sy) + 'px'
+    ta.style.width = (field === 'label' ? Math.max(160, n.width * view.k) : n.width * view.k) + 'px'
+    ta.style.height = (field === 'label' ? 32 : n.height * view.k) + 'px'
     surface.appendChild(ta)
     ta.focus()
     ta.setSelectionRange(ta.value.length, ta.value.length)
-    editing = { node: n, ta }
+    editing = { node: n, ta, field }
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         ev.stopPropagation()
@@ -380,12 +410,12 @@ export function createCanvasView(deps) {
   }
   function commitEdit() {
     if (!editing) return
-    const { node, ta } = editing
+    const { node, ta, field } = editing
     const v = ta.value
     editing = null
     if (ta.parentNode) ta.parentNode.removeChild(ta)
-    if ((node.text || '') !== v) {
-      node.text = v
+    if ((node[field] || '') !== v) {
+      node[field] = v
       markDirty()
       render()
     }
@@ -424,6 +454,70 @@ export function createCanvasView(deps) {
       markDirty()
       render()
     }
+  }
+  function membersOf(g) {
+    return data.nodes.filter(
+      (n) =>
+        n.id !== g.id && n.type !== 'group' &&
+        n.x + n.width / 2 > g.x && n.x + n.width / 2 < g.x + g.width &&
+        n.y + n.height / 2 > g.y && n.y + n.height / 2 < g.y + g.height
+    )
+  }
+  function selectedCards() {
+    return data.nodes.filter((n) => selected.has(n.id) && n.type !== 'group')
+  }
+  function alignSelection(mode) {
+    const nodes = selectedCards()
+    if (nodes.length < 2) return
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y)
+      maxX = Math.max(maxX, n.x + n.width); maxY = Math.max(maxY, n.y + n.height)
+    }
+    for (const n of nodes) {
+      if (mode === 'left') n.x = minX
+      else if (mode === 'right') n.x = maxX - n.width
+      else if (mode === 'hcenter') n.x = Math.round(minX + (maxX - minX - n.width) / 2)
+      else if (mode === 'top') n.y = minY
+      else if (mode === 'bottom') n.y = maxY - n.height
+      else if (mode === 'vcenter') n.y = Math.round(minY + (maxY - minY - n.height) / 2)
+    }
+    markDirty(); render()
+  }
+  function distributeSelection(axis) {
+    const nodes = selectedCards()
+    if (nodes.length < 3) return
+    nodes.sort((a, b) => (axis === 'h' ? a.x - b.x : a.y - b.y))
+    const first = nodes[0], last = nodes[nodes.length - 1]
+    const startC = axis === 'h' ? first.x + first.width / 2 : first.y + first.height / 2
+    const endC = axis === 'h' ? last.x + last.width / 2 : last.y + last.height / 2
+    const step = (endC - startC) / (nodes.length - 1)
+    nodes.forEach((n, i) => {
+      const target = startC + step * i
+      if (axis === 'h') n.x = Math.round(target - n.width / 2)
+      else n.y = Math.round(target - n.height / 2)
+    })
+    markDirty(); render()
+  }
+  function groupSelection() {
+    const nodes = selectedCards()
+    if (nodes.length < 2) return
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y)
+      maxX = Math.max(maxX, n.x + n.width); maxY = Math.max(maxY, n.y + n.height)
+    }
+    const pad = 48
+    const g = { id: uid(), type: 'group', x: minX - pad, y: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2, label: '' }
+    data.nodes.unshift(g)
+    selected.clear(); selected.add(g.id)
+    markDirty(); render()
+  }
+  function ungroupSelection() {
+    const ids = [...selected].filter((id) => { const n = nodeById(id); return n && n.type === 'group' })
+    if (!ids.length) return
+    data.nodes = data.nodes.filter((n) => !ids.includes(n.id))
+    selected.clear(); markDirty(); render()
   }
   function fitView() {
     const r = svg.getBoundingClientRect()
@@ -484,6 +578,20 @@ export function createCanvasView(deps) {
     }))
     toolbar.appendChild(mk('🗑 删除', '删除选中（Delete）', deleteSelection))
     toolbar.appendChild(mk('⤢ 适应', '缩放至显示全部卡片', fitView))
+
+    const sepA = document.createElement('span'); sepA.className = 'cv-sep'; toolbar.appendChild(sepA)
+    toolbar.appendChild(mk('⬅', '左对齐（选中≥２）', () => alignSelection('left')))
+    toolbar.appendChild(mk('↔', '水平居中对齐', () => alignSelection('hcenter')))
+    toolbar.appendChild(mk('➡', '右对齐', () => alignSelection('right')))
+    toolbar.appendChild(mk('⬆', '顶对齐', () => alignSelection('top')))
+    toolbar.appendChild(mk('↕', '垂直居中对齐', () => alignSelection('vcenter')))
+    toolbar.appendChild(mk('⬇', '底对齐', () => alignSelection('bottom')))
+    toolbar.appendChild(mk('⇄', '水平等距分布（选中≥３）', () => distributeSelection('h')))
+    toolbar.appendChild(mk('⇅', '垂直等距分布（选中≥３）', () => distributeSelection('v')))
+
+    const sepG = document.createElement('span'); sepG.className = 'cv-sep'; toolbar.appendChild(sepG)
+    toolbar.appendChild(mk('⬚ 编组', '把选中卡片收进一个分组框（拖框边可整体移动）', groupSelection))
+    toolbar.appendChild(mk('⬚ 解组', '删除选中的分组框（卡片保留）', ungroupSelection))
 
     const sep = document.createElement('span')
     sep.className = 'cv-sep'
