@@ -336,6 +336,11 @@ body {
   stroke: var(--accent);
   stroke-width: 2;
 }
+.cv-node.cv-connect-target .cv-node-rect {
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
 .cv-node-body {
   padding: 10px 12px;
   font-size: 14px;

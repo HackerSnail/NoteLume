@@ -145,6 +145,7 @@ export function createCanvasView(deps) {
   function renderNode(n) {
     const g = el('g', { class: 'cv-node', transform: `translate(${n.x} ${n.y})`, 'data-node-id': n.id })
     if (selected.has(n.id)) g.classList.add('selected')
+    if (drag && drag.kind === 'connect' && drag.hover === n.id) g.classList.add('cv-connect-target')
     const col = resolveColor(n.color)
     const rect = el('rect', { width: n.width, height: n.height, rx: 10, class: 'cv-node-rect' })
     if (col) {
@@ -250,7 +251,8 @@ export function createCanvasView(deps) {
       render()
     } else if (drag.kind === 'connect') {
       drag.cur = w
-      const hit = hitNode(w)
+      const tol = 28 / view.k // 命中容差（随缩放换算）：允许在目标节点边缘/端口附近放下即算连接
+      const hit = hitNode(w, tol)
       drag.hover = hit && hit.id !== drag.fromNode ? hit.id : null
       render()
       drawTempEdge()
@@ -290,10 +292,10 @@ export function createCanvasView(deps) {
     }
   }
 
-  function hitNode(w) {
+  function hitNode(w, margin = 0) {
     for (let i = data.nodes.length - 1; i >= 0; i--) {
       const n = data.nodes[i]
-      if (w.x >= n.x && w.x <= n.x + n.width && w.y >= n.y && w.y <= n.y + n.height) return n
+      if (w.x >= n.x - margin && w.x <= n.x + n.width + margin && w.y >= n.y - margin && w.y <= n.y + n.height + margin) return n
     }
     return null
   }
@@ -304,8 +306,11 @@ export function createCanvasView(deps) {
     removeTempEdge()
     const src = nodeById(drag.fromNode)
     if (!src) return
-    const a = anchor(src, drag.fromSide || autoSide(src, { x: drag.cur.x, y: drag.cur.y, width: 0, height: 0 }))
-    tempEdge = el('path', { d: `M ${a.x} ${a.y} L ${drag.cur.x} ${drag.cur.y}`, class: 'cv-temp-edge' })
+    const dst = drag.hover ? nodeById(drag.hover) : null
+    const ref = dst || { x: drag.cur.x, y: drag.cur.y, width: 0, height: 0 }
+    const a = anchor(src, drag.fromSide || autoSide(src, ref))
+    const end = dst ? anchor(dst, autoSide(dst, src)) : { x: drag.cur.x, y: drag.cur.y }
+    tempEdge = el('path', { d: `M ${a.x} ${a.y} L ${end.x} ${end.y}`, class: 'cv-temp-edge' })
     edgeLayer.appendChild(tempEdge)
   }
   function removeTempEdge() {
