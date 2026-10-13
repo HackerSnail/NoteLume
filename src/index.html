@@ -12,14 +12,24 @@
         <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)">📄 打开文件</button>
         <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)">📂 打开知识库</button>
         <button id="btn-save" title="保存 (Ctrl+S)">💾 保存</button>
+        <button id="btn-export-html" title="导出当前文档为 HTML">📤 导出</button>
+        <button id="btn-print" title="打印 / 打印为 PDF (Ctrl+P)">🖨 打印</button>
         <span id="filename" class="filename">未打开文档</span>
         <span class="spacer"></span>
+        <label class="autosave-toggle" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
+          <input type="checkbox" id="chk-autosave" /> 自动保存
+        </label>
         <span id="status" class="status">选择本地文件夹作为知识库开始编辑</span>
         <button id="btn-theme" title="切换主题">🌙 暗黑</button>
       </header>
 
       <div class="body">
         <aside class="sidebar">
+          <section class="panel">
+            <h2>搜索</h2>
+            <input id="search-input" class="search-input" type="search" placeholder="标题 / 正文 / #标签" autocomplete="off" />
+            <div id="search-results" class="search-results"></div>
+          </section>
           <section class="panel">
             <h2>文件</h2>
             <div id="filetree" class="filetree"></div>
@@ -31,6 +41,13 @@
           <section class="panel">
             <h2>标签</h2>
             <div id="tags" class="tags"></div>
+          </section>
+          <section class="panel">
+            <h2>双向链接</h2>
+            <div class="bl-h3">引用本文档</div>
+            <div id="backlinks" class="link-list"></div>
+            <div class="bl-h3">本文档引用</div>
+            <div id="outgoing" class="link-list"></div>
           </section>
         </aside>
 

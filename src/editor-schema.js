@@ -149,6 +149,59 @@ const extendedNodes = baseSchema.spec.nodes
       },
     ],
   })
+  // $...$ 行内数学（KaTeX）：schema 层无 DOM 依赖，浏览器里由 nodeView 重新渲染
+  .addToEnd('math_inline', {
+    inline: true,
+    group: 'inline',
+    atom: true,
+    attrs: { latex: { default: '' } },
+    toDOM(node) {
+      return [
+        'span',
+        {
+          class: 'nl-math nl-math-inline',
+          'data-latex': node.attrs.latex,
+          contenteditable: 'false',
+          title: '公式：' + node.attrs.latex,
+        },
+        '$' + node.attrs.latex + '$',
+      ]
+    },
+    parseDOM: [
+      {
+        tag: 'span.nl-math-inline',
+        getAttrs(dom) {
+          return { latex: dom.getAttribute('data-latex') || '' }
+        },
+      },
+    ],
+  })
+  // $$..$$ 块级数学（多行）
+  .addToEnd('math_block', {
+    block: true,
+    group: 'block',
+    atom: true,
+    attrs: { latex: { default: '' } },
+    toDOM(node) {
+      return [
+        'div',
+        {
+          class: 'nl-math nl-math-block',
+          'data-latex': node.attrs.latex,
+          contenteditable: 'false',
+        },
+        '$$\n' + node.attrs.latex + '\n$$',
+      ]
+    },
+    parseDOM: [
+      {
+        tag: 'div.nl-math-block',
+        getAttrs(dom) {
+          return { latex: dom.getAttribute('data-latex') || '' }
+        },
+      },
+    ],
+  })
 
 const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
   parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
@@ -201,6 +254,71 @@ tokenizer.inline.ruler.push('tag', (state, silent) => {
   return true
 })
 
+// $...$ 行内数学（KaTeX）。规则：
+//  • 开头 `$` 后一个字符不能是空白，结尾 `$` 前一个字符不能是空白
+//  • 不跳行；内容里不能包含未转义的 `$`
+//  • 跟 $$..$$ 块不交叉（块在 block.ruler 中优先处理）
+tokenizer.inline.ruler.before('escape', 'math_inline', (state, silent) => {
+  const src = state.src
+  const pos = state.pos
+  if (src.charCodeAt(pos) !== 0x24 /* $ */) return false
+  // 避免跟 $$ 块列首冲突（块已在上层处理，这里不会看到开场的 $$ 配对行）
+  if (src.charCodeAt(pos + 1) === 0x24) return false
+  const nextCh = src[pos + 1]
+  if (!nextCh || /\s/.test(nextCh)) return false
+  let end = pos + 1
+  while (end < src.length && src.charCodeAt(end) !== 0x24) {
+    if (src[end] === '\\') {
+      end += 2
+      continue
+    }
+    if (src[end] === '\n') return false
+    end++
+  }
+  if (end >= src.length) return false
+  if (/\s/.test(src[end - 1])) return false
+  const latex = src.slice(pos + 1, end)
+  if (!latex) return false
+  if (!silent) {
+    const token = state.push('math_inline', '', 0)
+    token.latex = latex
+  }
+  state.pos = end + 1
+  return true
+})
+
+// $$..$$ 块级数学：开始行仅 `$$`、结束行仅 `$$`，中间多行为 LaTeX
+// 这种约定与 Obsidian/Typora 默认写法一致，保证文件互通
+tokenizer.block.ruler.before('fence', 'math_block', (state, startLine, endLine, silent) => {
+  const start = state.bMarks[startLine] + state.tShift[startLine]
+  const max = state.eMarks[startLine]
+  const first = state.src.slice(start, max).trim()
+  if (first !== '$$') return false
+  let nextLine = startLine + 1
+  const limit = endLine == null ? state.lineMax : Math.min(endLine, state.lineMax)
+  let closed = false
+  while (nextLine < limit) {
+    const s = state.bMarks[nextLine] + state.tShift[nextLine]
+    const m = state.eMarks[nextLine]
+    if (state.src.slice(s, m).trim() === '$$') {
+      closed = true
+      break
+    }
+    nextLine++
+  }
+  if (!closed) return false
+  if (silent) return true
+  const contentStart = state.bMarks[startLine + 1] + state.tShift[startLine + 1]
+  const contentEnd = state.bMarks[nextLine] // 不含尾行行首，下面 slice 会自动不包含换行
+  const latex = state.src.slice(contentStart, contentEnd).replace(/\s+$/, '')
+  state.line = nextLine + 1
+  const token = state.push('math_block', '', 0)
+  token.block = true
+  token.map = [startLine, state.line]
+  token.latex = latex
+  return true
+})
+
 // —— 3. parser（Markdown -> ProseMirror）————————————————————————————
 // 在默认 token 规格上叠加表格 / 删除线 / wiki_link / tag。
 const parserTokens = {
@@ -217,6 +335,8 @@ const parserTokens = {
     getAttrs: (tok) => ({ target: tok.attrGet('target'), label: tok.attrGet('label') }),
   },
   tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
+  math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
+  math_block: { node: 'math_block', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
 }
 
 function alignFromStyle(style) {
@@ -351,6 +471,17 @@ const serializerNodes = {
   tag(state, node) {
     state.write('#' + node.attrs.tag)
   },
+  math_inline(state, node) {
+    // 原样写回，不转义反斜杠/花括号（KaTeX 需要）
+    state.write('$' + node.attrs.latex + '$')
+  },
+  math_block(state, node) {
+    state.write('$$\n')
+    state.write(node.attrs.latex)
+    state.ensureNewLine()
+    state.write('$$')
+    state.closeBlock(node)
+  },
 }
 
 const serializerMarks = {
@@ -361,7 +492,8 @@ const serializerMarks = {
 const SERIALIZER = new MarkdownSerializer(serializerNodes, serializerMarks, {
   // 文本节点里的 '#' 一律转义：真正的标签是独立 tag 节点（原样写 '#xxx'），
   // 而普通文字中的 '#'（如 "C#"）必须转义以免重新解析时被误判为标签。
-  escapeExtraCharacters: /#/g,
+  // '$' 也一律转义：普通文本中的 $ 不应被误当行内数学开导。
+  escapeExtraCharacters: /[#$]/g,
 })
 
 /** ProseMirror doc -> Markdown 字符串 */

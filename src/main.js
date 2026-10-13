@@ -1,8 +1,11 @@
 // main.js —— 应用装配：布局、知识库文件树、大纲、标签、主题、快捷键、打开/保存/跳转
+// P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
+// 自动保存 + 库内备份、HTML 导出、打印。
 import { createEditor } from './editor-view.js'
 import {
   pickFolder,
   pickFile,
+  pickSaveAs,
   scanVault,
   readMdFile,
   writeMdFile,
@@ -10,13 +13,37 @@ import {
   createMdFile,
   confirmDialog,
   messageDialog,
+  rebuildIndex,
+  getIndexStatus,
+  queryBacklinks,
+  queryOutgoing,
+  searchVault,
+  updateIndexDoc,
+  backupWrite,
+  exportFile,
 } from './tauri-bridge.js'
+import MarkdownIt from 'markdown-it'
+
+// 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
+// 与 editor-schema 里的 tokenizer 分开，避免污染 schema 层的解析器
+const exportMd = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
 
 const state = {
   vaultRoot: null, // 知识库根（绝对路径）
   currentFile: null, // 当前文档库内相对路径
   dirty: false,
+  indexReady: false,
+  autosave: {
+    enabled: localStorage.getItem('nl-autosave') === '1',
+    idleTimer: null,
+    backupTimer: null,
+    lastBackupAt: 0,
+  },
 }
+
+// 自动保存策略：停手 2s 触发写盘；每 120s 触发一次带时间戳的备份
+const AUTOSAVE_IDLE_MS = 2000
+const BACKUP_INTERVAL_MS = 120000
 
 const $ = (id) => document.getElementById(id)
 const els = {
@@ -30,6 +57,13 @@ const els = {
   btnOpenFile: $('btn-open-file'),
   btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
+  btnExportHtml: $('btn-export-html'),
+  btnPrint: $('btn-print'),
+  chkAutosave: $('chk-autosave'),
+  searchInput: $('search-input'),
+  searchResults: $('search-results'),
+  backlinks: $('backlinks'),
+  outgoing: $('outgoing'),
 }
 
 let editor
@@ -57,12 +91,36 @@ async function openFolder() {
     state.vaultRoot = root
     const tree = await scanVault(root)
     renderTree(tree)
-    setStatus('知识库已加载：' + root)
+    setStatus('知识库已加载：' + root + '（索引构建中…）')
+    startIndexPolling()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开失败：' + msg)
     await messageDialog('打开知识库失败：' + msg)
   }
+}
+
+// —— 触发后台重建，前端 500ms 轮询 status.ready，就绪后刷新当前文档的双链面板 ——
+function startIndexPolling() {
+  state.indexReady = false
+  rebuildIndex(state.vaultRoot).catch((e) => console.warn('rebuild_index 失败', e))
+  const started = Date.now()
+  const tick = async () => {
+    try {
+      const st = await getIndexStatus()
+      if (st.ready && st.vaultRoot === state.vaultRoot) {
+        state.indexReady = true
+        setStatus('索引就绪：' + st.docs + ' 篇文档')
+        refreshLinkPanels()
+        return
+      }
+    } catch (_) {
+      /* ignore transient */
+    }
+    if (Date.now() - started < 60_000) setTimeout(tick, 500)
+    else setStatus('索引构建超时，稍后可重新打开知识库重试')
+  }
+  setTimeout(tick, 400)
 }
 
 // —— 打开单个文件（把文件所在目录作为工作根，保存/图片/wikilink 都依赖一个根）——
@@ -88,6 +146,8 @@ async function openSingleFile() {
     renderSingleFileTree(name)
     setStatus('已打开文件：' + abs)
     editor.focus()
+    // 单文件也后台索引：库根就是同目录，反查更方便
+    startIndexPolling()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开文件失败：' + msg)
@@ -168,25 +228,63 @@ async function openFile(rel) {
     highlightActiveFile()
     setStatus('已打开：' + rel)
     editor.focus()
+    refreshLinkPanels()
+    resetBackupTimer()
   } catch (e) {
     await messageDialog('打开失败：' + e)
   }
 }
 
-// —— 保存到原文件 ——
-async function saveCurrent() {
+// —— 保存到原文件（含索引增量更新 + 可选备份）——
+async function saveCurrent(manual = true) {
   if (!state.currentFile || !state.vaultRoot) {
-    setStatus('没有可保存的文档')
+    if (manual) setStatus('没有可保存的文档')
     return
   }
   try {
     const md = editor.getMarkdown()
     await writeMdFile(state.vaultRoot, state.currentFile, md)
     editor.markSaved()
-    setStatus('已保存：' + state.currentFile + ' · ' + timeStr())
+    setStatus((manual ? '已保存：' : '自动保存：') + state.currentFile + ' · ' + timeStr())
+    // 索引增量：无需重扫全库
+    try {
+      await updateIndexDoc(state.currentFile, md)
+      refreshLinkPanels()
+    } catch (e) {
+      console.warn('索引更新失败', e)
+    }
+    // 备份：手动保存一定做一次；自动保存受间隔约束（在 scheduleAutosave 里）
+    await maybeBackup(md, manual)
   } catch (e) {
-    await messageDialog('保存失败：' + e)
+    if (manual) await messageDialog('保存失败：' + e)
+    else console.warn('自动保存失败', e)
   }
+}
+
+async function maybeBackup(md, force) {
+  if (!state.currentFile || !state.vaultRoot) return
+  const now = Date.now()
+  if (!force && now - state.autosave.lastBackupAt < BACKUP_INTERVAL_MS) return
+  try {
+    await backupWrite(state.vaultRoot, state.currentFile, md)
+    state.autosave.lastBackupAt = now
+  } catch (e) {
+    console.warn('备份失败', e)
+  }
+}
+
+function resetBackupTimer() {
+  if (state.autosave.backupTimer) clearInterval(state.autosave.backupTimer)
+  state.autosave.lastBackupAt = 0
+  // 打开文档时立刻做一次基线备份，之后每 BACKUP_INTERVAL_MS 由 autosave tick 触发
+}
+
+function scheduleAutosave() {
+  if (!state.autosave.enabled) return
+  if (state.autosave.idleTimer) clearTimeout(state.autosave.idleTimer)
+  state.autosave.idleTimer = setTimeout(() => {
+    if (state.dirty) saveCurrent(false)
+  }, AUTOSAVE_IDLE_MS)
 }
 
 function timeStr() {
@@ -209,11 +307,12 @@ async function onOpenWiki(name) {
     const create = await confirmDialog(`文档 "${name}" 不存在，是否在知识库中新建？`, '新建文档')
     if (!create) return
     const rel = await createMdFile(state.vaultRoot, name, `# ${name}\n\n`)
-    // 重新扫描以让新文件出现在树中
     renderTree(await scanVault(state.vaultRoot))
-    state.currentFile = null // 强制刷新
+    state.currentFile = null
     state.dirty = false
     await openFile(rel)
+    // 让索引立刻感知新文档
+    try { await updateIndexDoc(rel, `# ${name}\n\n`) } catch (_) {}
   } catch (e) {
     await messageDialog('操作失败：' + e)
   }
@@ -242,9 +341,142 @@ function onMetaChange({ outline, tags }) {
     const chip = document.createElement('span')
     chip.className = 'tag-chip'
     chip.textContent = '#' + t
+    chip.title = '在库内搜索此标签'
+    chip.addEventListener('click', () => {
+      els.searchInput.value = '#' + t
+      runSearch('#' + t)
+    })
     tw.appendChild(chip)
   })
   if (!tags.length) tw.innerHTML = '<div class="muted">本文档暂无标签</div>'
+
+  scheduleAutosave()
+}
+
+// —— P1#1 双向链接面板 ——
+async function refreshLinkPanels() {
+  if (!state.currentFile || !state.indexReady) {
+    els.backlinks.innerHTML = '<div class="link-empty">' + (state.indexReady ? '暂无' : '索引构建中…') + '</div>'
+    els.outgoing.innerHTML = '<div class="link-empty">' + (state.indexReady ? '暂无' : '索引构建中…') + '</div>'
+    return
+  }
+  try {
+    const [bl, og] = await Promise.all([queryBacklinks(state.currentFile), queryOutgoing(state.currentFile)])
+    renderLinkList(els.backlinks, bl, '暂无反向链接')
+    renderLinkList(els.outgoing, og, '本文档暂无指向其他文档的链接')
+  } catch (e) {
+    console.warn('反查链接失败', e)
+  }
+}
+
+function renderLinkList(container, list, emptyText) {
+  container.innerHTML = ''
+  if (!list.length) {
+    container.innerHTML = '<div class="link-empty">' + emptyText + '</div>'
+    return
+  }
+  list.forEach((h) => {
+    const div = document.createElement('div')
+    div.className = 'link-item'
+    div.textContent = h.title || h.path
+    div.title = h.path
+    div.addEventListener('click', () => openFile(h.path))
+    container.appendChild(div)
+  })
+}
+
+// —— P1#2 全局搜索 ——
+let searchDebounce = null
+function onSearchInput() {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => runSearch(els.searchInput.value), 220)
+}
+async function runSearch(q) {
+  const query = (q || '').trim()
+  if (!query || !state.indexReady) {
+    els.searchResults.innerHTML = ''
+    return
+  }
+  try {
+    const hits = await searchVault(query, 40)
+    els.searchResults.innerHTML = ''
+    if (!hits.length) {
+      els.searchResults.innerHTML = '<div class="search-empty">无匹配</div>'
+      return
+    }
+    hits.forEach((h) => {
+      const card = document.createElement('div')
+      card.className = 'search-hit'
+      const badge =
+        h.matchedBy === 'title' ? '<span class="search-hit-badge">标题</span>'
+        : h.matchedBy === 'tag' ? '<span class="search-hit-badge">标签</span>'
+        : ''
+      card.innerHTML =
+        '<div class="search-hit-title">' + escapeHtml(h.title) + badge + '</div>' +
+        '<div class="search-hit-path">' + escapeHtml(h.path) + '</div>' +
+        '<div class="search-hit-snippet">' + escapeHtml(h.snippet) + '</div>'
+      card.addEventListener('click', () => openFile(h.path))
+      els.searchResults.appendChild(card)
+    })
+  } catch (e) {
+    console.warn('搜索失败', e)
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+// —— P1#6 导出 HTML ——
+async function exportHTML() {
+  if (!state.currentFile) {
+    setStatus('请先打开一个文档')
+    return
+  }
+  try {
+    const md = editor.getMarkdown()
+    const body = exportMd.render(md)
+    const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
+    const html = buildExportHtml(title, body)
+    const defaultName = state.currentFile.replace(/\.md$/i, '.html')
+    const abs = await pickSaveAs(defaultName)
+    if (!abs) return
+    await exportFile(abs, html)
+    setStatus('已导出 HTML：' + abs)
+  } catch (e) {
+    await messageDialog('导出失败：' + ((e && e.message) || e))
+  }
+}
+
+function buildExportHtml(title, body) {
+  // 独立 HTML：内嵌 GitHub 风格样式 + KaTeX css 引用；离线可读，可分享
+  return `<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<title>${escapeHtml(title)}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.75; color: #24292e; }
+  h1, h2, h3, h4, h5, h6 { line-height: 1.3; margin: 1.4em 0 0.6em; font-weight: 650; }
+  h1 { font-size: 1.9em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+  h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+  h3 { font-size: 1.25em; }
+  blockquote { border-left: 3px solid #d7dade; margin: .8em 0; padding: .1em 1em; color: #6a737d; }
+  code { font-family: "SFMono-Regular", Consolas, monospace; background: #f2f3f5; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  pre { background: #f6f8fa; padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+  th, td { border: 1px solid #dfe2e5; padding: 6px 10px; }
+  th { background: #f6f8fa; font-weight: 600; }
+  img { max-width: 100%; }
+  a { color: #2f6feb; }
+  hr { border: none; border-top: 1px solid #e4e6e9; margin: 1.6em 0; }
+  ul.contains-task-list, li.task-list-item { list-style: none; }
+  li.task-list-item input { margin-right: .5em; }
+</style></head>
+<body>
+${body}
+</body></html>`
 }
 
 // —— 快捷键（应用级）——
@@ -255,11 +487,20 @@ function bindShortcuts() {
     const key = e.key.toLowerCase()
     if (key === 's') {
       e.preventDefault()
-      saveCurrent()
+      saveCurrent(true)
     } else if (key === 'o') {
       e.preventDefault()
       if (e.shiftKey) openFolder()
       else openSingleFile()
+    } else if (key === 'f' && !e.shiftKey) {
+      // 焦点交给侧栏搜索框
+      e.preventDefault()
+      els.searchInput.focus()
+      els.searchInput.select()
+    } else if (key === 'p') {
+      // 打印（浏览器/系统会弹出打印对话框，可选另存 PDF）
+      e.preventDefault()
+      window.print()
     }
   })
 }
@@ -273,15 +514,33 @@ async function boot() {
     onDirty: (d) => {
       state.dirty = d
       els.filename.classList.toggle('dirty', d)
+      if (d) scheduleAutosave()
     },
   })
 
   applyTheme(localStorage.getItem('nl-theme') || 'light')
 
+  els.chkAutosave.checked = state.autosave.enabled
+  els.chkAutosave.addEventListener('change', () => {
+    state.autosave.enabled = els.chkAutosave.checked
+    localStorage.setItem('nl-autosave', state.autosave.enabled ? '1' : '0')
+    setStatus(state.autosave.enabled ? '自动保存已开启（2s 空闲）' : '自动保存已关闭')
+    if (state.autosave.enabled && state.dirty) scheduleAutosave()
+  })
+
   els.btnOpen.addEventListener('click', openFolder)
   els.btnOpenFile.addEventListener('click', openSingleFile)
-  els.btnSave.addEventListener('click', saveCurrent)
+  els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
+  els.btnExportHtml.addEventListener('click', exportHTML)
+  els.btnPrint.addEventListener('click', () => window.print())
+  els.searchInput.addEventListener('input', onSearchInput)
+  els.searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      els.searchInput.value = ''
+      els.searchResults.innerHTML = ''
+    }
+  })
   bindShortcuts()
 
   setStatus('第一步：点「打开知识库」选择一个本地文件夹')

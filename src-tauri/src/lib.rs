@@ -1,6 +1,12 @@
+use chrono::Local;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+// ==================== P0 已有类型 ====================
 
 /// 目录树节点：文件夹或 .md 文件
 #[derive(Serialize)]
@@ -22,11 +28,18 @@ pub struct WikiResolve {
 }
 
 /// 扫描时跳过的目录名（隐藏目录另判）
-const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", ".git", ".obsidian", ".trash"];
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "target",
+    "dist",
+    ".git",
+    ".obsidian",
+    ".trash",
+    ".notelume-backup",
+];
 /// 图片复制支持（白名单，防止任意文件混入 assets）
 const IMG_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "avif"];
 
-/// 判断是否为参与知识库的 Markdown 文件
 fn is_md(name: &str) -> bool {
     name.to_ascii_lowercase().ends_with(".md")
 }
@@ -55,7 +68,7 @@ fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
     ensure_inside_root(&root, &p)
 }
 
-/// 递归扫描目录树：仅收集 md 文件与文件夹，同层“文件夹在前、按名称排序”
+/// 递归扫描目录树：仅收集 md 文件与文件夹，同层"文件夹在前、按名称排序"
 fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
     let mut out = Vec::new();
     if depth > 12 {
@@ -185,22 +198,7 @@ fn normalize_target(ref_rel: &str, link: &str) -> String {
 #[tauri::command]
 fn resolve_wiki_link(vault_root: String, ref_rel: String, name: String) -> Result<WikiResolve, String> {
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
-    let link = name.trim();
-    if link.is_empty() {
-        return Err("空链接".into());
-    }
-    // 1) 路径样式（含 / 或 ../，或带 .md 后缀）：相对当前文档解析
-    if link.contains('/') || link.starts_with("..") || link.to_ascii_lowercase().ends_with(".md") {
-        let rel = normalize_target(&ref_rel, link);
-        let cand = normalize_target("", &rel) + if rel.to_ascii_lowercase().ends_with(".md") { "" } else { ".md" };
-        let cand = if cand.to_ascii_lowercase().ends_with(".md") { cand } else { format!("{}.md", cand) };
-        if root.join(&cand).exists() {
-            return Ok(WikiResolve { exists: true, path: Some(cand) });
-        }
-    }
-    // 2) 按文件名（去 .md 后缀）全库查找
-    let stem = link.rsplit_once('.').filter(|_| is_md(link)).map_or(link, |(s, _)| s).to_string();
-    if let Some(rel) = find_md_by_basename(&root, &stem, 0) {
+    if let Some(rel) = resolve_one(&root, &ref_rel, &name) {
         return Ok(WikiResolve { exists: true, path: Some(rel) });
     }
     Ok(WikiResolve { exists: false, path: None })
@@ -238,7 +236,6 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 }
 
 /// 把库外图片拷入该文档同级的 assets/ 目录，返回可直接写入 md 的相对链接。
-/// `path` 来自拖拽（Tauri 为 File 对象注入了绝对路径）。
 #[tauri::command]
 fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<String, String> {
     let src = PathBuf::from(&path);
@@ -260,7 +257,6 @@ fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<
     let assets_dir = md_dir.join("assets");
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
-    // 防重名：若同名已存在且内容不同，追加内容哈希
     let bytes = fs::read(&src).map_err(|e| format!("读取图片失败：{}", e))?;
     let stem = name.rsplit_once('.').map_or(name.as_str(), |(s, _)| s).to_string();
     let mut file_name = name.clone();
@@ -310,7 +306,6 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
             buf.push((acc >> bits) as u8);
         }
     }
-    // 复用 copy 逻辑：直接写入 assets 目录
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
     let base_dir = match md_rel.rsplit_once('/') {
         Some((d, _)) => root.join(d.replace('/', "\\")),
@@ -325,18 +320,683 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
     Ok(format!("./assets/{}", file_name))
 }
 
+// ==================== P1 新增：知识库索引 / 双向链接 / 搜索 / 预览 / 备份 / 导出 ====================
+
+/// 内部：每个 md 一条 DocEntry（含原文用于快速搜索与片段）
+#[derive(Clone)]
+struct DocEntry {
+    path: String,
+    title: String,
+    tags: Vec<String>,
+    outgoing: Vec<String>,   // 解析成功的目标 rel path
+    unresolved: Vec<String>, // 未能解析的目标（保留原 name）
+    content: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DocInfo {
+    pub path: String,
+    pub title: String,
+    pub tags: Vec<String>,
+    pub outgoing: Vec<String>,
+    pub unresolved: Vec<String>,
+    pub summary: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BacklinkHit {
+    pub path: String,
+    pub title: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    pub path: String,
+    pub title: String,
+    pub snippet: String,
+    pub matched_by: String, // "title" | "tag" | "content"
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexStatus {
+    pub vault_root: String,
+    pub docs: usize,
+    pub ready: bool,
+}
+
+#[derive(Default, Clone)]
+pub struct VaultIndex {
+    pub(crate) vault_root: String,
+    pub(crate) docs: HashMap<String, DocEntry>,
+    pub(crate) backlinks: HashMap<String, Vec<String>>, // target rel -> [src rel...]
+    pub(crate) ready: bool,
+}
+
+/// Tauri 托管状态：Arc 便于后台线程 clone 后写回
+#[derive(Clone)]
+pub struct IndexState(pub Arc<Mutex<VaultIndex>>);
+
+/// 从 md 提取所有 [[...]] 目标（去 label）。无嵌套；遇到换行终止避免跨段。
+fn extract_wikilinks(md: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let cs: Vec<char> = md.chars().collect();
+    let mut i = 0;
+    while i + 1 < cs.len() {
+        if cs[i] == '[' && cs[i + 1] == '[' {
+            let mut j = i + 2;
+            let mut ok = false;
+            while j + 1 < cs.len() {
+                if cs[j] == '\n' { break; }
+                if cs[j] == ']' && cs[j + 1] == ']' { ok = true; break; }
+                j += 1;
+            }
+            if ok {
+                let inner: String = cs[i + 2..j].iter().collect();
+                if !inner.contains('[') {
+                    let target = inner.split('|').next().unwrap_or("").trim().to_string();
+                    if !target.is_empty() {
+                        out.push(target);
+                    }
+                }
+                i = j + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn is_tag_start(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '/'
+}
+fn is_tag_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '/'
+}
+
+/// 从 md 提取所有 #tag（跳过标题行、代码块、行内代码）
+fn extract_tags(md: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut in_code_block = false;
+    for line in md.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_code_block = !in_code_block;
+            continue;
+        }
+        if in_code_block {
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            // 标题行：`#` 后面即使有 word 也不算 tag
+            continue;
+        }
+        let cs: Vec<char> = line.chars().collect();
+        let mut k = 0;
+        while k < cs.len() {
+            let c = cs[k];
+            // 跳过行内代码段
+            if c == '`' {
+                let mut e = k + 1;
+                while e < cs.len() && cs[e] != '`' { e += 1; }
+                k = (e + 1).min(cs.len());
+                continue;
+            }
+            if c == '#' && k + 1 < cs.len() && is_tag_start(cs[k + 1]) {
+                // 左边界：`#` 前必须是空白或标点，否则视为词中（例如 C#）
+                let left_ok = k == 0 || {
+                    let p = cs[k - 1];
+                    p.is_whitespace()
+                        || matches!(p, '(' | '>' | '"' | '\'' | '[' | ']' | '*' | '_' | '~' | ',' | '.' | ';' | ':' | '!' | '?')
+                };
+                if !left_ok {
+                    k += 1;
+                    continue;
+                }
+                let mut n = 1;
+                while k + n < cs.len() && is_tag_char(cs[k + n]) { n += 1; }
+                let tag: String = cs[k + 1..k + n].iter().collect();
+                if seen.insert(tag.clone()) {
+                    out.push(tag);
+                }
+                k += n;
+            } else {
+                k += 1;
+            }
+        }
+    }
+    out
+}
+
+/// 首个 `# heading` 作为标题；否则用文件名去 .md
+fn extract_title(md: &str, path: &str) -> String {
+    for line in md.lines() {
+        let t = line.trim_start();
+        if t.starts_with('#') {
+            let s = t.trim_start_matches('#').trim();
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+    }
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.rsplit_once('.').map_or(name.to_string(), |(s, _)| s.to_string())
+}
+
+/// 摘要：粗略剥掉行内 md 语法后取前 n 字
+fn summary_from(md: &str, n: usize) -> String {
+    let mut buf = String::new();
+    let mut count = 0usize;
+    for line in md.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let cleaned = strip_inline(t);
+        for ch in cleaned.chars() {
+            buf.push(ch);
+            count += 1;
+            if count >= n {
+                return buf;
+            }
+        }
+        buf.push(' ');
+        count += 1;
+        if count >= n {
+            return buf;
+        }
+    }
+    buf
+}
+
+fn strip_inline(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let cs: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < cs.len() {
+        let c = cs[i];
+        if (c == '*' || c == '_' || c == '~') && i + 1 < cs.len() && cs[i + 1] == c {
+            i += 2;
+            continue;
+        }
+        if c == '#' && i + 1 < cs.len() && is_tag_start(cs[i + 1]) {
+            let mut n = 1;
+            while i + n < cs.len() && is_tag_char(cs[i + n]) { n += 1; }
+            i += n;
+            continue;
+        }
+        if c == '[' && i + 1 < cs.len() && cs[i + 1] == '[' {
+            let mut j = i + 2;
+            while j + 1 < cs.len() && !(cs[j] == ']' && cs[j + 1] == ']') { j += 1; }
+            if j + 1 < cs.len() {
+                let inner: String = cs[i + 2..j].iter().collect();
+                let label = inner.split('|').last().unwrap_or("").trim();
+                if !label.is_empty() {
+                    out.push_str(label);
+                }
+                i = j + 2;
+                continue;
+            }
+        }
+        if c == '[' && i + 1 < cs.len() {
+            // [text](url) 保留 text
+            let mut j = i + 1;
+            while j < cs.len() && cs[j] != ']' { j += 1; }
+            if j < cs.len() {
+                let text: String = cs[i + 1..j].iter().collect();
+                out.push_str(&text);
+                i = j + 1;
+                // 跳过 (url)
+                if i < cs.len() && cs[i] == '(' {
+                    let mut k = i + 1;
+                    while k < cs.len() && cs[k] != ')' { k += 1; }
+                    i = (k + 1).min(cs.len());
+                }
+                continue;
+            }
+        }
+        if c == '`' || c == '*' || c == '_' || c == '~' {
+            i += 1;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
+/// 解析单个 wiki 链接到库内 rel path。root 是 canonical 库根。
+fn resolve_one(root: &Path, ref_rel: &str, link: &str) -> Option<String> {
+    let link = link.trim();
+    if link.is_empty() {
+        return None;
+    }
+    if link.contains('/') || link.starts_with("..") || link.to_ascii_lowercase().ends_with(".md") {
+        let rel = normalize_target(ref_rel, link);
+        let cand = if rel.to_ascii_lowercase().ends_with(".md") {
+            rel
+        } else {
+            format!("{}.md", rel)
+        };
+        if root.join(&cand).exists() {
+            return Some(cand);
+        }
+    }
+    let stem = link
+        .rsplit_once('.')
+        .filter(|_| is_md(link))
+        .map_or(link, |(s, _)| s)
+        .to_string();
+    find_md_by_basename(root, &stem, 0)
+}
+
+/// 收集库内所有 md 相对路径
+fn collect_md_paths(dir: &Path, rel: &str, depth: usize, out: &mut Vec<String>) {
+    if depth > 12 {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
+            continue;
+        }
+        let p = e.path();
+        let cr = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
+        if p.is_dir() {
+            collect_md_paths(&p, &cr, depth + 1, out);
+        } else if p.is_file() && is_md(&name) {
+            out.push(cr);
+        }
+    }
+}
+
+/// 全量构建索引
+fn build_index(vault_root: &str) -> Result<VaultIndex, String> {
+    let root = fs::canonicalize(vault_root).map_err(|e| e.to_string())?;
+    let mut paths: Vec<String> = Vec::new();
+    collect_md_paths(&root, "", 0, &mut paths);
+    let mut docs: HashMap<String, DocEntry> = HashMap::new();
+    for p in paths {
+        let mut abs = root.clone();
+        for seg in p.split('/') {
+            abs.push(seg);
+        }
+        let content = fs::read_to_string(&abs).unwrap_or_default();
+        let raw = extract_wikilinks(&content);
+        let mut outgoing: Vec<String> = Vec::new();
+        let mut unresolved: Vec<String> = Vec::new();
+        for r in raw {
+            match resolve_one(&root, &p, &r) {
+                Some(hit) => {
+                    if hit != p {
+                        outgoing.push(hit);
+                    }
+                }
+                None => unresolved.push(r),
+            }
+        }
+        outgoing.sort();
+        outgoing.dedup();
+        unresolved.sort();
+        unresolved.dedup();
+        let title = extract_title(&content, &p);
+        let tags = extract_tags(&content);
+        docs.insert(p.clone(), DocEntry { path: p.clone(), title, tags, outgoing, unresolved, content });
+    }
+    let mut backlinks: HashMap<String, Vec<String>> = HashMap::new();
+    for (src, entry) in docs.iter() {
+        for tgt in &entry.outgoing {
+            backlinks.entry(tgt.clone()).or_default().push(src.clone());
+        }
+    }
+    for lst in backlinks.values_mut() {
+        lst.sort();
+        lst.dedup();
+    }
+    Ok(VaultIndex {
+        vault_root: root.to_string_lossy().into_owned(),
+        docs,
+        backlinks,
+        ready: true,
+    })
+}
+
+/// 触发后台全量重建；立即返回，前端轮询 get_index_status 判断就绪
+#[tauri::command]
+fn rebuild_index(state: tauri::State<'_, IndexState>, vault_root: String) -> Result<IndexStatus, String> {
+    let shared = state.0.clone();
+    let canonical = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    {
+        let mut g = shared.lock().map_err(|e| e.to_string())?;
+        g.ready = false;
+        g.vault_root = canonical.to_string_lossy().into_owned();
+        g.docs.clear();
+        g.backlinks.clear();
+    }
+    let vr = vault_root.clone();
+    thread::spawn(move || {
+        match build_index(&vr) {
+            Ok(idx) => {
+                if let Ok(mut g) = shared.lock() {
+                    *g = idx;
+                }
+            }
+            Err(_) => {
+                if let Ok(mut g) = shared.lock() {
+                    g.ready = false;
+                }
+            }
+        }
+    });
+    Ok(IndexStatus { vault_root, docs: 0, ready: false })
+}
+
+#[tauri::command]
+fn get_index_status(state: tauri::State<'_, IndexState>) -> IndexStatus {
+    let g = state.0.lock().unwrap();
+    IndexStatus { vault_root: g.vault_root.clone(), docs: g.docs.len(), ready: g.ready }
+}
+
+#[tauri::command]
+fn query_backlinks(state: tauri::State<'_, IndexState>, path: String) -> Vec<BacklinkHit> {
+    let g = state.0.lock().unwrap();
+    g.backlinks
+        .get(&path)
+        .map(|lst| {
+            lst.iter()
+                .filter_map(|p| g.docs.get(p).map(|d| BacklinkHit { path: p.clone(), title: d.title.clone() }))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn query_outgoing(state: tauri::State<'_, IndexState>, path: String) -> Vec<BacklinkHit> {
+    let g = state.0.lock().unwrap();
+    g.docs
+        .get(&path)
+        .map(|d| {
+            d.outgoing
+                .iter()
+                .filter_map(|p| g.docs.get(p).map(|t| BacklinkHit { path: p.clone(), title: t.title.clone() }))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn get_doc_info(state: tauri::State<'_, IndexState>, path: String) -> Option<DocInfo> {
+    let g = state.0.lock().unwrap();
+    g.docs.get(&path).map(|d| DocInfo {
+        path: d.path.clone(),
+        title: d.title.clone(),
+        tags: d.tags.clone(),
+        outgoing: d.outgoing.clone(),
+        unresolved: d.unresolved.clone(),
+        summary: summary_from(&d.content, 200),
+    })
+}
+
+/// 大小写不敏感 substring 匹配；顺序：标题 > 标签 > 正文
+#[tauri::command]
+fn search_vault(state: tauri::State<'_, IndexState>, query: String, limit: usize) -> Vec<SearchHit> {
+    let g = state.0.lock().unwrap();
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let mut hits: Vec<SearchHit> = Vec::new();
+    for d in g.docs.values() {
+        let matched_by = if d.title.to_lowercase().contains(&q) {
+            "title"
+        } else if d.tags.iter().any(|t| t.to_lowercase().contains(&q)) {
+            "tag"
+        } else if d.content.to_lowercase().contains(&q) {
+            "content"
+        } else {
+            continue;
+        };
+        let snippet = make_snippet(&d.content, &q, 90);
+        hits.push(SearchHit {
+            path: d.path.clone(),
+            title: d.title.clone(),
+            snippet,
+            matched_by: matched_by.to_string(),
+        });
+        if hits.len() >= limit.saturating_mul(3).max(50) {
+            break;
+        }
+    }
+    hits.sort_by(|a, b| match a.matched_by.cmp(&b.matched_by) {
+        std::cmp::Ordering::Equal => a.path.cmp(&b.path),
+        o => o,
+    });
+    hits.into_iter().take(limit).collect()
+}
+
+/// 从原文提取匹配位置前后 radius 字符，跨字符边界安全
+fn make_snippet(md: &str, q_lower: &str, radius: usize) -> String {
+    let ml = md.to_lowercase();
+    match ml.find(q_lower) {
+        Some(byte_idx) => {
+            // byte_idx 一定在 UTF-8 字符边界上（因 to_lowercase 保留边界）
+            let before_chars = md[..byte_idx].chars().count();
+            let q_chars = q_lower.chars().count();
+            let cs: Vec<char> = md.chars().collect();
+            let start = before_chars.saturating_sub(radius);
+            let end = (before_chars + q_chars + radius).min(cs.len());
+            let body: String = cs[start..end].iter().collect();
+            let prefix = if start > 0 { "…" } else { "" };
+            let suffix = if end < cs.len() { "…" } else { "" };
+            format!("{}{}{}", prefix, body.replace('\n', " "), suffix)
+        }
+        None => summary_from(md, radius * 2),
+    }
+}
+
+#[tauri::command]
+fn doc_preview(vault_root: String, path: String, max_chars: usize) -> Result<String, String> {
+    let abs = abs_in_vault(&vault_root, &path)?;
+    let content = fs::read_to_string(&abs).map_err(|e| e.to_string())?;
+    Ok(summary_from(&content, max_chars))
+}
+
+/// 增量更新一文档；用于保存/新建后立刻反映到索引，无需全量重建
+#[tauri::command]
+fn update_index_doc(
+    state: tauri::State<'_, IndexState>,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    let mut g = state.0.lock().map_err(|e| e.to_string())?;
+    if !g.ready {
+        return Ok(()); // rebuild 中：忽略，rebuild 结束时会拿到最新文件
+    }
+    let root = PathBuf::from(&g.vault_root);
+    let raw = extract_wikilinks(&content);
+    let mut outgoing: Vec<String> = Vec::new();
+    let mut unresolved: Vec<String> = Vec::new();
+    for r in raw {
+        match resolve_one(&root, &path, &r) {
+            Some(hit) => {
+                if hit != path {
+                    outgoing.push(hit);
+                }
+            }
+            None => unresolved.push(r),
+        }
+    }
+    outgoing.sort();
+    outgoing.dedup();
+    unresolved.sort();
+    unresolved.dedup();
+    let title = extract_title(&content, &path);
+    let tags = extract_tags(&content);
+    let old_outgoing: Vec<String> = g
+        .docs
+        .get(&path)
+        .map(|d| d.outgoing.clone())
+        .unwrap_or_default();
+    g.docs.insert(
+        path.clone(),
+        DocEntry { path: path.clone(), title, tags, outgoing, unresolved, content },
+    );
+    for tgt in &old_outgoing {
+        if let Some(lst) = g.backlinks.get_mut(tgt) {
+            lst.retain(|p| p != &path);
+        }
+    }
+    let new_outgoing: Vec<String> = g
+        .docs
+        .get(&path)
+        .map(|d| d.outgoing.clone())
+        .unwrap_or_default();
+    for tgt in new_outgoing {
+        let e = g.backlinks.entry(tgt).or_default();
+        if !e.contains(&path) {
+            e.push(path.clone());
+            e.sort();
+        }
+    }
+    Ok(())
+}
+
+/// 备份：.notelume-backup/YYYY-MM-DD/{stem}-HH-MM-SS.md
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupArgs {
+    pub path: String,
+    pub content: String,
+}
+
+#[tauri::command]
+fn backup_write(vault_root: String, args: BackupArgs) -> Result<String, String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let now = Local::now();
+    let day = now.format("%Y-%m-%d").to_string();
+    let ts = now.format("%H-%M-%S").to_string();
+    let file_name = args.path.rsplit('/').next().unwrap_or(&args.path);
+    let stem = file_name
+        .rsplit_once('.')
+        .map_or(file_name.to_string(), |(s, _)| s.to_string());
+    let file_rel = format!(".notelume-backup/{}/{}-{}.md", day, stem, ts);
+    let mut abs = root.clone();
+    for seg in file_rel.split('/') {
+        abs.push(seg);
+    }
+    if let Some(p) = abs.parent() {
+        fs::create_dir_all(p).map_err(|e| e.to_string())?;
+    }
+    fs::write(&abs, args.content).map_err(|e| format!("写入备份失败：{}", e))?;
+    Ok(file_rel)
+}
+
+/// 列出库内已有备份（按时间倒序，用于 P2 版本快照 UI；P1 只做写入不做展示）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupEntry {
+    pub path: String,
+    pub day: String,
+    pub name: String,
+}
+
+#[tauri::command]
+fn list_backups(vault_root: String, doc_rel: Option<String>) -> Result<Vec<BackupEntry>, String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let base = root.join(".notelume-backup");
+    if !base.exists() {
+        return Ok(Vec::new());
+    }
+    let stem_filter = doc_rel.as_deref().and_then(|p| {
+        let f = p.rsplit('/').next().unwrap_or(p);
+        f.rsplit_once('.').map(|(s, _)| s.to_string()).or_else(|| Some(f.to_string()))
+    });
+    let mut out = Vec::new();
+    let days = fs::read_dir(&base).map_err(|e| e.to_string())?;
+    for day_entry in days.flatten() {
+        if !day_entry.path().is_dir() {
+            continue;
+        }
+        let day = day_entry.file_name().to_string_lossy().to_string();
+        let files = match fs::read_dir(day_entry.path()) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        for f in files.flatten() {
+            let name = f.file_name().to_string_lossy().to_string();
+            if !name.ends_with(".md") {
+                continue;
+            }
+            if let Some(filter) = &stem_filter {
+                if !name.starts_with(&format!("{}-", filter)) {
+                    continue;
+                }
+            }
+            if let Ok(rel) = f.path().strip_prefix(&root) {
+                out.push(BackupEntry {
+                    path: rel.to_string_lossy().replace('\\', "/"),
+                    day: day.clone(),
+                    name,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| b.day.cmp(&a.day).then_with(|| b.name.cmp(&a.name)));
+    Ok(out)
+}
+
+/// 导出 HTML 到库外任意路径；仅接受由原生保存对话框返回的绝对路径
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportArgs {
+    pub abs_path: String,
+    pub content: String,
+}
+
+#[tauri::command]
+fn export_file(args: ExportArgs) -> Result<(), String> {
+    let p = PathBuf::from(&args.abs_path);
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{}", e))?;
+    }
+    fs::write(&p, args.content).map_err(|e| format!("导出失败：{}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
         .invoke_handler(tauri::generate_handler![
+            // P0
             scan_vault,
             read_md_file,
             write_md_file,
             resolve_wiki_link,
             create_md_file,
             copy_image_asset,
-            save_image_bytes
+            save_image_bytes,
+            // P1
+            rebuild_index,
+            get_index_status,
+            query_backlinks,
+            query_outgoing,
+            get_doc_info,
+            search_vault,
+            doc_preview,
+            update_index_doc,
+            backup_write,
+            list_backups,
+            export_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

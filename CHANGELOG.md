@@ -7,13 +7,81 @@
 
 ## [Unreleased]
 
-### 计划中（P1）
+### 计划中（P2）
 
-- 双向链接面板：「引用本文件」+「本文件引用的其他文件」
-- 全局搜索：库内 md 内容 + 文件名 + 标签（Rust 后台索引）
-- 自动保存 + 备份机制
-- KaTeX 数学公式、代码块语法高亮
-- 导出 HTML / PDF、[[链接]] 悬浮预览
+- 简易知识图谱可视化
+- 笔记版本快照 UI（基于已落地的备份文件）
+- 插件基础钩子系统
+- 画布 / 白板
+- 移动端适配
+
+## [0.2.0] - 2026-10-13
+
+P1 知识库完善阶段全量落地（双向链接 · 搜索 · 自动保存 · KaTeX · 高亮 · 导出 · 悬浮预览）。
+
+### Added
+
+#### 知识库索引（Rust 后台）
+
+- 新增 `VaultIndex` 托管状态 + `Arc<Mutex<…>>` 共享；`rebuild_index` 开后台线程全量扫描，不阻塞 UI
+- `update_index_doc` 在每次保存后增量更新（文档标题/标签/出链），反查表同步修正，无需全量重建
+- 前端 `startIndexPolling` 500ms 一次 `get_index_status`，就绪后自动刷新反链面板
+
+#### 双向链接面板
+
+- 侧栏新增「双向链接」面板，上区「引用本文档」、下区「本文档引用」，点击直接跳转
+- `query_backlinks` / `query_outgoing` 两个新 command
+
+#### 全局搜索
+
+- 侧栏顶部搜索框，230ms 防抖，`search_vault` 基于索引匹配标题/正文/#标签
+- 结果卡片展示标题 + 相对路径 + 匹配片段 + 命中来源 badge
+- Ctrl+F 聚焦搜索框，Esc 清空
+- 标签 chip 点击直接归入搜索
+
+#### 自动保存 + 备份
+
+- 工具条开关（localStorage 记忆），停手 2s 自动写回，失败仅日得日志不弹窗
+- 每次手动保存、以及自动保存后每 2 分钟间隔，写入一份时间戳副本到 `.notelume-backup/YYYY-MM-DD/{stem}-HH-MM-SS.md`
+- `.notelume-backup` 目录默认不入库扫描（已加入 `SKIP_DIRS`）
+
+#### KaTeX 数学公式
+
+- 新增 `math_inline` / `math_block` 行内与块级原子节点；markdown-it 自定义 inline + block 规则
+- NodeView 使用 katex.render 展示，失败自动降级为 `$…$` 预览；双击可编辑（目前走 window.prompt）
+- 往返幂等回归测试新增两例（行内公式 / 块公式），共 12/12 全通
+- 输入 `$x^2$` 敲完尾 `$` 自动射为公式；Ctrl+M / Ctrl+Shift+M 插入行内/块级占位
+- 普通文本中的 `$` 均转义，与行内公式不冲突（`escapeExtraCharacters: /[#$]/g`）
+
+#### 代码块语法高亮
+
+- `hl-decorations.js`：将 highlight.js 输出的 HTML 映射为 ProseMirror inline Decoration
+- 仅视图层上色，不污染文档模型，不影响 markdown 内容，不影响往返幂等
+- 内置亮/暗双套主题（GitHub-like）
+
+#### 导出 HTML / 打印 PDF
+
+- 工具条 📤 导出：markdown-it 渲染自含样式的 HTML，系统保存对话框选目录，`export_file` 写入任意路径
+- 工具条 🖨 打印 + Ctrl+P：使用系统打印对话框，可另存为 PDF
+
+#### [[链接]] 悬浮预览
+
+- `wiki-hover.js`：hover 380ms 展示卡片（fixed 定位，自动避开屏幕边缘）
+- 优先从索引 `get_doc_info` 拿标题 + 摘要，未就绪回落到 `doc_preview` 直接读文件
+- 目标不存在时提示“文档不存在·点击可新建”
+
+#### 工程
+
+- 新增 8 个 Rust command（共 15 个）；`IndexState` 作为 `tauri::Builder.manage` 托管
+- Cargo.toml 新增 `chrono = 0.4`，仅取 clock+std 子特性
+- 前端新增 `katex` `highlight.js` 依赖
+
+### Changed
+
+- `resize` 中 `resolve_wiki_link` 抽取 `resolve_one` 内部函数，供索引与 command 共用
+- `save_image_bytes` / `copy_image_asset` 行为不变，仅代码路径重新整理
+- `escapeExtraCharacters` 从 `/#/g` 扩展为 `/[#$]/g`
+- 行内代码块中 `#` 不再被误认为标签（tokenizer 并自测已覆盖）
 
 ## [0.1.0] - 2026-10-13
 
@@ -57,4 +125,5 @@
 - Ctrl+O 语义与需求文档对齐（原文档要求"Ctrl+O 打开文件"，初版误绑为打开文件夹）
 
 [unreleased]: https://gitee.com/hackerSnail/note-lume/compare/master...dev
+[0.2.0]: https://gitee.com/hackerSnail/note-lume/compare/v0.1.0...v0.2.0
 [0.1.0]: https://gitee.com/hackerSnail/note-lume

@@ -19,6 +19,8 @@ const SAMPLES = {
   tag: '本文打标记 #work 和 #study-notes，C# 语言里的井号不应误判。\n',
   table:
     '| 名称 | 数量 | 说明 |\n| --- | :---: | ---: |\n| 苹果 | 3 | 红 |\n| 香蕉 | 10 | 黄 |\n',
+  math_inline: '行内公式 $e^{i\\pi}+1=0$ 与 价格 $5 不是公式（开导后空白不匹配）。\n',
+  math_block: '块公式：\n\n$$\n\\int_{0}^{\\infty} e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\n$$\n\n正文。\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }
@@ -40,7 +42,7 @@ for (const [name, md] of Object.entries(SAMPLES)) {
   }
 }
 
-// 额外断言：任务列表 / wikilink / tag 落到正确的模型上
+// 额外断言：任务列表 / wikilink / tag / 行内公式 / 块公式 落到正确的模型上
 const taskDoc = parseMarkdown('- [x] A\n- [ ] B\n')
 const firstItem = taskDoc.firstChild.firstChild
 assert.strictEqual(firstItem.attrs.checked, true, '任务项 checked 应为 true')
@@ -54,6 +56,16 @@ const tagDoc = parseMarkdown('#tag1 普通 #nothash')
 let foundTag = false
 tagDoc.descendants((n) => { if (n.type.name === 'tag') foundTag = true })
 assert.ok(foundTag, '应解析出 tag 节点')
+
+const mInDoc = parseMarkdown('行内 $x^2$ 公式')
+let foundMathIn = false
+mInDoc.descendants((n) => { if (n.type.name === 'math_inline') { foundMathIn = true; assert.strictEqual(n.attrs.latex, 'x^2', '行内公式 latex 应无损') } })
+assert.ok(foundMathIn, '应解析出 math_inline 节点')
+
+const mBlkDoc = parseMarkdown('$$\nx+y\\ge 0\n$$\n')
+let foundMathBlk = false
+mBlkDoc.descendants((n) => { if (n.type.name === 'math_block') { foundMathBlk = true; assert.strictEqual(n.attrs.latex, 'x+y\\ge 0', '块公式 latex 应无损') } })
+assert.ok(foundMathBlk, '应解析出 math_block 节点')
 
 console.log(`\n结果：${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

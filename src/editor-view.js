@@ -9,6 +9,9 @@ import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
 import { schema, parseMarkdown, serializeMarkdown } from './editor-schema.js'
 import { saveImageFromFile } from './tauri-bridge.js'
+import { highlightPlugin } from './hl-decorations.js'
+import { mathInlineView, mathBlockView } from './math-nodeviews.js'
+import { attachWikiHover } from './wiki-hover.js'
 
 /**
  * 创建编辑器实例。
@@ -65,6 +68,22 @@ export function createEditor(opts) {
             }
           }
         }
+
+        // $...$：补上尾 $$时把整段射为行内数学（与 [[...]] 同构机制）
+        if (text === '$') {
+          const m = /\$([^$\n]+)\$$/.exec(before + text)
+          if (m) {
+            const startAbs = caret - (m[0].length - text.length)
+            if (startAbs >= blockFrom) {
+              const node = schema.nodes.math_inline.create({ latex: m[1] })
+              const tr = state.tr.replaceWith(startAbs, caret, node)
+              tr.setSelection(TextSelection.create(tr.doc, startAbs + node.nodeSize))
+              view.dispatch(tr.scrollIntoView())
+              return true
+            }
+          }
+          return false
+        }
         return false
       },
     },
@@ -94,6 +113,8 @@ export function createEditor(opts) {
       dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView())
       return true
     }),
+    'Mod-m': insertMath('math_inline'),
+    'Mod-Shift-m': insertMath('math_block'),
     Backspace: selectNodeBackward,
   })
   const base = keymap(baseKeymap)
@@ -101,11 +122,15 @@ export function createEditor(opts) {
   const state = EditorState.create({
     schema,
     doc: parseMarkdown(''),
-    plugins: [history(), keymapPlugin, base, inputRulesPlugin, pasteImagesPlugin],
+    plugins: [history(), keymapPlugin, base, inputRulesPlugin, pasteImagesPlugin, highlightPlugin()],
   })
 
   const view = new EditorView(opts.mountEl, {
     state,
+    nodeViews: {
+      math_inline: mathInlineView,
+      math_block: mathBlockView,
+    },
     dispatchTransaction(tr) {
       const next = view.state.apply(tr)
       view.updateState(next)
@@ -118,6 +143,9 @@ export function createEditor(opts) {
       }
     },
   })
+
+  // [[链接]] hover 悬浮预览（仅存在 vault 时才有意义，卡片自己判取 ctx）
+  attachWikiHover(view.dom, () => opts.getVault())
 
   // 点击 [[链接]]：拦截跳转（链接节点 contenteditable=false）
   view.dom.addEventListener('click', (e) => {
@@ -171,6 +199,30 @@ export function createEditor(opts) {
 
 function isImage(file) {
   return file && file.type && file.type.startsWith('image/')
+}
+
+// 插入行内/块级公式：有选区就用选区内容作为 latex，否则给一个占位例子
+function insertMath(kind) {
+  return (state, dispatch) => {
+    const sel = state.selection
+    let latex = ''
+    if (!sel.empty) {
+      latex = state.doc.textBetween(sel.from, sel.to, ' ', ' ').trim()
+    }
+    if (!latex) latex = kind === 'math_inline' ? 'e^{i\\pi}+1=0' : '\\int_{0}^{\\infty} e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}'
+    const node = schema.nodes[kind].create({ latex })
+    let tr
+    if (kind === 'math_block') {
+      // 块级：插到当前 block 后，确保不处于 textblock 中
+      const $head = sel.$head || state.doc.resolve(sel.head)
+      const at = $head.end($head.depth === 0 ? 0 : $head.depth - 1)
+      tr = state.tr.insert(at, node)
+    } else {
+      tr = state.tr.replaceSelectionWith(node)
+    }
+    dispatch(tr.scrollIntoView())
+    return true
+  }
 }
 
 function imageFiles(dt) {

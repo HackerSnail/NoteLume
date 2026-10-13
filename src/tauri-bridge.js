@@ -93,3 +93,60 @@ function extFromFile(file) {
   const sub = (file.type || '').split('/')[1] || 'png'
   return sub.replace(/[^a-z0-9]/g, '') || 'png'
 }
+
+// ==================== P1 新增：索引 / 双向链接 / 搜索 / 预览 / 备份 / 导出 ====================
+
+/** 触发后台全量重建索引；立即返回，需轮询 getIndexStatus 判断就绪 */
+export function rebuildIndex(vaultRoot) {
+  return invoke('rebuild_index', { vaultRoot })
+}
+
+/** 查询索引状态：{ vaultRoot, docs, ready } */
+export function getIndexStatus() {
+  return invoke('get_index_status', {})
+}
+
+/** 引用当前文档的反向链接列表 */
+export function queryBacklinks(path) {
+  return invoke('query_backlinks', { path })
+}
+
+/** 当前文档指向出去的正向链接列表 */
+export function queryOutgoing(path) {
+  return invoke('query_outgoing', { path })
+}
+
+/** 拿一文档的索引快照（标题/标签/出链/摘要）——供悬浮预览使用 */
+export function getDocInfo(path) {
+  return invoke('get_doc_info', { path })
+}
+
+/** 全局搜索：标题/标签/正文；返回 [{path,title,snippet,matchedBy}] */
+export function searchVault(query, limit = 60) {
+  return invoke('search_vault', { query, limit })
+}
+
+/** 读取一文档前 N 字的纯文本摘要（库内路径校验通过） */
+export function docPreview(vaultRoot, path, maxChars = 240) {
+  return invoke('doc_preview', { vaultRoot, path, maxChars })
+}
+
+/** 保存/新建后增量更新索引中的这条文档 */
+export function updateIndexDoc(path, content) {
+  return invoke('update_index_doc', { path, content })
+}
+
+/** 写入一份带时间戳的库内备份副本，返回相对路径 */
+export function backupWrite(vaultRoot, path, content) {
+  return invoke('backup_write', { vaultRoot, args: { path, content } })
+}
+
+/** 列出某文档的历史备份（可选过滤），P2 版本快照 UI 会用 */
+export function listBackups(vaultRoot, docRel) {
+  return invoke('list_backups', { vaultRoot, docRel: docRel || null })
+}
+
+/** 导出到库外任意路径（由系统保存对话框给出） */
+export function exportFile(absPath, content) {
+  return invoke('export_file', { args: { absPath, content } })
+}

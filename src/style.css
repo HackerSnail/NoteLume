@@ -319,3 +319,238 @@ body {
   outline: 2px solid var(--accent);
   border-radius: 3px;
 }
+
+/* ==================== P1 新增 ==================== */
+
+/* 工具条：自动保存开关 */
+.autosave-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.autosave-toggle input {
+  accent-color: var(--accent);
+}
+
+/* 搜索 */
+.search-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+}
+.search-input:focus {
+  border-color: var(--accent);
+}
+.search-results {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.search-hit {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.search-hit:hover {
+  background: var(--hover);
+  border-color: var(--border);
+}
+.search-hit-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.search-hit-path {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.search-hit-snippet {
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.search-hit-badge {
+  display: inline-block;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--hover);
+  border-radius: 999px;
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+.search-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px;
+}
+
+/* 双向链接面板 */
+.bl-h3 {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 8px 4px 4px;
+}
+.link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.link-item {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.link-item:hover {
+  background: var(--hover);
+}
+.link-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+/* 悬浮预览卡片 */
+.nl-hover-card {
+  position: fixed;
+  z-index: 200;
+  max-width: 380px;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.nl-hover-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.nl-hover-body {
+  color: var(--fg);
+  max-height: 200px;
+  overflow: hidden;
+}
+.nl-hover-foot {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+/* KaTeX 公式 */
+.nl-math {
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.nl-math-inline {
+  padding: 0 2px;
+}
+.nl-math-block {
+  display: block;
+  text-align: center;
+  margin: 1em 0;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+/* 代码高亮配色（兼容 GitHub 风。自定义可替换为 hljs theme）*/
+.hljs-comment,
+.hljs-quote {
+  color: #6a737d;
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-type,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: #d73a49;
+}
+.hljs-string,
+.hljs-title,
+.hljs-attr,
+.hljs-template-variable,
+.hljs-addition {
+  color: #032f62;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-deletion {
+  color: #005cc5;
+}
+.hljs-params,
+.hljs-function .hljs-title {
+  color: #6f42c1;
+}
+.hljs-meta,
+.hljs-symbol,
+.hljs-bullet {
+  color: #e36209;
+}
+[data-theme='dark'] .hljs-comment,
+[data-theme='dark'] .hljs-quote {
+  color: #7b828d;
+}
+[data-theme='dark'] .hljs-keyword,
+[data-theme='dark'] .hljs-selector-tag,
+[data-theme='dark'] .hljs-type,
+[data-theme='dark'] .hljs-built_in,
+[data-theme='dark'] .hljs-name,
+[data-theme='dark'] .hljs-tag {
+  color: #ff7b72;
+}
+[data-theme='dark'] .hljs-string,
+[data-theme='dark'] .hljs-template-variable,
+[data-theme='dark'] .hljs-addition {
+  color: #a5d6ff;
+}
+[data-theme='dark'] .hljs-number,
+[data-theme='dark'] .hljs-literal,
+[data-theme='dark'] .hljs-variable,
+[data-theme='dark'] .hljs-deletion {
+  color: #79c0ff;
+}
+[data-theme='dark'] .hljs-params,
+[data-theme='dark'] .hljs-function .hljs-title {
+  color: #d2a8ff;
+}
+[data-theme='dark'] .hljs-meta,
+[data-theme='dark'] .hljs-symbol,
+[data-theme='dark'] .hljs-bullet {
+  color: #ffa657;
+}
+
