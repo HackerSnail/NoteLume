@@ -150,3 +150,8 @@ export function listBackups(vaultRoot, docRel) {
 export function exportFile(absPath, content) {
   return invoke('export_file', { args: { absPath, content } })
 }
+
+/** P2：知识图谱数据 {nodes:[{path,title}], edges:[{s,t,w}]} */
+export function getGraphData(vaultRoot) {
+  return invoke('get_graph_data', { vaultRoot })
+}

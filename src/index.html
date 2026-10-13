@@ -14,6 +14,7 @@
         <button id="btn-save" title="保存 (Ctrl+S)">💾 保存</button>
         <button id="btn-export-html" title="导出当前文档为 HTML">📤 导出</button>
         <button id="btn-print" title="打印 / 打印为 PDF (Ctrl+P)">🖨 打印</button>
+        <button id="btn-graph" title="知识图谱 (Ctrl+G)">🕸 图谱</button>
         <span id="filename" class="filename">未打开文档</span>
         <span class="spacer"></span>
         <label class="autosave-toggle" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
@@ -54,6 +55,17 @@
         <main class="editor-pane">
           <div id="editor" class="editor"></div>
         </main>
+      </div>
+    </div>
+
+    <div id="graph-modal" class="graph-modal hidden" role="dialog" aria-label="知识图谱">
+      <div class="graph-panel">
+        <div class="graph-head">
+          <span class="graph-title">🕸 知识图谱</span>
+          <span id="graph-info" class="graph-info"></span>
+          <button id="graph-close" class="graph-close" title="关闭 (Esc)">✕</button>
+        </div>
+        <canvas id="graph-canvas" class="graph-canvas"></canvas>
       </div>
     </div>
 

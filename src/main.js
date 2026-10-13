@@ -22,6 +22,7 @@ import {
   backupWrite,
   exportFile,
 } from './tauri-bridge.js'
+import { openGraph } from './graph-view.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -59,6 +60,7 @@ const els = {
   btnTheme: $('btn-theme'),
   btnExportHtml: $('btn-export-html'),
   btnPrint: $('btn-print'),
+  btnGraph: $('btn-graph'),
   chkAutosave: $('chk-autosave'),
   searchInput: $('search-input'),
   searchResults: $('search-results'),
@@ -479,6 +481,31 @@ ${body}
 </body></html>`
 }
 
+// —— P2：知识图谱模态 ——
+let graphHandle = null
+async function openGraphModal() {
+  if (graphHandle) return
+  if (!state.vaultRoot) {
+    setStatus('需先打开知识库文件夹才能看图')
+    return
+  }
+  if (!state.indexReady) {
+    setStatus('索引尚未就绪，稍候再试')
+    return
+  }
+  try {
+    graphHandle = await openGraph({
+      vaultRoot: state.vaultRoot,
+      currentPath: state.currentFile,
+      onNodeClick: (path) => { openFile(path) },
+      onClose: () => { graphHandle = null },
+    })
+  } catch (e) {
+    graphHandle = null
+    setStatus('图谱打开失败：' + (e?.message || e))
+  }
+}
+
 // —— 快捷键（应用级）——
 function bindShortcuts() {
   document.addEventListener('keydown', (e) => {
@@ -501,6 +528,10 @@ function bindShortcuts() {
       // 打印（浏览器/系统会弹出打印对话框，可选另存 PDF）
       e.preventDefault()
       window.print()
+    } else if (key === 'g') {
+      // P2：知识图谱
+      e.preventDefault()
+      openGraphModal()
     }
   })
 }
@@ -534,6 +565,7 @@ async function boot() {
   els.btnTheme.addEventListener('click', toggleTheme)
   els.btnExportHtml.addEventListener('click', exportHTML)
   els.btnPrint.addEventListener('click', () => window.print())
+  els.btnGraph.addEventListener('click', openGraphModal)
   els.searchInput.addEventListener('input', onSearchInput)
   els.searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

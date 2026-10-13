@@ -412,10 +412,11 @@ fn extract_wikilinks(md: &str) -> Vec<String> {
 }
 
 fn is_tag_start(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '/'
+    // 支持 Unicode CJK、拉丁等字母数字（与 Obsidian 行为一致）
+    c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
 }
 fn is_tag_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '/'
+    c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
 }
 
 /// 从 md 提取所有 #tag（跳过标题行、代码块、行内代码）
@@ -971,6 +972,155 @@ fn export_file(args: ExportArgs) -> Result<(), String> {
     fs::write(&p, args.content).map_err(|e| format!("导出失败：{}", e))
 }
 
+/// 从当前索引抽取知识图谱数据：只保留已解析的链接，同一对文档合并为一条边（权重=反向两个方向链接次数之和）。
+#[derive(serde::Serialize)]
+struct GraphNode {
+    path: String,
+    title: String,
+}
+
+#[derive(serde::Serialize)]
+struct GraphEdge {
+    s: String,
+    t: String,
+    w: usize,
+}
+
+#[derive(serde::Serialize)]
+struct GraphData {
+    nodes: Vec<GraphNode>,
+    edges: Vec<GraphEdge>,
+}
+
+fn extract_graph(index: &VaultIndex) -> GraphData {
+    let mut nodes = Vec::with_capacity(index.docs.len());
+    let mut sorted: Vec<&String> = index.docs.keys().collect();
+    sorted.sort();
+    for p in sorted {
+        let d = &index.docs[p];
+        nodes.push(GraphNode { path: d.path.clone(), title: d.title.clone() });
+    }
+    // 与 build_index 中保持同步：将链接当作库根相对 + 同目录相对两种候选。
+    let root = PathBuf::from(&index.vault_root);
+    // 有向边累加到无向边：(min, max) 归一化，权重为两个方向链接总次数
+    let mut agg: std::collections::HashMap<(String, String), usize> = std::collections::HashMap::new();
+    for (src_path, entry) in &index.docs {
+        for tgt in &entry.outgoing {
+            let resolved = match resolve_one(&root, "", tgt) {
+                Some(r) => r,
+                None => continue,
+            };
+            if resolved == *src_path {
+                continue; // 不连自己
+            }
+            if !index.docs.contains_key(&resolved) {
+                continue;
+            }
+            let key = if src_path <= &resolved {
+                (src_path.clone(), resolved.clone())
+            } else {
+                (resolved.clone(), src_path.clone())
+            };
+            *agg.entry(key).or_insert(0) += 1;
+        }
+    }
+    let mut edges: Vec<GraphEdge> = agg
+        .into_iter()
+        .map(|((s, t), w)| GraphEdge { s, t, w })
+        .collect();
+    edges.sort_by(|a, b| (&a.s, &a.t).cmp(&(&b.s, &b.t)));
+    GraphData { nodes, edges }
+}
+
+#[tauri::command]
+fn get_graph_data(
+    vault_root: String,
+    state: tauri::State<'_, IndexState>,
+) -> Result<GraphData, String> {
+    let _ = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let guard = state.0.lock().map_err(|_| "索引状态锁 poisoned".to_string())?;
+    Ok(extract_graph(&guard))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_wikilinks_basic() {
+        let s = "see [[A]] and [[B|alias]] and nested [[C]] [[B]]";
+        let mut v = extract_wikilinks(s);
+        v.sort();
+        v.dedup();
+        assert_eq!(v, vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn extract_wikilinks_dedup_and_strip_alias() {
+        // 当前实现不跳过 code block；extract_wikilinks 不去重，build_index 会 sort + dedup。
+        let s = "[[B]] [[A]] [[B|alias]] [[B]]";
+        let raw = extract_wikilinks(s);
+        assert_eq!(raw, vec!["B", "A", "B", "B"]); // alias 取 | 前的部分
+        let mut v = raw;
+        v.sort();
+        v.dedup();
+        assert_eq!(v, vec!["A", "B"]);
+    }
+
+    #[test]
+    fn extract_tags_basic_and_cjk() {
+        let s = "see #hello and #世界 and inline__not_a_tag";
+        let mut v = extract_tags(s);
+        v.sort();
+        assert_eq!(v, vec!["hello", "世界"]);
+    }
+
+    #[test]
+    fn extract_graph_merges_undirected_and_skips_self() {
+        // 手写一个临时库，写两个文件，验证 extract_graph 能正确拉一条无向边
+        let tmp = std::env::temp_dir().join(format!("notelume-graph-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mut a = tmp.clone();
+        a.push("a.md");
+        let mut b = tmp.clone();
+        b.push("b.md");
+        fs::write(&a, "links to [[b]] and again [[b]]\n").unwrap();
+        fs::write(&b, "links back to [[a]]\n").unwrap();
+        // 直接把未规范化的 tmp 路径交给 resolve_one：内部会 canonicalize，
+        // 避免在 Windows 下把 \ 先转 / 后影响 verbatim 前缀行为。
+        let root_str = tmp.to_string_lossy().to_string();
+
+        let mut index = VaultIndex::default();
+        let mut docs = HashMap::new();
+        let entry = |path: &str, title: &str, outgoing: Vec<&str>| DocEntry {
+            path: path.into(),
+            title: title.into(),
+            tags: vec![],
+            outgoing: outgoing.iter().map(|s| s.to_string()).collect(),
+            unresolved: vec![],
+            content: String::new(),
+        };
+        let rel_a = "a.md".to_string();
+        let rel_b = "b.md".to_string();
+        docs.insert(rel_a.clone(), entry(&rel_a, "a", vec!["b", "b"]));
+        docs.insert(rel_b.clone(), entry(&rel_b, "b", vec!["a"]));
+        index.docs = docs;
+        index.vault_root = root_str.clone();
+        index.ready = true;
+
+        let g = extract_graph(&index);
+        assert_eq!(g.nodes.len(), 2);
+        // 无向归一：(a,b) 只一条，权重=3（a→b 两次 + b→a 一次）
+        assert_eq!(g.edges.len(), 1, "expected exactly one undirected edge, got {:?}", g.edges.iter().map(|e| (&e.s, &e.t, e.w)).collect::<Vec<_>>());
+        assert_eq!(g.edges[0].w, 3);
+        // 无向边 key 归一化后，s <= t 字典序
+        assert!(g.edges[0].s.as_str() <= g.edges[0].t.as_str());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -996,7 +1146,8 @@ pub fn run() {
             update_index_doc,
             backup_write,
             list_backups,
-            export_file
+            export_file,
+            get_graph_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

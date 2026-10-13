@@ -7,13 +7,32 @@
 
 ## [Unreleased]
 
-### 计划中（P2）
+### 计划中（P2 未完项）
 
-- 简易知识图谱可视化
-- 笔记版本快照 UI（基于已落地的备份文件）
+- 版本快照 UI（备份文件已落 `.notelume-backup/`，只需列表 + 一键回滚）
 - 插件基础钩子系统
 - 画布 / 白板
 - 移动端适配
+
+## [0.3.0] - 2026-10-13
+
+P2 首项落地：简易知识图谱（零外部依赖，基于现有索引，单文件 264 行）。
+
+### Added
+
+#### 知识图谱（模态层）
+
+- **Rust** 新 command `get_graph_data(vault_root)` 从当前 `VaultIndex` 抽取 `{nodes, edges}`；无向归一（同一对文档的 A→B / B→A 合并为 1 条边，权重=双向链接总次数），不连自身
+- **前端** `src/graph-view.js`：自实现 Canvas 2D 力导向布局（斥力 + 弹簧 + 向心 + 阻尼），零外部依赖；预热 320 tick 每帧 5 步，收敛后自动降频，>800 节点不崩
+- **交互**：拖平移背景、滚轮缩放（以鼠标点为中心，0.35~3.5x）、拖节点重定位、hover 高亮邻边 + 添标题、点节点直接跳文档；Esc / × 按钮 / 背板点击关闭
+- **高亮**：当前文档红点；节点半径按 degree 平方根映射（3~14px）；边粗细按权重
+- **工具条** 新增 🕸 图谱 按钮；Ctrl+G 应开/已开则无操作（幂等）
+- **样式** 亮/暗主题自适应（面板背景 / 卡片阴影 / 颜色变量均走现有 CSS 体系）
+
+### Fixed
+
+- **标签支持 Unicode CJK**：`is_tag_start` / `is_tag_char` 从 `is_ascii_alphanumeric()` 升为 `is_alphanumeric()`，与 Obsidian 行为一致；新写入单测 `extract_tags_basic_and_cjk` 验证 `#世界` 类中文标签
+- 单测目录新增 4 个 Rust 单测（`extract_wikilinks_basic` / `extract_wikilinks_dedup_and_strip_alias` / `extract_tags_basic_and_cjk` / `extract_graph_merges_undirected_and_skips_self`），为后续索引层改动提供回归保护
 
 ## [0.2.0] - 2026-10-13
 
@@ -125,5 +144,6 @@ P1 知识库完善阶段全量落地（双向链接 · 搜索 · 自动保存 ·
 - Ctrl+O 语义与需求文档对齐（原文档要求"Ctrl+O 打开文件"，初版误绑为打开文件夹）
 
 [unreleased]: https://gitee.com/hackerSnail/note-lume/compare/master...dev
+[0.3.0]: https://gitee.com/hackerSnail/note-lume/compare/v0.2.0...v0.3.0
 [0.2.0]: https://gitee.com/hackerSnail/note-lume/compare/v0.1.0...v0.2.0
 [0.1.0]: https://gitee.com/hackerSnail/note-lume
