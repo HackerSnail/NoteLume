@@ -25,6 +25,7 @@ import {
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
 import { createPluginManager } from './plugin-loader.js'
+import { createCanvasView } from './canvas-view.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -34,6 +35,7 @@ const exportMd = MarkdownIt('commonmark', { html: false }).enable(['table', 'str
 const state = {
   vaultRoot: null, // 知识库根（绝对路径）
   currentFile: null, // 当前文档库内相对路径
+  mode: 'md', // 'md' 编辑器 | 'canvas' 画布
   dirty: false,
   indexReady: false,
   autosave: {
@@ -76,14 +78,29 @@ const els = {
   snapshotRollback: $('snapshot-rollback'),
   snapshotClose: $('snapshot-close'),
   plugins: $('plugins'),
+  canvasMount: $('canvas-mount'),
+  btnNewCanvas: $('btn-new-canvas'),
 }
 
 let editor
 let snapshotPanel = null
 let pluginManager = null
+let canvasView = null
+
+// 画布文件判定（JSON Canvas 规范）
+function isCanvasPath(p) {
+  return /\.canvas$/i.test(p || '')
+}
 
 function setStatus(msg) {
   els.status.textContent = msg
+}
+
+// 脏标记统一入口：编辑器与画布共用（驱动 dirty 样式 + 自动保存）
+function markDirty(d) {
+  state.dirty = d
+  els.filename.classList.toggle('dirty', d)
+  if (d) scheduleAutosave()
 }
 
 // —— 主题 ——（浅色 → 暗黑 → 吸血鬼 三态循环）
@@ -160,8 +177,15 @@ async function openSingleFile() {
     if (!abs) return
     const { dir, name } = splitAbs(abs)
     state.vaultRoot = dir
+    if (isCanvasPath(name)) {
+      renderSingleFileTree(name)
+      await openCanvas(name)
+      startIndexPolling()
+      return
+    }
     const md = await readMdFile(dir, name)
     state.currentFile = name
+    setMode('md')
     editor.setMarkdown(md)
     els.filename.textContent = abs
     renderSingleFileTree(name)
@@ -243,9 +267,14 @@ async function openFile(rel) {
     const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '切换文档')
     if (!ok) return
   }
+  if (isCanvasPath(rel)) {
+    await openCanvas(rel)
+    return
+  }
   try {
     const md = await readMdFile(state.vaultRoot, rel)
     state.currentFile = rel
+    setMode('md')
     editor.setMarkdown(md)
     els.filename.textContent = rel
     highlightActiveFile()
@@ -260,6 +289,55 @@ async function openFile(rel) {
   }
 }
 
+// —— 画布模式切换 / 打开 / 新建 ——
+function setMode(mode) {
+  state.mode = mode
+  const canvasOn = mode === 'canvas'
+  els.editor.classList.toggle('hidden', canvasOn)
+  els.canvasMount.classList.toggle('hidden', !canvasOn)
+}
+
+async function openCanvas(path) {
+  try {
+    await canvasView.open(path)
+    state.currentFile = path
+    setMode('canvas')
+    els.filename.textContent = path
+    highlightActiveFile()
+    setStatus('已打开画布：' + path)
+    resetBackupTimer()
+  } catch (e) {
+    await messageDialog('打开画布失败：' + ((e && e.message) || e))
+  }
+}
+
+async function newCanvas() {
+  if (!state.vaultRoot) {
+    setStatus('请先打开知识库文件夹')
+    return
+  }
+  if (state.dirty) {
+    const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '新建画布')
+    if (!ok) return
+  }
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  const name = `画布-${stamp}.canvas`
+  try {
+    await canvasView.newBlank(name)
+    state.currentFile = name
+    setMode('canvas')
+    els.filename.textContent = name
+    highlightActiveFile()
+    await canvasView.save() // 先落盘一个空画布，使其出现在文件树
+    renderTree(await scanVault(state.vaultRoot))
+    setStatus('新建画布：' + name)
+  } catch (e) {
+    await messageDialog('新建画布失败：' + ((e && e.message) || e))
+  }
+}
+
 // —— 保存到原文件（含索引增量更新 + 可选备份）——
 async function saveCurrent(manual = true) {
   if (!state.currentFile || !state.vaultRoot) {
@@ -267,6 +345,11 @@ async function saveCurrent(manual = true) {
     return
   }
   try {
+    if (state.mode === 'canvas') {
+      await canvasView.save()
+      setStatus((manual ? '已保存：' : '自动保存：') + state.currentFile + ' · ' + timeStr())
+      return
+    }
     const md = editor.getMarkdown()
     await writeMdFile(state.vaultRoot, state.currentFile, md)
     editor.markSaved()
@@ -460,6 +543,10 @@ async function exportHTML() {
     setStatus('请先打开一个文档')
     return
   }
+  if (state.mode === 'canvas') {
+    setStatus('画布不支持导出 HTML')
+    return
+  }
   try {
     const md = editor.getMarkdown()
     const body = exportMd.render(md)
@@ -567,11 +654,7 @@ async function boot() {
     getVault: () => ({ vaultRoot: state.vaultRoot, mdRel: state.currentFile }),
     onOpenWiki,
     onMetaChange,
-    onDirty: (d) => {
-      state.dirty = d
-      els.filename.classList.toggle('dirty', d)
-      if (d) scheduleAutosave()
-    },
+    onDirty: markDirty,
     onDocChange: (doc, prev) => pluginManager && pluginManager.fireDocChange(doc, prev),
   })
 
@@ -604,6 +687,15 @@ async function boot() {
     getVaultRoot: () => state.vaultRoot,
   })
 
+  // P2 画布 / 白板：.canvas 文件的独立视图（文件读写在本模块内，复用通用文本命令）
+  canvasView = createCanvasView({
+    mountEl: els.canvasMount,
+    setStatus,
+    onDirty: markDirty,
+    onOpenFile: (file) => openFile(file),
+    getVaultRoot: () => state.vaultRoot,
+  })
+
   els.chkAutosave.checked = state.autosave.enabled
   els.chkAutosave.addEventListener('change', () => {
     state.autosave.enabled = els.chkAutosave.checked
@@ -619,6 +711,7 @@ async function boot() {
   els.btnExportHtml.addEventListener('click', exportHTML)
   els.btnPrint.addEventListener('click', () => window.print())
   els.btnGraph.addEventListener('click', openGraphModal)
+  els.btnNewCanvas.addEventListener('click', newCanvas)
   els.searchInput.addEventListener('input', onSearchInput)
   els.searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

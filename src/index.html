@@ -15,6 +15,7 @@
         <button id="btn-export-html" title="导出当前文档为 HTML">📤 导出</button>
         <button id="btn-print" title="打印 / 打印为 PDF (Ctrl+P)">🖨 打印</button>
         <button id="btn-graph" title="知识图谱 (Ctrl+G)">🕸 图谱</button>
+        <button id="btn-new-canvas" title="新建画布 / 白板（.canvas）">🗺 新画布</button>
         <span id="filename" class="filename">未打开文档</span>
         <span class="spacer"></span>
         <label class="autosave-toggle" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
@@ -62,6 +63,7 @@
 
         <main class="editor-pane">
           <div id="editor" class="editor"></div>
+          <div id="canvas-mount" class="hidden"></div>
         </main>
       </div>
     </div>

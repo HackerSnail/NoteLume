@@ -79,7 +79,7 @@ interface PluginContext {
 
 ---
 
-## 3. 画布 / 白板（低优先级）
+## 3. 画布 / 白板（低优先级）✅ 已完成
 
 **目标**：类 Obsidian Canvas，自由摆放卡片 + 连线。
 
@@ -94,7 +94,11 @@ interface PluginContext {
 3. 前端 `canvas-view.js`：SVG 渲染 + pointer events 拖拽 + 滚轮缩放 + 双击编辑文字
 4. 文件树识别 `.canvas` 扩展名 → 打开到画板视图替代编辑器
 
-**建议**：放在插件钩子之后，等整体架构更灵活再做。不急于本轮。
+**落地说明**（已实现）：
+- 数据层采用 **JSON Canvas 规范**（与 Obsidian `.canvas` 互操作），字段与原计划一致
+- Rust **未新增 `read_canvas`/`write_canvas`**：画布 IO 复用已有通用文本命令 `read_md_file`/`write_md_file`（本质是通用读写 + 路径安全），降低攻击面与维护成本；Rust 仅新增 `is_canvas` 让 `scan_vault` 把 `.canvas` 纳入文件树（进树不进索引，附单测 `scan_includes_canvas_but_not_other_types`）
+- 前端 `src/canvas-view.js`（~565 行）：SVG 渲染 + 视口变换（平移/以光标为锚缩放）、拖拽移动（shift 多选）、端口拖拽连线、角点 resize、双击编辑/新建、六色色板、适应视图、Delete 删除；文件节点双击跳转。IO 与脏标记在本模块内完成，`onDirty`/`onOpenFile` 回调交给 main.js 统一驱动
+- main.js 按 `state.mode`（`md`/`canvas`）分流 openFile / saveCurrent / openSingleFile；工具条 🗺 新画布一键新建并落盘
 
 ---
 
@@ -118,5 +122,5 @@ interface PluginContext {
 |---|---|---|---|
 | 1 | 版本快照 UI | ~200 行（前端 100 + Rust 50 + CSS 50） | P1 backup_write / list_backups 已有 |
 | 2 | 插件钩子系统 | ~300 行（loader + editor-view 改造 + list_plugins） | 无硬依赖 ✅ |
-| 3 | 画布 / 白板 | ~600 行（独立视图） | 最好有插件钩子做架构参考 |
+| 3 | 画布 / 白板 | ~600 行（独立视图） | 最好有插件钩子做架构参考 ✅ |
 | 4 | 移动端 | 大改布局 | 桌面版 feature freeze |

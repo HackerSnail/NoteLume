@@ -10,13 +10,13 @@ export async function pickFolder() {
   return typeof picked === 'string' ? picked : null
 }
 
-/** 打开单个 Markdown 文件选择器，返回绝对路径（取消返回 null） */
+/** 打开单个文件选择器（Markdown / 画布），返回绝对路径（取消返回 null） */
 export async function pickFile() {
   const picked = await open({
     directory: false,
     multiple: false,
-    title: '选择 Markdown 文件',
-    filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
+    title: '选择 Markdown / 画布文件',
+    filters: [{ name: 'Markdown / Canvas', extensions: ['md', 'markdown', 'canvas'] }],
   })
   return typeof picked === 'string' ? picked : null
 }

@@ -44,6 +44,11 @@ fn is_md(name: &str) -> bool {
     name.to_ascii_lowercase().ends_with(".md")
 }
 
+/// 画布文件（JSON Canvas 规范，与 Obsidian .canvas 兼容）：进文件树但不进索引
+fn is_canvas(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".canvas")
+}
+
 /// 拒绝越出库根的恶意路径（`..` 逃逸等）；root 与 target 均已 canonicalize
 fn ensure_inside_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
     let target = fs::canonicalize(target)
@@ -89,7 +94,7 @@ fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
         let child_rel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
         if path.is_dir() {
             dirs.push((name, child_rel, path));
-        } else if path.is_file() && is_md(&name) {
+        } else if path.is_file() && (is_md(&name) || is_canvas(&name)) {
             files.push(TreeNode { name, path: child_rel, kind: "file".into(), children: None });
         }
     }
@@ -1380,6 +1385,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(uri, "data:image/png;base64,QUJD");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn scan_includes_canvas_but_not_other_types() {
+        let tmp = std::env::temp_dir().join(format!("notelume-scan-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("a.md"), "# A").unwrap();
+        fs::write(tmp.join("board.canvas"), r#"{"nodes":[],"edges":[]}"#).unwrap();
+        fs::write(tmp.join("notes.txt"), "ignored").unwrap();
+        fs::write(tmp.join("pic.png"), b"x").unwrap();
+        let root_str = tmp.to_string_lossy().to_string();
+
+        let tree = scan_vault(root_str.clone()).unwrap();
+        let names: Vec<String> = tree.into_iter().map(|n| n.name).collect();
+        assert!(names.contains(&"a.md".to_string()));
+        assert!(names.contains(&"board.canvas".to_string()), "canvas 应入树");
+        assert!(!names.contains(&"notes.txt".to_string()));
+        assert!(!names.contains(&"pic.png".to_string()));
 
         let _ = fs::remove_dir_all(&tmp);
     }

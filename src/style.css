@@ -239,6 +239,7 @@ body {
   overflow-y: auto;
   display: flex;
   justify-content: center;
+  position: relative;
 }
 .editor {
   width: 100%;
@@ -250,6 +251,155 @@ body {
 .editor .ProseMirror {
   outline: none;
   min-height: 100%;
+}
+
+/* ==================== P2：画布 / 白板 ==================== */
+.hidden {
+  display: none !important;
+}
+.canvas-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.cv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex: 0 0 auto;
+}
+.cv-toolbar button {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.cv-toolbar button:hover {
+  background: var(--hover);
+}
+.cv-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+}
+.cv-colors {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.cv-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0 !important;
+  border-radius: 5px;
+  border: 1px solid var(--border) !important;
+  cursor: pointer;
+}
+.cv-zoom {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 44px;
+  text-align: right;
+}
+.cv-surface {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+.cv-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  background:
+    radial-gradient(circle, var(--hover) 1px, transparent 1px) 0 0 / 26px 26px;
+}
+.cv-svg:active {
+  cursor: grabbing;
+}
+.cv-node-rect {
+  fill: var(--bg-panel);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.cv-node.selected .cv-node-rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.cv-node-body {
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: none;
+}
+.cv-node-file {
+  color: var(--accent);
+  font-weight: 600;
+}
+.cv-edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+.cv-edge.selected {
+  stroke: var(--accent);
+}
+.cv-arrow {
+  fill: var(--muted);
+}
+.cv-edge-label {
+  fill: var(--fg);
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+.cv-temp-edge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.cv-port {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+  cursor: crosshair;
+}
+.cv-resize {
+  fill: var(--accent);
+  cursor: nwse-resize;
+}
+.cv-edit {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  font-family: inherit;
 }
 
 /* ProseMirror 排版细节 */

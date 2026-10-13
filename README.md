@@ -33,7 +33,8 @@
 | **P2** | 简易知识图谱（Canvas 力导向，无外部依赖）                                                  | ✅ 已完成 |
 | **P2** | 版本快照 UI（历史备份列表 · 全文预览 · 一键回滚）                                       | ✅ 已完成 |
 | **P2** | 插件基础钩子系统（`.notelume-plugins/*.js`：快捷键 / 命令 / 输入规则 / 生命周期）      | ✅ 已完成 |
-| **P2** | 画布 · 移动端                                                                            | ⏳ 规划中 |
+| **P2** | 画布 · 白板（JSON Canvas 规范，与 Obsidian `.canvas` 互操作）                          | ✅ 已完成 |
+| **P2** | 移动端                                                                             | ⏳ 规划中 |
 
 ---
 
@@ -60,7 +61,7 @@ NoteLume/
 │   ├── tauri.conf.json
 │   └── src/
 │       ├── main.rs         # 入口（薄壳）
-│       └── lib.rs          # 22 个 #[tauri::command]：扫描/读写/wikilink/assets +
+│       └── lib.rs          # 23 个 #[tauri::command]：扫描/读写/wikilink/assets +
 │                            # 后台索引 · 双向链接 · 全局搜索 · 悬浮预览 · 备份 · 导出 · 图谱 · 快照 · 插件
 ├── src/                    # 前端 Web 工程（Vite 根）
 │   ├── index.html
@@ -73,6 +74,7 @@ NoteLume/
 │   ├── graph-view.js       # P2 知识图谱（Canvas 2D 力导向）
 │   ├── snapshot-panel.js   # P2 版本快照：历史列表 / 预览 / 回滚
 │   ├── plugin-loader.js    # P2 插件钩子：动态加载 / 快捷键注入 / 生命周期总线 / 面板
+│   ├── canvas-view.js      # P2 画布 / 白板：JSON Canvas 渲染 / 拖拽连线缩放 / 双击编辑
 │   ├── tauri-bridge.js     # Rust invoke 封装 + 系统对话框
 │   ├── style.css           # 类 Typora 排版 + 浅/暗/吸血鬼主题 + 新面板样式
 │   ├── vite.config.js
@@ -146,6 +148,7 @@ npm run build
 11. 工具条 🕸 图谱（或 Ctrl+G）打开知识图谱模态；拖平移、滚轮缩放、拖节点重定位、点节点跳文档，当前文档红点高亮
 12. 侧栏 📦 历史版本面板：列出当前文档历次保存/自动保存产生的快照（最新在前），点条目预览全文，右下角“↩ 回滚到此版本”一键覆盖（覆盖前会自动另存当前版，回滚可逆）
 13. 插件：把 `.js` 文件放进知识库根的 `.notelume-plugins/`，打开知识库后自动加载；侧栏 🔌 插件面板可启用/禁用（记忆）与点击执行插件命令。示例见 `examples/notelume-plugins/hello.js`（注册 Mod-Shift+H 快捷键 + 插入时间命令）
+14. 画布 / 白板：工具条 🗺 新画布 新建 `.canvas`（或双击画布空白处新建卡片）；拖拽移动 /  shift 多选 / 拖端口连线 / 拖角点缩放 / 双击编辑文字 / 六色色板 / 滚轮缩放 / ⤢ 适应；`.canvas` 文件遵循 JSON Canvas 规范，可被 Obsidian 直接打开互操作
 
 ---
 
@@ -189,6 +192,7 @@ npm run build
 - `assets/` 目前放在每个 md **同目录**（相对链接最稳）；库根级 `assets` 归一化留待后续
 - 备份文件写入 `.notelume-backup/`（已默认不入库根扫描）；P2 版本快照 UI 已提供历史列表 / 预览 / 一键回滚
 - 插件钩子（P2 v1）：`.notelume-plugins/*.js` 可注册快捷键 / 命令 / 输入规则 / 生命周期回调；暂不支持运行时扩展 schema（registerNodeSpec / MarkSpec），且无沙箱——插件与主线程同权，用户自担风险
+- 画布（P2 v1）：已覆盖卡片/连线/缩放/颜色/文件节点；多选对齐、分组、边箭头双端、JSON Canvas 其余字段（如 group）留待后续
 
 ---
 
