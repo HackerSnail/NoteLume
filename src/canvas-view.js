@@ -123,7 +123,7 @@ export function createCanvasView(deps) {
     nodeLayer.innerHTML = ''
     for (const e of data.edges) {
       const col = resolveColor(e.color)
-      const path = el('path', { d: edgeD(e), class: 'cv-edge' })
+      const path = el('path', { d: edgeD(e), class: 'cv-edge', 'data-edge-id': e.id })
       if (col) path.setAttribute('stroke', col)
       if (e.toEnd === 'arrow') path.setAttribute('marker-end', 'url(#cv-arrow)')
       if (e.fromEnd === 'arrow') path.setAttribute('marker-start', 'url(#cv-arrow)')
@@ -826,9 +826,174 @@ export function createCanvasView(deps) {
     applyView()
   }
 
+  // —— 右键上下文菜单（聚合已有能力：背景 / 卡片 / 连线三类）——
+  let menuEl = null
+  function closeMenu() {
+    if (menuEl && menuEl.parentNode) menuEl.parentNode.removeChild(menuEl)
+    menuEl = null
+  }
+  function onDocPointerForMenu(e) {
+    if (menuEl && !menuEl.contains(e.target)) closeMenu()
+  }
+  function onWinDismissMenu() {
+    closeMenu()
+  }
+  document.addEventListener('pointerdown', onDocPointerForMenu, true)
+  document.addEventListener('wheel', onWinDismissMenu, true)
+  window.addEventListener('resize', onWinDismissMenu)
+  window.addEventListener('blur', onWinDismissMenu)
+
+  svg.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    commitEdit()
+    const nodeEl = e.target.closest('[data-node-id]')
+    const edgeEl = e.target.closest('[data-edge-id]')
+    const items = []
+    if (nodeEl) {
+      const n = nodeById(nodeEl.getAttribute('data-node-id'))
+      if (n) {
+        if (!selected.has(n.id)) {
+          selected.clear()
+          selected.add(n.id)
+          render()
+        }
+        if (n.type === 'file') {
+          items.push({ label: '打开文件', onClick: () => { onOpenFile && onOpenFile(n.file); closeMenu() } })
+        } else {
+          items.push({ label: n.type === 'group' ? '编辑标签' : '编辑文字', hint: '双击', onClick: () => { startEdit(n, n.type === 'group' ? 'label' : 'text'); closeMenu() } })
+        }
+        items.push({ label: '复制', hint: 'Ctrl+C', onClick: () => { copySelection(); closeMenu() } })
+        items.push({ label: '删除', hint: 'Del', danger: true, onClick: () => { deleteSelection(); closeMenu() } })
+        if (n.type !== 'group') items.push({ el: makeColorRow() })
+        if (n.type === 'group') items.push({ label: '解组', onClick: () => { ungroupSelection(); closeMenu() } })
+        else if (selectedCards().length >= 2) items.push({ label: '编组', onClick: () => { groupSelection(); closeMenu() } })
+        if (selectedCards().length >= 2) items.push({ el: makeAlignRow() })
+        if (selectedCards().length >= 3) items.push({ el: makeDistributeRow() })
+      }
+    } else if (edgeEl) {
+      const ed = data.edges.find((x) => x.id === edgeEl.getAttribute('data-edge-id'))
+      if (ed) {
+        selected.clear()
+        selected.add(ed.id)
+        render()
+        items.push({ label: '编辑标签', hint: '双击', onClick: () => { startEditEdge(ed); closeMenu() } })
+        items.push({ label: '方向箭头', checked: ed.toEnd === 'arrow', onClick: () => { pushUndo(snapshot()); ed.toEnd = ed.toEnd === 'arrow' ? 'none' : 'arrow'; markDirty(); render(); closeMenu() } })
+        items.push({ label: '删除', danger: true, onClick: () => { deleteSelection(); closeMenu() } })
+      }
+    } else {
+      const w = screenToWorld(e.clientX, e.clientY)
+      items.push({ label: '新建卡片', hint: '双击', onClick: () => { addNode(w.x - DEFAULT_SIZE.width / 2, w.y - DEFAULT_SIZE.height / 2); closeMenu() } })
+      items.push({ label: '粘贴', hint: 'Ctrl+V', disabled: !clipboard.nodes.length, onClick: () => { pasteClipboard(); closeMenu() } })
+      items.push({ label: '全选', hint: 'Ctrl+A', onClick: () => { selected.clear(); for (const nn of data.nodes) if (nn.type !== 'group') selected.add(nn.id); render(); closeMenu() } })
+      items.push('-')
+      items.push({ label: '适应视图', onClick: () => { fitView(); closeMenu() } })
+      items.push({ label: '重置缩放', hint: '100%', onClick: () => { resetZoom(); closeMenu() } })
+    }
+    if (items.length) {
+      items.push('-')
+      items.push({ label: '撤销', hint: 'Ctrl+Z', disabled: !undoStack.length, onClick: () => { undo(); closeMenu() } })
+      items.push({ label: '重做', hint: 'Ctrl+Y', disabled: !redoStack.length, onClick: () => { redo(); closeMenu() } })
+      showMenu(e.clientX, e.clientY, items)
+    }
+  })
+
+  function showMenu(clientX, clientY, items) {
+    closeMenu()
+    const menu = document.createElement('div')
+    menu.className = 'cv-menu'
+    for (const it of items) {
+      if (it === '-') {
+        const s = document.createElement('div')
+        s.className = 'cv-menu-sep'
+        menu.appendChild(s)
+        continue
+      }
+      if (it.el) {
+        menu.appendChild(it.el)
+        continue
+      }
+      const b = document.createElement('button')
+      b.className = 'cv-menu-item' + (it.danger ? ' danger' : '')
+      const chk = document.createElement('span')
+      chk.className = 'cv-menu-check'
+      chk.textContent = it.checked ? '✓' : ''
+      b.appendChild(chk)
+      const lab = document.createElement('span')
+      lab.className = 'cv-menu-label'
+      lab.textContent = it.label
+      b.appendChild(lab)
+      if (it.hint) {
+        const h = document.createElement('span')
+        h.className = 'cv-menu-hint'
+        h.textContent = it.hint
+        b.appendChild(h)
+      }
+      if (it.disabled) b.disabled = true
+      else b.addEventListener('click', () => it.onClick && it.onClick())
+      menu.appendChild(b)
+    }
+    surface.appendChild(menu)
+    const r = surface.getBoundingClientRect()
+    let x = clientX - r.left
+    let y = clientY - r.top
+    const mw = menu.offsetWidth
+    const mh = menu.offsetHeight
+    if (x + mw > r.width - 4) x = Math.max(4, r.width - mw - 4)
+    if (y + mh > r.height - 4) y = Math.max(4, r.height - mh - 4)
+    menu.style.left = x + 'px'
+    menu.style.top = y + 'px'
+    menuEl = menu
+  }
+  function menuRow(label, children) {
+    const wrap = document.createElement('div')
+    wrap.className = 'cv-menu-row'
+    const l = document.createElement('span')
+    l.className = 'cv-menu-rowlabel'
+    l.textContent = label
+    wrap.appendChild(l)
+    for (const c of children) wrap.appendChild(c)
+    return wrap
+  }
+  function menuMini(txt, title, fn) {
+    const b = document.createElement('button')
+    b.className = 'cv-menu-mini'
+    b.textContent = txt
+    b.title = title
+    b.addEventListener('click', () => {
+      fn()
+      closeMenu()
+    })
+    return b
+  }
+  function makeColorRow() {
+    const kids = [colorSwatch(null, '默认', closeMenu)]
+    for (const key of Object.keys(PALETTE)) kids.push(colorSwatch(key, '颜色 ' + key, closeMenu))
+    return menuRow('颜色', kids)
+  }
+  function makeAlignRow() {
+    return menuRow('对齐', [
+      menuMini('⬅', '左对齐', () => alignSelection('left')),
+      menuMini('↔', '水平居中', () => alignSelection('hcenter')),
+      menuMini('➡', '右对齐', () => alignSelection('right')),
+      menuMini('⬆', '顶对齐', () => alignSelection('top')),
+      menuMini('↕', '垂直居中', () => alignSelection('vcenter')),
+      menuMini('⬇', '底对齐', () => alignSelection('bottom')),
+    ])
+  }
+  function makeDistributeRow() {
+    return menuRow('分布', [
+      menuMini('⇄', '水平等距', () => distributeSelection('h')),
+      menuMini('⇅', '垂直等距', () => distributeSelection('v')),
+    ])
+  }
+
   // —— 键盘 ——
   function onKeyDown(e) {
     if (mountEl.classList.contains('hidden')) return
+    if (menuEl) {
+      if (e.key === 'Escape') closeMenu()
+      return
+    }
     if (editing) return
     const mod = e.ctrlKey || e.metaKey
     if (mod && (e.key === 'z' || e.key === 'Z')) {
@@ -964,12 +1129,15 @@ export function createCanvasView(deps) {
     toolbar.appendChild(zoomLabel)
     toolbar.appendChild(mk('＋', '放大（Ctrl+）', () => zoomAt(1.2)))
   }
-  function colorSwatch(c, title) {
+  function colorSwatch(c, title, onPick) {
     const s = document.createElement('button')
     s.className = 'cv-swatch'
     s.title = title
     s.style.background = resolveColor(c) || 'var(--bg)'
-    s.addEventListener('click', () => setColor(c))
+    s.addEventListener('click', () => {
+      setColor(c)
+      if (onPick) onPick()
+    })
     return s
   }
   function centerWorld() {
@@ -980,6 +1148,7 @@ export function createCanvasView(deps) {
   // —— 对外 API ——
   async function open(path) {
     commitEdit()
+    closeMenu()
     const text = await readMdFile(deps.getVaultRoot(), path)
     let parsed
     try {
@@ -1003,6 +1172,7 @@ export function createCanvasView(deps) {
   }
 
   async function newBlank(path) {
+    closeMenu()
     data = { nodes: [], edges: [] }
     rel = path
     dirty = true
@@ -1033,6 +1203,11 @@ export function createCanvasView(deps) {
   }
   function destroy() {
     document.removeEventListener('keydown', onKeyDown)
+    document.removeEventListener('pointerdown', onDocPointerForMenu, true)
+    document.removeEventListener('wheel', onWinDismissMenu, true)
+    window.removeEventListener('resize', onWinDismissMenu)
+    window.removeEventListener('blur', onWinDismissMenu)
+    closeMenu()
   }
 
   applyView()
