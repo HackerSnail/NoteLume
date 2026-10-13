@@ -303,6 +303,75 @@ fn rename_item(vault_root: String, from: String, to: String) -> Result<(), Strin
     Ok(())
 }
 
+/// 基础64 解码（容忍空白，遇 `=` 截断）：用于外部拖入文件的字节回写
+fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
+    const TBL: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let clean: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut out: Vec<u8> = Vec::with_capacity(clean.len() * 3 / 4);
+    let mut buf: u32 = 0;
+    let mut bits: u32 = 0;
+    for ch in clean.chars() {
+        if ch == '=' {
+            break;
+        }
+        let v = TBL.iter().position(|c| *c as char == ch).ok_or("非法 base64 字符")? as u32;
+        buf = (buf << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Ok(out)
+}
+
+/// 从外部（系统拖入）导入一个文件到库内目录：dest_dir 限库内（不存在则创建），
+/// name 只取末段文件名（去除任何目录成分），同名不同内容时按内容指纹重命名，返回库内相对路径。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportArgs {
+    pub dest_dir_rel: String,
+    pub name: String,
+    pub data_base64: String,
+}
+
+#[tauri::command]
+fn import_vault_file(vault_root: String, args: ImportArgs) -> Result<String, String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let ndir = args.dest_dir_rel.trim().replace('\\', "/").trim_matches('/').to_string();
+    let abs_dir = vault_join(&root, &ndir)?;
+    fs::create_dir_all(&abs_dir).map_err(|e| e.to_string())?;
+    let dc = fs::canonicalize(&abs_dir).map_err(|e| e.to_string())?;
+    if !dc.starts_with(&root) {
+        return Err("非法路径：目标不在知识库根目录内".into());
+    }
+    let base = args.name.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("").trim().to_string();
+    if base.is_empty() || base == "." || base == ".." {
+        return Err("非法文件名".into());
+    }
+    let bytes = b64_decode(&args.data_base64)?;
+    let stem = base.rsplit_once('.').map_or(base.as_str(), |(s, _)| s).to_string();
+    let ext = base.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    let mut file_name = base.clone();
+    let mut dest = dc.join(&file_name);
+    if dest.exists() {
+        let same = fs::read(&dest).map(|o| o == bytes).unwrap_or(false);
+        if !same {
+            file_name = if ext.is_empty() {
+                format!("{}-{:x}", stem, fnv1a(&bytes))
+            } else {
+                format!("{}-{:x}.{}", stem, fnv1a(&bytes), ext)
+            };
+            dest = dc.join(&file_name);
+        }
+    }
+    if !dest.exists() {
+        fs::write(&dest, &bytes).map_err(|e| format!("导入失败：{}", e))?;
+    }
+    let rel = if ndir.is_empty() { file_name } else { format!("{}/{}", ndir, file_name) };
+    Ok(rel)
+}
+
 /// FNV-1a 64 位哈希：用于图片内容去重（同名不同内容时追加内容指纹）
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -1477,6 +1546,30 @@ mod tests {
     }
 
     #[test]
+    fn import_vault_file_writes_sanitizes_and_rejects_escape() {
+        let tmp = std::env::temp_dir().join(format!("notelume-import-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let root = tmp.to_string_lossy().to_string();
+        let b64 = "aGVsbG8=".to_string(); // "hello"
+
+        // 库根导入
+        let r = import_vault_file(root.clone(), ImportArgs { dest_dir_rel: "".into(), name: "note.md".into(), data_base64: b64.clone() }).unwrap();
+        assert_eq!(r, "note.md");
+        assert_eq!(fs::read_to_string(tmp.join("note.md")).unwrap(), "hello");
+        // 指定子目录（不存在则创建）；name 带外部绝对路径 → 只取末段
+        let r2 = import_vault_file(root.clone(), ImportArgs { dest_dir_rel: "sub".into(), name: "c:/x/y/pic.png".into(), data_base64: b64.clone() }).unwrap();
+        assert_eq!(r2, "sub/pic.png");
+        assert!(tmp.join("sub").join("pic.png").exists());
+        // dest_dir 借 .. 越界 → 拒
+        assert!(import_vault_file(root.clone(), ImportArgs { dest_dir_rel: "../out".into(), name: "a.md".into(), data_base64: b64.clone() }).is_err());
+        // name 只取到 .. → 拒
+        assert!(import_vault_file(root.clone(), ImportArgs { dest_dir_rel: "".into(), name: "../..".into(), data_base64: b64.clone() }).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn read_backup_reads_inside_and_rejects_outside() {
         // 临时库：写一份 .notelume-backup/<day>/<stem>-HH-MM-SS.md 快照
         let tmp = std::env::temp_dir().join(format!("notelume-backup-test-{}", std::process::id()));
@@ -1625,6 +1718,7 @@ pub fn run() {
             delete_file,
             create_dir,
             rename_item,
+            import_vault_file,
             copy_image_asset,
             save_image_bytes,
             read_image_data_uri,

@@ -16,7 +16,7 @@
 | 批次 | 功能 | 新增依赖 | 风险 | 状态 |
 |---|---|---|---|---|
 | 1 | Frontmatter（YAML 头）保留 + 编辑面板 | `js-yaml` | 低 | ✅ 已完成 |
-| 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ⏳ 进行中（2A 完成） |
+| 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ✅ 已完成 |
 | 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ⬜ 待做 |
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 plugin，可选 suggest 库） | 中 | ⬜ 待做 |
 | 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列表 / 列宽拖拽 | `prosemirror-tables` | 中 | ⬜ 待做 |
@@ -72,11 +72,13 @@
 
 ---
 
-## 2. 文件树基础操作 ⏳
+## 2. 文件树基础操作 ✅
 
-> **2A 已完成**（本批上半）：新 Rust 命令 `create_dir` / `rename_item`（重命名与移动合一，走 `vault_join`/`abs_in_vault` 限库内 + 拒绝 `..` + 不静默覆盖 + 禁止文件夹移入自身，附 `cargo test` 单测）；前端右键菜单补齐——文件项「打开 / 重命名·移动 / 移入回收站」、文件夹「新建文件 / 新建文件夹 / 重命名·移动」、树空白区「库根新建」；新建应用内单行输入模态 `src/prompt-dialog.js`（Tauri webview 下 `window.prompt` 不可靠）；重命名/移动后走 `startIndexPolling()` 重建索引，并 `remapCurrentAfterRename` 保内容不重加载只改当前路径标识。`npm run build:web` 151 modules 通过、往返 18 passed、`cargo test` 13 passed。
+> **2A 已完成**：新 Rust 命令 `create_dir` / `rename_item`（重命名与移动合一）+ 前端右键菜单三态（文件/文件夹/空白区）+ 应用内输入模态 `src/prompt-dialog.js`；重命名/移动后 `startIndexPolling()` 重建索引 + `remapCurrentAfterRename`。`cargo test` 单测覆盖越界/重名/不静默覆盖/禁止文件夹入自身。
 >
-> **2B 待做**（本批下半）：① 内部拖拽移动（拖文件到文件夹，HTML5 drag + 目标高亮，落点调 `rename_item`）；② 从系统拖入外部 `.md`/图片导入库（`@tauri-apps/api/webview` `onDragDropEvent` 拿绝对路径 → 复用 `copy_image_asset` 思路拷贝入内）。
+> **2B 已完成**：① **内部拖拽移动**——文件/文件夹 `draggable`，事件委托 dragstart/dragover/drop 在 `els.tree` 上，目标解析（拖到文件夹→该文件夹 / 拖到文件→其所在目录 / 空白→库根），落点走 `rename_item`，目标高亮 `.tree-drop-hover`；② **外部拖入导入**——复用编辑区已有的 DOM `dataTransfer.files` 机制（非 Tauri 原生事件），新 Rust 命令 `import_vault_file(dest_dir_rel, name, data_base64)`（限库内 + 名称只取末段 + 同名不同内容按 fnv1a 指纹重命名），前端只放行 `.md`/`.canvas`/图片白名单。`npm run build:web` 151 modules、`cargo test` 14 passed（+import 单测）。
+>
+> 遗留已知近似：拖拽/重命名后全库指向旧路径的 `[[链接]]` 不回写（与删除同类，靠 rebuild 纠正）；OS 拖入依靠 dataTransfer.files（若本环境 dragDropEnabled 不交回文件，需改接 `@tauri-apps/api/webview` 原生事件）。
 
 **目标**：右键菜单补齐 新建文件 / 新建文件夹 / 重命名 / 移动（拖拽到文件夹）；支持从系统拖入 `.md` / 图片导入到库。
 

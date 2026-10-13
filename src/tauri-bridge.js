@@ -76,6 +76,22 @@ export function renameItem(vaultRoot, from, to) {
   return invoke('rename_item', { vaultRoot, from, to })
 }
 
+const IMG_EXT_SET = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'])
+
+/** 判断一个外部拖入的文件是否可导入（与文件树一致的 .md/.canvas + 图片白名单） */
+export function isImportableFileName(name) {
+  const n = (name || '').toLowerCase()
+  if (n.endsWith('.md') || n.endsWith('.canvas')) return true
+  const dot = n.lastIndexOf('.')
+  return dot > 0 && IMG_EXT_SET.has(n.slice(dot + 1))
+}
+
+/** 把系统拖入的浏览器 File 导入到库内目录（文档进目录、图片也同目录），返回库内相对路径 */
+export async function importVaultFileFrom(vaultRoot, destDirRel, file) {
+  const dataBase64 = await fileToBase64(file)
+  return invoke('import_vault_file', { vaultRoot, args: { destDirRel, name: file.name, dataBase64 } })
+}
+
 /**
  * 保存剪贴板/拖拽的图片字节到库内 assets/，返回可写入 md 的相对链接。
  * file 为浏览器 File 对象。

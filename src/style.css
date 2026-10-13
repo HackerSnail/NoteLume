@@ -180,6 +180,20 @@ body {
   color: #fff;
 }
 
+/* 拖拽移动 / 外部导入：目标高亮 */
+.tree-file[draggable] {
+  user-select: none;
+}
+.tree-folder > summary {
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tree-drop-hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
 /* 大纲 */
 .outline {
   display: flex;

@@ -16,6 +16,8 @@ import {
   deleteFile,
   createDir,
   renameItem,
+  isImportableFileName,
+  importVaultFileFrom,
   confirmDialog,
   messageDialog,
   rebuildIndex,
@@ -243,6 +245,7 @@ function renderTree(nodes) {
   els.tree.innerHTML = ''
   els.tree.appendChild(ul)
   bindTreeBgMenu()
+  bindTreeDnd()
 }
 
 // 文件树空白区右键→在库根新建（子节点的 contextmenu 已 stopPropagation，只有真空白会到达这里）
@@ -256,6 +259,128 @@ function bindTreeBgMenu() {
   })
 }
 
+// —— 拖拽：内部移动 + 外部拖入导入（事件委托，绑定一次） ——
+let treeDndBound = false
+let dragRel = null
+let dragIsFolder = false
+let dropHlEl = null
+function setDropHl(el) {
+  if (dropHlEl === el) return
+  if (dropHlEl) dropHlEl.classList.remove('tree-drop-hover')
+  dropHlEl = el || null
+  if (dropHlEl) dropHlEl.classList.add('tree-drop-hover')
+}
+function clearDropHl() {
+  if (dropHlEl) dropHlEl.classList.remove('tree-drop-hover')
+  dropHlEl = null
+}
+// 根据光标下元素解析目标目录（拖到文件→其所在目录；拖到文件夹/其区域→该文件夹；空白→库根）
+function resolveDropTarget(target) {
+  if (target && target.closest) {
+    const file = target.closest('.tree-file')
+    if (file) {
+      const details = file.closest('details[data-path]')
+      const sum = details ? details.querySelector(':scope > summary') : null
+      return { destDir: parentOf(file.dataset.path), hl: sum || els.tree }
+    }
+    const sum = target.closest('summary[data-kind="folder"]')
+    if (sum) return { destDir: sum.dataset.path, hl: sum }
+    const det = target.closest('details[data-path]')
+    if (det) {
+      const s = det.querySelector(':scope > summary')
+      return { destDir: det.dataset.path, hl: s || els.tree }
+    }
+  }
+  return { destDir: '', hl: els.tree }
+}
+function bindTreeDnd() {
+  if (treeDndBound) return
+  treeDndBound = true
+  els.tree.addEventListener('dragstart', (e) => {
+    const el = e.target.closest && e.target.closest('[data-kind]')
+    if (!el || !el.dataset.path) return
+    dragRel = el.dataset.path
+    dragIsFolder = el.dataset.kind === 'folder'
+    try {
+      e.dataTransfer.setData('application/notelume-tree', dragRel)
+      e.dataTransfer.effectAllowed = 'move'
+    } catch (_) {}
+  })
+  els.tree.addEventListener('dragend', () => {
+    dragRel = null
+    dragIsFolder = false
+    clearDropHl()
+  })
+  els.tree.addEventListener('dragover', (e) => {
+    const hasFiles = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')
+    if (!dragRel && !hasFiles) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = dragRel ? 'move' : 'copy'
+    setDropHl(resolveDropTarget(e.target).hl)
+  })
+  els.tree.addEventListener('dragleave', (e) => {
+    if (e.target === els.tree || !els.tree.contains(e.relatedTarget)) clearDropHl()
+  })
+  els.tree.addEventListener('drop', (e) => {
+    e.preventDefault()
+    const { destDir } = resolveDropTarget(e.target)
+    clearDropHl()
+    const files = e.dataTransfer && e.dataTransfer.files
+    if (dragRel) {
+      const src = dragRel
+      const isF = dragIsFolder
+      dragRel = null
+      dragIsFolder = false
+      doMove(src, isF, destDir)
+    } else if (files && files.length) {
+      importDroppedFiles(files, destDir)
+    }
+  })
+}
+
+async function doMove(srcRel, isFolder, destDir) {
+  if (!state.vaultRoot || !srcRel) return
+  const newRel = joinRel(destDir, baseName(srcRel))
+  if (newRel === srcRel) return // 原地，不处理
+  try {
+    await renameItem(state.vaultRoot, srcRel, newRel)
+    remapCurrentAfterRename(srcRel, newRel, isFolder)
+    renderTree(await scanVault(state.vaultRoot))
+    startIndexPolling()
+    setStatus('已移动：' + srcRel + ' → ' + newRel)
+  } catch (e) {
+    await messageDialog('移动失败：' + errText(e))
+  }
+}
+
+async function importDroppedFiles(files, destDir) {
+  if (!state.vaultRoot) {
+    setStatus('请先打开知识库文件夹')
+    return
+  }
+  const list = Array.from(files || [])
+  const ok = list.filter((f) => isImportableFileName(f.name))
+  const bad = list.filter((f) => !isImportableFileName(f.name))
+  if (!ok.length) {
+    if (bad.length) await messageDialog('不支持导入的文件类型：' + bad.map((f) => f.name).join(', '))
+    return
+  }
+  const imported = []
+  for (const f of ok) {
+    try {
+      const rel = await importVaultFileFrom(state.vaultRoot, destDir, f)
+      imported.push(rel)
+    } catch (e) {
+      await messageDialog('导入失败 ' + f.name + '：' + errText(e))
+    }
+  }
+  if (imported.length) {
+    renderTree(await scanVault(state.vaultRoot))
+    startIndexPolling()
+    setStatus('已导入 ' + imported.length + ' 个文件')
+  }
+}
+
 function renderNode(node) {
   if (node.type === 'folder') {
     const details = document.createElement('details')
@@ -265,6 +390,9 @@ function renderNode(node) {
     const summary = document.createElement('summary')
     summary.textContent = node.name
     summary.title = node.path
+    summary.draggable = true
+    summary.dataset.path = node.path
+    summary.dataset.kind = 'folder'
     summary.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -280,6 +408,8 @@ function renderNode(node) {
   li.className = 'tree-file'
   li.textContent = node.name
   li.dataset.path = node.path
+  li.dataset.kind = 'file'
+  li.draggable = true
   li.title = node.path
   li.addEventListener('click', () => openFile(node.path))
   li.addEventListener('contextmenu', (e) => {
