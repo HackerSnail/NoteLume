@@ -53,7 +53,7 @@ export function createCanvasView(deps) {
   const svg = el('svg')
   svg.setAttribute('class', 'cv-svg')
   const defs = el('defs')
-  const marker = el('marker', { id: 'cv-arrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' })
+  const marker = el('marker', { id: 'cv-arrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '10', markerHeight: '10', markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse' })
   marker.appendChild(el('path', { d: 'M0,0 L10,5 L0,10 z', class: 'cv-arrow' }))
   defs.appendChild(marker)
   svg.appendChild(defs)
@@ -120,15 +120,21 @@ export function createCanvasView(deps) {
     edgeLayer.innerHTML = ''
     nodeLayer.innerHTML = ''
     for (const e of data.edges) {
-      const path = el('path', { d: edgeD(e), class: 'cv-edge' })
       const col = resolveColor(e.color)
+      const path = el('path', { d: edgeD(e), class: 'cv-edge' })
       if (col) path.setAttribute('stroke', col)
+      if (e.toEnd === 'arrow') path.setAttribute('marker-end', 'url(#cv-arrow)')
+      if (e.fromEnd === 'arrow') path.setAttribute('marker-start', 'url(#cv-arrow)')
       if (selected.has(e.id)) path.classList.add('selected')
       path.addEventListener('pointerdown', (ev) => {
         ev.stopPropagation()
         selected.clear()
         selected.add(e.id)
         render()
+      })
+      path.addEventListener('dblclick', (ev) => {
+        ev.stopPropagation()
+        startEditEdge(e)
       })
       edgeLayer.appendChild(path)
       if (e.label) {
@@ -211,6 +217,36 @@ export function createCanvasView(deps) {
     }
   }
 
+  // —— 撤销 / 重做（快照式历史栈，按手势/离散操作粒度入栈）——
+  const undoStack = []
+  const redoStack = []
+  function snapshot() {
+    // 深拷数据，并剔除下划线开头的渲染临时字段（_mid 等）
+    return JSON.parse(JSON.stringify(data, (k, v) => (k.startsWith('_') ? undefined : v)))
+  }
+  function pushUndo(prev) {
+    if (!prev) return
+    undoStack.push(prev)
+    if (undoStack.length > 100) undoStack.shift()
+    redoStack.length = 0
+  }
+  function undo() {
+    if (!undoStack.length) return
+    redoStack.push(snapshot())
+    data = undoStack.pop()
+    selected.clear()
+    markDirty()
+    render()
+  }
+  function redo() {
+    if (!redoStack.length) return
+    undoStack.push(snapshot())
+    data = redoStack.pop()
+    selected.clear()
+    markDirty()
+    render()
+  }
+
   // —— 交互：pointerdown 分派 ——
   svg.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return
@@ -221,10 +257,10 @@ export function createCanvasView(deps) {
     const w = screenToWorld(e.clientX, e.clientY)
 
     if (portEl && nodeEl) {
-      drag = { kind: 'connect', fromNode: nodeEl.getAttribute('data-node-id'), fromSide: portEl.getAttribute('data-port'), cur: w, hover: null }
+      drag = { kind: 'connect', fromNode: nodeEl.getAttribute('data-node-id'), fromSide: portEl.getAttribute('data-port'), cur: w, hover: null, snapshot: snapshot() }
     } else if (resizeEl && nodeEl) {
       const n = nodeById(nodeEl.getAttribute('data-node-id'))
-      drag = { kind: 'resize', node: n, startW: n.width, startH: n.height, origin: w }
+      drag = { kind: 'resize', node: n, startW: n.width, startH: n.height, origin: w, snapshot: snapshot() }
     } else if (nodeEl) {
       const id = nodeEl.getAttribute('data-node-id')
       if (!selected.has(id)) {
@@ -244,7 +280,7 @@ export function createCanvasView(deps) {
           for (const m of membersOf(nn)) if (!starts[m.id]) starts[m.id] = { x: m.x, y: m.y }
         }
       }
-      drag = { kind: 'move', starts, origin: w, moved: false }
+      drag = { kind: 'move', starts, origin: w, moved: false, snapshot: snapshot() }
     } else {
       // 背景：平移；若几乎没移动则视为点击 → 取消选择
       drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, tx0: view.tx, ty0: view.ty, moved: false }
@@ -300,20 +336,28 @@ export function createCanvasView(deps) {
         render()
       }
     } else if (d.kind === 'move') {
-      if (d.moved) markDirty()
+      if (d.moved) {
+        pushUndo(d.snapshot)
+        markDirty()
+      }
     } else if (d.kind === 'resize') {
-      markDirty()
+      if (d.node && (d.node.width !== d.startW || d.node.height !== d.startH)) {
+        pushUndo(d.snapshot)
+        markDirty()
+      }
     } else if (d.kind === 'connect') {
       removeTempEdge()
       if (d.hover) {
         const src = nodeById(d.fromNode)
         const dst = nodeById(d.hover)
+        pushUndo(d.snapshot)
         data.edges.push({
           id: uid(),
           fromNode: d.fromNode,
           fromSide: d.fromSide || autoSide(src, dst),
           toNode: d.hover,
           toSide: autoSide(dst, src),
+          toEnd: 'arrow',
         })
         markDirty()
       }
@@ -387,8 +431,9 @@ export function createCanvasView(deps) {
   // —— 文本编辑浮层 ——
   function startEdit(n, field = 'text') {
     commitEdit()
+    const undoPrev = snapshot()
     const ta = document.createElement('textarea')
-    ta.className = 'cv-edit'
+    ta.className = field === 'label' ? 'cv-edit cv-edit-edge' : 'cv-edit'
     ta.value = n[field] || ''
     const sx = n.x * view.k + view.tx
     const sy = n.y * view.k + view.ty
@@ -399,7 +444,7 @@ export function createCanvasView(deps) {
     surface.appendChild(ta)
     ta.focus()
     ta.setSelectionRange(ta.value.length, ta.value.length)
-    editing = { node: n, ta, field }
+    editing = { node: n, ta, field, undoPrev }
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         ev.stopPropagation()
@@ -410,19 +455,47 @@ export function createCanvasView(deps) {
   }
   function commitEdit() {
     if (!editing) return
-    const { node, ta, field } = editing
+    const { node, ta, field, undoPrev } = editing
     const v = ta.value
     editing = null
     if (ta.parentNode) ta.parentNode.removeChild(ta)
     if ((node[field] || '') !== v) {
+      if (undoPrev) pushUndo(undoPrev)
       node[field] = v
       markDirty()
       render()
     }
   }
 
+  function startEditEdge(edge) {
+    commitEdit()
+    const undoPrev = snapshot()
+    const ta = document.createElement('textarea')
+    ta.className = 'cv-edit cv-edit-edge'
+    ta.value = edge.label || ''
+    const mid = edge._mid || { x: 0, y: 0 }
+    const sx = mid.x * view.k + view.tx
+    const sy = mid.y * view.k + view.ty
+    ta.style.left = sx - 70 + 'px'
+    ta.style.top = sy - 13 + 'px'
+    ta.style.width = '140px'
+    ta.style.height = '26px'
+    surface.appendChild(ta)
+    ta.focus()
+    ta.setSelectionRange(ta.value.length, ta.value.length)
+    editing = { node: edge, ta, field: 'label', undoPrev }
+    ta.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') {
+        ev.stopPropagation()
+        commitEdit()
+      }
+    })
+    ta.addEventListener('blur', () => commitEdit())
+  }
+
   // —— 模型操作 ——
   function addNode(x, y, type) {
+    pushUndo(snapshot())
     const n = { id: uid(), type: type || 'text', x: Math.round(x), y: Math.round(y), width: DEFAULT_SIZE.width, height: DEFAULT_SIZE.height, text: '' }
     data.nodes.push(n)
     selected.clear()
@@ -434,6 +507,7 @@ export function createCanvasView(deps) {
   }
   function deleteSelection() {
     if (!selected.size) return
+    pushUndo(snapshot())
     const ids = new Set(selected)
     data.nodes = data.nodes.filter((n) => !ids.has(n.id))
     data.edges = data.edges.filter((e) => !ids.has(e.id) && !ids.has(e.fromNode) && !ids.has(e.toNode))
@@ -442,6 +516,7 @@ export function createCanvasView(deps) {
     render()
   }
   function setColor(c) {
+    const prev = snapshot()
     let hit = false
     for (const id of selected) {
       const n = nodeById(id)
@@ -451,6 +526,7 @@ export function createCanvasView(deps) {
       }
     }
     if (hit) {
+      pushUndo(prev)
       markDirty()
       render()
     }
@@ -469,6 +545,7 @@ export function createCanvasView(deps) {
   function alignSelection(mode) {
     const nodes = selectedCards()
     if (nodes.length < 2) return
+    pushUndo(snapshot())
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const n of nodes) {
       minX = Math.min(minX, n.x); minY = Math.min(minY, n.y)
@@ -487,6 +564,7 @@ export function createCanvasView(deps) {
   function distributeSelection(axis) {
     const nodes = selectedCards()
     if (nodes.length < 3) return
+    pushUndo(snapshot())
     nodes.sort((a, b) => (axis === 'h' ? a.x - b.x : a.y - b.y))
     const first = nodes[0], last = nodes[nodes.length - 1]
     const startC = axis === 'h' ? first.x + first.width / 2 : first.y + first.height / 2
@@ -502,6 +580,7 @@ export function createCanvasView(deps) {
   function groupSelection() {
     const nodes = selectedCards()
     if (nodes.length < 2) return
+    pushUndo(snapshot())
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const n of nodes) {
       minX = Math.min(minX, n.x); minY = Math.min(minY, n.y)
@@ -516,6 +595,7 @@ export function createCanvasView(deps) {
   function ungroupSelection() {
     const ids = [...selected].filter((id) => { const n = nodeById(id); return n && n.type === 'group' })
     if (!ids.length) return
+    pushUndo(snapshot())
     data.nodes = data.nodes.filter((n) => !ids.includes(n.id))
     selected.clear(); markDirty(); render()
   }
@@ -551,6 +631,18 @@ export function createCanvasView(deps) {
   function onKeyDown(e) {
     if (mountEl.classList.contains('hidden')) return
     if (editing) return
+    const mod = e.ctrlKey || e.metaKey
+    if (mod && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+      return
+    }
+    if (mod && (e.key === 'y' || e.key === 'Y')) {
+      e.preventDefault()
+      redo()
+      return
+    }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (selected.size) {
         e.preventDefault()
@@ -572,6 +664,9 @@ export function createCanvasView(deps) {
       b.addEventListener('click', fn)
       return b
     }
+    toolbar.appendChild(mk('↶', '撤销（Ctrl+Z）', undo))
+    toolbar.appendChild(mk('↷', '重做（Ctrl+Shift+Z / Ctrl+Y）', redo))
+    const sepU = document.createElement('span'); sepU.className = 'cv-sep'; toolbar.appendChild(sepU)
     toolbar.appendChild(mk('➕ 卡片', '新建文本卡片（或双击画布空白处）', () => {
       const c = centerWorld()
       addNode(c.x - DEFAULT_SIZE.width / 2, c.y - DEFAULT_SIZE.height / 2)
@@ -640,6 +735,8 @@ export function createCanvasView(deps) {
     dirty = false
     onDirty && onDirty(false)
     selected.clear()
+    undoStack.length = 0
+    redoStack.length = 0
     render()
     fitView()
   }
@@ -655,11 +752,13 @@ export function createCanvasView(deps) {
     view.ty = 80
     applyView()
     addNode(0, 0) // 固定放在世界原点 → 屏幕 (80,80)，不依赖容器尺寸，永不出屏
+    undoStack.length = 0
+    redoStack.length = 0
   }
 
   async function save() {
     if (!rel) return
-    await writeMdFile(deps.getVaultRoot(), rel, JSON.stringify(data, null, 2))
+    await writeMdFile(deps.getVaultRoot(), rel, JSON.stringify(data, (k, v) => (k.startsWith('_') ? undefined : v), 2))
     dirty = false
     onDirty && onDirty(false)
   }
