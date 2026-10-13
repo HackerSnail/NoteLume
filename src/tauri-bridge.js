@@ -10,6 +10,17 @@ export async function pickFolder() {
   return typeof picked === 'string' ? picked : null
 }
 
+/** 打开单个 Markdown 文件选择器，返回绝对路径（取消返回 null） */
+export async function pickFile() {
+  const picked = await open({
+    directory: false,
+    multiple: false,
+    title: '选择 Markdown 文件',
+    filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
+  })
+  return typeof picked === 'string' ? picked : null
+}
+
 /** 另存为对话框（导出用，P1） */
 export async function pickSaveAs(defaultPath) {
   return await save({ defaultPath, title: '保存文件' })

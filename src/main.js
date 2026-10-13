@@ -2,6 +2,7 @@
 import { createEditor } from './editor-view.js'
 import {
   pickFolder,
+  pickFile,
   scanVault,
   readMdFile,
   writeMdFile,
@@ -26,6 +27,7 @@ const els = {
   filename: $('filename'),
   status: $('status'),
   btnOpen: $('btn-open'),
+  btnOpenFile: $('btn-open-file'),
   btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
 }
@@ -61,6 +63,51 @@ async function openFolder() {
     setStatus('打开失败：' + msg)
     await messageDialog('打开知识库失败：' + msg)
   }
+}
+
+// —— 打开单个文件（把文件所在目录作为工作根，保存/图片/wikilink 都依赖一个根）——
+function splitAbs(p) {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i < 0 ? { dir: '', name: p } : { dir: p.slice(0, i), name: p.slice(i + 1) }
+}
+
+async function openSingleFile() {
+  try {
+    if (state.dirty) {
+      const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '打开文件')
+      if (!ok) return
+    }
+    const abs = await pickFile()
+    if (!abs) return
+    const { dir, name } = splitAbs(abs)
+    state.vaultRoot = dir
+    const md = await readMdFile(dir, name)
+    state.currentFile = name
+    editor.setMarkdown(md)
+    els.filename.textContent = abs
+    renderSingleFileTree(name)
+    setStatus('已打开文件：' + abs)
+    editor.focus()
+  } catch (e) {
+    const msg = (e && e.message) || e
+    setStatus('打开文件失败：' + msg)
+    await messageDialog('打开文件失败：' + msg)
+  }
+}
+
+// 单文件模式：侧栏只列当前这一个文件（不铺开整个目录）
+function renderSingleFileTree(name) {
+  const li = document.createElement('li')
+  li.className = 'tree-file active'
+  li.textContent = name
+  li.dataset.path = name
+  li.title = name
+  li.addEventListener('click', () => openFile(name))
+  const ul = document.createElement('ul')
+  ul.className = 'tree-root'
+  ul.appendChild(li)
+  els.tree.innerHTML = ''
+  els.tree.appendChild(ul)
 }
 
 // —— 渲染文件树（folder 用 <details> 折叠，file 用可点击项）——
@@ -211,7 +258,8 @@ function bindShortcuts() {
       saveCurrent()
     } else if (key === 'o') {
       e.preventDefault()
-      openFolder()
+      if (e.shiftKey) openFolder()
+      else openSingleFile()
     }
   })
 }
@@ -231,6 +279,7 @@ async function boot() {
   applyTheme(localStorage.getItem('nl-theme') || 'light')
 
   els.btnOpen.addEventListener('click', openFolder)
+  els.btnOpenFile.addEventListener('click', openSingleFile)
   els.btnSave.addEventListener('click', saveCurrent)
   els.btnTheme.addEventListener('click', toggleTheme)
   bindShortcuts()
