@@ -230,14 +230,14 @@ fn create_md_file(vault_root: String, args: CreateDocArgs) -> Result<String, Str
     Ok(rel)
 }
 
-/// 删除库内单个文件（md / canvas）：路径经 abs_in_vault 限定库内，拒绝目录与越界。
+/// 把库内单个文件（md / canvas）移入系统回收站：路径经 abs_in_vault 限定库内，拒绝目录与越界。
 #[tauri::command]
 fn delete_file(vault_root: String, path: String) -> Result<(), String> {
     let abs = abs_in_vault(&vault_root, &path)?;
     if abs.is_dir() {
         return Err("不支持删除文件夹".into());
     }
-    fs::remove_file(&abs).map_err(|e| format!("删除失败：{}", e))?;
+    trash::delete(&abs).map_err(|e| format!("移入回收站失败：{}", e))?;
     Ok(())
 }
 
@@ -1289,7 +1289,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_file_removes_inside_and_rejects_escape() {
+    fn delete_file_rejects_escape_dir_and_missing() {
         let tmp = std::env::temp_dir().join(format!("notelume-del-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
@@ -1304,9 +1304,9 @@ mod tests {
         assert!(delete_file(root.clone(), "sub".to_string()).is_err());
         // 不存在的文件被拒
         assert!(delete_file(root.clone(), "ghost.md".to_string()).is_err());
-        // 正常删除库内文件
-        delete_file(root.clone(), "note.md".to_string()).unwrap();
-        assert!(!tmp.join("note.md").exists());
+        // 三条拒绝均在调用回收站前就返回 Err，note.md 应仍在原处
+        assert!(tmp.join("note.md").exists());
+        // 注：成功路径会真的把文件移入系统回收站，为避免污染用户回收站，happy path 交由手动验证
 
         let _ = fs::remove_dir_all(&tmp);
     }

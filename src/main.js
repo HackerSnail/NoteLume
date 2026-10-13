@@ -307,7 +307,7 @@ function showTreeMenu(clientX, clientY, rel, name) {
 
 async function deleteVaultFile(rel, name) {
   if (!state.vaultRoot) return
-  const ok = await confirmDialog(`确定删除「${name}」？此操作会直接从磁盘删除该文件，不可撤销。`, '删除文件')
+  const ok = await confirmDialog(`确定把「${name}」移入系统回收站？（可从回收站恢复）`, '移入回收站')
   if (!ok) return
   try {
     await deleteFile(state.vaultRoot, rel)
@@ -323,7 +323,7 @@ async function deleteVaultFile(rel, name) {
       if (snapshotPanel) snapshotPanel.refresh()
     }
     renderTree(await scanVault(state.vaultRoot))
-    setStatus('已删除：' + rel)
+    setStatus('已移入回收站：' + rel)
   } catch (e) {
     await messageDialog('删除失败：' + ((e && e.message) || e))
   }
