@@ -262,7 +262,22 @@ body {
   border-radius: 8px;
   padding: 12px 14px;
   overflow-x: auto;
+  position: relative;
   line-height: 1.5;
+}
+/* Typora 风格：右下角语言标签 */
+.ProseMirror pre[data-language]::after {
+  content: attr(data-language);
+  position: absolute;
+  bottom: 5px;
+  right: 10px;
+  font-size: 11px;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  color: var(--muted);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.7;
+  line-height: 1;
 }
 .ProseMirror pre code {
   background: none;

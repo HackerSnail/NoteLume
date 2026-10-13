@@ -202,6 +202,18 @@ const extendedNodes = baseSchema.spec.nodes
       },
     ],
   })
+  // 代码块：显示语言标签（Typora 风格，右下角）
+  .update('code_block', {
+    group: 'block',
+    code: true,
+    defining: true,
+    attrs: { params: { default: '' } },
+    parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }],
+    toDOM(node) {
+      const lang = (node.attrs.params || '').trim().split(/\s+/)[0]
+      return ['pre', lang ? { 'data-language': lang } : {}, ['code', 0]]
+    },
+  })
 
 const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
   parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
