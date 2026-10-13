@@ -408,6 +408,13 @@ body {
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
+.cv-guide {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
 .cv-edge-label {
   fill: var(--fg);
   font-size: 12px;

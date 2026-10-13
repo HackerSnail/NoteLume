@@ -346,6 +346,18 @@ export function createCanvasView(deps) {
           n.y = Math.round(drag.starts[nid].y + dy)
         }
       }
+      // 智能对齐：拖近其他卡片边缘/中心时磁吸并显示参考线（按住 Alt 临时禁用）
+      const moving = Object.keys(drag.starts).map((id) => nodeById(id)).filter(Boolean)
+      if (moving.length && !e.altKey) {
+        const ids = new Set(Object.keys(drag.starts))
+        const snap = computeSnap(moving, ids)
+        if (snap.dx || snap.dy) for (const n of moving) { n.x += snap.dx; n.y += snap.dy }
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+        for (const n of moving) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + n.width); y1 = Math.max(y1, n.y + n.height) }
+        drawGuides(snap, { x0, y0, x1, y1 })
+      } else {
+        clearGuides()
+      }
       render()
     } else if (drag.kind === 'resize') {
       drag.node.width = Math.max(80, Math.round(drag.startW + (w.x - drag.origin.x)))
@@ -382,6 +394,7 @@ export function createCanvasView(deps) {
       clearMarquee()
       render()
     } else if (d.kind === 'move') {
+      clearGuides()
       if (d.moved) {
         pushUndo(d.snapshot)
         markDirty()
@@ -440,6 +453,50 @@ export function createCanvasView(deps) {
     const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x)
     const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y)
     return data.nodes.filter((n) => n.type !== 'group' && n.x < x1 && n.x + n.width > x0 && n.y < y1 && n.y + n.height > y0)
+  }
+
+  // 智能对齐：磁吸 + 参考线
+  let guideEls = []
+  function computeSnap(moving, idsSet) {
+    const tol = 8 / view.k
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity
+    for (const n of moving) {
+      mnx = Math.min(mnx, n.x); mny = Math.min(mny, n.y)
+      mxx = Math.max(mxx, n.x + n.width); mxy = Math.max(mxy, n.y + n.height)
+    }
+    const mxC = (mnx + mxx) / 2, myC = (mny + mxy) / 2
+    const xs = [], ys = []
+    for (const n of data.nodes) {
+      if (idsSet.has(n.id)) continue
+      xs.push(n.x, n.x + n.width / 2, n.x + n.width)
+      ys.push(n.y, n.y + n.height / 2, n.y + n.height)
+    }
+    let dx = 0, dxAbs = tol, vx = null
+    for (const mv of [mnx, mxC, mxx]) for (const s of xs) {
+      const d = s - mv
+      if (Math.abs(d) < dxAbs) { dxAbs = Math.abs(d); dx = d; vx = s }
+    }
+    let dy = 0, dyAbs = tol, hy = null
+    for (const mv of [mny, myC, mxy]) for (const s of ys) {
+      const d = s - mv
+      if (Math.abs(d) < dyAbs) { dyAbs = Math.abs(d); dy = d; hy = s }
+    }
+    return { dx: Math.round(dx), dy: Math.round(dy), vx, hy }
+  }
+  function drawGuides(g, bbox) {
+    clearGuides()
+    if (g.vx != null) {
+      const l = el('line', { x1: g.vx, y1: bbox.y0 - 20, x2: g.vx, y2: bbox.y1 + 20, class: 'cv-guide' })
+      viewport.appendChild(l); guideEls.push(l)
+    }
+    if (g.hy != null) {
+      const l = el('line', { x1: bbox.x0 - 20, y1: g.hy, x2: bbox.x1 + 20, y2: g.hy, class: 'cv-guide' })
+      viewport.appendChild(l); guideEls.push(l)
+    }
+  }
+  function clearGuides() {
+    for (const e of guideEls) if (e.parentNode) e.parentNode.removeChild(e)
+    guideEls = []
   }
 
   // 连线预览临时线
