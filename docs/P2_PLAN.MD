@@ -101,6 +101,7 @@ interface PluginContext {
 - main.js 按 `state.mode`（`md`/`canvas`）分流 openFile / saveCurrent / openSingleFile；工具条 🗺 新画布一键新建并落盘
 - **多选对齐 + 分组增强**（已补）：工具条新增六向对齐（左/水平居中/右/顶/垂直居中/底，选中≥２）、水平/垂直等距分布（选中≥３）、编组/解组。分组用 **JSON Canvas / Obsidian 兼容的 `type:"group"` 节点**（往返无损）：分组框垫底渲染、半透填充可点击穿透（仅边框/标签可选）、虚线边框选中变实线；拖动分组框连带框内成员（按中心判定）一起移动；双击顶部编辑标签；连线目标排除分组框
 - **撤销/重做 + 连线方向箭头 + 边标签编辑**（已补）：快照式历史栈（`Ctrl+Z`/`Ctrl+Shift+Z`·`Ctrl+Y`，工具条 ↶↷），按手势/离散操作粒度入栈（上限 100 步，切换/新建画布清空）；连线默认目标端画方向箭头（复用 `#cv-arrow` marker），支持 JSON Canvas `toEnd`/`fromEnd`，新建边自动带 `toEnd:"arrow"`；双击连线编辑标签。顺手修一个老 bug：`save()` 之前会把 `edgeD` 写入边的临时字段 `_mid` 污染进 `.canvas`，现用带 `_` 前缀过滤的 `JSON.stringify` replacer 剔除（快照同逻辑）
+- **选择与精度增强**（已补）：框选 marquee（背景+Shift 拖矩形批量选中，与平移互不干扰）、方向键微调（←↑→↓ 1px / Shift 10px，连按合并为一条撤销记录）、Ctrl+A 全选（不含分组框）；工具条 ↶↷ 按钮随历史栈自动置灰（按钮引用上提到状态区避免 TDZ，`updateHistoryButtons` 仅在初始化后调用）
 
 ---
 

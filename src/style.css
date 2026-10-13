@@ -287,6 +287,13 @@ body {
 .cv-toolbar button:hover {
   background: var(--hover);
 }
+.cv-toolbar button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.cv-toolbar button:disabled:hover {
+  background: var(--bg);
+}
 .cv-sep {
   width: 1px;
   height: 18px;
@@ -391,6 +398,15 @@ body {
 }
 .cv-arrow {
   fill: var(--muted);
+}
+.cv-marquee {
+  fill: var(--accent);
+  fill-opacity: 0.12;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 .cv-edge-label {
   fill: var(--fg);

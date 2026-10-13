@@ -15,6 +15,7 @@
 - **画布 / 白板**（P2）：类 Obsidian Canvas 的自由画板。数据遵循 **JSON Canvas 规范**（`.canvas`，与 Obsidian 互操作，无私有格式）：`{nodes:[{id,type:"text"|"file",x,y,width,height,color,text|file}], edges:[{id,fromNode,fromSide,toNode,toSide,label,color}]}`。新前端 `src/canvas-view.js`（SVG 渲染 + 视口平移/滚轮缩放以光标为锚 + 拖拽移动（可多选 shift）+ 端口拖拽连线 + 角点 resize + 双击编辑文字/背景新建卡片 + 六色色板 + 适应视图 + Delete 删除）；文件节点双击跳转对应文档。Rust 仅让 `scan_vault` 把 `.canvas` 纳入文件树（`is_canvas`，进树不进索引，附单测），IO 复用通用 `read_md_file`/`write_md_file`（含路径安全），**未新增命令、未引入依赖**。工具条 🗺 新画布 一键新建空画布并落盘；打开/保存/脏检查/自动备份按 `state.mode` 与编辑器分流，画布按 JSON 往返无损
 - **画布增强：多选对齐 + 分组**（P2）：工具条新增对齐区（左/水平居中/右/顶/垂直居中/底 六向对齐，选中≥２生效）、等距分布（水平/垂直，选中≥３）、编组/解组。分组采用 **JSON Canvas / Obsidian 兼容的 `type:"group"` 节点**（`{id,type:"group",x,y,width,height,label,color}`，往返无损）：分组框垫底渲染、半透填充可点击穿透（仅边框/标签可选中）、虚线边框选中变实线；**拖动分组框会连带框内成员一起移动**（按成员中心是否落在框内判定）；双击分组框顶部可编辑标签。连线目标排除分组框
 - **画布增强：撤销/重做 + 连线方向箭头 + 边标签编辑**（P2）：① 快照式历史栈（`Ctrl+Z` / `Ctrl+Shift+Z`·`Ctrl+Y`，工具条 ↶↷），按“手势/离散操作”粒度入栈（移动/缩放/连线/对齐/分布/编组/删除/颜色/新建/文字编辑各一条），上限 100 步，切换/新建画布时清空；② 连线默认在目标端画方向箭头（复用已有 `#cv-arrow` marker），支持 JSON Canvas 的 `toEnd`/`fromEnd`（`"arrow"`/`"none"`，与 Obsidian 互操作；新建边自动带 `toEnd:"arrow"`）；③ 双击连线可编辑边标签（复用浮层编辑器）
+- **画布增强：选择与精度**（P2）：① **框选 marquee**——背景 + Shift 拖出矩形批量选中（与普通背景拖拽平移互不干扰，选区可与已有选择叠加）；② **方向键微调**——选中后←↑→↓ 移动 1px、Shift+方向键 10px（连按合并为一条撤销记录，拖分组框连带成员）；③ **Ctrl+A 全选**（不含分组框）；④ 工具条 ↶↷ 按钮随历史栈空/非空自动置灰
 
 ### 计划中（P2 未完项）
 

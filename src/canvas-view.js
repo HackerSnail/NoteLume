@@ -42,6 +42,8 @@ export function createCanvasView(deps) {
   let drag = null // 进行中的交互
   let editing = null // 正在编辑文本的 textarea
   let zoomLabel = null // 工具条缩放百分比标签（buildToolbar 内赋值，需先于调用声明）
+  let undoBtn = null // 撤销/重做按钮（buildToolbar 内赋值，置灰态由 updateHistoryButtons 驱动）
+  let redoBtn = null
 
   // —— DOM 骨架 ——
   mountEl.classList.add('canvas-view')
@@ -224,11 +226,16 @@ export function createCanvasView(deps) {
     // 深拷数据，并剔除下划线开头的渲染临时字段（_mid 等）
     return JSON.parse(JSON.stringify(data, (k, v) => (k.startsWith('_') ? undefined : v)))
   }
+  function updateHistoryButtons() {
+    if (undoBtn) undoBtn.disabled = !undoStack.length
+    if (redoBtn) redoBtn.disabled = !redoStack.length
+  }
   function pushUndo(prev) {
     if (!prev) return
     undoStack.push(prev)
     if (undoStack.length > 100) undoStack.shift()
     redoStack.length = 0
+    updateHistoryButtons()
   }
   function undo() {
     if (!undoStack.length) return
@@ -237,6 +244,7 @@ export function createCanvasView(deps) {
     selected.clear()
     markDirty()
     render()
+    updateHistoryButtons()
   }
   function redo() {
     if (!redoStack.length) return
@@ -245,6 +253,32 @@ export function createCanvasView(deps) {
     selected.clear()
     markDirty()
     render()
+    updateHistoryButtons()
+  }
+  // 方向键微调：连按合并为一条撤销记录
+  let nudgeSnapshot = null
+  let nudgeTimer = null
+  function nudge(dx, dy) {
+    const set = new Set()
+    for (const id of selected) {
+      const n = nodeById(id)
+      if (!n) continue
+      set.add(n)
+      if (n.type === 'group') for (const m of membersOf(n)) set.add(m)
+    }
+    if (!set.size) return
+    if (!nudgeSnapshot) nudgeSnapshot = snapshot()
+    for (const n of set) {
+      n.x += dx
+      n.y += dy
+    }
+    markDirty()
+    render()
+    clearTimeout(nudgeTimer)
+    nudgeTimer = setTimeout(() => {
+      pushUndo(nudgeSnapshot)
+      nudgeSnapshot = null
+    }, 400)
   }
 
   // —— 交互：pointerdown 分派 ——
@@ -281,6 +315,9 @@ export function createCanvasView(deps) {
         }
       }
       drag = { kind: 'move', starts, origin: w, moved: false, snapshot: snapshot() }
+    } else if (e.shiftKey) {
+      // 背景 + Shift：框选（marquee），不平移
+      drag = { kind: 'marquee', origin: w, base: new Set(selected) }
     } else {
       // 背景：平移；若几乎没移动则视为点击 → 取消选择
       drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, tx0: view.tx, ty0: view.ty, moved: false }
@@ -321,6 +358,12 @@ export function createCanvasView(deps) {
       drag.hover = hit && hit.id !== drag.fromNode ? hit.id : null
       render()
       drawTempEdge()
+    } else if (drag.kind === 'marquee') {
+      drawMarquee(drag.origin, w)
+      selected.clear()
+      for (const id of drag.base) selected.add(id)
+      for (const n of nodesInRect(drag.origin, w)) selected.add(n.id)
+      render()
     }
   }
 
@@ -335,6 +378,9 @@ export function createCanvasView(deps) {
         selected.clear()
         render()
       }
+    } else if (d.kind === 'marquee') {
+      clearMarquee()
+      render()
     } else if (d.kind === 'move') {
       if (d.moved) {
         pushUndo(d.snapshot)
@@ -372,6 +418,28 @@ export function createCanvasView(deps) {
       if (w.x >= n.x - margin && w.x <= n.x + n.width + margin && w.y >= n.y - margin && w.y <= n.y + n.height + margin) return n
     }
     return null
+  }
+
+  // 框选 marquee
+  let marqueeRect = null
+  function drawMarquee(a, b) {
+    if (!marqueeRect) {
+      marqueeRect = el('rect', { class: 'cv-marquee' })
+      viewport.appendChild(marqueeRect)
+    }
+    marqueeRect.setAttribute('x', Math.min(a.x, b.x))
+    marqueeRect.setAttribute('y', Math.min(a.y, b.y))
+    marqueeRect.setAttribute('width', Math.abs(a.x - b.x))
+    marqueeRect.setAttribute('height', Math.abs(a.y - b.y))
+  }
+  function clearMarquee() {
+    if (marqueeRect && marqueeRect.parentNode) marqueeRect.parentNode.removeChild(marqueeRect)
+    marqueeRect = null
+  }
+  function nodesInRect(a, b) {
+    const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x)
+    const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y)
+    return data.nodes.filter((n) => n.type !== 'group' && n.x < x1 && n.x + n.width > x0 && n.y < y1 && n.y + n.height > y0)
   }
 
   // 连线预览临时线
@@ -643,6 +711,30 @@ export function createCanvasView(deps) {
       redo()
       return
     }
+    if (mod && (e.key === 'a' || e.key === 'A')) {
+      e.preventDefault()
+      selected.clear()
+      for (const n of data.nodes) if (n.type !== 'group') selected.add(n.id)
+      render()
+      return
+    }
+    if (e.key.indexOf('Arrow') === 0 && selected.size) {
+      const s = e.shiftKey ? 10 : 1
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        nudge(-s, 0)
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        nudge(s, 0)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        nudge(0, -s)
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        nudge(0, s)
+      }
+      return
+    }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (selected.size) {
         e.preventDefault()
@@ -664,8 +756,10 @@ export function createCanvasView(deps) {
       b.addEventListener('click', fn)
       return b
     }
-    toolbar.appendChild(mk('↶', '撤销（Ctrl+Z）', undo))
-    toolbar.appendChild(mk('↷', '重做（Ctrl+Shift+Z / Ctrl+Y）', redo))
+    undoBtn = mk('↶', '撤销（Ctrl+Z）', undo)
+    redoBtn = mk('↷', '重做（Ctrl+Shift+Z / Ctrl+Y）', redo)
+    toolbar.appendChild(undoBtn)
+    toolbar.appendChild(redoBtn)
     const sepU = document.createElement('span'); sepU.className = 'cv-sep'; toolbar.appendChild(sepU)
     toolbar.appendChild(mk('➕ 卡片', '新建文本卡片（或双击画布空白处）', () => {
       const c = centerWorld()
@@ -737,6 +831,7 @@ export function createCanvasView(deps) {
     selected.clear()
     undoStack.length = 0
     redoStack.length = 0
+    updateHistoryButtons()
     render()
     fitView()
   }
@@ -754,6 +849,7 @@ export function createCanvasView(deps) {
     addNode(0, 0) // 固定放在世界原点 → 屏幕 (80,80)，不依赖容器尺寸，永不出屏
     undoStack.length = 0
     redoStack.length = 0
+    updateHistoryButtons()
   }
 
   async function save() {
@@ -774,5 +870,6 @@ export function createCanvasView(deps) {
   }
 
   applyView()
+  updateHistoryButtons()
   return { open, newBlank, save, isDirty, currentRel, render, destroy }
 }
