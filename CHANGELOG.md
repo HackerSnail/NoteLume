@@ -26,6 +26,8 @@
 - **主题按钮名称与实际不符**：按钮此前显示“下一个主题”（如当前为 Dracula 时显示“☀️ 浅色”），易误读为当前主题。改为显示当前主题名（☀️ 浅色 / 🌙 暗黑 / 🧛 Dracula），与界面实际一致（主题显示名由“吸血鬼”改为“Dracula”）
 - **新建画布“点了没反应”**：未打开知识库时 `newCanvas` 仅写状态栏小字提示，易被忽略。改为弹原生提示框（`messageDialog` info）明确告知需先打开知识库文件夹（画布需保存为库内 `.canvas`）
 - **画布连线“连不上”**：拖端口连线时，`hitNode` 用严格矩形包含判定，而端口/边缘在矩形边界上，光标差几个像素落在节点外就判空，松手不生成边。修复：连线命中给 ±28px（随缩放换算）容差；命中时目标节点高亮描边 + 虚线吸附到目标最近端口，让“能不能连”一目了然
+- **索引“构建超时”（实际已就绪）**：前端轮询用 `st.vaultRoot === state.vaultRoot` 判断索引就绪，但 Rust 存的是 `fs::canonicalize` 后的路径（Windows 带 `\\?\` verbatim 前缀、盘符大写），与对话框返回的原始路径永不相等 → 永远轮询到 60s 超时（后台索引其实早已建好，反查/搜索仍可用，仅误报）。新增 `normVaultPath` 规范化后比较（去 `\\?\` 前缀、统一分隔符、去尾部、忽大小写）
+- **打开/新建画布时节点跑到左上角被裁**：`openCanvas`/`newCanvas` 先调 `canvasView.open/newBlank`（内含 `fitView`/`centerWorld`）再 `setMode('canvas')`，此时容器仍 `display:none`，`getBoundingClientRect()` 返回 0×0 → fitView 算出负平移把节点甩出屏幕。改为先 `setMode('canvas')` 再开画布
 
 ## [0.3.0] - 2026-10-13
 

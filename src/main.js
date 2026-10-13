@@ -138,6 +138,15 @@ async function openFolder() {
   }
 }
 
+// 规范化库路径用于比较：去掉 Windows canonicalize 的 \\?\ verbatim 前缀、统一分隔符、
+// 去尾部分隔符、忽略大小写（Rust 存的是 canonical 路径，前端持有的是对话框原始路径）
+function normVaultPath(p) {
+  let s = String(p || '').split('\\').join('/') // 反斜杠统一成正斜杠
+  if (s.slice(0, 4) === '//?/') s = s.slice(4) // 去掉 Windows canonicalize 前缀（\\?\ → //?/）
+  s = s.replace(/\/+$/, '') // 去尾部分隔符
+  return s.toLowerCase() // Windows 路径大小写不敏感
+}
+
 // —— 触发后台重建，前端 500ms 轮询 status.ready，就绪后刷新当前文档的双链面板 ——
 function startIndexPolling() {
   state.indexReady = false
@@ -146,7 +155,7 @@ function startIndexPolling() {
   const tick = async () => {
     try {
       const st = await getIndexStatus()
-      if (st.ready && st.vaultRoot === state.vaultRoot) {
+      if (st.ready && normVaultPath(st.vaultRoot) === normVaultPath(state.vaultRoot)) {
         state.indexReady = true
         setStatus('索引就绪：' + st.docs + ' 篇文档')
         refreshLinkPanels()
@@ -299,9 +308,9 @@ function setMode(mode) {
 
 async function openCanvas(path) {
   try {
+    setMode('canvas') // 先显示容器，open 内的 fitView 才能拿到真实尺寸（否则 0×0 会把节点甩到左上角）
     await canvasView.open(path)
     state.currentFile = path
-    setMode('canvas')
     els.filename.textContent = path
     highlightActiveFile()
     setStatus('已打开画布：' + path)
@@ -326,11 +335,11 @@ async function newCanvas() {
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
   const name = `画布-${stamp}.canvas`
   try {
-    await canvasView.newBlank(name)
+    setMode('canvas') // 先显示容器，newBlank 里 centerWorld 才能拿到真实尺寸
     state.currentFile = name
-    setMode('canvas')
     els.filename.textContent = name
     highlightActiveFile()
+    await canvasView.newBlank(name)
     await canvasView.save() // 先落盘一个空画布，使其出现在文件树
     renderTree(await scanVault(state.vaultRoot))
     setStatus('新建画布：' + name)
