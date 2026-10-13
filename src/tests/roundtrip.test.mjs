@@ -26,6 +26,12 @@ const SAMPLES = {
   table_inline: '| 列 | 值 |\n| --- | --- |\n| **粗** | `c` |\n| [链](https://a.b) | ~~删~~ |\n',
   math_inline: '行内公式 $e^{i\\pi}+1=0$ 与 价格 $5 不是公式（开导后空白不匹配）。\n',
   math_block: '块公式：\n\n$$\n\\int_{0}^{\\infty} e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\n$$\n\n正文。\n',
+  // 批次 6（Obsidian callout）：标题行 / 折叠标记 / 多块正文 / 空卡片 / 内层行内标记，均须幂等
+  callout_basic: '> [!NOTE] 提示标题\n> 这是正文内容。\n',
+  callout_fold: '> [!TIP]- 折叠提示\n> 内容行。\n',
+  callout_multiblock: '> [!WARNING] 注意\n>\n> 段落一\n>\n> - 列表项\n> - 第二项\n',
+  callout_empty: '> [!quote]\n',
+  callout_inline: '> [!INFO] 见 [[页]] 与 `code`\n> 正文 **粗** 结尾。\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }
@@ -71,6 +77,26 @@ const mBlkDoc = parseMarkdown('$$\nx+y\\ge 0\n$$\n')
 let foundMathBlk = false
 mBlkDoc.descendants((n) => { if (n.type.name === 'math_block') { foundMathBlk = true; assert.strictEqual(n.attrs.latex, 'x+y\\ge 0', '块公式 latex 应无损') } })
 assert.ok(foundMathBlk, '应解析出 math_block 节点')
+
+// 具体断言：callout 节点 attrs 与正文拆分的无损性
+{
+  const cDoc = parseMarkdown('> [!IMPORTANT] 重要标题\n> 第一行正文\n')
+  let callout = null
+  cDoc.descendants((n) => { if (n.type.name === 'callout' && !callout) callout = n })
+  assert.ok(callout, '应解析出 callout 节点')
+  assert.strictEqual(callout.attrs.type, 'IMPORTANT', 'type 应原样保留大小写')
+  assert.strictEqual(callout.attrs.title, '重要标题', '标题行应折进 title attr')
+  assert.strictEqual(callout.attrs.fold, '', '无折叠标记时 fold 为空')
+  assert.ok(callout.textContent.includes('第一行正文'), 'marker 行以下应作为正文块保留')
+  // 折叠标记
+  const fDoc = parseMarkdown('> [!tip]- 收起\n')
+  let fcallout = null
+  fDoc.descendants((n) => { if (n.type.name === 'callout' && !fcallout) fcallout = n })
+  assert.ok(fcallout && fcallout.attrs.fold === '-', '折叠标记 - 应落入 fold attr')
+  assert.ok(fcallout.attrs.type === 'tip', '小写 type 也应保留')
+  console.log('✅ callout 节点 attrs/拆分')
+  pass++
+}
 
 // 具体断言：表格对齐属性无损 + prosemirror-tables 结构 attrs 默认值齐备
 {

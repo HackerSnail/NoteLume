@@ -961,6 +961,79 @@ body {
   padding: 0.1em 1em;
   color: var(--muted);
 }
+/* Obsidian callout 卡片：分型配色，颜色用 color-mix 随 light/dark/vampire 自适应 */
+.ProseMirror .nl-callout {
+  --callout-hue: var(--accent);
+  margin: 0.9em 0;
+  border: 1px solid color-mix(in srgb, var(--callout-hue) 30%, var(--border));
+  border-left: 3px solid var(--callout-hue);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--callout-hue) 8%, var(--bg));
+  overflow: hidden;
+}
+.ProseMirror .nl-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px 4px;
+  font-weight: 600;
+  color: var(--callout-hue);
+}
+.ProseMirror .nl-callout-title::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--callout-hue);
+  flex: none;
+}
+.ProseMirror .nl-callout-body {
+  padding: 2px 14px 10px;
+  color: var(--fg);
+}
+.ProseMirror .nl-callout-body > p:first-child {
+  margin-top: 0;
+}
+.ProseMirror .nl-callout-body > p:last-child {
+  margin-bottom: 0;
+}
+.ProseMirror .nl-callout-note,
+.ProseMirror .nl-callout-info,
+.ProseMirror .nl-callout-abstract,
+.ProseMirror .nl-callout-summary,
+.ProseMirror .nl-callout-tldr {
+  --callout-hue: var(--accent);
+}
+.ProseMirror .nl-callout-tip,
+.ProseMirror .nl-callout-hint,
+.ProseMirror .nl-callout-success,
+.ProseMirror .nl-callout-check,
+.ProseMirror .nl-callout-done,
+.ProseMirror .nl-callout-important {
+  --callout-hue: #2fbf8f;
+}
+.ProseMirror .nl-callout-warning,
+.ProseMirror .nl-callout-caution,
+.ProseMirror .nl-callout-attention,
+.ProseMirror .nl-callout-example {
+  --callout-hue: #e0a33a;
+}
+.ProseMirror .nl-callout-question,
+.ProseMirror .nl-callout-faq,
+.ProseMirror .nl-callout-todo,
+.ProseMirror .nl-callout-feedback {
+  --callout-hue: #bd93f9;
+}
+.ProseMirror .nl-callout-danger,
+.ProseMirror .nl-callout-error,
+.ProseMirror .nl-callout-fail,
+.ProseMirror .nl-callout-failure {
+  --callout-hue: #e5534b;
+}
+.ProseMirror .nl-callout-quote,
+.ProseMirror .nl-callout-cite {
+  --callout-hue: var(--muted);
+}
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.6em;

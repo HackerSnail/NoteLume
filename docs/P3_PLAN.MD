@@ -20,7 +20,7 @@
 | 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ✅ 已完成 |
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 suggest 插件） | 中 | ✅ 已完成 |
 | 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列菜单 / 列宽拖拽 | `prosemirror-tables` | 中 | ✅ 已完成 |
-| 6 | Obsidian callout `> [!NOTE]` 渲染 | 无（自定义块规则 + CSS） | 低 | ⬜ 待做 |
+| 6 | Obsidian callout `> [!NOTE]` 渲染 | 无（自定义块规则 + CSS） | 低 | ✅ 已完成 |
 | 7 | Mermaid 图表（` ```mermaid ` 代码块渲染） | `mermaid`（重，bundle 大） | 中高 | ⬜ 待做 |
 
 图例：⬜ 待做 · ⏳ 进行中 · ✅ 已完成（已 commit+push）
@@ -129,7 +129,12 @@
 
 ---
 
-## 6. Obsidian callout ⬜
+## 6. Obsidian callout ✅
+
+>
+> 落地：不改 markdown-it 的 blockquote 机制，而是插一条 core-ruler 规则（在 `block` 之后、`inline` 之前），把以 `> [!TYPE]` 起始的 blockquote token 改写为 `callout_open/close`，首行拆为 marker（type/fold/title）+ 剩余正文。PM 新增 `callout` 块节点（`content:'block*'`、attrs type/fold/title，`contentElement` 指向 `.nl-callout-body` 使内层块可编）。序列化用 `wrapBlock("> ", "> [!TYPE] title\n", …)` 原样回写，与 blockquote 同一套前缀机制。零新依赖。
+>
+> 边界（MVP）：标题/type/fold 存于 attrs、渲染为卡片顶部 chrome（非 inline 可编），改标题需改源行——符合“渲染”目标；折叠标记 `-`/`+` 无损保留但编辑器内不一键收起（保持正文可见、可编）；未知 `type` 走默认卡片色，不影响往返。
 
 **目标**：渲染 `> [!NOTE] 内容` 系列为带标题/图标的彩色卡片；不破坏 GFM 引用语义。
 

@@ -193,6 +193,47 @@ const extendedNodes = baseSchema.spec.nodes
       return ['pre', lang ? { 'data-language': lang } : {}, ['code', 0]]
     },
   })
+  // Obsidian callout：`> [!TYPE] Title` 渲染为带标题的彩色卡片。
+  // 内层块（正文）可继续编辑，type/fold/title 存于 attrs，序列化时原样写回 marker 行。
+  .addToEnd('callout', {
+    content: 'block*',
+    group: 'block',
+    defining: true,
+    attrs: {
+      type: { default: 'note' },
+      fold: { default: '' },
+      title: { default: null },
+    },
+    parseDOM: [
+      {
+        tag: 'div.nl-callout',
+        contentElement: (dom) => dom.querySelector('.nl-callout-body') || dom,
+        getAttrs(dom) {
+          const titleEl = dom.querySelector('.nl-callout-title')
+          return {
+            type: dom.getAttribute('data-type') || 'note',
+            fold: dom.getAttribute('data-fold') || '',
+            title: (titleEl && titleEl.getAttribute('data-title')) || null,
+          }
+        },
+      },
+    ],
+    toDOM(node) {
+      const type = node.attrs.type || 'note'
+      const fold = node.attrs.fold || ''
+      const title = node.attrs.title || ''
+      const cls =
+        'nl-callout nl-callout-' +
+        String(type).toLowerCase() +
+        (fold === '-' ? ' nl-callout-closed' : fold === '+' ? ' nl-callout-open' : '')
+      return [
+        'div',
+        { class: cls, 'data-type': type, 'data-fold': fold },
+        ['div', { class: 'nl-callout-title', 'data-title': title }, title || type],
+        ['div', { class: 'nl-callout-body' }, 0],
+      ]
+    },
+  })
 
 const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
   parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
@@ -310,6 +351,48 @@ tokenizer.block.ruler.before('fence', 'math_block', (state, startLine, endLine, 
   return true
 })
 
+// Obsidian callout 识别：不改写 markdown-it 的 blockquote 机制，而是在 block 分析完成后
+// （此时 inline token 仅带 .content、children 尚未解析）、inline 分析之前，
+// 把以 `> [!TYPE]` 起始的 blockquote token 改写为 callout_open/close，并把首行拆成
+// marker(type/fold/title) + 剩余正文。后续 inline 规则会按新 .content 重新解析子节点。
+tokenizer.core.ruler.after('block', 'nl_callout', (state) => {
+  const toks = state.tokens
+  const markerRe = /^\[!([^\]\s]+)\]([+-])?[ \t]*(.*)$/
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i].type !== 'blockquote_open') continue
+    const po = i + 1
+    const paraOpen = toks[po]
+    const inlineT = toks[po + 1]
+    if (!paraOpen || paraOpen.type !== 'paragraph_open' || !inlineT || inlineT.type !== 'inline') continue
+    const content = inlineT.content || ''
+    const nl = content.indexOf('\n')
+    const line0 = nl < 0 ? content : content.slice(0, nl)
+    const m = markerRe.exec(line0.trim())
+    if (!m) continue
+    const rest = nl < 0 ? '' : content.slice(nl + 1)
+    toks[i].type = 'callout_open'
+    toks[i].calloutType = m[1]
+    toks[i].calloutFold = m[2] || ''
+    toks[i].calloutTitle = (m[3] || '').trim()
+    if (rest === '') {
+      // 标题行（或纯 marker）：移除这个段落，余下兄弟块自然成为正文
+      toks.splice(po, 3)
+    } else {
+      inlineT.content = rest
+    }
+    i = po - 1 // 从 open 之后重新扫描，以支持嵌套 callout
+  }
+  // 按嵌套配对把对应的 blockquote_close 改为 callout_close
+  const stack = []
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k]
+    if (t.type === 'blockquote_open' || t.type === 'callout_open') stack.push(t.type === 'callout_open' ? 'c' : 'b')
+    else if (t.type === 'blockquote_close') {
+      if (stack.pop() === 'c') t.type = 'callout_close'
+    }
+  }
+})
+
 // —— 3. parser（Markdown -> ProseMirror）————————————————————————————
 // 在默认 token 规格上叠加表格 / 删除线 / wiki_link / tag。
 const parserTokens = {
@@ -328,6 +411,14 @@ const parserTokens = {
   tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
   math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   math_block: { node: 'math_block', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
+  callout: {
+    block: 'callout',
+    getAttrs: (tok) => ({
+      type: tok.calloutType || 'note',
+      fold: tok.calloutFold || '',
+      title: tok.calloutTitle || null,
+    }),
+  },
 }
 
 function alignFromStyle(style) {
@@ -450,6 +541,14 @@ function serializeTable(state, node) {
 
 const serializerNodes = {
   ...defaultMarkdownSerializer.nodes,
+  // Obsidian callout：首行写 marker 行（含 title/fold），后续行统一 `> ` 前缀，与 blockquote 一致。
+  callout(state, node) {
+    const type = node.attrs.type || 'note'
+    const fold = node.attrs.fold || ''
+    const title = node.attrs.title ? ' ' + node.attrs.title : ''
+    const marker = '> [!' + type + ']' + fold + title + '\n'
+    state.wrapBlock('> ', marker, node, () => state.renderContent(node))
+  },
   list_item(state, node) {
     if (node.attrs.checked != null) state.write(node.attrs.checked ? '[x] ' : '[ ] ')
     state.renderContent(node)
