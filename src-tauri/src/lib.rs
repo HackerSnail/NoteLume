@@ -1022,6 +1022,54 @@ fn search_vault(state: tauri::State<'_, IndexState>, query: String, limit: usize
     hits.into_iter().take(limit).collect()
 }
 
+/// 全库标签计数（不分大小写区分，按原始写法聚合）：[{tag, count}]，按出现次数降序、同数按名序
+fn collect_all_tags(g: &VaultIndex) -> Vec<(String, usize)> {
+    let mut map: HashMap<String, usize> = HashMap::new();
+    for d in g.docs.values() {
+        for t in &d.tags {
+            *map.entry(t.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut v: Vec<(String, usize)> = map.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v
+}
+
+/// 含指定标签的文档列表（大小写不敏感、忽略开头的 #），按路径排序
+fn collect_docs_by_tag(g: &VaultIndex, tag: &str) -> Vec<BacklinkHit> {
+    let t = tag.trim().trim_start_matches('#').to_lowercase();
+    let mut v: Vec<BacklinkHit> = g
+        .docs
+        .values()
+        .filter(|d| d.tags.iter().any(|x| x.to_lowercase() == t))
+        .map(|d| BacklinkHit { path: d.path.clone(), title: d.title.clone() })
+        .collect();
+    v.sort_by(|a, b| a.path.cmp(&b.path));
+    v
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TagCount {
+    pub tag: String,
+    pub count: usize,
+}
+
+#[tauri::command]
+fn list_all_tags(state: tauri::State<'_, IndexState>) -> Vec<TagCount> {
+    let g = state.0.lock().unwrap();
+    collect_all_tags(&g)
+        .into_iter()
+        .map(|(tag, count)| TagCount { tag, count })
+        .collect()
+}
+
+#[tauri::command]
+fn query_tag(state: tauri::State<'_, IndexState>, tag: String) -> Vec<BacklinkHit> {
+    let g = state.0.lock().unwrap();
+    collect_docs_by_tag(&g, &tag)
+}
+
 /// 从原文提取匹配位置前后 radius 字符，跨字符边界安全
 fn make_snippet(md: &str, q_lower: &str, radius: usize) -> String {
     let ml = md.to_lowercase();
@@ -1570,6 +1618,27 @@ mod tests {
     }
 
     #[test]
+    fn collect_all_tags_counts_sorts_and_query_tag_matches() {
+        let mut idx = VaultIndex::default();
+        idx.docs.insert(
+            "a.md".into(),
+            DocEntry { path: "a.md".into(), title: "A".into(), tags: vec!["x".into(), "Y".into()], outgoing: vec![], unresolved: vec![], content: String::new() },
+        );
+        idx.docs.insert(
+            "b.md".into(),
+            DocEntry { path: "b.md".into(), title: "B".into(), tags: vec!["x".into()], outgoing: vec![], unresolved: vec![], content: String::new() },
+        );
+        let v = collect_all_tags(&idx);
+        // x 出现 2 次排前，Y 一次
+        assert_eq!(v, vec![("x".to_string(), 2), ("Y".to_string(), 1)]);
+        // 查询忽略大小写与前缀 #
+        assert_eq!(collect_docs_by_tag(&idx, "#X").len(), 2);
+        let y = collect_docs_by_tag(&idx, "y");
+        assert_eq!(y.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(), vec!["a.md"]);
+        assert!(collect_docs_by_tag(&idx, "nope").is_empty());
+    }
+
+    #[test]
     fn read_backup_reads_inside_and_rejects_outside() {
         // 临时库：写一份 .notelume-backup/<day>/<stem>-HH-MM-SS.md 快照
         let tmp = std::env::temp_dir().join(format!("notelume-backup-test-{}", std::process::id()));
@@ -1729,6 +1798,8 @@ pub fn run() {
             query_outgoing,
             get_doc_info,
             search_vault,
+            list_all_tags,
+            query_tag,
             doc_preview,
             update_index_doc,
             remove_index_doc,

@@ -242,6 +242,73 @@ body {
   padding: 1px 10px;
   font-size: 12px;
 }
+
+/* 全局标签视图 */
+.tags-sub {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tags-global {
+  margin-top: 6px;
+}
+.tag-global-chip {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  user-select: none;
+}
+.tag-global-chip:hover {
+  border-color: var(--accent);
+}
+.tag-global-chip.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.tag-global-chip.active .tag-count {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+.tag-count {
+  background: var(--border);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.tags-global-docs {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+.tags-global-docs.show {
+  display: flex;
+}
+.tag-docs-head {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 6px;
+}
+.tag-doc-item {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tag-doc-item:hover {
+  background: var(--hover);
+  color: var(--accent);
+}
 .muted {
   color: var(--muted);
   font-size: 12px;

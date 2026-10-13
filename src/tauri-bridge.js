@@ -157,6 +157,16 @@ export function searchVault(query, limit = 60) {
   return invoke('search_vault', { query, limit })
 }
 
+/** 全库标签计数：返回 [{tag, count}]（按出现次数降序） */
+export function listAllTags() {
+  return invoke('list_all_tags', {})
+}
+
+/** 含指定标签的文档：返回 [{path, title}] */
+export function queryTag(tag) {
+  return invoke('query_tag', { tag })
+}
+
 /** 读取一文档前 N 字的纯文本摘要（库内路径校验通过） */
 export function docPreview(vaultRoot, path, maxChars = 240) {
   return invoke('doc_preview', { vaultRoot, path, maxChars })

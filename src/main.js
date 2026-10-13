@@ -25,6 +25,8 @@ import {
   queryBacklinks,
   queryOutgoing,
   searchVault,
+  listAllTags,
+  queryTag,
   updateIndexDoc,
   removeIndexDoc,
   backupWrite,
@@ -65,6 +67,8 @@ const els = {
   outline: $('outline'),
   frontmatter: $('frontmatter'),
   tags: $('tags'),
+  tagsGlobal: $('tags-global'),
+  tagsGlobalDocs: $('tags-global-docs'),
   editor: $('editor'),
   filename: $('filename'),
   status: $('status'),
@@ -170,6 +174,7 @@ function startIndexPolling() {
         state.indexReady = true
         setStatus('索引就绪：' + st.docs + ' 篇文档')
         refreshLinkPanels()
+        refreshGlobalTags()
         return
       }
     } catch (_) {
@@ -832,6 +837,88 @@ function onMetaChange({ outline, tags }) {
   scheduleAutosave()
 }
 
+// —— 全局标签视图：列出全库标签 + 计数；点标签展开含该标签的文档，点文档跳转 ——
+let activeGlobalTag = null
+async function refreshGlobalTags() {
+  const box = els.tagsGlobal
+  const docBox = els.tagsGlobalDocs
+  if (!box) return
+  activeGlobalTag = null
+  if (docBox) {
+    docBox.innerHTML = ''
+    docBox.classList.remove('show')
+  }
+  if (!state.vaultRoot || !state.indexReady) {
+    box.innerHTML = '<div class="muted">' + (state.vaultRoot ? '索引构建中…' : '打开知识库后显示') + '</div>'
+    return
+  }
+  let tags = []
+  try {
+    tags = await listAllTags()
+  } catch (_) {
+    box.innerHTML = '<div class="muted">标签加载失败</div>'
+    return
+  }
+  if (!tags.length) {
+    box.innerHTML = '<div class="muted">暂无标签</div>'
+    return
+  }
+  box.innerHTML = ''
+  tags.forEach(({ tag, count }) => {
+    const chip = document.createElement('span')
+    chip.className = 'tag-chip tag-global-chip'
+    chip.appendChild(document.createTextNode('#' + tag))
+    const c = document.createElement('span')
+    c.className = 'tag-count'
+    c.textContent = String(count)
+    chip.appendChild(c)
+    chip.title = '查看含 #' + tag + ' 的文档'
+    chip.addEventListener('click', () => toggleTagDocs(tag, chip))
+    box.appendChild(chip)
+  })
+}
+
+async function toggleTagDocs(tag, chip) {
+  const docBox = els.tagsGlobalDocs
+  document.querySelectorAll('.tag-global-chip.active').forEach((el) => el.classList.remove('active'))
+  if (activeGlobalTag === tag) {
+    activeGlobalTag = null
+    docBox.innerHTML = ''
+    docBox.classList.remove('show')
+    return
+  }
+  activeGlobalTag = tag
+  if (chip) chip.classList.add('active')
+  docBox.innerHTML = '<div class="muted">加载中…</div>'
+  docBox.classList.add('show')
+  let docs = []
+  try {
+    docs = await queryTag(tag)
+  } catch (_) {
+    docs = []
+  }
+  docBox.innerHTML = ''
+  const head = document.createElement('div')
+  head.className = 'tag-docs-head'
+  head.textContent = '#' + tag + ' · ' + docs.length + ' 篇'
+  docBox.appendChild(head)
+  if (!docs.length) {
+    const empty = document.createElement('div')
+    empty.className = 'muted'
+    empty.textContent = '无文档'
+    docBox.appendChild(empty)
+    return
+  }
+  docs.forEach((d) => {
+    const item = document.createElement('div')
+    item.className = 'tag-doc-item'
+    item.textContent = d.title || d.path
+    item.title = d.path
+    item.addEventListener('click', () => openFile(d.path))
+    docBox.appendChild(item)
+  })
+}
+
 // —— P1#1 双向链接面板 ——
 async function refreshLinkPanels() {
   if (!state.currentFile || !state.indexReady) {
@@ -1038,6 +1125,8 @@ async function boot() {
     isEditable: () => state.mode === 'md' && !!state.currentFile,
   })
   frontmatterPanel.refresh()
+
+  refreshGlobalTags() // 未开库时先显占位；开库并索引就绪后由 startIndexPolling 刷新
 
   applyTheme(localStorage.getItem('nl-theme') || 'light')
 

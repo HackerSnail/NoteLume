@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | 1 | Frontmatter（YAML 头）保留 + 编辑面板 | `js-yaml` | 低 | ✅ 已完成 |
 | 2 | 文件树基础操作：新建文件/文件夹、重命名、拖拽移动、外部拖入导入 | 无 JS（新 Rust 命令） | 中 | ✅ 已完成 |
-| 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ⬜ 待做 |
+| 3 | 标签全局视图：所有标签 → 点击列出含该标签文档 | 无（走索引） | 低 | ✅ 已完成 |
 | 4 | wikilink / tag 输入自动补全（打 `[[` 弹模糊下拉） | 无（手搓 plugin，可选 suggest 库） | 中 | ⬜ 待做 |
 | 5 | 表格完整编辑：增删行列 / Tab 跨格 / 右键行列表 / 列宽拖拽 | `prosemirror-tables` | 中 | ⬜ 待做 |
 | 6 | Obsidian callout `> [!NOTE]` 渲染 | 无（自定义块规则 + CSS） | 低 | ⬜ 待做 |
@@ -94,7 +94,11 @@
 
 ---
 
-## 3. 标签全局视图 ⬜
+## 3. 标签全局视图 ✅
+
+> 落地：新 Rust 命令 `list_all_tags(state) -> Vec<{tag,count}>`（按次数降序、同数按名序）与 `query_tag(state, tag) -> Vec<{path,title}>`（大小写不敏感、忽略开头 `#`）；抽纯函数 `collect_all_tags`/`collect_docs_by_tag` 附单测 `collect_all_tags_counts_sorts_and_query_tag_matches`。侧栏「标签」面板新增「全局标签」分组（`#tag` + 计数 chip）；点标签就地展开含该标签的文档列表、点文档 `openFile`（再次点同一标签收起）。索引就绪时由 `startIndexPolling` 的 tick 调 `refreshGlobalTags()`；未开库/未就绪显占位。`cargo test` 15 passed、`npm run build:web` 151 modules。零新依赖。
+>
+> 遗留（本轮未做，设期后续增强）：frontmatter 里的 `tags:` 字段尚未纳入全局标签聚合（目前只统计正文 `#tag`）。
 
 **目标**：侧栏「标签」现在只列当前文档 tag；补"全库所有标签 → 点击列出含该标签的文档"。
 
