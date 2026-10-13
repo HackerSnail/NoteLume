@@ -351,8 +351,29 @@ fn mime_for_ext(ext: &str) -> &'static str {
     }
 }
 
+/// 百分号解码（至少把 %20 还原为空格）：markdown 图片链接遵循 URL 规范，
+/// 文件名里的空格等字符会被编码成 %XX，而磁盘上的真实文件名是解码后的。
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 3 <= bytes.len() {
+            if let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+}
+
 /// 将相对当前 md（或绝对）的图片路径解析为绝对路径，允许 `..` 但 canonicalize 后必须在库内。
 fn resolve_media_abs(vault_root: &str, md_rel: &str, src: &str) -> Result<PathBuf, String> {
+    let src = percent_decode(src);
     let root = fs::canonicalize(vault_root).map_err(|e| e.to_string())?;
     let src_clean = src.trim_start_matches("./");
     let bytes = src_clean.as_bytes();
@@ -1338,6 +1359,27 @@ mod tests {
         // 非图片扩展名拒绝
         fs::write(notes.join("assets").join("x.txt"), b"hi").unwrap();
         assert!(read_image_data_uri(root_str.clone(), "notes/a.md".into(), "./assets/x.txt".into()).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn read_image_data_uri_percent_decodes_space() {
+        let tmp = std::env::temp_dir().join(format!("notelume-imgspace-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let dir = tmp.join("图片和附件");
+        fs::create_dir_all(&dir).unwrap();
+        // 磁盘真实名含空格，md 里引用为 %20
+        fs::write(dir.join("image 1.png"), b"ABC").unwrap();
+        let root_str = tmp.to_string_lossy().to_string();
+
+        let uri = read_image_data_uri(
+            root_str.clone(),
+            "doc/a.md".into(),
+            "../图片和附件/image%201.png".into(),
+        )
+        .unwrap();
+        assert_eq!(uri, "data:image/png;base64,QUJD");
 
         let _ = fs::remove_dir_all(&tmp);
     }
