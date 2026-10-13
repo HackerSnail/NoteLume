@@ -1,0 +1,14 @@
+{
+  "name": "notelume",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "NoteLume 根脚本：代理到 src/ 内本地安装的 @tauri-apps/cli（src-tauri 位于仓库根，tauri 命令需在根目录运行）",
+  "scripts": {
+    "dev": "node src/node_modules/@tauri-apps/cli/tauri.js dev",
+    "build": "node src/node_modules/@tauri-apps/cli/tauri.js build",
+    "build:web": "npm --prefix ./src run build",
+    "tauri": "node src/node_modules/@tauri-apps/cli/tauri.js",
+    "test:roundtrip": "npm --prefix ./src run test:roundtrip"
+  }
+}

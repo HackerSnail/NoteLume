@@ -1,0 +1,16 @@
+# 依赖与构建产物
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# 临时/中间产物（脚手架文件一律放这里，禁止出现在工作区根）
+tmp/
+temp/
+cache/
+*.tmp
+*.log
+
+# 编辑器/系统噪音
+.DS_Store
+Thumbs.db
