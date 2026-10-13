@@ -9,7 +9,7 @@
 
 ### Added
 
-- **吸血鬼主题**：主题按钮改为 浅色 → 暗黑 → 吸血鬼 三态循环。采用 **Dracula 官方色板**（背景 #282a36 / 文字 #f8f8f2 / 强调紫 #bd93f9 / 注释蓝 #6272a4 / 选中 #44475a），代码高亮也换为 Dracula 语法色（关键字粉、字符串黄、数字紫、函数绿）；深色族派生样式（代码高亮基线、语言标签、滚动条）改用 `data-dark` 统一命中，两个暗色系主题共享
+- **Dracula 主题**：主题按钮改为 浅色 → 暗黑 → Dracula 三态循环。采用 **Dracula 官方色板**（背景 #282a36 / 文字 #f8f8f2 / 强调紫 #bd93f9 / 注释蓝 #6272a4 / 选中 #44475a），代码高亮也换为 Dracula 语法色（关键字粉、字符串黄、数字紫、函数绿）；深色族派生样式（代码高亮基线、语言标签、滚动条）改用 `data-dark` 统一命中，两个暗色系主题共享
 - **版本快照 UI**（P2）：侧栏新增 📦 历史版本面板，列出当前文档在 `.notelume-backup/` 下的历次快照（最新在前）；点条目弹模态用 markdown-it 渲染全文预览；右下角“↩ 回滚到此版本”一键写回原 md（覆盖前自动先备份当前版，回滚可逆）。新 Rust command `read_backup(vault_root, backup_rel)`（前缀白名单 + `abs_in_vault` 双重防路径穿越，附单测）；新前端 `src/snapshot-panel.js`
 - **插件基础钩子系统**（P2）：把 `.js` 放进 `<vault>/.notelume-plugins/`，开库后自动加载。插件 `export default` 一个对象，可在 `onInit(ctx)` 里 `registerKeymap` / `registerCommand` / `registerInputRule`，并实现在 `onEditorReady` / `onDocChange` / `onFileOpen` / `onSave` 生命周期钩子。因为编辑器开库前已装配，keymap/inputRule 用 `state.reconfigure` 运行时热注入（带 `__nlPlugin` 标记可重入刷新）；schema 创建后不可变，registerNodeSpec/MarkSpec v1 暂不支持。侧栏 🔌 插件面板列出已加载插件 + 启用/禁用（localStorage 记忆）+ 命令按钮。新 Rust commands `list_plugins` / `read_plugin`（同样前缀白名单防穿越，附单测）；新前端 `src/plugin-loader.js` + 示例 `examples/notelume-plugins/hello.js`
 - **画布 / 白板**（P2）：类 Obsidian Canvas 的自由画板。数据遵循 **JSON Canvas 规范**（`.canvas`，与 Obsidian 互操作，无私有格式）：`{nodes:[{id,type:"text"|"file",x,y,width,height,color,text|file}], edges:[{id,fromNode,fromSide,toNode,toSide,label,color}]}`。新前端 `src/canvas-view.js`（SVG 渲染 + 视口平移/滚轮缩放以光标为锚 + 拖拽移动（可多选 shift）+ 端口拖拽连线 + 角点 resize + 双击编辑文字/背景新建卡片 + 六色色板 + 适应视图 + Delete 删除）；文件节点双击跳转对应文档。Rust 仅让 `scan_vault` 把 `.canvas` 纳入文件树（`is_canvas`，进树不进索引，附单测），IO 复用通用 `read_md_file`/`write_md_file`（含路径安全），**未新增命令、未引入依赖**。工具条 🗺 新画布 一键新建空画布并落盘；打开/保存/脏检查/自动备份按 `state.mode` 与编辑器分流，画布按 JSON 往返无损
@@ -23,7 +23,7 @@
 - **图片无法显示**：编辑器内 `![](./assets/x.png)` 等相对路径图片此前全部碎图。根因：Tauri webview 中 `<img src=相对>` 会解析到应用自身 origin（`http://tauri.localhost/`）而非磁盘，必然 404。修复：为 `image` 节点新增 NodeView，通过新 Rust command `read_image_data_uri(vault_root, md_rel, src)` 读图片字节返回 `data:` URL（手写 base64 编码，无新依赖；路径用 canonicalize + `ensure_inside_root` 限定库内，允许 `..` 但拒绝逃逸）；http/data/blob 直接透传。此方案不依赖 asset 协议 scope/跨域，最稳。序列化仍用原始相对 src（attrs 不变），写盘/往返无损；结果按绝对键缓存，切文件不重读。`tauri.conf.json` 保留 `assetProtocol` 启用（无害，供其他场景）
 - 补充修复：图片链接遵循 URL 规范，文件名里的空格被编码为 `%20`（如 `image%201.png`），而磁盘真实名是 `image 1.png`。`resolve_media_abs` 新增 `percent_decode`，解析前先还原 `%XX`（否则中文目录/含空格附件图永远 404）
 - **画布初始化崩溃**：`canvas-view.js` 中 `zoomLabel` 声明在 `buildToolbar()` 调用之后，而 `buildToolbar` 内会赋值 `zoomLabel`，触发暂时性死区（“Cannot access 'zoomLabel' before initialization”）导致整个应用启动失败。将 `let zoomLabel = null` 上提到状态区（先于调用）
-- **主题按钮名称与实际不符**：按钮此前显示“下一个主题”（如当前为吸血鬼时显示“☀️ 浅色”），易误读为当前主题。改为显示当前主题名（☀️ 浅色 / 🌙 暗黑 / 🧛 吸血鬼），与界面实际一致
+- **主题按钮名称与实际不符**：按钮此前显示“下一个主题”（如当前为 Dracula 时显示“☀️ 浅色”），易误读为当前主题。改为显示当前主题名（☀️ 浅色 / 🌙 暗黑 / 🧛 Dracula），与界面实际一致（主题显示名由“吸血鬼”改为“Dracula”）
 - **新建画布“点了没反应”**：未打开知识库时 `newCanvas` 仅写状态栏小字提示，易被忽略。改为弹原生提示框（`messageDialog` info）明确告知需先打开知识库文件夹（画布需保存为库内 `.canvas`）
 
 ## [0.3.0] - 2026-10-13

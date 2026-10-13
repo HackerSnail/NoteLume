@@ -103,9 +103,9 @@ function markDirty(d) {
   if (d) scheduleAutosave()
 }
 
-// —— 主题 ——（浅色 → 暗黑 → 吸血鬼 三态循环；按钮显示当前主题名，与界面实际一致）
+// —— 主题 ——（浅色 → 暗黑 → Dracula 三态循环；按钮显示当前主题名，与界面实际一致）
 const THEMES = ['light', 'dark', 'vampire']
-const THEME_LABEL = { light: '☀️ 浅色', dark: '🌙 暗黑', vampire: '🧛 吸血鬼' }
+const THEME_LABEL = { light: '☀️ 浅色', dark: '🌙 暗黑', vampire: '🧛 Dracula' }
 function applyTheme(theme) {
   if (!THEMES.includes(theme)) theme = 'light'
   document.documentElement.setAttribute('data-theme', theme)
