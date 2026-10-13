@@ -23,6 +23,7 @@ const PALETTE = {
 }
 const NORMAL = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }
 const DEFAULT_SIZE = { width: 220, height: 120 }
+const MM_W = 180, MM_H = 120, MM_PAD = 8 // 缩略图尺寸与内边距
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
@@ -50,6 +51,9 @@ export function createCanvasView(deps) {
   let zoomLabel = null // 工具条缩放百分比标签（buildToolbar 内赋值，需先于调用声明）
   let undoBtn = null // 撤销/重做按钮（buildToolbar 内赋值，置灰态由 updateHistoryButtons 驱动）
   let redoBtn = null
+  let minimapEl = null, mmNodesLayer = null, mmViewportRect = null // 缩略图（minimap）
+  let mmScale = 1, mmOffX = 0, mmOffY = 0 // 世界→缩略图映射：mx = wx*mmScale + mmOffX
+  let mmDragging = false
 
   // —— DOM 骨架 ——
   mountEl.classList.add('canvas-view')
@@ -84,6 +88,7 @@ export function createCanvasView(deps) {
   function applyView() {
     viewport.setAttribute('transform', `translate(${view.tx} ${view.ty}) scale(${view.k})`)
     if (zoomLabel) zoomLabel.textContent = Math.round(view.k * 100) + '%'
+    if (mmViewportRect) updateMinimapViewport()
   }
 
   function nodeById(id) {
@@ -156,6 +161,7 @@ export function createCanvasView(deps) {
     for (const n of ordered) {
       nodeLayer.appendChild(renderNode(n))
     }
+    if (mmNodesLayer) drawMinimapNodes() // 同步刷新缩略图节点层（含视口框）
   }
 
   function renderNode(n) {
@@ -1144,6 +1150,9 @@ export function createCanvasView(deps) {
     zoomLabel.addEventListener('click', resetZoom)
     toolbar.appendChild(zoomLabel)
     toolbar.appendChild(mk('＋', '放大（Ctrl+）', () => zoomAt(1.2)))
+
+    const sepM = document.createElement('span'); sepM.className = 'cv-sep'; toolbar.appendChild(sepM)
+    toolbar.appendChild(mk('▦', '显示 / 隐藏缩略图', toggleMinimap))
   }
   function colorSwatch(c, title, onPick) {
     const s = document.createElement('button')
@@ -1159,6 +1168,109 @@ export function createCanvasView(deps) {
   function centerWorld() {
     const r = svg.getBoundingClientRect()
     return screenToWorld(r.left + r.width / 2, r.top + r.height / 2)
+  }
+
+  // —— 缩略图 / minimap（角落全局小地图 + 视口框，可拖拽导航）——
+  function computeMinimapTransform() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const n of data.nodes) {
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y)
+      maxX = Math.max(maxX, n.x + n.width); maxY = Math.max(maxY, n.y + n.height)
+    }
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = MM_W; maxY = MM_H }
+    const bw = Math.max(1, maxX - minX)
+    const bh = Math.max(1, maxY - minY)
+    mmScale = Math.min((MM_W - MM_PAD * 2) / bw, (MM_H - MM_PAD * 2) / bh)
+    mmOffX = (MM_W - bw * mmScale) / 2 - minX * mmScale
+    mmOffY = (MM_H - bh * mmScale) / 2 - minY * mmScale
+  }
+  function drawMinimapNodes() {
+    if (!mmNodesLayer) return
+    computeMinimapTransform()
+    mmNodesLayer.innerHTML = ''
+    for (const n of data.nodes) {
+      const col = resolveColor(n.color)
+      const sel = selected.has(n.id)
+      const rect = el('rect', { x: n.x * mmScale + mmOffX, y: n.y * mmScale + mmOffY, width: n.width * mmScale, height: n.height * mmScale })
+      if (n.type === 'group') {
+        rect.style.fill = 'none'
+        rect.style.stroke = sel ? 'var(--accent)' : (col || 'var(--muted)')
+        rect.style.strokeDasharray = '3 2'
+        rect.style.opacity = sel ? '0.95' : '0.6'
+      } else {
+        rect.style.fill = col || 'var(--muted)'
+        rect.style.opacity = sel ? '0.95' : '0.5'
+        if (sel) { rect.style.stroke = 'var(--accent)'; rect.style.strokeWidth = '1' }
+      }
+      mmNodesLayer.appendChild(rect)
+    }
+    updateMinimapViewport()
+  }
+  function updateMinimapViewport() {
+    if (!mmViewportRect) return
+    const r = svg.getBoundingClientRect()
+    const vx0 = (0 - view.tx) / view.k
+    const vy0 = (0 - view.ty) / view.k
+    const vx1 = (r.width - view.tx) / view.k
+    const vy1 = (r.height - view.ty) / view.k
+    const a = vx0 * mmScale + mmOffX
+    const b = vy0 * mmScale + mmOffY
+    const c = vx1 * mmScale + mmOffX
+    const d = vy1 * mmScale + mmOffY
+    mmViewportRect.setAttribute('x', a)
+    mmViewportRect.setAttribute('y', b)
+    mmViewportRect.setAttribute('width', Math.max(2, c - a))
+    mmViewportRect.setAttribute('height', Math.max(2, d - b))
+  }
+  function minimapRecenter(e) {
+    const r = minimapEl.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    const mx = ((e.clientX - r.left) / r.width) * MM_W
+    const my = ((e.clientY - r.top) / r.height) * MM_H
+    const wx = (mx - mmOffX) / mmScale
+    const wy = (my - mmOffY) / mmScale
+    const sr = svg.getBoundingClientRect()
+    view.tx = sr.width / 2 - wx * view.k
+    view.ty = sr.height / 2 - wy * view.k
+    applyView()
+  }
+  function onMinimapDown(e) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    mmDragging = true
+    if (minimapEl.setPointerCapture) { try { minimapEl.setPointerCapture(e.pointerId) } catch (err) {} }
+    minimapRecenter(e)
+    window.addEventListener('pointermove', onMinimapMove)
+    window.addEventListener('pointerup', onMinimapUp)
+  }
+  function onMinimapMove(e) { if (mmDragging) minimapRecenter(e) }
+  function onMinimapUp() {
+    mmDragging = false
+    window.removeEventListener('pointermove', onMinimapMove)
+    window.removeEventListener('pointerup', onMinimapUp)
+  }
+  function buildMinimap() {
+    if (minimapEl) return
+    minimapEl = el('svg', { class: 'cv-minimap', viewBox: `0 0 ${MM_W} ${MM_H}`, width: MM_W, height: MM_H })
+    mmNodesLayer = el('g', { class: 'cv-mm-nodes' })
+    mmViewportRect = el('rect', { class: 'cv-mm-viewport' })
+    minimapEl.appendChild(mmNodesLayer)
+    minimapEl.appendChild(mmViewportRect)
+    minimapEl.addEventListener('pointerdown', onMinimapDown)
+    surface.appendChild(minimapEl)
+    if (localStorage.getItem('nl-canvas-minimap') === '0') minimapEl.classList.add('hidden')
+    drawMinimapNodes()
+  }
+  function toggleMinimap() {
+    if (!minimapEl) {
+      buildMinimap()
+      localStorage.setItem('nl-canvas-minimap', '1')
+      return
+    }
+    const hidden = minimapEl.classList.toggle('hidden')
+    localStorage.setItem('nl-canvas-minimap', hidden ? '0' : '1')
+    if (!hidden) drawMinimapNodes()
   }
 
   // —— 对外 API ——
@@ -1223,10 +1335,13 @@ export function createCanvasView(deps) {
     document.removeEventListener('wheel', onWinDismissMenu, true)
     window.removeEventListener('resize', onWinDismissMenu)
     window.removeEventListener('blur', onWinDismissMenu)
+    window.removeEventListener('pointermove', onMinimapMove)
+    window.removeEventListener('pointerup', onMinimapUp)
     closeMenu()
   }
 
   applyView()
   updateHistoryButtons()
+  buildMinimap()
   return { open, newBlank, save, isDirty, currentRel, render, destroy }
 }

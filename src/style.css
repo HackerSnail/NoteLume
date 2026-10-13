@@ -401,6 +401,31 @@ body {
   min-width: 44px;
   text-align: right;
 }
+.cv-minimap {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 180px;
+  height: 120px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 15;
+  cursor: pointer;
+  touch-action: none;
+}
+.cv-minimap.hidden {
+  display: none;
+}
+.cv-mm-viewport {
+  fill: var(--accent);
+  fill-opacity: 0.12;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
 .cv-surface {
   flex: 1;
   position: relative;
@@ -607,6 +632,7 @@ body {
 }
 .cv-edit {
   position: absolute;
+  z-index: 18;
   box-sizing: border-box;
   border: 2px solid var(--accent);
   border-radius: 10px;
