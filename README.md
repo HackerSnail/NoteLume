@@ -32,7 +32,8 @@
 | **P1** | `[[链接]]` hover 悬浮预览（卡片展示目标文档标题 + 摘要）                                     | ✅ 已完成 |
 | **P2** | 简易知识图谱（Canvas 力导向，无外部依赖）                                                  | ✅ 已完成 |
 | **P2** | 版本快照 UI（历史备份列表 · 全文预览 · 一键回滚）                                       | ✅ 已完成 |
-| **P2** | 插件钩子 · 画布 · 移动端                                                                    | ⏳ 规划中 |
+| **P2** | 插件基础钩子系统（`.notelume-plugins/*.js`：快捷键 / 命令 / 输入规则 / 生命周期）      | ✅ 已完成 |
+| **P2** | 画布 · 移动端                                                                            | ⏳ 规划中 |
 
 ---
 
@@ -59,8 +60,8 @@ NoteLume/
 │   ├── tauri.conf.json
 │   └── src/
 │       ├── main.rs         # 入口（薄壳）
-│       └── lib.rs          # 20 个 #[tauri::command]：扫描/读写/wikilink/assets +
-│                            # 后台索引 · 双向链接 · 全局搜索 · 悬浮预览 · 备份 · 导出 · 图谱 · 快照
+│       └── lib.rs          # 22 个 #[tauri::command]：扫描/读写/wikilink/assets +
+│                            # 后台索引 · 双向链接 · 全局搜索 · 悬浮预览 · 备份 · 导出 · 图谱 · 快照 · 插件
 ├── src/                    # 前端 Web 工程（Vite 根）
 │   ├── index.html
 │   ├── main.js             # 应用装配：面板/快捷键/自动保存/导出/索引轮询
@@ -71,6 +72,7 @@ NoteLume/
 │   ├── wiki-hover.js       # [[链接]] 悬浮预览卡片
 │   ├── graph-view.js       # P2 知识图谱（Canvas 2D 力导向）
 │   ├── snapshot-panel.js   # P2 版本快照：历史列表 / 预览 / 回滚
+│   ├── plugin-loader.js    # P2 插件钩子：动态加载 / 快捷键注入 / 生命周期总线 / 面板
 │   ├── tauri-bridge.js     # Rust invoke 封装 + 系统对话框
 │   ├── style.css           # 类 Typora 排版 + 浅/暗/吸血鬼主题 + 新面板样式
 │   ├── vite.config.js
@@ -143,6 +145,7 @@ npm run build
 10. 右上角 🌙/🧛/☀️ 主题按钮循环切换 浅色 → 暗黑 → 吸血鬼（记忆在 localStorage）
 11. 工具条 🕸 图谱（或 Ctrl+G）打开知识图谱模态；拖平移、滚轮缩放、拖节点重定位、点节点跳文档，当前文档红点高亮
 12. 侧栏 📦 历史版本面板：列出当前文档历次保存/自动保存产生的快照（最新在前），点条目预览全文，右下角“↩ 回滚到此版本”一键覆盖（覆盖前会自动另存当前版，回滚可逆）
+13. 插件：把 `.js` 文件放进知识库根的 `.notelume-plugins/`，打开知识库后自动加载；侧栏 🔌 插件面板可启用/禁用（记忆）与点击执行插件命令。示例见 `examples/notelume-plugins/hello.js`（注册 Mod-Shift+H 快捷键 + 插入时间命令）
 
 ---
 
@@ -185,6 +188,7 @@ npm run build
 - 搜索为 substring 匹配，未上分词/拼音；索引内容全量存内存，知识库量级至数百 md 文件时无压力，未来可换 fallthru + 磁盘索引
 - `assets/` 目前放在每个 md **同目录**（相对链接最稳）；库根级 `assets` 归一化留待后续
 - 备份文件写入 `.notelume-backup/`（已默认不入库根扫描）；P2 版本快照 UI 已提供历史列表 / 预览 / 一键回滚
+- 插件钩子（P2 v1）：`.notelume-plugins/*.js` 可注册快捷键 / 命令 / 输入规则 / 生命周期回调；暂不支持运行时扩展 schema（registerNodeSpec / MarkSpec），且无沙箱——插件与主线程同权，用户自担风险
 
 ---
 

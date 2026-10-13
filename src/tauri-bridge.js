@@ -151,6 +151,16 @@ export function readBackup(vaultRoot, backupRel) {
   return invoke('read_backup', { vaultRoot, backupRel })
 }
 
+/** P2：列出 <vault>/.notelume-plugins/ 下的插件文件 [{name, path}] */
+export function listPlugins(vaultRoot) {
+  return invoke('list_plugins', { vaultRoot })
+}
+
+/** P2：读取一个插件源码（pluginRel 必须位于 .notelume-plugins/ 下） */
+export function readPlugin(vaultRoot, pluginRel) {
+  return invoke('read_plugin', { vaultRoot, pluginRel })
+}
+
 /** 导出到库外任意路径（由系统保存对话框给出） */
 export function exportFile(absPath, content) {
   return invoke('export_file', { args: { absPath, content } })

@@ -24,6 +24,7 @@ import {
 } from './tauri-bridge.js'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
+import { createPluginManager } from './plugin-loader.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -74,10 +75,12 @@ const els = {
   snapshotMeta: $('snapshot-meta'),
   snapshotRollback: $('snapshot-rollback'),
   snapshotClose: $('snapshot-close'),
+  plugins: $('plugins'),
 }
 
 let editor
 let snapshotPanel = null
+let pluginManager = null
 
 function setStatus(msg) {
   els.status.textContent = msg
@@ -110,6 +113,7 @@ async function openFolder() {
     renderTree(tree)
     setStatus('知识库已加载：' + root + '（索引构建中…）')
     startIndexPolling()
+    if (pluginManager) pluginManager.reload()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开失败：' + msg)
@@ -166,6 +170,7 @@ async function openSingleFile() {
     // 单文件也后台索引：库根就是同目录，反查更方便
     startIndexPolling()
     if (snapshotPanel) snapshotPanel.refresh()
+    if (pluginManager) pluginManager.reload()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开文件失败：' + msg)
@@ -248,6 +253,7 @@ async function openFile(rel) {
     editor.focus()
     refreshLinkPanels()
     if (snapshotPanel) snapshotPanel.refresh()
+    if (pluginManager) pluginManager.fireFileOpen(rel, md)
     resetBackupTimer()
   } catch (e) {
     await messageDialog('打开失败：' + e)
@@ -264,6 +270,7 @@ async function saveCurrent(manual = true) {
     const md = editor.getMarkdown()
     await writeMdFile(state.vaultRoot, state.currentFile, md)
     editor.markSaved()
+    if (pluginManager) pluginManager.fireSave(state.currentFile, md)
     setStatus((manual ? '已保存：' : '自动保存：') + state.currentFile + ' · ' + timeStr())
     // 索引增量：无需重扫全库
     try {
@@ -565,6 +572,7 @@ async function boot() {
       els.filename.classList.toggle('dirty', d)
       if (d) scheduleAutosave()
     },
+    onDocChange: (doc, prev) => pluginManager && pluginManager.fireDocChange(doc, prev),
   })
 
   applyTheme(localStorage.getItem('nl-theme') || 'light')
@@ -587,6 +595,14 @@ async function boot() {
     onAfterRollback: () => refreshLinkPanels(),
   })
   snapshotPanel.refresh()
+
+  // P2 插件钩子系统：打开知识库后从 .notelume-plugins/ 加载（依赖已装配的 editor.view）
+  pluginManager = createPluginManager({
+    view: editor.view,
+    panelEl: els.plugins,
+    setStatus,
+    getVaultRoot: () => state.vaultRoot,
+  })
 
   els.chkAutosave.checked = state.autosave.enabled
   els.chkAutosave.addEventListener('change', () => {

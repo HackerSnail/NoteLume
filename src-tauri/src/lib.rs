@@ -967,6 +967,55 @@ fn read_backup(vault_root: String, backup_rel: String) -> Result<String, String>
     fs::read_to_string(&abs).map_err(|e| format!("读取备份失败：{}", e))
 }
 
+/// 插件文件条目：name = 文件名，path = 库内相对路径
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginEntry {
+    pub name: String,
+    pub path: String,
+}
+
+/// 列出 <vault>/.notelume-plugins/ 下的 *.js / *.mjs 插件文件（P2 插件钩子系统）
+#[tauri::command]
+fn list_plugins(vault_root: String) -> Result<Vec<PluginEntry>, String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
+    let base = root.join(".notelume-plugins");
+    if !base.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for e in fs::read_dir(&base).map_err(|e| e.to_string())?.flatten() {
+        let p = e.path();
+        if !p.is_file() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().to_string();
+        if !(name.ends_with(".js") || name.ends_with(".mjs")) {
+            continue;
+        }
+        if let Ok(rel) = p.strip_prefix(&root) {
+            out.push(PluginEntry {
+                name,
+                path: rel.to_string_lossy().replace('\\', "/"),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// 读取一个插件源码（前端用 Blob URL + 动态 import 加载）。
+/// 前缀白名单 .notelume-plugins/ + abs_in_vault 双重防路径穿越。
+#[tauri::command]
+fn read_plugin(vault_root: String, plugin_rel: String) -> Result<String, String> {
+    let norm = plugin_rel.replace('\\', "/");
+    if !norm.starts_with(".notelume-plugins/") {
+        return Err("非法路径：只能读取插件目录内的文件".into());
+    }
+    let abs = abs_in_vault(&vault_root, &norm)?;
+    fs::read_to_string(&abs).map_err(|e| format!("读取插件失败：{}", e))
+}
+
 /// 导出 HTML 到库外任意路径；仅接受由原生保存对话框返回的绝对路径
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1153,6 +1202,31 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
     }
+
+    #[test]
+    fn list_and_read_plugins_only_inside_dir() {
+        let tmp = std::env::temp_dir().join(format!("notelume-plugin-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let dir = tmp.join(".notelume-plugins");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("hello.js"), "export default { id: 'hello' }").unwrap();
+        fs::write(dir.join("notes.txt"), "ignored").unwrap(); // 非 js 不列
+        let root_str = tmp.to_string_lossy().to_string();
+
+        let list = list_plugins(root_str.clone()).unwrap();
+        assert_eq!(list.len(), 1, "只应列出 .js/.mjs");
+        assert_eq!(list[0].name, "hello.js");
+        assert_eq!(list[0].path, ".notelume-plugins/hello.js");
+
+        // 目录内可读
+        let src = read_plugin(root_str.clone(), ".notelume-plugins/hello.js".to_string()).unwrap();
+        assert!(src.contains("hello"));
+        // 目录外被白名单拒绝
+        assert!(read_plugin(root_str.clone(), "secret.js".to_string()).is_err());
+        assert!(read_plugin(root_str.clone(), ".notelume-plugins/../../escape.js".to_string()).is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1181,6 +1255,8 @@ pub fn run() {
             backup_write,
             list_backups,
             read_backup,
+            list_plugins,
+            read_plugin,
             export_file,
             get_graph_data
         ])

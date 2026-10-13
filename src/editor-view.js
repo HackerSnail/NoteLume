@@ -132,6 +132,7 @@ export function createEditor(opts) {
       math_block: mathBlockView,
     },
     dispatchTransaction(tr) {
+      const prevDoc = view.state.doc
       const next = view.state.apply(tr)
       view.updateState(next)
       if (tr.docChanged) {
@@ -140,6 +141,7 @@ export function createEditor(opts) {
           opts.onDirty && opts.onDirty(true)
         }
         emitMeta(view, opts)
+        opts.onDocChange && opts.onDocChange(next.doc, prevDoc)
       }
     },
   })

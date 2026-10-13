@@ -31,7 +31,9 @@
 
 ---
 
-## 2. 插件基础钩子系统
+## 2. 插件基础钩子系统 ✅ 已完成
+
+> 落地情况：新 Rust commands `list_plugins` / `read_plugin`（前缀白名单防路径穿越，附单测）+ 前端 `src/plugin-loader.js`。插件源码经 Blob URL + 动态 `import()` 加载。因为编辑器在开库前已装配，keymap / inputRule 采用 `state.reconfigure` 运行时热注入（`__nlPlugin` 标记可重入刷新）；`registerNodeSpec` / `registerMarkSpec` 因 schema 不可变 v1 暂不支持。侧栏 🔌 面板提供启用/禁用（localStorage 记忆）+ 命令按钮。验收样例：`examples/notelume-plugins/hello.js`（Mod-Shift+H 弹窗 + 插入时间命令）。
 
 **目标**：暴露轻量 API，允许用户放 `.js` 到 `<vault>/.notelume-plugins/` 来扩展编辑功能（自定义命令 / 快捷键 / 输入规则 / 生命周期回调）。
 
@@ -115,6 +117,6 @@ interface PluginContext {
 | # | 功能 | 预估新增代码 | 前置 |
 |---|---|---|---|
 | 1 | 版本快照 UI | ~200 行（前端 100 + Rust 50 + CSS 50） | P1 backup_write / list_backups 已有 |
-| 2 | 插件钩子系统 | ~300 行（loader + editor-view 改造 + list_plugins） | 无硬依赖 |
+| 2 | 插件钩子系统 | ~300 行（loader + editor-view 改造 + list_plugins） | 无硬依赖 ✅ |
 | 3 | 画布 / 白板 | ~600 行（独立视图） | 最好有插件钩子做架构参考 |
 | 4 | 移动端 | 大改布局 | 桌面版 feature freeze |

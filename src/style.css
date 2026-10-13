@@ -888,4 +888,86 @@ body {
   filter: brightness(1.08);
 }
 
+/* ==================== P2：插件钩子系统 ==================== */
+.plugins {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plugin-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.plugin-head .muted {
+  font-size: 11px;
+}
+.plugin-reload {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.plugin-reload:hover {
+  background: var(--hover);
+}
+.plugin-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.plugin-item input[type='checkbox'] {
+  margin-top: 3px;
+  cursor: pointer;
+}
+.plugin-info {
+  flex: 1;
+  min-width: 0;
+}
+.plugin-name {
+  font-size: 13px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plugin-status {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plugin-status.err {
+  color: #e2574c;
+}
+.plugin-cmds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  padding-left: 22px;
+}
+.plugin-cmd {
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.plugin-cmd:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 

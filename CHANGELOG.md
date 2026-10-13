@@ -11,10 +11,10 @@
 
 - **吸血鬼主题**：主题按钮改为 浅色 → 暗黑 → 吸血鬼 三态循环。采用 **Dracula 官方色板**（背景 #282a36 / 文字 #f8f8f2 / 强调紫 #bd93f9 / 注释蓝 #6272a4 / 选中 #44475a），代码高亮也换为 Dracula 语法色（关键字粉、字符串黄、数字紫、函数绿）；深色族派生样式（代码高亮基线、语言标签、滚动条）改用 `data-dark` 统一命中，两个暗色系主题共享
 - **版本快照 UI**（P2）：侧栏新增 📦 历史版本面板，列出当前文档在 `.notelume-backup/` 下的历次快照（最新在前）；点条目弹模态用 markdown-it 渲染全文预览；右下角“↩ 回滚到此版本”一键写回原 md（覆盖前自动先备份当前版，回滚可逆）。新 Rust command `read_backup(vault_root, backup_rel)`（前缀白名单 + `abs_in_vault` 双重防路径穿越，附单测）；新前端 `src/snapshot-panel.js`
+- **插件基础钩子系统**（P2）：把 `.js` 放进 `<vault>/.notelume-plugins/`，开库后自动加载。插件 `export default` 一个对象，可在 `onInit(ctx)` 里 `registerKeymap` / `registerCommand` / `registerInputRule`，并实现在 `onEditorReady` / `onDocChange` / `onFileOpen` / `onSave` 生命周期钩子。因为编辑器开库前已装配，keymap/inputRule 用 `state.reconfigure` 运行时热注入（带 `__nlPlugin` 标记可重入刷新）；schema 创建后不可变，registerNodeSpec/MarkSpec v1 暂不支持。侧栏 🔌 插件面板列出已加载插件 + 启用/禁用（localStorage 记忆）+ 命令按钮。新 Rust commands `list_plugins` / `read_plugin`（同样前缀白名单防穿越，附单测）；新前端 `src/plugin-loader.js` + 示例 `examples/notelume-plugins/hello.js`
 
 ### 计划中（P2 未完项）
 
-- 插件基础钩子系统
 - 画布 / 白板
 - 移动端适配
 
