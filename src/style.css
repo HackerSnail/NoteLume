@@ -249,6 +249,43 @@ body {
 .ProseMirror li input[type='checkbox'] {
   margin-right: 0.5em;
 }
+/* 任务列表：勾选框用纯 CSS 画（li 不再内联 input 元素，避开 ProseMirror content hole 限制） */
+.ProseMirror li.nl-task {
+  list-style: none;
+  position: relative;
+  padding-left: 1.7em;
+}
+.ProseMirror li.nl-task::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.32em;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+  background: var(--bg);
+}
+.ProseMirror li.nl-task[data-checked='true']::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ProseMirror li.nl-task[data-checked='true']::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  width: 6px;
+  height: 3px;
+  box-sizing: border-box;
+  border-left: 1.6px solid #fff;
+  border-bottom: 1.6px solid #fff;
+  transform: rotate(-45deg);
+}
+.ProseMirror li.nl-task[data-checked='true'] {
+  color: var(--muted);
+}
 .ProseMirror code {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   background: var(--code-bg);

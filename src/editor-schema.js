@@ -34,6 +34,14 @@ const extendedNodes = baseSchema.spec.nodes
     attrs: { checked: { default: null } },
     parseDOM: [
       {
+        // 本应用自身 DOM（toDOM 产出 li[data-checked]）优先匹配，保证复制粘贴往返不丢状态
+        tag: 'li[data-checked]',
+        getAttrs(dom) {
+          return { checked: dom.getAttribute('data-checked') === 'true' }
+        },
+      },
+      {
+        // 兼容外部 HTML（Typora/Obsidian 等用真实 <input type=checkbox>）
         tag: 'li',
         getAttrs(dom) {
           const cb = dom.querySelector(':scope > input[type=checkbox]')
@@ -42,13 +50,10 @@ const extendedNodes = baseSchema.spec.nodes
       },
     ],
     toDOM(node) {
+      // content hole(0) 必须是父元素唯一子节点，否则 ProseMirror 报
+      // “Content hole must be the only child”。勾选框交给 CSS ::before/::after 画。
       if (node.attrs.checked != null) {
-        return [
-          'li',
-          { 'data-checked': String(node.attrs.checked) },
-          ['input', { type: 'checkbox', checked: node.attrs.checked ? 'checked' : null }],
-          0,
-        ]
+        return ['li', { class: 'nl-task', 'data-checked': String(node.attrs.checked) }, 0]
       }
       return ['li', 0]
     },
