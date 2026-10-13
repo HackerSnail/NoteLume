@@ -141,6 +141,11 @@ export function updateIndexDoc(path, content) {
   return invoke('update_index_doc', { path, content })
 }
 
+/** 文件删除后从索引移除这条文档 */
+export function removeIndexDoc(path) {
+  return invoke('remove_index_doc', { path })
+}
+
 /** 写入一份带时间戳的库内备份副本，返回相对路径 */
 export function backupWrite(vaultRoot, path, content) {
   return invoke('backup_write', { vaultRoot, args: { path, content } })

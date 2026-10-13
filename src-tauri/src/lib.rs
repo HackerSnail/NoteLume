@@ -978,6 +978,33 @@ fn update_index_doc(
     Ok(())
 }
 
+/// 从索引移除一条文档：清掉它写入他人 backlinks 的贡献，再删自身条目与作为 target 的 backlinks。
+/// 抽成纯函数便于单测（命令层只负责加锁与 ready 判断）。
+fn remove_doc_from_index(g: &mut VaultIndex, path: &str) {
+    if let Some(entry) = g.docs.remove(path) {
+        for tgt in &entry.outgoing {
+            if let Some(lst) = g.backlinks.get_mut(tgt) {
+                lst.retain(|p| p != path);
+            }
+        }
+    }
+    g.backlinks.remove(path);
+}
+
+/// 文件删除后增量清理索引；无需全量重建
+#[tauri::command]
+fn remove_index_doc(
+    state: tauri::State<'_, IndexState>,
+    path: String,
+) -> Result<(), String> {
+    let mut g = state.0.lock().map_err(|e| e.to_string())?;
+    if !g.ready {
+        return Ok(()); // rebuild 中：忽略，rebuild 不会收录已删除文件
+    }
+    remove_doc_from_index(&mut g, &path);
+    Ok(())
+}
+
 /// 备份：.notelume-backup/YYYY-MM-DD/{stem}-HH-MM-SS.md
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1312,6 +1339,38 @@ mod tests {
     }
 
     #[test]
+    fn remove_doc_from_index_clears_entry_and_backlinks() {
+        let mut idx = VaultIndex::default();
+        idx.ready = true;
+        let entry = |path: &str, outgoing: Vec<&str>| DocEntry {
+            path: path.into(),
+            title: path.into(),
+            tags: vec![],
+            outgoing: outgoing.iter().map(|s| s.to_string()).collect(),
+            unresolved: vec![],
+            content: String::new(),
+        };
+        // a -> b；b 无对外链接
+        idx.docs.insert("a.md".into(), entry("a.md", vec!["b.md"]));
+        idx.docs.insert("b.md".into(), entry("b.md", vec![]));
+        idx.backlinks.insert("b.md".into(), vec!["a.md".into()]);
+        idx.backlinks.insert("a.md".into(), vec![]);
+
+        remove_doc_from_index(&mut idx, "a.md");
+        // 自身条目移除
+        assert!(!idx.docs.contains_key("a.md"));
+        // a.md 写入 b.md 的反向链接贡献被清除；b.md 仍在索引
+        assert_eq!(idx.backlinks.get("b.md").map(|v| v.len()), Some(0));
+        assert!(idx.docs.contains_key("b.md"));
+        // a.md 作为 target 的 backlinks 条目被移除
+        assert!(!idx.backlinks.contains_key("a.md"));
+
+        // 删除不存在的 path 为空操作，不应 panic
+        remove_doc_from_index(&mut idx, "ghost.md");
+        assert!(idx.docs.contains_key("b.md"));
+    }
+
+    #[test]
     fn read_backup_reads_inside_and_rejects_outside() {
         // 临时库：写一份 .notelume-backup/<day>/<stem>-HH-MM-SS.md 快照
         let tmp = std::env::temp_dir().join(format!("notelume-backup-test-{}", std::process::id()));
@@ -1470,6 +1529,7 @@ pub fn run() {
             search_vault,
             doc_preview,
             update_index_doc,
+            remove_index_doc,
             backup_write,
             list_backups,
             read_backup,

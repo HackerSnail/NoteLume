@@ -22,6 +22,7 @@
 - **画布增强：卡片内 Markdown 渲染**（P2）：文本卡片不再只显纯文本，而是以 **markdown-lite** 渲染（标题/粗体·斜体/有序无序列表/行内代码·代码块/引用/分割线/表格/删除线/自动识别链接），复用项目已有的 markdown-it（`html:false` 转义原始 HTML 防注入，零新依赖）。`.canvas` 仍存**原始 markdown** 文本（与 Obsidian 卡片渲染对齐、往返无损）；双击编辑时回到原始 markdown 的 textarea；渲染结果按文本缓存（临时字段 `_md`/`_mdSrc`，save/snapshot 自动剔除）。卡片内链接仅样式化不可点（应用未接外部 opener，避免劫持拖拽）
 - **画布增强：缩略图 minimap**（P2）：画布右下角全局小地图，按节点包围盒自适应缩放到 180×120，把每张卡片（分组框虚线）绘为小矩形并高亮选中项；叠加一个**视口框**实时反映当前可见区域。在缩略图上点击/拖拽即可平移主视口到对应区域（setPointerCapture 支持连续拖动）。工具条 ▦ 按钮显隐，选择记 localStorage。纯前端 SVG，复用现有渲染/变换，零新依赖；`applyView`（平移/缩放）与 `render`（节点变化）分别只刷新视口框/节点层，`destroy` 清理拖拽监听
 - **文件树右键删除（移入回收站）**：在左侧文件树的文档/画布上右键弹出菜单（打开 / **删除**），不再只能调出浏览器原生菜单。删除是**移入系统回收站**（可从回收站恢复），前弹原生确认框；若删的是当前打开文档则自动清空编辑区回到无文档态；删后重扫文件树。新 Rust command `delete_file(vault_root, path)`（经 `abs_in_vault` 限定库内、拒绝 `..` 越界与目录，调 `trash::delete` 移入回收站；附单测 `delete_file_rejects_escape_dir_and_missing`）；菜单复用画布已有的 `.cv-menu` 样式。新增依赖 `trash`（跨平台回收站，Windows 走 Shell API）
+- **删除时同步清理索引**：文件移入回收站后，索引（`VaultIndex`）会即时移除这条文档，无需全量重建。新 Rust command `remove_index_doc(path)`：删 `docs` 条目、清掉它写入他人 `backlinks` 的 outgoing 贡献、并移除自身作为 target 的 `backlinks`（`ready=false` 时跳过，交由 rebuild）；抽为纯函数 `remove_doc_from_index` 附单测 `remove_doc_from_index_clears_entry_and_backlinks`。前端在 `deleteFile` 成功后调 `removeIndexDoc`（canvas 不在索引内，为空操作），与保存后的 `updateIndexDoc` 对称
 
 ### 计划中（P2 未完项）
 

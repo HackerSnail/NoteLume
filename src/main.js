@@ -20,6 +20,7 @@ import {
   queryOutgoing,
   searchVault,
   updateIndexDoc,
+  removeIndexDoc,
   backupWrite,
   exportFile,
 } from './tauri-bridge.js'
@@ -311,6 +312,8 @@ async function deleteVaultFile(rel, name) {
   if (!ok) return
   try {
     await deleteFile(state.vaultRoot, rel)
+    // 索引同步：从索引移除这条文档（canvas 不在索引内，为空操作）
+    try { await removeIndexDoc(rel) } catch (_) {}
     if (state.currentFile === rel) {
       // 删的是当前打开文档：清空编辑区，回到无文档态
       state.dirty = false
