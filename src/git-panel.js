@@ -1,7 +1,8 @@
-// git-panel.js —— 批次 E（子项目 L）本地 Git 面板
-// 探测仓库 / status 改动列表 / log 历史 / 单文件 diff 预览 / 一键提交 / 初始化。
-// 全程本地，不碰远程与认证（子项目 R 才做）。数据经 tauri-bridge 的 git_* 封装获取。
-// 与主逻辑解耦：库根、转义、状态栏提示经 deps 注入；promptDialog / messageDialog 直接复用既有件。
+// git-panel.js —— 批次 E（子项目 L + R1）本地 + 远程 Git 面板
+// 本地（L）：探测仓库 / status 改动列表 / log 历史 / 单文件 diff 预览 / 一键提交 / 初始化。
+// 远程（R1）：「同步」区——探测系统 git / 远端 origin 增改 / fetch / 领先落后 / 快进 pull。
+//   认证交系统 git（应用不碰凭据）；仅 --ff-only，非快进不自动合并。数据经 tauri-bridge 的 git_* / git_r_* 封装获取。
+// 与主逻辑解耦：库根、转义、状态栏提示、pull 后集成回调经 deps 注入；promptDialog / messageDialog / confirmDialog 复用既有件。
 import {
   gitOpen,
   gitStatus,
@@ -11,6 +12,14 @@ import {
   gitInit,
   gitCommitAll,
   messageDialog,
+  confirmDialog,
+  gitRHave,
+  gitRRemoteList,
+  gitRRemoteAdd,
+  gitRRemoteSetUrl,
+  gitRFetch,
+  gitRAheadBehind,
+  gitRPullFf,
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
 
@@ -42,7 +51,7 @@ function relTime(sec) {
 }
 
 export function createGitPanel(deps) {
-  const { rootEl, getVaultRoot, escapeHtml, setStatus } = deps
+  const { rootEl, getVaultRoot, escapeHtml, setStatus, onPullDone } = deps
 
   let curRepoPath = null // 当前显示仓库的工作目录（可能高于 vaultRoot）
   let busy = false // 防重入（刷新/提交期间忽略并发）
@@ -252,9 +261,220 @@ export function createGitPanel(deps) {
 
   function renderBody(items, commits) {
     body.innerHTML = ''
-    body.append(renderChanges(items), renderHistory(commits), diffBox)
+    const sync = buildSyncSection()
+    body.append(renderChanges(items), renderHistory(commits), sync.sec, diffBox)
     diffBox.classList.add('hidden')
     diffBox.innerHTML = ''
+    populateSync(sync.inner) // 异步填充，不阻塞本地列表渲染
+  }
+
+  // ===== R1：同步区 =====
+  // buildSyncSection 同步搭一个占位容器，populateSync 异步按「系统 git / 远端 / 领先落后」填充。
+  function buildSyncSection() {
+    const sec = document.createElement('div')
+    sec.className = 'nl-git-section nl-git-sync-sec'
+    const title = document.createElement('div')
+    title.className = 'nl-git-section-title'
+    title.textContent = '同步'
+    const inner = document.createElement('div')
+    inner.className = 'nl-git-sync'
+    inner.innerHTML = '<div class="nl-git-empty-inline">检测远程能力…</div>'
+    sec.append(title, inner)
+    return { sec, inner }
+  }
+
+  // 凭据类错误的一句通用引导（命中关键字则附）
+  function credHint(t) {
+    if (/terminal prompts disabled|could not read|Authentication|permission denied|invalid username|password|ssh|BatchMode/i.test(t)) {
+      return '\n\n提示：应用不代持凭据，请在系统终端配好 git 凭据助手 / ssh-agent（HTTPS 可用 Personal Access Token，SSH 需加载密钥到 agent）后重试。'
+    }
+    return ''
+  }
+
+  // 刷新领先/落后徽标（fetch / pull 后调用）
+  async function updateBadge(badge) {
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot || !badge || !badge.isConnected) return
+    try {
+      const ab = await gitRAheadBehind(vaultRoot)
+      if (!ab) {
+        badge.textContent = '未设置上游'
+        badge.className = 'nl-git-sync-badge nl-git-muted'
+      } else {
+        badge.textContent = `↑ 领先 ${ab.ahead} · 落后 ${ab.behind}`
+        badge.className =
+          'nl-git-sync-badge' + (ab.behind > 0 ? ' nl-git-sync-behind' : '')
+        badge.title = '上游：' + ab.upstream
+      }
+    } catch (_) {
+      badge.textContent = ''
+    }
+  }
+
+  // 实际填充同步区控件：远端行 + Fetch/Pull + 徽标。按钮动作复用面板 busy 串行化。
+  async function populateSync(inner) {
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) {
+      inner.innerHTML = '<div class="nl-git-empty-inline">打开知识库后可用</div>'
+      return
+    }
+    let ver = null
+    try {
+      ver = await gitRHave()
+    } catch (_) {
+      ver = null
+    }
+    if (!inner.isConnected) return
+    if (!ver) {
+      inner.innerHTML =
+        '<div class="nl-git-empty-inline">远程同步需先安装系统 Git（' +
+        escapeHtml('git') +
+        ' 不在 PATH）。本地提交 / 历史功能不受影响。</div>'
+      return
+    }
+
+    // 读远端（优先 origin，否则首个远端）
+    let remotes = []
+    try {
+      remotes = (await gitRRemoteList(vaultRoot)) || []
+    } catch (_) {
+      remotes = []
+    }
+    if (!inner.isConnected) return
+    const origin = remotes.find((r) => r.name === 'origin') || remotes[0] || null
+
+    inner.innerHTML = ''
+
+    // —— 远端行 ——
+    const remoteRow = document.createElement('div')
+    remoteRow.className = 'nl-git-sync-row'
+    const remoteLabel = document.createElement('span')
+    remoteLabel.className = 'nl-git-sync-remote' + (origin ? '' : ' nl-git-muted')
+    remoteLabel.textContent = origin ? `${origin.name} · ${origin.url}` : '未配置远端'
+    if (origin) remoteLabel.title = origin.url
+    const remoteBtn = document.createElement('button')
+    remoteBtn.className = 'nl-git-btn nl-git-btn-sm'
+    remoteBtn.textContent = origin ? '改地址' : '＋ 添加远端'
+    remoteBtn.title = origin ? 'git remote set-url ' + origin.name : 'git remote add origin <url>'
+    remoteRow.append(remoteLabel, remoteBtn)
+
+    // —— 动作行：Fetch / Pull + 徽标 ——
+    const actRow = document.createElement('div')
+    actRow.className = 'nl-git-sync-row nl-git-sync-actions'
+    const fetchBtn = document.createElement('button')
+    fetchBtn.className = 'nl-git-btn'
+    fetchBtn.textContent = '⟳ Fetch'
+    fetchBtn.title = 'git fetch --prune（非交互，凭据交系统 git）'
+    const pullBtn = document.createElement('button')
+    pullBtn.className = 'nl-git-btn nl-git-btn-primary'
+    pullBtn.textContent = '↓ Pull（快进）'
+    pullBtn.title = 'git pull --ff-only（仅快进；分叉不自动合并）'
+    const badge = document.createElement('span')
+    badge.className = 'nl-git-sync-badge nl-git-muted'
+    badge.textContent = origin ? '—' : ''
+    actRow.append(fetchBtn, pullBtn, badge)
+
+    // 无远端时禁用 fetch/pull，仅引导添加
+    fetchBtn.disabled = !origin
+    pullBtn.disabled = !origin
+
+    inner.append(remoteRow, actRow)
+
+    // 已有远端时顺手拉一次领先/落后展示
+    if (origin) updateBadge(badge)
+
+    // —— 事件 ——
+    remoteBtn.addEventListener('click', () => setupRemote(inner, origin))
+    fetchBtn.addEventListener('click', () => doFetch(origin, badge))
+    pullBtn.addEventListener('click', () => doPull(origin, badge))
+  }
+
+  // 添加 / 改 origin
+  async function setupRemote(inner, origin) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const url = await promptDialog({
+      title: origin ? `修改 ${origin.name} 地址` : '添加远端 origin',
+      placeholder: 'https://… 或 git@…:…/…',
+      defaultValue: origin ? origin.url : '',
+      confirmLabel: '确定',
+    })
+    if (url == null || !url.trim()) return
+    busy = true
+    try {
+      if (origin) await gitRRemoteSetUrl(vaultRoot, origin.name, url.trim())
+      else await gitRRemoteAdd(vaultRoot, 'origin', url.trim())
+      setStatus('远端已保存')
+      await populateSync(inner)
+    } catch (e) {
+      await messageDialog('设置远端失败：' + errText(e))
+    } finally {
+      busy = false
+    }
+  }
+
+  // fetch
+  async function doFetch(origin, badge) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    busy = true
+    setStatus('抓取远端中…')
+    try {
+      await gitRFetch(vaultRoot, origin ? origin.name : undefined)
+      await updateBadge(badge)
+      setStatus('已抓取远端')
+    } catch (e) {
+      const t = errText(e)
+      setStatus('抓取失败')
+      await messageDialog('抓取失败：' + t + credHint(t))
+    } finally {
+      busy = false
+    }
+  }
+
+  // 快进 pull（前置：有未提交改动先提醒；成功后回调 main 重扫/索引/当前文档处理）
+  const NONFF_RE = /fast-forward|divergent|Not possible to fast-forward|overwritten by merge|Need to specify how to reconcile|Merge is not possible/i
+  async function doPull(origin, badge) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    // 前置提醒：工作树非空可能被快进拒 / 产生冲突
+    try {
+      const items = await gitStatus(vaultRoot)
+      if (items && items.length) {
+        const ok = await confirmDialog(
+          '有未提交改动，快进可能被拒或产生冲突（冲突处理尚未支持，属后续版本），建议先提交。仍要拉取？',
+          '拉取（快进）',
+        )
+        if (!ok) return
+      }
+    } catch (_) {
+      /* status 读失败不阻断，交由 git 定夺 */
+    }
+    busy = true
+    setStatus('快进拉取中…')
+    try {
+      await gitRPullFf(vaultRoot)
+      setStatus('已快进拉取')
+      if (typeof onPullDone === 'function') await onPullDone()
+      await updateBadge(badge)
+    } catch (e) {
+      const t = errText(e)
+      setStatus('拉取失败')
+      if (NONFF_RE.test(t)) {
+        await messageDialog(
+          '拉取被拒（本地与远端已分叉，无法快进）：\n' +
+            t +
+            '\n\n冲突自动解决尚未支持，请先在本地提交 / 手动处理，或等待后续版本（R3 冲突解决）。',
+        )
+      } else {
+        await messageDialog('拉取失败：' + t + credHint(t))
+      }
+    } finally {
+      busy = false
+    }
   }
 
   // —— 公共动作 ——
@@ -348,7 +568,59 @@ export function createGitPanel(deps) {
     refresh()
   }
 
-  return { refresh, open, commitAll, init }
+  // ===== 对外公共入口（命令面板 app.git.* 调用，无 DOM 依赖） =====
+  // 自行解析 origin，复用 doFetch/doPull/setupRemote；完成后 refresh() 重渲染面板以同步徽标。
+  async function resolveOrigin() {
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return { vaultRoot, origin: null }
+    let remotes = []
+    try {
+      remotes = (await gitRRemoteList(vaultRoot)) || []
+    } catch (_) {
+      remotes = []
+    }
+    return { vaultRoot, origin: remotes.find((r) => r.name === 'origin') || remotes[0] || null }
+  }
+
+  async function fetchRemote() {
+    if (busy) return
+    const { origin } = await resolveOrigin()
+    await doFetch(origin, document.createElement('span')) // 游离 badge → updateBadge 自动跳过
+    refresh()
+  }
+
+  async function pullRemote() {
+    if (busy) return
+    const { origin } = await resolveOrigin()
+    await doPull(origin, document.createElement('span'))
+    refresh()
+  }
+
+  async function setupRemoteCmd() {
+    if (busy) return
+    const { vaultRoot, origin } = await resolveOrigin()
+    if (!vaultRoot) return
+    const url = await promptDialog({
+      title: origin ? `修改 ${origin.name} 地址` : '添加远端 origin',
+      placeholder: 'https://… 或 git@…:…/…',
+      defaultValue: origin ? origin.url : '',
+      confirmLabel: '确定',
+    })
+    if (url == null || !url.trim()) return
+    busy = true
+    try {
+      if (origin) await gitRRemoteSetUrl(vaultRoot, origin.name, url.trim())
+      else await gitRRemoteAdd(vaultRoot, 'origin', url.trim())
+      setStatus('远端已保存')
+      refresh()
+    } catch (e) {
+      await messageDialog('设置远端失败：' + errText(e))
+    } finally {
+      busy = false
+    }
+  }
+
+  return { refresh, open, commitAll, init, fetch: fetchRemote, pull: pullRemote, setupRemote: setupRemoteCmd }
 }
 
 // —— 小工具 ——

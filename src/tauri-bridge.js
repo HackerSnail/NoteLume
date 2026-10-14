@@ -280,3 +280,47 @@ export function gitCommitAll(vaultRoot, message, name, email) {
     args: { message, name: name || null, email: email || null },
   })
 }
+
+// ==================== 批次 E（子项目 R1）：Git 远程（认证 + 快进 pull，shell out 系统 git）====================
+// 应用绝不接触/存储任何凭据——认证全交系统 git（凭据助手 / ssh-agent / GCM）。
+// 仅 --ff-only 快进 pull，非快进/分叉由前端按 stderr 关键字识别并引导（冲突解决属 R3）。
+
+/** 探测系统 git：返回版本串（如 "git version 2.45.0"）或 null（未安装 → 前端隐藏同步区） */
+export function gitRHave() {
+  return invoke('git_r_have', {})
+}
+
+/** 列现有远端：[{ name, url }]（每个 remote 取 fetch URL） */
+export function gitRRemoteList(vaultRoot) {
+  return invoke('git_r_remote_list', { vaultRoot })
+}
+
+/** 添加远端：git remote add <name> <url> */
+export function gitRRemoteAdd(vaultRoot, name, url) {
+  return invoke('git_r_remote_add', { vaultRoot, args: { name, url } })
+}
+
+/** 改远端地址：git remote set-url <name> <url> */
+export function gitRRemoteSetUrl(vaultRoot, name, url) {
+  return invoke('git_r_remote_set_url', { vaultRoot, args: { name, url } })
+}
+
+/** git fetch --prune [remote|--all]（非交互）。成功 resolve 为 stderr（进度/警告），失败 reject 附 git 原文 */
+export function gitRFetch(vaultRoot, remote) {
+  return invoke('git_r_fetch', { vaultRoot, remote: remote || null })
+}
+
+/** 上游名（如 origin/main）；无上游 → null */
+export function gitRUpstream(vaultRoot) {
+  return invoke('git_r_upstream', { vaultRoot })
+}
+
+/** 领先/落后：{ ahead, behind, upstream } | null（无上游） */
+export function gitRAheadBehind(vaultRoot) {
+  return invoke('git_r_ahead_behind', { vaultRoot })
+}
+
+/** 快进 pull（git pull --ff-only）：成功 resolve 为摘要文本；非零退出 reject 附 stdout+stderr（供关键字判定） */
+export function gitRPullFf(vaultRoot) {
+  return invoke('git_r_pull_ff', { vaultRoot })
+}

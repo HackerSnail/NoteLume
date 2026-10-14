@@ -2460,6 +2460,46 @@ body {
 .nl-git-empty-inline {
   font-size: 11px;
 }
+/* 批次 E（R1）：同步区（远端 / Fetch / Pull / 领先落后徽标） */
+.nl-git-sync-sec {
+  gap: 4px;
+}
+.nl-git-sync {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nl-git-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nl-git-sync-remote {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nl-git-sync-actions .nl-git-btn {
+  flex-shrink: 0;
+}
+.nl-git-btn-sm {
+  padding: 1px 7px;
+  font-size: 11px;
+}
+.nl-git-sync-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.nl-git-sync-behind {
+  color: var(--accent);
+  font-weight: 600;
+}
 /* diff / 提交详情预览区 */
 .nl-git-diff {
   border: 1px solid var(--border);

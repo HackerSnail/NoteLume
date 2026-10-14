@@ -1,6 +1,7 @@
 # 批次 E（子项目 R1）：Git 远程集成 · 认证 + 快进 Pull — 设计规格
 
-- 状态：✅ 设计已获批准，待写实现计划
+- 状态：✅ 已实现并验证（`cargo test --lib` 24 passed、`build:web` 无错；远程链路本机手动冒烟）
+- 实现小偏差：`git_r_fetch` 直接回 `Result<String>`（stderr 文本）、`git_r_pull_ff` 回 `Result<String>`（stdout+stderr 合并），未另包 `FetchSummary`/`PullResult` 结构体——前端只需原始文本，简化契约
 - 日期：2026-10-14
 - 关联：ROADMAP §5「Git 集成（同步首选，单独立项）」；承接子项目 L（本地 Git 基础，已实现）；复用批次 D 统一命令注册表（`src/commands.js`）与 `src/git-panel.js`
 

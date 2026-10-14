@@ -1499,6 +1499,44 @@ function registerAppCommands() {
   app('app.git.refresh', 'Git：刷新状态', null, () => { if (gitPanel) gitPanel.refresh() })
   app('app.git.commit', 'Git：提交全部…', null, () => { if (gitPanel) gitPanel.commitAll() })
   app('app.git.init', 'Git：初始化仓库', null, () => { if (gitPanel) gitPanel.init() })
+  // 批次 E（R1）：Git 远程（认证 + 快进 pull）——run 委托给面板暴露的方法；面板未就绪则无操作
+  app('app.git.fetch', 'Git：抓取远端', null, () => { if (gitPanel) gitPanel.fetch() })
+  app('app.git.pull', 'Git：拉取（仅快进）', null, () => { if (gitPanel) gitPanel.pull() })
+  app('app.git.remote', 'Git：设置远端 origin…', null, () => { if (gitPanel) gitPanel.setupRemote() })
+}
+
+// 批次 E（R1）· pull 改动磁盘文件后的编辑器集成（spec §6.4）：
+//  · 重扫文件树 + 重建索引 + 刷双链/全局标签（复用 openFolder 那套）
+//  · 当前打开文档：脏则询问是否放弃本地改动重载，净则直接回灌新内容
+// 由 git-panel 的快进 pull 成功后回调（面板不直接碰编辑器，保持解耦）。
+async function afterRemotePull() {
+  if (!state.vaultRoot) return
+  try {
+    renderTree(await scanVault(state.vaultRoot))
+  } catch (_) {
+    /* 重扫失败不阻断后续 */
+  }
+  startIndexPolling()
+  // 当前文档按脏/净态处理（仅 md 模式；画布不受 pull 影响）
+  const cf = state.currentFile
+  if (cf && state.mode === 'md') {
+    const reload = async () => {
+      try {
+        const md = await readMdFile(state.vaultRoot, cf)
+        editor.setMarkdown(md)
+        markDirty(false)
+        refreshLinkPanels()
+      } catch (_) {
+        /* 文件可能被删，忽略 */
+      }
+    }
+    if (state.dirty) {
+      const ok = await confirmDialog('远端可能更新了当前文档，是否放弃本地未保存改动并重新加载？', '拉取冲突')
+      if (ok) await reload()
+    } else {
+      await reload()
+    }
+  }
 }
 
 // editor 命令入注册表：与 app 同一张表（面板可列、可重绑），但执行经 ctx.runEditorCommand 转给 PM
@@ -1619,12 +1657,13 @@ async function boot() {
   })
   snapshotPanel.refresh()
 
-  // 批次 E（L）本地 Git 面板：探测 / status / log / diff / 提交 / 初始化（仅本地，不碰远程与认证）
+  // 批次 E（L + R1）本地 + 远程 Git 面板：本地探测/status/log/diff/提交/初始化 + 远程同步区（fetch/快进 pull/远端增改）
   gitPanel = createGitPanel({
     rootEl: els.git,
     getVaultRoot: () => state.vaultRoot,
     escapeHtml,
     setStatus,
+    onPullDone: () => afterRemotePull(),
   })
   gitPanel.refresh()
 
