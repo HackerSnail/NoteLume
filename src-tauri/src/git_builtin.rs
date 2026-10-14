@@ -144,6 +144,49 @@ pub fn lookup_known_host<'a>(
     entries.iter().find(|e| e.hosts.iter().any(|x| x == &h))
 }
 
+// ==================== §4b OpenSSH blob 头 + base64（Phase 4：known_hosts 回调侧信道用）====================
+
+/// OpenSSH 主机密钥 wire-format blob 前 4 字节是算法名长度（big-endian），紧接算法名字节。
+/// 用于把 libgit2 `Hostkey::hostkey()` 原始字节 → `ssh-ed25519` / `ssh-rsa` 等字符串。
+pub fn key_type_from_blob(blob: &[u8]) -> String {
+    if blob.len() < 4 {
+        return "unknown".into();
+    }
+    let n = u32::from_be_bytes([blob[0], blob[1], blob[2], blob[3]]) as usize;
+    if n == 0 || blob.len() < 4 + n {
+        return "unknown".into();
+    }
+    std::str::from_utf8(&blob[4..4 + n]).unwrap_or("unknown").to_string()
+}
+
+const B64CHARS: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// 标准 base64（带 padding），与 OpenSSH known_hosts 里的 key 编码一致。
+/// 手写 20 行，避免为一个函数引入 base64 crate。
+pub fn b64(input: &[u8]) -> String {
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        let n = ((b0 as u32) << 16) | ((b1 as u32) << 8) | (b2 as u32);
+        out.push(B64CHARS[((n >> 18) & 63) as usize] as char);
+        out.push(B64CHARS[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(B64CHARS[((n >> 6) & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(B64CHARS[(n & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 // ==================== §5 ff-only 决策 ====================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,7 +307,6 @@ pub struct HostUnknownPayload {
 /// `git_r_info` 返回：告诉前端当前引擎与能力。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // Phase 4+ 命令壳会构造
 pub struct GitSyncInfo {
     /// "system" | "builtin"
     pub engine: String,
@@ -325,20 +367,29 @@ pub enum Engine {
 
 /// 进程内一次性检测并缓存（`std::sync::OnceLock`）。开 `git --version` 失败一律归 Builtin（保守），
 /// 确保 R1-B 内置路径在系统 git 并不可用环境中自动接管。
-pub fn cached_engine() -> Engine {
+/// Phase 4 起额外缓存版本串，供 `git_r_info` 上报前端做徽标展示。
+pub fn cached_engine_and_version() -> (Engine, Option<String>) {
     use std::sync::OnceLock;
-    static CACHE: OnceLock<Engine> = OnceLock::new();
-    *CACHE.get_or_init(|| {
-        match std::process::Command::new("git")
-            .arg("--version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .output()
-        {
-            Ok(o) if o.status.success() => Engine::System,
-            _ => Engine::Builtin,
-        }
-    })
+    static CACHE: OnceLock<(Engine, Option<String>)> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            match std::process::Command::new("git")
+                .arg("--version")
+                .output()
+            {
+                Ok(o) if o.status.success() => {
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    (Engine::System, Some(s))
+                }
+                _ => (Engine::Builtin, None),
+            }
+        })
+        .clone()
+}
+
+/// 保留旧名字（lib.rs 命令壳已依赖）。
+pub fn cached_engine() -> Engine {
+    cached_engine_and_version().0
 }
 
 // ==================== Phase 2：System 后端（R1 shell-out 全量搬入）====================
@@ -346,7 +397,9 @@ pub fn cached_engine() -> Engine {
 /// R1 现 shell-out 系统 git 的完整实现，行为与 R1 一致。命令壳（`#[tauri::command]`）保留在 lib.rs，
 /// 通过 `match cached_engine() { System => system::*, Builtin => builtin::* }` 分派。
 pub mod system {
-    use super::{AheadBehind, Remote, RemoteArgs};
+    use super::{
+        format_known_hosts_line, AheadBehind, GitSyncInfo, Remote, RemoteArgs, TrustHostArgs,
+    };
 
     /// 一次 git 进程调用的收敛结果
     pub struct GitRun {
@@ -549,6 +602,42 @@ pub mod system {
         Ok(combined)
     }
 
+    /// Phase 4：System 引擎下一次性信任——追加写 `~/.ssh/known_hosts`，同 OpenSSH 自己的行为一致，
+    /// 不会弄脏应用私库（System 后端的 known_hosts 无应用私库概念）。
+    pub async fn trust_host(args: TrustHostArgs) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let home = std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(std::path::PathBuf::from)
+                .ok_or("无法定位 HOME/USERPROFILE，不能写 ~/.ssh/known_hosts")?;
+            let ssh = home.join(".ssh");
+            std::fs::create_dir_all(&ssh)
+                .map_err(|e| format!("创建 ~/.ssh 失败：{}", e))?;
+            let p = ssh.join("known_hosts");
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&p)
+                .map_err(|e| format!("打开 ~/.ssh/known_hosts 失败：{}", e))?;
+            let line = format_known_hosts_line(&args.host, &args.key_type, &args.key_b64);
+            writeln!(f, "{}", line)
+                .map_err(|e| format!("写 ~/.ssh/known_hosts 失败：{}", e))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// Phase 4：向上报当前引擎。System 下 git_version 从前置一次性探测的结果射。
+    pub async fn info(git_version: Option<String>) -> GitSyncInfo {
+        GitSyncInfo {
+            engine: "system".into(),
+            git_version,
+            builtin_ready: true,
+        }
+    }
+
     // ---------- System 后端的离线单测（从 lib.rs 搬入，行为同 R1） ----------
 
     #[cfg(test)]
@@ -601,17 +690,96 @@ pub mod system {
     }
 }
 
+// ==================== Phase 4：known_hosts 私库读写 + 合并表 ====================
+
+/// 内置后端的主机信任存储。不污染 `~/.ssh/known_hosts`，写盘到应用私库：
+///   • Windows: `%APPDATA%\NoteLume\git-known_hosts`
+///   • 其它（Linux/macOS）：`$XDG_CONFIG_HOME/notelume/git-known_hosts` 或 `~/.config/notelume/git-known_hosts`
+/// 验证时将 **私库 + 用户 dotfile** 合并，已有条目直接命中、零摩擦；首次陌生 host 走“一次性信任”。
+pub mod known_hosts_store {
+    use super::{format_known_hosts_line, parse_known_hosts, KnownHostEntry};
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    /// 返回应用私库 known_hosts 路径。环境缺失时 → None（内置仍可用用户 dotfile）。
+    pub fn app_path() -> Option<PathBuf> {
+        if cfg!(windows) {
+            std::env::var_os("APPDATA").map(PathBuf::from).map(|p| p.join("NoteLume").join("git-known_hosts"))
+        } else {
+            if let Some(x) = std::env::var_os("XDG_CONFIG_HOME") {
+                return Some(PathBuf::from(x).join("notelume").join("git-known_hosts"));
+            }
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|p| p.join(".config").join("notelume").join("git-known_hosts"))
+        }
+    }
+
+    /// 用户 `~/.ssh/known_hosts`（只读补充）。不存在 → None。
+    pub fn user_path() -> Option<PathBuf> {
+        std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from)
+            .map(|p| p.join(".ssh").join("known_hosts"))
+    }
+
+    fn read_entries(p: &PathBuf) -> Vec<KnownHostEntry> {
+        match fs::read_to_string(p) {
+            Ok(s) => parse_known_hosts(&s),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// 私库 + 用户 dotfile 合并。不写盘，仅供 known_hosts 回调使用。
+    pub fn merged() -> Vec<KnownHostEntry> {
+        let mut v = Vec::new();
+        if let Some(p) = app_path() {
+            v.extend(read_entries(&p));
+        }
+        if let Some(p) = user_path() {
+            v.extend(read_entries(&p));
+        }
+        v
+    }
+
+    /// 向私库追加一行。自动 mkdir。失败 → Err 回显。
+    pub fn append(host: &str, key_type: &str, key_b64: &str) -> Result<(), String> {
+        let p = app_path().ok_or("无法定位 APPDATA/XDG_CONFIG_HOME/HOME，不能写 known_hosts 私库")?;
+        if let Some(dir) = p.parent() {
+            fs::create_dir_all(dir).map_err(|e| format!("创建私库目录失败：{}", e))?;
+        }
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&p)
+            .map_err(|e| format!("打开私库失败：{}", e))?;
+        let line = format_known_hosts_line(host, key_type, key_b64);
+        writeln!(f, "{}", line).map_err(|e| format!("写私库失败：{}", e))?;
+        Ok(())
+    }
+}
+
 // ==================== Phase 3：Builtin 后端实装（git2）====================
 
 /// 内置 git2 后端。凭据回调遵 spec §3：SSH 先试 agent、后试无口令私钥；HTTPS 读 env token。
-/// 主机密钥仍走 libgit2 默认（读 ~/.ssh/known_hosts、严格匹配）；Phase 4 接 self-manage + 一次性信任。
-/// ff-pull 走 §5 契约：先 fetch、后 reset Hard（同一步搬 ref + 工作区），safe_files 默认开。
+/// 主机密钥 Phase 4 接自管：合并 `私库 + ~/.ssh/known_hosts` 作 lookup 表，命中同 key 就信任；
+/// 陌生 host 写侧信道→外层前置 `[host_unknown]<json>`，前端启一次性信任。
+/// ff-pull 走 §5 契约：先 fetch、后 checkout_tree+reset Soft（同一步搬 ref + 工作区），失败回滚。
 pub mod builtin {
-    use super::{map_err_text, AheadBehind, BuiltinErrCode, Remote, RemoteArgs};
-    use git2::{
-        build::CheckoutBuilder, Cred, CredentialType, Error as GError, ErrorClass, FetchOptions,
-        ObjectType, Reference, Repository, ResetType,
+    use super::{
+        b64, key_type_from_blob, known_hosts_store, lookup_known_host, map_err_text, AheadBehind,
+        BuiltinErrCode, GitSyncInfo, HostUnknownPayload, KnownHostEntry, Remote, RemoteArgs,
+        TrustHostArgs,
     };
+    use git2::{
+        build::CheckoutBuilder, cert::Cert, CertificateCheckStatus, Cred, CredentialType,
+        Error as GError, ErrorClass, FetchOptions, ObjectType, Reference, Repository, ResetType,
+    };
+    use std::sync::{Arc, Mutex};
+
+    /// known_hosts 侧信道：同一次 fetch 里回调写入、外层 Err 分支取出并前置 `[host_unknown]<json>`。
+    type HostSide = Arc<Mutex<Option<HostUnknownPayload>>>;
 
     // ---------- 小 helper ----------
 
@@ -642,6 +810,17 @@ pub mod builtin {
         format!("[{}]{}", code.as_str(), msg)
     }
 
+    /// 失败时先看侧信道是否有 host_unknown payload，有→前置 `[host_unknown]<json>`；无→回 map_err。
+    fn map_err_with_side(e: GError, side: &HostSide) -> String {
+        if let Ok(mut g) = side.lock() {
+            if let Some(payload) = g.take() {
+                let j = serde_json::to_string(&payload).unwrap_or_default();
+                return format!("[host_unknown]{}", j);
+            }
+        }
+        map_err(e)
+    }
+
     fn classify_err(e: &GError) -> BuiltinErrCode {
         if matches!(e.class(), ErrorClass::Net) {
             return BuiltinErrCode::Network;
@@ -649,8 +828,15 @@ pub mod builtin {
         map_err_text(e.message())
     }
 
-    /// 拼建凭据回调（spec §3）。无 known_hosts 回调——Phase 4 接。
-    fn make_callbacks<'a>() -> git2::RemoteCallbacks<'a> {
+    /// 拼建凭据 + 证书校验回调（spec §3 / §5）。
+    /// - 凭据：SSH 先 agent、后无口令私钥；HTTPS 先 env token。皆无 → Cred::default()。
+    /// - 证书：SSH 主机密钥命中同 key → CertificateOk；命中异 key → Err（libgit2 会拼 hostkey mismatch）；
+    ///   陌生 host → 写侧信道 payload + Err，外层将取 payload 拼 `[host_unknown]<json>`。
+    ///   HTTPS X509 无 as_hostkey → CertificatePassthrough，交 Schannel 默认链验。
+    fn make_callbacks(
+        entries: Vec<KnownHostEntry>,
+        side: HostSide,
+    ) -> git2::RemoteCallbacks<'static> {
         let mut cb = git2::RemoteCallbacks::new();
         cb.credentials(|_url, user_from_url, allowed| {
             let user = user_from_url.unwrap_or("git");
@@ -681,6 +867,47 @@ pub mod builtin {
                 }
             }
             Cred::default()
+        });
+        cb.certificate_check(move |cert: &Cert, hostname: &str| {
+            let hk = match cert.as_hostkey() {
+                Some(h) => h,
+                // X509 或无 hostkey 信息 → 交 libgit2/Schannel 默认验链
+                None => return Ok(CertificateCheckStatus::CertificatePassthrough),
+            };
+            let blob: &[u8] = match hk.hostkey() {
+                Some(b) if !b.is_empty() => b,
+                _ => return Ok(CertificateCheckStatus::CertificatePassthrough),
+            };
+            // 优先取 libgit2 直接提供的算法名（SshHostKeyType::name）；无 → 从 blob 头解
+            let kt = hk
+                .hostkey_type()
+                .map(|t| t.name().to_string())
+                .filter(|s| s != "unknown")
+                .unwrap_or_else(|| key_type_from_blob(blob));
+            let kb64 = b64(blob);
+            match lookup_known_host(&entries, hostname) {
+                Some(e) if e.key_b64 == kb64 && e.key_type == kt => {
+                    Ok(CertificateCheckStatus::CertificateOk)
+                }
+                Some(_) => Err(GError::from_str("hostkey mismatch")),
+                None => {
+                    // OpenSSH 风格 SHA256 指纹：base64 无 padding
+                    let fp = hk
+                        .hash_sha256()
+                        .map(|b| format!("SHA256:{}", b64(b).trim_end_matches('=').to_string()))
+                        .unwrap_or_default();
+                    let payload = HostUnknownPayload {
+                        host: hostname.to_string(),
+                        key_type: kt,
+                        key_b64: kb64,
+                        fingerprint: fp,
+                    };
+                    if let Ok(mut g) = side.lock() {
+                        *g = Some(payload);
+                    }
+                    Err(GError::from_str("host key not trusted"))
+                }
+            }
         });
         cb
     }
@@ -769,23 +996,34 @@ pub mod builtin {
     pub async fn fetch(vault_root: String, remote: Option<String>) -> Result<String, String> {
         tauri::async_runtime::spawn_blocking(move || {
             let repo = open_repo(&vault_root)?;
-            let cb = make_callbacks();
+            let entries = known_hosts_store::merged();
+            let side: HostSide = Arc::new(Mutex::new(None));
+            let cb = make_callbacks(entries, side.clone());
             let mut fo = FetchOptions::new();
             fo.remote_callbacks(cb);
             let mut summary = String::new();
             let target = remote.filter(|r| !r.trim().is_empty());
             match target {
                 Some(name) => {
-                    let mut r = repo.find_remote(&name).map_err(map_err)?;
-                    r.fetch(&[] as &[&str], Some(&mut fo), None).map_err(map_err)?;
+                    let mut r = repo
+                        .find_remote(&name)
+                        .map_err(|e| map_err_with_side(e, &side))?;
+                    r.fetch(&[] as &[&str], Some(&mut fo), None)
+                        .map_err(|e| map_err_with_side(e, &side))?;
                     summary.push_str(&format!("fetched {}\n", name));
                 }
                 None => {
-                    let names = repo.remotes().map_err(map_err)?;
+                    let names = repo
+                        .remotes()
+                        .map_err(|e| map_err_with_side(e, &side))?;
                     for n in names.iter() {
-                        let name = match n { Some(s) => s, None => continue };
+                        let name = match n {
+                            Some(s) => s,
+                            None => continue,
+                        };
                         if let Ok(mut r) = repo.find_remote(name) {
-                            r.fetch(&[] as &[&str], Some(&mut fo), None).map_err(map_err)?;
+                            r.fetch(&[] as &[&str], Some(&mut fo), None)
+                                .map_err(|e| map_err_with_side(e, &side))?;
                             summary.push_str(&format!("fetched {}\n", name));
                         }
                     }
@@ -848,12 +1086,18 @@ pub mod builtin {
             let repo = open_repo(&vault_root)?;
             let info = read_head_info(&repo)?;
 
-            // 1) fetch 目标 remote，同 libgit2 默认 refspec
-            let cb = make_callbacks();
+            // 1) fetch 目标 remote，同 libgit2 默认 refspec；带 known_hosts 侧信道
+            let entries = known_hosts_store::merged();
+            let side: HostSide = Arc::new(Mutex::new(None));
+            let cb = make_callbacks(entries, side.clone());
             let mut fo = FetchOptions::new();
             fo.remote_callbacks(cb);
-            let mut remote = repo.find_remote(&info.remote_name).map_err(map_err)?;
-            remote.fetch(&[] as &[&str], Some(&mut fo), None).map_err(map_err)?;
+            let mut remote = repo
+                .find_remote(&info.remote_name)
+                .map_err(|e| map_err_with_side(e, &side))?;
+            remote
+                .fetch(&[] as &[&str], Some(&mut fo), None)
+                .map_err(|e| map_err_with_side(e, &side))?;
 
             // 2) 取 fetch 后的 up_oid
             let head = repo.head().map_err(map_err)?;
@@ -912,6 +1156,24 @@ pub mod builtin {
         })
         .await
         .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// Phase 4：一次性信任陌生 host——写入应用私库（不污染 ~/.ssh）。
+    pub async fn trust_host(args: TrustHostArgs) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            known_hosts_store::append(&args.host, &args.key_type, &args.key_b64)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// Phase 4：向上报当前引擎。Builtin 下 git_version 永远 None（不依赖系统 git）。
+    pub async fn info(git_version: Option<String>) -> GitSyncInfo {
+        GitSyncInfo {
+            engine: "builtin".into(),
+            git_version,
+            builtin_ready: true,
+        }
     }
 }
 
@@ -1006,6 +1268,43 @@ gitee.com ssh-ed25519 AAAAC3NzaFake2
         let entries = parse_known_hosts("github.com ssh-ed25519 AAAA==");
         assert!(lookup_known_host(&entries, "GitHub.com").is_some());
         assert!(lookup_known_host(&entries, "gitlab.com").is_none());
+    }
+
+    // ---- b64 ----
+    #[test]
+    fn b64_empty_is_empty() {
+        assert_eq!(b64(&"".as_bytes().to_vec()), "");
+    }
+    #[test]
+    fn b64_pads_correctly() {
+        assert_eq!(b64(b"a"), "YQ==");
+        assert_eq!(b64(b"ab"), "YWI=");
+        assert_eq!(b64(b"abc"), "YWJj");
+        assert_eq!(b64(b"abcd"), "YWJjZA==");
+        assert_eq!(b64(b"abcde"), "YWJjZGU=");
+    }
+    #[test]
+    fn b64_matches_std_alphabet() {
+        // 确保 0xfb 的尾部 4 位 = 63 = '/'， 0xff 全 1 = 63 = '/'
+        assert_eq!(b64(&[0xff, 0xff, 0xff]), "////");
+    }
+
+    // ---- key_type_from_blob ----
+    #[test]
+    fn key_type_from_blob_recovers_ed25519() {
+        let mut blob: Vec<u8> = vec![0, 0, 0, 11];
+        blob.extend(b"ssh-ed25519");
+        blob.extend(std::iter::repeat(0u8).take(32)); // key body
+        assert_eq!(key_type_from_blob(&blob), "ssh-ed25519");
+    }
+    #[test]
+    fn key_type_from_blob_short_or_bad_is_unknown() {
+        assert_eq!(key_type_from_blob(&[]), "unknown");
+        assert_eq!(key_type_from_blob(&[0, 0, 0]), "unknown");
+        // n 比实际长→ unknown
+        assert_eq!(key_type_from_blob(&[0, 0, 0, 100, b'x']), "unknown");
+        // n=0 也归 unknown（防御）
+        assert_eq!(key_type_from_blob(&[0, 0, 0, 0]), "unknown");
     }
 
     // ---- ff_decision ----

@@ -12,7 +12,7 @@ mod git_builtin;
 
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
-pub use git_builtin::{AheadBehind, Remote, RemoteArgs};
+pub use git_builtin::{AheadBehind, GitSyncInfo, Remote, RemoteArgs, TrustHostArgs};
 
 // ==================== P0 已有类型 ====================
 
@@ -2064,6 +2064,26 @@ async fn git_r_pull_ff(vault_root: String) -> Result<String, String> {
     }
 }
 
+/// Phase 4 新增：一次性信任陌生 SSH host。前端从 `[host_unknown]<json>` 错误里解出 payload，
+/// 展示 key 指纹后递回本命令；System 引擎写 `~/.ssh/known_hosts`，Builtin 引擎写应用私库。
+#[tauri::command]
+async fn git_r_trust_host(args: TrustHostArgs) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::trust_host(args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::trust_host(args).await,
+    }
+}
+
+/// Phase 4 新增：上报当前引擎与系统 git 版本，前端徽标 + 错误引导需要。进程内 OnceLock 缓存，无额外开销。
+#[tauri::command]
+async fn git_r_info() -> GitSyncInfo {
+    let (engine, ver) = git_builtin::cached_engine_and_version();
+    match engine {
+        git_builtin::Engine::System => git_builtin::system::info(ver).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::info(ver).await,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2674,7 +2694,9 @@ pub fn run() {
             git_r_fetch,
             git_r_upstream,
             git_r_ahead_behind,
-            git_r_pull_ff
+            git_r_pull_ff,
+            git_r_trust_host,
+            git_r_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
