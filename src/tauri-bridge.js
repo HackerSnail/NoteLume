@@ -228,3 +228,15 @@ export function exportFile(absPath, content) {
 export function getGraphData(vaultRoot) {
   return invoke('get_graph_data', { vaultRoot })
 }
+
+// ==================== 批次 C：整站导出 ====================
+
+/** 一次拿全库站点图：{ docs:[{rel,title}], wiki:[{from,target,to}] }（rel 用 / 分隔） */
+export function buildSiteGraph(vaultRoot) {
+  return invoke('build_site_graph', { vaultRoot })
+}
+
+/** 把被引用到的图片按相同相对路径镜像复制到输出目录 */
+export function copyVaultAssets(vaultRoot, rels, outDir) {
+  return invoke('copy_vault_assets', { vaultRoot, args: { rels, outDir } })
+}

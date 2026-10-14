@@ -281,8 +281,10 @@ const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
 export const schema = new Schema({ nodes: extendedNodes, marks: extendedMarks })
 
 // —— 2. tokenizer（markdown-it）———————————————————————————————————
-// commonmark 基底 + 开启 table / strikethrough，再叠加 wikilink / tag 自定义行内规则。
-const tokenizer = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
+// commonmark 基底 + 开启 table / strikethrough，再叠加 wikilink / tag / math / callout 自定义规则。
+// 导出该实例供整站导出复用：编辑器只用它 tokenize→ProseMirror（mdParser.parse），从不调 .render()，
+// 故导出侧在其上挂 HTML 渲染规则不会影响编辑器解析（见 site-export.js）。
+export const tokenizer = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
 
 // [[Target]] 或 [[Target|显示文字]]；![[图片]] 为 Obsidian 图片嵌入（仅当扩展名是图片时）
 const WIKI_IMG_RE = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i

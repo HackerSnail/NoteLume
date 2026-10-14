@@ -38,6 +38,7 @@
 - **正文内 markdown 源码双模式切换**：✅ 已完成（单列项，从手感包拆出）——CodeMirror 6 整篇互切（`Ctrl+/`），原文保真、懒加载，新 `src/source-editor.js` + `src/source-sync.js`；新增 CM/@lezer 依赖，无 Rust。
 
 ### 3. 整库导出 HTML 静态站
+- ✅ **已完成**：把已有的"单篇导出 HTML"扩成**批量**——新 Rust `build_site_graph`（全库 docs + `[[wikilink]]` 解析表）/`copy_vault_assets`（镜像相对路径复制被引用的图片）+ 新前端 `src/site-export.js`（复用编辑器同一 markdown-it 管线的全保真渲染、链接重写、侧栏树/反链/首页/无依赖纯前端搜索），产物为镜像库树、本地双击即浏览的静态站。画布不进站；pandoc 导 DOCX/PDF 仍列为检测到才启用的独立可选（未做）。
 - 把已有的"单篇导出 HTML"扩成**批量**：遍历库，逐篇渲染 HTML 到一个输出目录，**重写 `[[wikilink]]` 与相对图片/文档链接**为站内的相对 `.html`/资源路径，生成首页/侧栏导航（可选简单搜索索引 json）。
 - 纯文件产物（一个本地可打开的静态站）。
 - **pandoc 导 DOCX/PDF**：作为**可选增强**——检测到系统装有 pandoc 才在导出菜单出现该项，否则不显示（避免硬依赖）。
@@ -73,7 +74,7 @@
 
 - **批次 A**：模板 + 每日笔记（最小、最高留存价值、零风险）— ✅ 已完成（新 `src/template.js` 从模板新建 + `src/daily-capture.js` 全局「今日速记」浮层（按反馈与知识库解绑：不占主编辑区/不切根/未开库可用，存固定绝对目录）+ 工具条 📅/📋 + `Ctrl+Shift+D`）
 - **批次 B**：编辑器手感包——斜杠 `/` + 写作统计 + 专注/打字机（源码双模式暂不并入）— ✅ 已完成（新 `src/slash-menu.js` 空行 `/` 弹块菜单（复用 `.nl-suggest` 观感、仅空块触发）+ `src/writing-stats.js` 工具条字数/阅读时长/目标（`getText()`+`onDocChange`）+ `src/editor-modes.js` 专注(`Ctrl+Shift+F`)/打字机(`Ctrl+Shift+T`)，开关存 localStorage；均无 Rust）
-- **批次 C**：整库导出 HTML 静态站（pandoc 作为检测到才启用的可选项）
+- **批次 C**：整库导出 HTML 静态站（pandoc 作为检测到才启用的可选项）— ✅ 已完成（新 Rust `build_site_graph`/`copy_vault_assets`（附单测，需重启 tauri dev）+ 新前端 `src/site-export.js`（全保真渲染/链接重写/导航/反链/首页/搜索，Tauri I/O 依赖注入）+ `src/tauri-bridge.js` 封装 + ▾ 更多「🌐 导出整站…」；Node 单测 `src/tests/site-export.test.mjs`）
 - **批次 D**：命令面板 + 快捷键自定义（顺带收敛统一命令注册表）
 - **批次 E**：Git 集成（E1 只读 → E2 写；先设计认证与冲突）
 - **批次 F**：插件系统 v2（权限 → 隔离 → registerNodeSpec → 市场）

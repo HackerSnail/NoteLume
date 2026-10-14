@@ -32,7 +32,10 @@ import {
   removeIndexDoc,
   backupWrite,
   exportFile,
+  buildSiteGraph,
+  copyVaultAssets,
 } from './tauri-bridge.js'
+import { exportSite } from './site-export.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
@@ -769,6 +772,7 @@ function openMoreMenu(anchorEl) {
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
   menu.appendChild(makeMenuItem('📤 导出为 HTML', () => exportHTML()))
+  menu.appendChild(makeMenuItem('🌐 导出整站…', () => exportSiteFull()))
   menu.appendChild(makeMenuItem('🖨 打印 / 导出 PDF (Ctrl+P)', () => window.print()))
   menu.appendChild(makeMenuItem('🕸 知识图谱 (Ctrl+G)', () => openGraphModal()))
   menu.appendChild(makeMenuItem('🗺 新画布 / 白板', () => newCanvas()))
@@ -1337,6 +1341,31 @@ async function exportHTML() {
     setStatus('已导出 HTML：' + abs)
   } catch (e) {
     await messageDialog('导出失败：' + ((e && e.message) || e))
+  }
+}
+
+// —— 批次 C：导出整站为静态 HTML ——
+async function exportSiteFull() {
+  if (!state.vaultRoot) {
+    setStatus('需先打开知识库文件夹才能导出整站')
+    return
+  }
+  const outDir = await pickFolder()
+  if (!outDir) return
+  setStatus('开始导出整站…')
+  try {
+    const io = {
+      buildGraph: (vr) => buildSiteGraph(vr),
+      scanTree: (vr) => scanVault(vr),
+      readMd: (vr, rel) => readMdFile(vr, rel),
+      writeFile: (absPath, content) => exportFile(absPath, content),
+      copyAssets: (vr, rels, od) => copyVaultAssets(vr, rels, od),
+    }
+    const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus })
+    await messageDialog(`整站导出完成：${r.ok} 篇成功` + (r.failed ? `，${r.failed} 篇跳过` : '') + '\n输出目录：' + outDir, 'info')
+  } catch (e) {
+    await messageDialog('整站导出失败：' + ((e && e.message) || e))
+    setStatus('整站导出失败')
   }
 }
 

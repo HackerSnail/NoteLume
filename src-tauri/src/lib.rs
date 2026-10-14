@@ -1464,6 +1464,96 @@ fn get_graph_data(
     Ok(extract_graph(&guard))
 }
 
+// ==================== 批次 C：整站导出 ====================
+
+/// 站点文档条目（供首页/侧栏/搜索索引）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteDoc {
+    pub rel: String,
+    pub title: String,
+}
+
+/// 一条 wikilink 解析结果：from 文档里的原始 target 文本 → 解析到的库内 md rel（None=解析不到）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteWiki {
+    pub from: String,
+    pub target: String,
+    pub to: Option<String>,
+}
+
+/// build_site_graph 返回：全库文档 + wikilink 解析表（导航/反链/链接重写单一事实源）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteGraph {
+    pub docs: Vec<SiteDoc>,
+    pub wiki: Vec<SiteWiki>,
+}
+
+/// 遍历库内所有 md，产出文档列表与 wikilink 解析表。
+/// 复用 extract_wikilinks + resolve_one，链接解析与编辑器点击跳转完全一致。
+#[tauri::command]
+fn build_site_graph(vault_root: String) -> Result<SiteGraph, String> {
+    let root = fs::canonicalize(&vault_root).map_err(|e| format!("知识库路径无效：{}", e))?;
+    if !root.is_dir() {
+        return Err("知识库路径不是目录".into());
+    }
+    let mut paths: Vec<String> = Vec::new();
+    collect_md_paths(&root, "", 0, &mut paths);
+    paths.sort();
+    let mut docs: Vec<SiteDoc> = Vec::new();
+    let mut wiki: Vec<SiteWiki> = Vec::new();
+    for rel in paths {
+        let mut abs = root.clone();
+        for seg in rel.split('/') {
+            abs.push(seg);
+        }
+        let content = fs::read_to_string(&abs).unwrap_or_default();
+        docs.push(SiteDoc { rel: rel.clone(), title: extract_title(&content, &rel) });
+        // 同一文档内相同 target 只解析一次（渲染按 (from,target) 查表）
+        let mut seen: HashSet<String> = HashSet::new();
+        for target in extract_wikilinks(&content) {
+            if !seen.insert(target.clone()) {
+                continue;
+            }
+            let to = resolve_one(&root, &rel, &target);
+            wiki.push(SiteWiki { from: rel.clone(), target, to });
+        }
+    }
+    Ok(SiteGraph { docs, wiki })
+}
+
+/// 把库内引用到的资源（图片）按相同相对路径镜像复制到输出目录。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyAssetsArgs {
+    pub rels: Vec<String>,
+    pub out_dir: String,
+}
+
+/// 逐个 abs_in_vault 校验（拒绝 .. 逃逸）；缺失/越界资源跳过不中断整站。
+#[tauri::command]
+fn copy_vault_assets(vault_root: String, args: CopyAssetsArgs) -> Result<(), String> {
+    let out_root = PathBuf::from(&args.out_dir);
+    fs::create_dir_all(&out_root).map_err(|e| format!("创建输出目录失败：{}", e))?;
+    for rel in &args.rels {
+        let src = match abs_in_vault(&vault_root, rel) {
+            Ok(s) => s,
+            Err(_) => continue, // 资源不存在/越界：跳过
+        };
+        if !src.is_file() {
+            continue;
+        }
+        let dest = vault_join(&out_root, rel)?;
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{}", e))?;
+        }
+        fs::copy(&src, &dest).map_err(|e| format!("复制失败 {}：{}", rel, e))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1799,7 +1889,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_includes_canvas_but_not_other_types() {
+    fn scan_includes_canvas_and_images_but_not_text() {
         let tmp = std::env::temp_dir().join(format!("notelume-scan-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
@@ -1814,9 +1904,59 @@ mod tests {
         assert!(names.contains(&"a.md".to_string()));
         assert!(names.contains(&"board.canvas".to_string()), "canvas 应入树");
         assert!(!names.contains(&"notes.txt".to_string()));
-        assert!(!names.contains(&"pic.png".to_string()));
+        // 图片附件已入树（见「图片入树」特性：scan_dir 白名单含 is_image）
+        assert!(names.contains(&"pic.png".to_string()), "图片应进文件树");
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn build_site_graph_resolves_wikilinks_and_titles() {
+        let tmp = std::env::temp_dir().join(format!("notelume-sitegraph-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).unwrap();
+        fs::write(tmp.join("index.md"), "# 首页\n[[target]] [[sub/target2|别名]] [[缺失]]\n").unwrap();
+        fs::write(tmp.join("target.md"), "# T\n").unwrap();
+        fs::write(tmp.join("sub").join("target2.md"), "# T2\n").unwrap();
+        let root_str = tmp.to_string_lossy().to_string();
+
+        let g = build_site_graph(root_str.clone()).unwrap();
+        assert_eq!(g.docs.len(), 3);
+        let idx = g.docs.iter().find(|d| d.rel == "index.md").unwrap();
+        assert_eq!(idx.title, "首页");
+        let w_of = |target: &str| g.wiki.iter().find(|w| w.from == "index.md" && w.target == target).map(|w| w.to.clone());
+        // basename 回退（库根文件）→ target.md；路径式 → sub/target2.md；解析不到 → None
+        assert_eq!(w_of("target").flatten().as_deref(), Some("target.md"));
+        assert_eq!(w_of("sub/target2").flatten().as_deref(), Some("sub/target2.md"));
+        assert_eq!(w_of("缺失"), Some(None));
+        // 同文档重复 target 只一条：index.md 共 3 条
+        assert_eq!(g.wiki.iter().filter(|w| w.from == "index.md").count(), 3);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn copy_vault_assets_mirrors_and_skips_missing_and_tolerates_escape() {
+        let tmp = std::env::temp_dir().join(format!("notelume-copyassets-test-{}", std::process::id()));
+        let out = std::env::temp_dir().join(format!("notelume-copyassets-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let _ = fs::remove_dir_all(&out);
+        fs::create_dir_all(tmp.join("assets")).unwrap();
+        fs::write(tmp.join("assets").join("x.png"), b"PNGDATA").unwrap();
+        let root_str = tmp.to_string_lossy().to_string();
+        let out_str = out.to_string_lossy().to_string();
+
+        // 正常：镜像相对路径
+        copy_vault_assets(root_str.clone(), CopyAssetsArgs { rels: vec!["assets/x.png".into()], out_dir: out_str.clone() }).unwrap();
+        assert_eq!(fs::read(out.join("assets").join("x.png")).unwrap(), b"PNGDATA");
+        // 缺失资源：跳过、不报错、不写出
+        copy_vault_assets(root_str.clone(), CopyAssetsArgs { rels: vec!["assets/ghost.png".into()], out_dir: out_str.clone() }).unwrap();
+        assert!(!out.join("assets").join("ghost.png").exists());
+        // .. 逃逸：源侧 abs_in_vault 拒绝 → 跳过（不写出、不报错）
+        copy_vault_assets(root_str.clone(), CopyAssetsArgs { rels: vec!["../outside.png".into()], out_dir: out_str.clone() }).unwrap();
+
+        let _ = fs::remove_dir_all(&tmp);
+        let _ = fs::remove_dir_all(&out);
     }
 }
 
@@ -1857,7 +1997,10 @@ pub fn run() {
             list_plugins,
             read_plugin,
             export_file,
-            get_graph_data
+            get_graph_data,
+            // 批次 C：整站导出
+            build_site_graph,
+            copy_vault_assets
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
