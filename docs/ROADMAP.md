@@ -50,10 +50,11 @@
 - 前置：先有一处**集中命令注册表**（命令面板、插件 `registerCommand`、快捷键设置三者共用），建议这一步把命令注册收敛统一。
 
 ### 5. Git 集成（同步首选，单独立项）
-- **为什么优先于自建服务器**：库即仓库，纯文件、可移植、用户本就熟悉；开源空间大（Obsidian Sync 收费闭源）。
-- **分阶段**：
-  - **E1 只读**：检测/初始化 `.git`、`status`（改动列表）、`log`（历史，可与现有版本快照 UI 呼应）、`diff` 预览。
-  - **E2 写**：一键 commit（stage all + message）、pull、push。
+- ✅ **已完成（子项目 L：本地基础）**：以 `git2`（libgit2，`vendored-libgit2`、无 openssl）内置接入，**不依赖用户装 git**。新 Rust 命令面 `git_open`/`git_status`/`git_log`/`git_diff_file`（只读）+ `git_config_identity`/`git_init`（含 `.gitignore` seeding 排除 `.notelume-backup/`）/`git_commit_all`（等价 `add -A` + 带身份 commit）；新前端 `src/git-panel.js`（侧栏 🌿 面板：Changes/History/diff 预览/提交/初始化）；`app.git.*` 并入批次 D 命令注册表。⚠️ 有意以「本地 vs 远程」而非下述 E1/E2 的「读 vs 写」为切分轴（本地 commit 无认证成本，认证是远程阶段才需啃的硬骨头）：见 [`docs/superpowers/specs/2026-10-14-local-git-integration-design.md`](superpowers/specs/2026-10-14-local-git-integration-design.md)。**含 Rust，须重启 `tauri dev` 重编生效**。
+- ⏳ **待做（子项目 R：远程与认证）**：pull / push + 认证（HTTPS PAT / SSH agent / 凭据助手）+ 冲突暴露与解决 UX。依赖 L 已落地。
+- **原分阶段设想（读/写轴，已由 L/R 轴取代）**：
+  - **E1 只读**：检测/初始化 `.git`、`status`（改动列表）、`log`（历史）、`diff` 预览。（已随 L 完成）
+  - **E2 写**：一键 commit（已随 L 完成）；pull、push（属 R）。
 - **真正的成本（务必先设计）**：
   - **认证**：HTTPS 个人访问令牌 / SSH agent / 凭据助手——Tauri 侧如何安全又不越权地代持。
   - **pull 冲突**：markdown 合并冲突的暴露与解决 UX（至少能列冲突文件、打开对比）。

@@ -41,6 +41,7 @@ import { createShortcutSettings } from './shortcut-settings.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
+import { createGitPanel } from './git-panel.js'
 import { promptDialog } from './prompt-dialog.js'
 import { confirm3Dialog } from './confirm3-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
@@ -99,6 +100,7 @@ const els = {
   backlinks: $('backlinks'),
   outgoing: $('outgoing'),
   snapshots: $('snapshots'),
+  git: $('git'),
   snapshotModal: $('snapshot-modal'),
   snapshotPreview: $('snapshot-preview'),
   snapshotLabel: $('snapshot-label'),
@@ -117,6 +119,7 @@ const els = {
 let editor
 let palette = null
 let keySettings = null
+let gitPanel = null
 let snapshotPanel = null
 let frontmatterPanel = null
 let pluginManager = null
@@ -264,6 +267,7 @@ async function openFolder() {
     setStatus('知识库已加载：' + root + '（索引构建中…）')
     startIndexPolling()
     if (pluginManager) pluginManager.reload()
+    if (gitPanel) gitPanel.refresh()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开失败：' + msg)
@@ -336,6 +340,7 @@ async function openSingleFile() {
     startIndexPolling()
     if (snapshotPanel) snapshotPanel.refresh()
     if (pluginManager) pluginManager.reload()
+    if (gitPanel) gitPanel.refresh()
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开文件失败：' + msg)
@@ -1086,6 +1091,7 @@ async function saveCurrent(manual = true) {
     // 备份：手动保存一定做一次；自动保存受间隔约束（在 scheduleAutosave 里）
     await maybeBackup(md, manual)
     if (snapshotPanel && manual) snapshotPanel.refresh()
+    if (gitPanel && manual) gitPanel.refresh()
   } catch (e) {
     if (manual) await messageDialog('保存失败：' + e)
     else console.warn('自动保存失败', e)
@@ -1489,6 +1495,10 @@ function registerAppCommands() {
   app('app.typewriterMode', '打字机模式', 'Mod-Shift-t', () => toggleTypewriterMode())
   app('app.sourceMode', 'Markdown 源码模式', 'Mod-/', () => toggleSourceMode())
   app('app.palette', '命令面板', 'Mod-Shift-p', () => { if (palette) palette.open() })
+  // 批次 E（L）：本地 Git（无默认键，避免抢占既有快捷键；可在快捷键设置里自行绑定）
+  app('app.git.refresh', 'Git：刷新状态', null, () => { if (gitPanel) gitPanel.refresh() })
+  app('app.git.commit', 'Git：提交全部…', null, () => { if (gitPanel) gitPanel.commitAll() })
+  app('app.git.init', 'Git：初始化仓库', null, () => { if (gitPanel) gitPanel.init() })
 }
 
 // editor 命令入注册表：与 app 同一张表（面板可列、可重绑），但执行经 ctx.runEditorCommand 转给 PM
@@ -1608,6 +1618,15 @@ async function boot() {
     onAfterRollback: () => refreshLinkPanels(),
   })
   snapshotPanel.refresh()
+
+  // 批次 E（L）本地 Git 面板：探测 / status / log / diff / 提交 / 初始化（仅本地，不碰远程与认证）
+  gitPanel = createGitPanel({
+    rootEl: els.git,
+    getVaultRoot: () => state.vaultRoot,
+    escapeHtml,
+    setStatus,
+  })
+  gitPanel.refresh()
 
   // P2 插件钩子系统：打开知识库后从 .notelume-plugins/ 加载（依赖已装配的 editor.view）
   pluginManager = createPluginManager({

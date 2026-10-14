@@ -1,6 +1,6 @@
 # 批次 E（子项目 L）：本地 Git 集成 — 设计规格
 
-- 状态：✅ 设计已获批准，待写实现计划（writing-plans）
+- 状态：✅ 已实现并验证（子项目 L）——git2 只读/写命令面 + tauri-bridge 封装 + `src/git-panel.js` 面板 + `app.git.*` 入注册表；`cargo test --lib` 19 passed、`build:web` 无错
 - 日期：2026-10-14
 - 关联：ROADMAP §5「Git 集成（同步首选，单独立项）」；复用批次 D 统一命令注册表（`src/commands.js`）
 

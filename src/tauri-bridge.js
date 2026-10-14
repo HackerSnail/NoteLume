@@ -240,3 +240,43 @@ export function buildSiteGraph(vaultRoot) {
 export function copyVaultAssets(vaultRoot, rels, outDir) {
   return invoke('copy_vault_assets', { vaultRoot, args: { rels, outDir } })
 }
+
+// ==================== 批次 E（子项目 L）：本地 Git（只读 + 本地写，无远程/认证）====================
+
+/** 探测库根所在仓库（向上 discover）：{ isRepo, repoPath, branch, hasHead } */
+export function gitOpen(vaultRoot) {
+  return invoke('git_open', { vaultRoot })
+}
+
+/** 工作树/暂存/HEAD 差异列表：[{ path, kind, staged }]（封顶 1000） */
+export function gitStatus(vaultRoot) {
+  return invoke('git_status', { vaultRoot })
+}
+
+/** 提交历史：[{ id, idShort, summary, authorName, authorEmail, time }] */
+export function gitLog(vaultRoot, limit) {
+  return invoke('git_log', { vaultRoot, limit: limit == null ? null : limit })
+}
+
+/** 单文件统一 diff 文本。against='HEAD'（含未跟踪）或某 commit id */
+export function gitDiffFile(vaultRoot, path, against) {
+  return invoke('git_diff_file', { vaultRoot, args: { path, against } })
+}
+
+/** 读提交身份：{ name, email } | null */
+export function gitConfigIdentity(vaultRoot) {
+  return invoke('git_config_identity', { vaultRoot })
+}
+
+/** 初始化仓库（无 .gitignore 时写一份排除 .notelume-backup/）：返回 GitRepoInfo */
+export function gitInit(vaultRoot) {
+  return invoke('git_init', { vaultRoot })
+}
+
+/** 一键提交全部（git add -A + commit）：name/email 省略则读配置。返回 { id, idShort } */
+export function gitCommitAll(vaultRoot, message, name, email) {
+  return invoke('git_commit_all', {
+    vaultRoot,
+    args: { message, name: name || null, email: email || null },
+  })
+}
