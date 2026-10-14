@@ -1338,41 +1338,66 @@ fn read_backup(vault_root: String, backup_rel: String) -> Result<String, String>
     fs::read_to_string(&abs).map_err(|e| format!("读取备份失败：{}", e))
 }
 
-/// 插件文件条目：name = 文件名，path = 库内相对路径
+/// 插件包条目（批次 F1：文件夹化安装包）
+/// dir_name = 一级目录名（=== manifest.id，由前端校验）；manifest_raw = manifest.json 原文
+/// （Rust 不解析 JSON、不校验 id/scope——那是前端 plugin-manifest.js 的职责）；
+/// main_exists = 默认 main.js/main.mjs 是否存在的探测。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginEntry {
-    pub name: String,
-    pub path: String,
+pub struct PluginPackage {
+    pub dir_name: String,
+    pub manifest_path: String,
+    pub manifest_raw: String,
+    pub main_exists: bool,
 }
 
-/// 列出 <vault>/.notelume-plugins/ 下的 *.js / *.mjs 插件文件（P2 插件钩子系统）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginList {
+    pub packages: Vec<PluginPackage>,
+    pub legacy_flat: Vec<String>,
+}
+
+/// 枚举 <vault>/.notelume-plugins/ 下的一级子目录（每个是一个插件包），只读
+/// manifest.json 原文交前端校验。顶层游离 *.js/*.mjs 收集进 legacyFlat（旧版
+/// 平铺插件，前端提示需文件夹化迁移）。
 #[tauri::command]
-fn list_plugins(vault_root: String) -> Result<Vec<PluginEntry>, String> {
+fn list_plugins(vault_root: String) -> Result<PluginList, String> {
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
     let base = root.join(".notelume-plugins");
-    if !base.exists() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for e in fs::read_dir(&base).map_err(|e| e.to_string())?.flatten() {
-        let p = e.path();
-        if !p.is_file() {
-            continue;
-        }
-        let name = e.file_name().to_string_lossy().to_string();
-        if !(name.ends_with(".js") || name.ends_with(".mjs")) {
-            continue;
-        }
-        if let Ok(rel) = p.strip_prefix(&root) {
-            out.push(PluginEntry {
-                name,
-                path: rel.to_string_lossy().replace('\\', "/"),
+    let mut packages = Vec::new();
+    let mut legacy_flat = Vec::new();
+    if base.exists() {
+        for e in fs::read_dir(&base).map_err(|e| e.to_string())?.flatten() {
+            let p = e.path();
+            let file_name = e.file_name().to_string_lossy().to_string();
+            if p.is_file() {
+                if file_name.ends_with(".js") || file_name.ends_with(".mjs") {
+                    legacy_flat.push(file_name);
+                }
+                continue;
+            }
+            if !p.is_dir() {
+                continue;
+            }
+            let manifest = p.join("manifest.json");
+            let manifest_raw = fs::read_to_string(&manifest).unwrap_or_default();
+            let main_exists = p.join("main.js").exists() || p.join("main.mjs").exists();
+            let manifest_path = manifest
+                .strip_prefix(&root)
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| file_name.clone());
+            packages.push(PluginPackage {
+                dir_name: file_name,
+                manifest_path,
+                manifest_raw,
+                main_exists,
             });
         }
     }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(out)
+    packages.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
+    legacy_flat.sort();
+    Ok(PluginList { packages, legacy_flat })
 }
 
 /// 读取一个插件源码（前端用 Blob URL + 动态 import 加载）。
@@ -2542,26 +2567,41 @@ mod tests {
     }
 
     #[test]
-    fn list_and_read_plugins_only_inside_dir() {
+    fn list_and_read_plugins_folder_packages() {
         let tmp = std::env::temp_dir().join(format!("notelume-plugin-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         let dir = tmp.join(".notelume-plugins");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("hello.js"), "export default { id: 'hello' }").unwrap();
-        fs::write(dir.join("notes.txt"), "ignored").unwrap(); // 非 js 不列
+        let hello = dir.join("hello");
+        fs::create_dir_all(&hello).unwrap();
+        fs::write(hello.join("manifest.json"), "{\"id\":\"hello\",\"name\":\"Hello\"}").unwrap();
+        fs::write(hello.join("main.js"), "export default { id: 'hello' }").unwrap();
+        // 顶层游离 .js → legacyFlat；非 js 忽略
+        fs::write(dir.join("stale.js"), "// old").unwrap();
+        fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let root_str = tmp.to_string_lossy().to_string();
 
         let list = list_plugins(root_str.clone()).unwrap();
-        assert_eq!(list.len(), 1, "只应列出 .js/.mjs");
-        assert_eq!(list[0].name, "hello.js");
-        assert_eq!(list[0].path, ".notelume-plugins/hello.js");
+        assert_eq!(list.packages.len(), 1, "只列一级子目录");
+        assert_eq!(list.packages[0].dir_name, "hello");
+        assert!(list.packages[0].manifest_raw.contains("hello"));
+        assert_eq!(
+            list.packages[0].manifest_path,
+            ".notelume-plugins/hello/manifest.json"
+        );
+        assert!(list.packages[0].main_exists);
+        assert_eq!(list.legacy_flat, vec!["stale.js".to_string()]);
 
-        // 目录内可读
-        let src = read_plugin(root_str.clone(), ".notelume-plugins/hello.js".to_string()).unwrap();
+        // <id>/<相对> 内可读
+        let src =
+            read_plugin(root_str.clone(), ".notelume-plugins/hello/main.js".to_string()).unwrap();
         assert!(src.contains("hello"));
-        // 目录外被白名单拒绝
+        // 库外 / 穿越被拒
         assert!(read_plugin(root_str.clone(), "secret.js".to_string()).is_err());
-        assert!(read_plugin(root_str.clone(), ".notelume-plugins/../../escape.js".to_string()).is_err());
+        assert!(read_plugin(
+            root_str.clone(),
+            ".notelume-plugins/../../escape.js".to_string()
+        )
+        .is_err());
 
         let _ = fs::remove_dir_all(&tmp);
     }

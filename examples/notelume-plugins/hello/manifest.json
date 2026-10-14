@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "id": "hello",
+  "name": "Hello 示例插件",
+  "version": "1.0.0",
+  "author": "NoteLume",
+  "description": "演示快捷键 / 命令 / 生命周期钩子的最小示例",
+  "main": "main.js",
+  "permissions": []
+}

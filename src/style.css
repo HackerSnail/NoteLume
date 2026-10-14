@@ -2151,6 +2151,103 @@ body {
   background: var(--accent);
   color: #fff;
 }
+/* —— 批次 F1：插件权限 chip / 旧版平铺提示 —— */
+.nl-plugin-sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.nl-plugin-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+.nl-plugin-chip {
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.nl-plugin-chip.danger {
+  color: #e2574c;
+  border-color: rgba(226, 87, 76, 0.5);
+  background: rgba(226, 87, 76, 0.1);
+}
+.nl-plugin-chip.added {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.nl-plugin-legacy {
+  font-size: 12px;
+  color: #d9822b;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border: 1px dashed rgba(217, 130, 43, 0.55);
+  border-radius: 8px;
+  background: rgba(217, 130, 43, 0.08);
+}
+/* —— 批次 F1：插件权限同意模态（复用 .nl-prompt-btn 按钮样式） —— */
+.nl-consent-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.nl-consent {
+  width: min(460px, 88vw);
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nl-consent-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nl-consent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nl-consent-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.nl-consent-name {
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+.nl-consent-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.nl-consent-note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.nl-consent-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ==================== 图片附件查看器（文件树点开单独放大） ==================== */
 .nl-imgv {

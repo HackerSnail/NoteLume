@@ -1,9 +1,10 @@
-// NoteLume 示例插件 —— hello.js
-// 用法：把整个文件复制到你的知识库根目录下的 .notelume-plugins/hello.js，
-// 重新打开知识库（或点侧栏「🔌 插件」的 ↻ 重新加载）即生效。
+// NoteLume 示例插件 —— main.js
+// 用法：把整个 hello/ 文件夹（manifest.json + main.js）放进你的知识库根目录下的
+// .notelume-plugins/，重新打开知识库（或点侧栏「🔌 插件」的 ↻ 重新加载）即生效。
+// 首次加载会弹出「插件权限同意」——本示例 permissions 为空，仅需编辑器基线能力。
 //
 // 契约：export default 一个 NoteLumePlugin 对象（或返回该对象的工厂函数）。
-// 可用钩子与注册方法见文件底部注释。
+// 清单字段与权限词表见 manifest.json 与 README 插件段。
 
 export default {
   id: 'hello',
@@ -21,7 +22,7 @@ export default {
 
     // 命令：会显示在侧栏「🔌 插件」面板里，可点击执行
     ctx.registerCommand('插入当前时间', (c) => {
-      const { state, dispatch, schema } = c
+      const { state, dispatch } = c
       const text = new Date().toLocaleString()
       dispatch(state.tr.insertText(text, state.selection.from).scrollIntoView())
     })
@@ -52,12 +53,3 @@ export default {
   // commands: { '示例命令': (ctx) => { ... } },
   // keymap:   { 'Mod-Shift-g': () => { ...; return true } },
 }
-
-// —— API 速查 ——
-// ctx.registerCommand(name, fn)      注册一个可在面板点击执行的命令，fn(ctx)
-// ctx.registerKeymap(binding, fn)    注册快捷键，binding 用 ProseMirror 约定（如 'Mod-Shift-h'），
-//                                    fn(state, dispatch, view) 返回 true 表示已处理
-// ctx.registerInputRule(fn)          fn(view, from, to, text) 返回 true 拦截本次输入
-// ctx.registerNodeSpec / MarkSpec    ⚠ v1 暂不支持（schema 运行时不可变）
-// ctx.view / ctx.schema / ctx.state / ctx.dispatch(tr) / ctx.setStatus(msg)
-// 生命周期：onInit / onEditorReady / onDocChange / onFileOpen / onSave
