@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+// 批次 E · 子项目 R1-B：内置远程（libgit2）后端。Phase 1 先挂纯逻辑与结构体；
+// Phase 3 会在同文件补 fetch/upstream/ahead_behind/pull_ff 实现。
+mod git_builtin;
+
 // ==================== P0 已有类型 ====================
 
 /// 目录树节点：文件夹或 .md 文件
