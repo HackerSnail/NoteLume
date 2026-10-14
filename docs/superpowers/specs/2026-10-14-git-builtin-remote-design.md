@@ -2,7 +2,7 @@
 
 日期：2026-10-14 · 范围：远程 fetch/pull 的**内置 libgit2 后端**，作为 R1 shell-out 系统 git 的兜底 · 落点：`src-tauri/src/lib.rs`（新增引擎抽象 + Builtin impl）、`src/git-panel.js`（引擎徽标 + 一次性信任 UI + 错误分类）、`src/tauri-bridge.js`（一条新命令）· **零新依赖 crate**（走 git2 现有 vendored-libgit2 + 新启用 `ssh` feature，Windows 走 Schannel TLS）
 
-状态：✅ 设计已与用户分节确认，待用户评审本文 → 进实现计划
+状态：✅ **已全量交付**（Phase 0→5，master 6 个 commit：fd07a2c Phase0 / 36427c5 Phase1 / fb8e95a Phase2 / 92afc11 Phase3 / 6698fde Phase4 / 0c37307 Phase5；`cargo test --lib` 51 passed / 0 warning；`npm run build` 2332 modules）
 
 ---
 
@@ -220,6 +220,19 @@ Rust 一处集中把 `git2::Error` + 我方主动 Err → `{ code, msg }` 映射
 | ssh-agent 检测跨平台差异 | 只读 `SSH_AUTH_SOCK` env；Windows OpenSSH 默认已设命名管，git2/libssh2 内部会尝试 agent，失败自然回枚举私钥 |
 | 「不弹框」策略与产品后续冲突 | 决策 §1 明写，如改红线需另立 spec 重议 |
 | libssh2 vendored 构建在特定 toolchain 挂（缺 cmake/nasm）| 与现有 vendored-libgit2 同工具链、Phase 0 若编译挂立即暴露；不引入新工具 |
+
+## 13. 交付记录 / 实施差异
+
+实施中与本 spec 预定有 2 处需记的差异（均不影响对外契约）：
+
+1. **git2 0.19 不提供 `RemoteCallbacks::known_hosts` setter**（只暴露 `certificate_check`）—— Phase 4 将“自管 known_hosts 回调 + 侧信道”从 `known_hosts` 改挂到 `certificate_check(&Cert, &str) -> Result<CertificateCheckStatus, Error>` 上实现：
+   - `cert.as_hostkey()` 命中 SSH 主机密钥分支（同 spec §4 语义）；X509 分支 → `CertificatePassthrough` 交 Schannel 默认链验，同 spec 预定一致
+   - 拒绝时回 `Err(GError::from_str(...))`（同 spec 预期“拒绝放行”，只是 API 层面无 `Ok(false)`，改而用 `Err` 传递）
+   - blob → 算法名优先取 `SshHostKeyType::name()`；无 → 手写 `key_type_from_blob` 解 wire-format 头（与 OpenSSH 同）
+   - base64 手写 `b64()`（避为一函数引入 base64 crate），与 libgit2 wire blob 无交集、只用来存 与 展示 payload
+2. **Phase 0 假设 A/B 均成立**（Windows MSVC + `vendored-libgit2` + `ssh`+`https`）：cargo tree 无 openssl-sys、libgit2 走 Schannel、libssh2 走 win32-crypto。未触发降级预案。
+
+Phase 6 预期中的文档回填与本行均在同一个 commit，CHANGELOG/README/ROADMAP 同步更新。
 
 ---
 

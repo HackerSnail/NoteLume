@@ -48,7 +48,8 @@
 | **增强** | 整库导出 HTML 静态站（`▾ 更多 → 🌐 导出整站…`）：全保真渲染 + wikilink/图片重写 + 侧栏树/反链/首页/纯前端搜索，本地双击即浏览的“本地维基”  | ✅ 已完成 |
 | **增强** | 命令面板（`Ctrl+Shift+P`：模糊搜命令/文档、回车执行）+ 快捷键自定义（应用/编辑器/插件命令可重绑、冲突硬阻止、localStorage 持久化），收敛为统一命令注册表  | ✅ 已完成 |
 | **增强** | 本地 Git 集成（侧栏 🌿 Git 面板：仓库探测 / status 改动 / log 历史 / 单文件 diff 预览 / 一键提交 / 初始化，`git2` 内置无外部 git 依赖）  | ✅ 已完成 |
-| **增强** | Git 远程同步·快进 Pull（「同步」区：系统 git 探测 / 远端 origin 增改 / `fetch` / 领先落后 / `pull --ff-only`；认证复用系统凭据助手·ssh-agent·GCM、应用零凭据存储、检测到才启用；不含 push与冲突自动解决，属后续 R2/R3）  | ✅ 已完成 |
+| **增强** | Git 远程同步·快进 Pull（「同步」区：系统 git 探测 / 远端 origin 增改 / `fetch` / 领先落后 / `pull --ff-only`；认证复用系统凭据助手·ssh-agent·GCM、应用零凭据存储；不含 push 与冲突自动解决，属后续 R2/R3）  | ✅ 已完成 |
+| **增强** | Git 远程内置引擎（R1-B：免装系统 git 也能 fetch/pull——`git2` 新开 `ssh`+`https` feature，Windows MSVC 下 libgit2 走 Schannel、libssh2 走 win32-crypto，**零 openssl**；凭据不存不弹：SSH 先试 ssh-agent → 无口令私钥、HTTPS 先试 env token；SSH 首次陌生 host 走一次性信任，写应用私库 `git-known_hosts`；面板顶部徽标 🛡 系统 git / 📦 内置引擎；装了 git 优先走 R1 shell-out、没装自动切内置）  | ✅ 已完成 |
 | **P2** | 移动端                                                                                                            | ⏳ 规划中 |
 
 ---
@@ -88,7 +89,7 @@ NoteLume/
 │   ├── wiki-hover.js       # [[链接]] 悬浮预览卡片
 │   ├── graph-view.js       # P2 知识图谱（Canvas 2D 力导向）
 │   ├── snapshot-panel.js   # P2 版本快照：历史列表 / 预览 / 回滚
-│   ├── git-panel.js         # 批次 E（L+R1）本地+远程 Git：本地探测/status/log/diff/提交/初始化 + 远程「同步」区（系统 git 探测/远端增改/fetch/领先落后/快进 pull）
+│   ├── git-panel.js         # 批次 E（L+R1+R1-B）本地+远程 Git：本地探测/status/log/diff/提交/初始化 + 远程「同步」区（引擎徽标/远端增改/fetch/领先落后/快进 pull/一次性 SSH host 信任/错误分类引导）
 │   ├── plugin-loader.js    # P2 插件钩子：动态加载 / 快捷键注入 / 生命周期总线 / 面板
 │   ├── canvas-view.js      # P2 画布 / 白板：JSON Canvas 渲染 / 拖拽连线缩放 / 双击编辑
 │   ├── template.js         # 模板变量替换 + 日期格式化（纯函数，供从模板新建 / 每日笔记）
@@ -176,6 +177,7 @@ npm run build
 16. 表格：光标入单元格后 **Tab / Shift-Tab** 在格间跳转（末行 Tab 自动补一行）；拖动单元格右边线可**调整列宽**（仅预览、不写进 `.md`）；**右键单元格**弹出菜单——上/下方插入行、左/右侧插入列、删除本行/列、单元格左/中/右对齐、切换首行为表头、删除整个表格（GFM 不支持合并单元格，故无 merge/split）
 17. 侧栏 🌿 Git 面板（批次 E · 本地基础）：打开知识库后自动探测仓库——顶栏显分支 + 改动计数；「变更」区列 `git status`（点文件看它与 HEAD 的 diff）、「历史」区列 `git log`（点条目看提交详情）；「提交全部」= `git add -A`（尊重 `.gitignore`）+ 带身份 commit（首次无配置身份会问一次姓名/邮箱并记住，写回仓库本地配置）；非仓库文件夹可一键「初始化仓库」（无 `.gitignore` 时补一份排除 `.notelume-backup/`）。`app.git.*`（刷新/提交/初始化）已并入命令面板可搜可执行
 18. Git 远程同步（批次 E · R1）：面板「同步」区——未装系统 git 时自动隐藏控件（本地功能不受影响）；有则显 origin 地址，可 `＋ 添加远端` / `改地址`，`⟳ Fetch` 后显「↑ 领先 N · 落后 M」徽标，`↓ Pull（快进）` 执行 `git pull --ff-only`（无分叉时把远端提交快进进本地，成功后自动重扫文件树/重建索引/按脏净态处理当前文档；脏不静默覆盖）。**认证完全交系统 git**（凭据助手 / ssh-agent / GCM），应用不接触也不存任何凭据；**非快进/分叉会明确拒绝并提示「冲突解决属后续版本」，绝不自动 merge/rebase**；`app.git.fetch`/`app.git.pull`/`app.git.remote` 已并入命令面板。**含 Rust，需重启 `tauri dev` 重编生效**
+19. Git 远程内置引擎（批次 E · R1-B）：上面 R1 的“依赖系统 git”已另立子项目 R1-B 收回——`git2` 新开 `ssh`+`https` feature，Rust 侧 `RemoteEngine{System, Builtin}` 双后端：**装了 git 继续走 R1 shell-out（凭据 UX 最佳）、没装自动切内置 git2**（一次性进程内探测）。面板徽标行显 🛡 系统 git · 版本 或 📦 内置引擎（hover title 提示凭据模型）；内置下 fetch/pull 靠 ssh-agent / 无口令私钥 / env token（`NOTE_LUME_GIT_TOKEN`/`GITHUB_TOKEN`/`GITLAB_TOKEN`），应用仍不代持凭据。SSH 首次连陌生 host 会弹**一次性信任**（展示指纹、写应用私库 `git-known_hosts`，与 `~/.ssh/known_hosts` 合并命中），同主机下次自动放行；fetch/pull 错误按 `[host_unknown]` / `[non_fast_forward]` / `[local_changes]` / `[hostkey_mismatch]` / `[network]` / `[auth]` 前串分类引导。**含 Rust，需重启 `tauri dev` 重编生效**
 
 ---
 
