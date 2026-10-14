@@ -283,6 +283,360 @@ pub struct TrustHostArgs {
     pub key_b64: String,
 }
 
+// ==================== Phase 2：共享 serde 契约（从 lib.rs 搬入）====================
+
+/// `git remote -v` 解析出的单个远端
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Remote {
+    pub name: String,
+    pub url: String,
+}
+
+/// 上游领先/落后计数
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AheadBehind {
+    /// 本地独有提交数（ahead）
+    pub ahead: usize,
+    /// 上游独有提交数（behind）
+    pub behind: usize,
+    /// 上游名（如 origin/main）
+    pub upstream: String,
+}
+
+/// 远端增/改入参
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteArgs {
+    pub name: String,
+    pub url: String,
+}
+
+// ==================== Phase 2：Engine 检测与缓存 ====================
+
+/// 远程引擎二选一：装了系统 git 走 System（R1 shell-out），否则走 Builtin（R1-B 内置 git2）。
+/// spec §1 决策“混合”：System 优先、Builtin 兜底。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Engine {
+    System,
+    Builtin,
+}
+
+/// 进程内一次性检测并缓存（`std::sync::OnceLock`）。开 `git --version` 失败一律归 Builtin（保守），
+/// 确保 R1-B 内置路径在系统 git 并不可用环境中自动接管。
+pub fn cached_engine() -> Engine {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Engine> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        match std::process::Command::new("git")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+        {
+            Ok(o) if o.status.success() => Engine::System,
+            _ => Engine::Builtin,
+        }
+    })
+}
+
+// ==================== Phase 2：System 后端（R1 shell-out 全量搬入）====================
+
+/// R1 现 shell-out 系统 git 的完整实现，行为与 R1 一致。命令壳（`#[tauri::command]`）保留在 lib.rs，
+/// 通过 `match cached_engine() { System => system::*, Builtin => builtin::* }` 分派。
+pub mod system {
+    use super::{AheadBehind, Remote, RemoteArgs};
+
+    /// 一次 git 进程调用的收敛结果
+    pub struct GitRun {
+        pub code: i32,
+        pub stdout: String,
+        pub stderr: String,
+    }
+
+    /// 非零退出时的回显：优先 stderr，其次 stdout，都空则报退出码
+    pub fn git_err_msg(run: &GitRun) -> String {
+        let se = run.stderr.trim();
+        if !se.is_empty() {
+            return se.to_string();
+        }
+        let so = run.stdout.trim();
+        if !so.is_empty() {
+            return so.to_string();
+        }
+        format!("git 退出码 {}", run.code)
+    }
+
+    /// 统一的 git 进程调用：current_dir=vault_root、非交互 env（禁终端提示 / SSH BatchMode）。
+    pub async fn git_run(vault_root: String, args: Vec<String>) -> Result<GitRun, String> {
+        tauri::async_runtime::spawn_blocking(move || -> Result<GitRun, String> {
+            let ref_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            let out = std::process::Command::new("git")
+                .args(&ref_args)
+                .current_dir(&vault_root)
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+                .output()
+                .map_err(|e| format!("调用系统 git 失败：{}（请确认已安装并在 PATH 中）", e))?;
+            Ok(GitRun {
+                code: out.status.code().unwrap_or(-1),
+                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+            })
+        })
+        .await
+        .map_err(|e| format!("git 任务调度失败：{}", e))?
+    }
+
+    /// 纯函数：解析 `git remote -v`。留 fetch 行、去 push。
+    pub fn parse_remote_v(text: &str) -> Vec<Remote> {
+        let mut out = Vec::new();
+        for line in text.lines() {
+            let line = line.trim_end();
+            if line.is_empty() {
+                continue;
+            }
+            let (name, rest) = match line.split_once('\t') {
+                Some(kv) => kv,
+                None => continue,
+            };
+            let rest = rest.trim();
+            if rest.ends_with("(push)") {
+                continue;
+            }
+            let url = match rest.strip_suffix("(fetch)") {
+                Some(u) => u.trim().to_string(),
+                None => rest.to_string(),
+            };
+            out.push(Remote {
+                name: name.trim().to_string(),
+                url,
+            });
+        }
+        out
+    }
+
+    /// 纯函数：`git rev-list --left-right --count`。“左=behind、右=ahead”。
+    pub fn parse_left_right_count(text: &str) -> Option<(usize, usize)> {
+        let line = text.lines().next()?.trim();
+        let mut it = line.split_whitespace();
+        let left: usize = it.next()?.parse().ok()?;
+        let right: usize = it.next()?.parse().ok()?;
+        Some((left, right))
+    }
+
+    /// 纯函数：`git rev-parse --abbrev-ref @{u}`。空/未解析哨兵 → None。
+    pub fn parse_upstream(text: &str) -> Option<String> {
+        let s = text.trim();
+        if s.is_empty() || s.contains("@{u}") {
+            return None;
+        }
+        Some(s.to_string())
+    }
+
+    // ---------- 8 命令实现（与 lib.rs 里 #[tauri::command] 壳同名同参） ----------
+
+    pub async fn have() -> Option<String> {
+        tauri::async_runtime::spawn_blocking(|| -> Option<String> {
+            std::process::Command::new("git")
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    pub async fn remote_list(vault_root: String) -> Result<Vec<Remote>, String> {
+        let run = git_run(vault_root, vec!["remote".into(), "-v".into()]).await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(parse_remote_v(&run.stdout))
+    }
+
+    pub async fn remote_add(vault_root: String, args: RemoteArgs) -> Result<(), String> {
+        let run = git_run(
+            vault_root,
+            vec!["remote".into(), "add".into(), args.name, args.url],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(())
+    }
+
+    pub async fn remote_set_url(vault_root: String, args: RemoteArgs) -> Result<(), String> {
+        let run = git_run(
+            vault_root,
+            vec!["remote".into(), "set-url".into(), args.name, args.url],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(())
+    }
+
+    pub async fn fetch(vault_root: String, remote: Option<String>) -> Result<String, String> {
+        let mut args = vec!["fetch".into(), "--prune".into()];
+        match remote {
+            Some(r) if !r.trim().is_empty() => args.push(r),
+            _ => args.push("--all".into()),
+        }
+        let run = git_run(vault_root, args).await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(run.stderr)
+    }
+
+    pub async fn upstream(vault_root: String) -> Result<Option<String>, String> {
+        let run = git_run(
+            vault_root,
+            vec!["rev-parse".into(), "--abbrev-ref".into(), "@{u}".into()],
+        )
+        .await?;
+        if run.code != 0 {
+            return Ok(None);
+        }
+        Ok(parse_upstream(&run.stdout))
+    }
+
+    pub async fn ahead_behind(vault_root: String) -> Result<Option<AheadBehind>, String> {
+        let up = git_run(
+            vault_root.clone(),
+            vec!["rev-parse".into(), "--abbrev-ref".into(), "@{u}".into()],
+        )
+        .await?;
+        if up.code != 0 {
+            return Ok(None);
+        }
+        let upstream = match parse_upstream(&up.stdout) {
+            Some(u) => u,
+            None => return Ok(None),
+        };
+        let spec = format!("{}...HEAD", upstream);
+        let run = git_run(
+            vault_root,
+            vec!["rev-list".into(), "--left-right".into(), "--count".into(), spec],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        match parse_left_right_count(&run.stdout) {
+            Some((behind, ahead)) => Ok(Some(AheadBehind {
+                ahead,
+                behind,
+                upstream,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn pull_ff(vault_root: String) -> Result<String, String> {
+        let run = git_run(vault_root, vec!["pull".into(), "--ff-only".into()]).await?;
+        let combined = format!("{}{}", run.stdout, run.stderr);
+        if run.code != 0 {
+            return Err(combined);
+        }
+        Ok(combined)
+    }
+
+    // ---------- System 后端的离线单测（从 lib.rs 搬入，行为同 R1） ----------
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parse_remote_v_keeps_fetch_and_multiple_remotes() {
+            let s = "origin\thttps://gitee.com/x/note-lume.git (fetch)\norigin\thttps://gitee.com/x/note-lume.git (push)\nup\tgit@github.com:y/z.git (fetch)\nup\tgit@github.com:y/z.git (push)\n";
+            let r = parse_remote_v(s);
+            assert_eq!(r.len(), 2);
+            assert_eq!(r[0].name, "origin");
+            assert_eq!(r[0].url, "https://gitee.com/x/note-lume.git");
+            assert_eq!(r[1].name, "up");
+            assert_eq!(r[1].url, "git@github.com:y/z.git");
+        }
+
+        #[test]
+        fn parse_remote_v_empty_is_empty_vec() {
+            assert!(parse_remote_v("").is_empty());
+            assert!(parse_remote_v("\n  \n").is_empty());
+        }
+
+        #[test]
+        fn parse_left_right_count_maps_left_behind_right_ahead() {
+            assert_eq!(parse_left_right_count("3\t1\n"), Some((3, 1)));
+            assert_eq!(parse_left_right_count("0\t0"), Some((0, 0)));
+            assert_eq!(parse_left_right_count("garbage"), None);
+            assert_eq!(parse_left_right_count(""), None);
+        }
+
+        #[test]
+        fn parse_upstream_handles_real_and_sentinel() {
+            assert_eq!(parse_upstream("origin/main\n").as_deref(), Some("origin/main"));
+            assert_eq!(parse_upstream("main\n").as_deref(), Some("main"));
+            assert_eq!(parse_upstream("@{u}\n"), None);
+            assert_eq!(parse_upstream("  \n"), None);
+        }
+
+        #[test]
+        fn remote_and_aheadbehind_serialize_camel_case() {
+            let r = Remote { name: "origin".into(), url: "u".into() };
+            let j = serde_json::to_string(&r).unwrap();
+            assert!(j.contains("\"name\""));
+            assert!(j.contains("\"url\""));
+            let ab = AheadBehind { ahead: 1, behind: 3, upstream: "origin/main".into() };
+            let j2 = serde_json::to_string(&ab).unwrap();
+            assert!(j2.contains("\"upstream\""));
+        }
+    }
+}
+
+// ==================== Phase 2：Builtin 后端占位（Phase 3 填实装）====================
+
+/// 内置 git2 后端。Phase 2 只搭骨架，所有函数返回“待 Phase 3 落地”错误；
+/// 无网络默认 → Err 与 命令壳直接相应。Phase 3 会替换成实际 git2 网络/凭据/ff-pull 实现。
+#[allow(dead_code)] // Phase 3 前内置实现未接入，占位属预期
+pub mod builtin {
+    use super::{AheadBehind, Remote, RemoteArgs};
+
+    const PENDING: &str = "内置远程后端（Phase 3）待落地，请暂用系统 git 或等下一提交";
+
+    pub async fn have() -> Option<String> {
+        None
+    }
+    pub async fn remote_list(_vault_root: String) -> Result<Vec<Remote>, String> {
+        Err(PENDING.into())
+    }
+    pub async fn remote_add(_vault_root: String, _args: RemoteArgs) -> Result<(), String> {
+        Err(PENDING.into())
+    }
+    pub async fn remote_set_url(_vault_root: String, _args: RemoteArgs) -> Result<(), String> {
+        Err(PENDING.into())
+    }
+    pub async fn fetch(_vault_root: String, _remote: Option<String>) -> Result<String, String> {
+        Err(PENDING.into())
+    }
+    pub async fn upstream(_vault_root: String) -> Result<Option<String>, String> {
+        Err(PENDING.into())
+    }
+    pub async fn ahead_behind(_vault_root: String) -> Result<Option<AheadBehind>, String> {
+        Err(PENDING.into())
+    }
+    pub async fn pull_ff(_vault_root: String) -> Result<String, String> {
+        Err(PENDING.into())
+    }
+}
+
 // ==================== 单测（全离线，无网络）====================
 
 #[cfg(test)]
