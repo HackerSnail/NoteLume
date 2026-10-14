@@ -234,6 +234,18 @@ Rust 一处集中把 `git2::Error` + 我方主动 Err → `{ code, msg }` 映射
 
 Phase 6 预期中的文档回填与本行均在同一个 commit，CHANGELOG/README/ROADMAP 同步更新。
 
+## 14. R2 补记（内置 push）
+
+R2 作为本基础设施的自然延伸，不另开 spec（同属 R1-B 双后端架构，无新决策），不改动本 spec 既定契约。要点：
+
+- 新命令 `git_r_push(vault_root)`，dispatcher 同 fetch/pull 一样 `match cached_engine()` 委派。
+- `system::push`：`git push`，非零退出时按 stderr 关键字前置 `[code]`（no_upstream / non_fast_forward / auth / network / hostkey_mismatch），无匹配保留原文，兼容旧 NONFF_RE。
+- `builtin::push`：git2 `Remote::push`，固定 `refs/heads/<br>:refs/heads/<br>` refspec（不靠 push.default，不自动 force）；挂 `push_update_reference` 将拒因写入 `Arc<Mutex<Option<String>>>` 拒因槽，外层优先级：拒因→`[code]`、侧信道→`[host_unknown]`、默认→`map_err`。
+- 无 upstream 回 `[no_upstream]`，内置不自动设（避免默默创远程新分支）。
+- 前端 `handleRemoteErr` 补 `[no_upstream]` 弹框；`[non_fast_forward]` 文案从「拉取被拒」改 `opName + '被拒…'`（拉/推共用）。新增 `↑ Push` 按钮与 `app.git.push` 命令。不自动先 pull——与 R1 插不自动 merge/rebase 一脉相承。
+
+实现 commit：`6ee0d9b`（feat R2 Phase 0-1）+ 本行所在 commit（docs）。
+
 ---
 
 **一句话**：R1-B 在 Rust 里加 `RemoteEngine{System, Builtin}` 双后端——装了 git 的用户继续走 R1 shell-out 保 UX，没装的自动切内置 git2 直连；HTTPS 用 Schannel 免 openssl，SSH 用 libssh2 + ssh-agent/无口令私钥；凭据一律不存不弹；ff-pull 通过 `set_target`+`checkout_tree(safe)`+`set_head` 三步原子搬 ref 与工作区，非快进/脏工作区一律拒并清晰引导；known_hosts 首次缺失以「一次性信任按钮」这种**非凭据**动作解；落地前用 Phase 0 三步验编译假设，任一失败即降级到"仅 HTTPS"或"仅 SSH"。
