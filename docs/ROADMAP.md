@@ -56,7 +56,7 @@
   - ✅ **R1-B（已完成）**：**内置远程传输（免装系统 git）**——Rust 侧 `RemoteEngine{System, Builtin}` 双后端：装了 git 继续走 R1 shell-out（凭据 UX 最佳），没装自动切内置 git2（`git2` 新开 `ssh`+`https` feature；Windows MSVC 下 libgit2 走 Schannel、libssh2 走 win32-crypto，**仍无 openssl**）。凭据“不存不弹”：SSH 先试 ssh-agent → 无口令私钥；HTTPS 先试 env token（`NOTE_LUME_GIT_TOKEN`/`GITHUB_TOKEN`/`GITLAB_TOKEN`）；皆无 → `[auth]` 引导。SSH 首次连陌生 host 走“一次性信任”（写应用私库，验时与 `~/.ssh/known_hosts` 合并）；新命令 `git_r_trust_host`/`git_r_info`。前端同步区顶部加引擎徽标（🛡 系统 git / 📦 内置引擎），fetch/pull 错误按 `[host_unknown]`/`[non_fast_forward]`/`[local_changes]`/`[hostkey_mismatch]`/`[network]`/`[auth]` 前串分类引导，陌生 host 弹一次性信任后原地重试。ff-pull 四步原子（fetch → 同 oid 判 → ff_decision → checkout_tree(safe) + reset Soft → 失败回滚）。**R1 当时“依赖系统 git”的妥协至此收扰——ROADMAP 原则 5“纯自包含”并回到闭环**。见 [`docs/superpowers/specs/2026-10-14-git-builtin-remote-design.md`](superpowers/specs/2026-10-14-git-builtin-remote-design.md)。
   - ✅ **R2（已完成）**：**内置 push**——新 `git_r_push` 双后端。System 走 `git push`（同 R1 shell-out 非交互 env，凭据交系统）；Builtin 走 git2 `Remote::push`，固定 `refs/heads/<br>:refs/heads/<br>` refspec（不靠 push.default）、不自动 force。无 upstream 明确回 `[no_upstream]` 引导（不代推设、避免默默创远程新分支）；远端拒非快进 / 权限不足 / 网络 / host key 变化 …统一以 `[code]` 前串回前端，复用 R1-B `handleRemoteErr` 同一张分派表（`push_update_reference` 回调捕 reason 写 `Arc<Mutex<Option<…>>>` 拒因槽）。前端同步区 actRow 新增 `↑ Push` 按钮 + 失败弹框 + `app.git.push` 入命令注册表。**非快进不自动先 pull**（与 R1 一致插不自动 merge/rebase），仅引导人工先拉。见下一行 R2 实现注与 R1-B spec §14。
   - ✅ **R3（已完成）**：**合并拉取 + 冲突暴露与解决**——新 6 命令 × 2 引擎（`git_r_pull_merge`/`conflict_files`/`resolve`/`merge_state`/`abort_merge`/`commit_merge`）。同步区新增 `⇅ Pull（合并）` 按钮（非 ff-only）；ff-pull 被拒时引导改走合并拉取（不在错误回调里自动发起，避与 `busy` 串行化重入冲突）。`pull_merge` 统一契约：无冲突回 `MERGED\n…`、有冲突回 `CONFLICTS\n…`、其他失败仍回 `[code]msg`（Builtin 走 git2 `reference_to_annotated_commit`→`merge_analysis`→`repo.merge`→`index.has_conflicts()`）。冲突复用「变更」区——`gitStatus` 已将 `CONFLICTED` 标为 `conflicted`，冲突文件逐行出现并给「用本地 / 用远端 / 编辑」三小按钮（`resolve`：Builtin 从 `index.conflicts()` 取指定边 blob 写工作区 + `add_path`/`write` stage 0；「编辑」经注入的 `openFile` dep 打开带冲突标记文件）；顶部合并工具条 `merge_state`（`repo.state()==Merge`）控制「✓ 提交合并」（读 `MERGE_HEAD` 作第二父）/「✕ 中止合并」（reset Hard HEAD + 清状态文件）。仍不代持凭据 / 不自动 force。见 R1-B spec §15。
-  - ⏳ **R4（视需要）**：大附件 / `.gitattributes` / LFS 性能。
+  - 🚫 **R4（经评估：不做 LFS）**：LFS 依赖外部 `git-lfs` 可执行（**libgit2 不实现 LFS**），与 R1-B 立身之本“零外部二进制、纯自包含”直接冲突；且“本地 markdown 库的大附件 + 开了 git 同步”交集很小，gitee/GitHub 的 LFS 又各有配额/成本墙。故 **放弃完整 LFS**，降级为一条轻量护栏（可选、未做）：`commit_all` 对超约 25MB 的文件弹一次性提示（不阻断），提醒大文件会永久留在 git 历史、真需大附件请自配 `.gitattributes` 或换存储——纯前端、零新依赖。**批次 E 视为已闭环。**
 - **原分阶段设想（读/写轴，已由 L/R 轴取代）**：
   - **E1 只读**：检测/初始化 `.git`、`status`（改动列表）、`log`（历史）、`diff` 预览。（已随 L 完成）
   - **E2 写**：一键 commit（已随 L 完成）；pull、push（属 R）。
@@ -83,7 +83,7 @@
 - **批次 B**：编辑器手感包——斜杠 `/` + 写作统计 + 专注/打字机（源码双模式暂不并入）— ✅ 已完成（新 `src/slash-menu.js` 空行 `/` 弹块菜单（复用 `.nl-suggest` 观感、仅空块触发）+ `src/writing-stats.js` 工具条字数/阅读时长/目标（`getText()`+`onDocChange`）+ `src/editor-modes.js` 专注(`Ctrl+Shift+F`)/打字机(`Ctrl+Shift+T`)，开关存 localStorage；均无 Rust）
 - **批次 C**：整库导出 HTML 静态站（pandoc 作为检测到才启用的可选项）— ✅ 已完成（新 Rust `build_site_graph`/`copy_vault_assets`（附单测，需重启 tauri dev）+ 新前端 `src/site-export.js`（全保真渲染/链接重写/导航/反链/首页/搜索，Tauri I/O 依赖注入）+ `src/tauri-bridge.js` 封装 + ▾ 更多「🌐 导出整站…」；Node 单测 `src/tests/site-export.test.mjs`）
 - **批次 D**：命令面板 + 快捷键自定义（顺带收敛统一命令注册表）— ✅ 已完成（新 `src/commands.js` 统一注册表 + `src/keymap.js` 快捷键纯逻辑 + `src/command-palette.js` `Ctrl+Shift+P` 命令/文档面板 + `src/shortcut-settings.js` 可重绑/冲突硬阻止；`main.js` `bindShortcuts` 改注册表驱动全局分发器、打印收窄纯 Ctrl+P；`editor-view.js` 方案 B 动态 keymap 热重配 + `plugin-loader.js` 插件命令并入；均无 Rust，刷新即生效；`keymap.test` 14、`roundtrip` 35、`build:web` 全绿）
-- **批次 E**：Git 集成——子项目 L（本地基础）✅ + 子项目 R1（远程 shell-out 认证 + 快进 pull）✅ + 子项目 R1-B（内置 libgit2 远程，免装 git）✅ + 子项目 R2（内置 push，双后端 + `[code]` 前串同张分派表）✅ + 子项目 R3（合并拉取 + 冲突暴露与解决，6 命令 × 2 引擎）✅ 均已完成；R4 LFS 待做
+- **批次 E**：Git 集成——子项目 L（本地基础）✅ + 子项目 R1（远程 shell-out 认证 + 快进 pull）✅ + 子项目 R1-B（内置 libgit2 远程，免装 git）✅ + 子项目 R2（内置 push，双后端 + `[code]` 前串同张分派表）✅ + 子项目 R3（合并拉取 + 冲突暴露与解决，6 命令 × 2 引擎）✅ 均已完成；R4 经评估放弃 LFS（与内置自包含冲突），仅余可选大文件提交提示
 - **批次 F**：插件系统 v2（权限 → 隔离 → registerNodeSpec → 市场）
 - **批次 G**：移动端（单独立项）
 
@@ -95,4 +95,4 @@
 - **知识图谱大图 / 复杂 3D**：维持"可选附加、不默认渲染"的既定取舍。
 
 ---
-_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E 子项目 L（本地）+ R1（远程认证 + 快进 pull）+ R1-B（内置引擎）+ R2（push）+ R3（冲突解决）已完成，R4 LFS 待做；批次 F（插件 v2）/ G（移动端）未开始。_
+_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E 子项目 L（本地）+ R1（远程认证 + 快进 pull）+ R1-B（内置引擎）+ R2（push）+ R3（冲突解决）已完成，R4（LFS）经评估不做——批次 E 闭环；批次 F（插件 v2）/ G（移动端）未开始。_
