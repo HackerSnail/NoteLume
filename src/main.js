@@ -33,6 +33,7 @@ import {
   backupWrite,
   exportFile,
 } from './tauri-bridge.js'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
 import { promptDialog } from './prompt-dialog.js'
@@ -158,6 +159,21 @@ async function ensureSavedBeforeLeave() {
     return !state.dirty // 保存失败（仍脏）则不继续，避免丢改动
   }
   return true // 不保存：放弃改动继续
+}
+
+// 关闭窗口前若仍有未保存改动，走与切换文档一致的「保存 / 不保存 / 取消」询问。
+// 本版 @tauri-apps/api：handler 会被 await，返回后若未 preventDefault 则框架自动 destroy()，
+// 故取消时 preventDefault 保住窗口，保存/不保存时顺其自然关闭（需 core:window:allow-destroy 权限）。
+function setupCloseGuard() {
+  try {
+    getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        if (!(await ensureSavedBeforeLeave())) event.preventDefault()
+      })
+      .catch(() => {}) // 非 Tauri 环境（如纯浏览器预览）忽略
+  } catch {
+    /* 非 Tauri 环境，跳过 */
+  }
 }
 
 // —— 批次 B：写作统计 / 专注 / 打字机 ——
@@ -1517,6 +1533,7 @@ async function boot() {
     }
   })
   bindShortcuts()
+  setupCloseGuard()
 
   // 文件树右键菜单：点击菜单外任意处即关闭
   document.addEventListener('pointerdown', (e) => {
