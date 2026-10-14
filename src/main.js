@@ -275,6 +275,7 @@ async function openSingleFile() {
     els.filename.textContent = abs
     renderSingleFileTree(name)
     setStatus('已打开文件：' + abs)
+    recordRecent(dir, name)
     editor.focus()
     // 单文件也后台索引：库根就是同目录，反查更方便
     startIndexPolling()
@@ -725,12 +726,77 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem('🖨 打印 / 导出 PDF (Ctrl+P)', () => window.print()))
   menu.appendChild(makeMenuItem('🕸 知识图谱 (Ctrl+G)', () => openGraphModal()))
   menu.appendChild(makeMenuItem('🗺 新画布 / 白板', () => newCanvas()))
+  menu.appendChild(makeMenuItem('🕘 最近打开', () => openRecentMenu(anchorEl)))
   menu.appendChild(makeMenuItem('📋 模板 / 今日速记设置', () => openTemplateMenu(anchorEl)))
   menu.appendChild(menuSep())
   menu.appendChild(makeMenuItem('🎯 专注模式 (Ctrl+Shift+F)', () => toggleFocusMode(), false, localStorage.getItem('nl-focus') === '1'))
   menu.appendChild(makeMenuItem('⌨ 打字机模式 (Ctrl+Shift+T)', () => toggleTypewriterMode(), false, localStorage.getItem('nl-typewriter') === '1'))
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
+}
+
+// —— 最近打开（全局记录于 localStorage，跨知识库；点条目按原库根重开该文件）——
+const RECENT_KEY = 'nl-recent'
+const RECENT_MAX = 12
+function loadRecents() {
+  try {
+    const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
+    return Array.isArray(a) ? a : []
+  } catch (_) {
+    return []
+  }
+}
+function saveRecents(list) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+  } catch (_) {
+    /* 配额满等忽略 */
+  }
+}
+function recordRecent(root, rel) {
+  if (!root || !rel) return
+  const keyRoot = normVaultPath(root)
+  const list = loadRecents().filter((e) => !(normVaultPath(e.root) === keyRoot && e.rel === rel))
+  list.unshift({ root, rel, name: baseName(rel) })
+  saveRecents(list.slice(0, RECENT_MAX))
+}
+function openRecentMenu(anchorEl) {
+  const list = loadRecents()
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  if (!list.length) {
+    menu.appendChild(makeMenuItem('（暂无最近打开记录）', () => {}))
+  } else {
+    list.forEach((e) => {
+      const it = makeMenuItem('📄 ' + e.name, () => reopenRecent(e))
+      it.title = e.root + '/' + e.rel
+      menu.appendChild(it)
+    })
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem('🧹 清空最近记录', () => saveRecents([])))
+  }
+  const r = anchorEl.getBoundingClientRect()
+  placeMenu(menu, r.left, r.bottom + 4)
+}
+async function reopenRecent(entry) {
+  if (state.dirty) {
+    const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '打开最近文件')
+    if (!ok) return
+  }
+  try {
+    state.vaultRoot = entry.root
+    state.currentFile = null // 避免 openFile 的“同一相对路径”早退（跨库可能同名）
+    const tree = await scanVault(entry.root)
+    renderTree(tree)
+    startIndexPolling()
+    await openFile(entry.rel, true) // 脏状态已在上面确认
+    if (pluginManager) pluginManager.reload()
+  } catch (e) {
+    // 目录可能已移动 / 删除：剔除该条并提示
+    saveRecents(loadRecents().filter((x) => !(normVaultPath(x.root) === normVaultPath(entry.root) && x.rel === entry.rel)))
+    await messageDialog('打开最近文件失败（路径可能已变动）：' + ((e && e.message) || e))
+  }
 }
 
 async function newFolderIn(dirRel) {
@@ -832,7 +898,7 @@ function cssEscape(s) {
 }
 
 // —— 打开/切换文档 ——
-async function openFile(rel) {
+async function openFile(rel, skipDirtyConfirm) {
   if (!state.vaultRoot) return
   // 图片附件：走独立查看器单独放大查看，不切换当前文档、不触发脏状态确认
   if (isImagePath(rel)) {
@@ -840,7 +906,7 @@ async function openFile(rel) {
     return
   }
   if (rel === state.currentFile) return
-  if (state.dirty) {
+  if (state.dirty && !skipDirtyConfirm) {
     const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '切换文档')
     if (!ok) return
   }
@@ -861,6 +927,7 @@ async function openFile(rel) {
     if (snapshotPanel) snapshotPanel.refresh()
     if (pluginManager) pluginManager.fireFileOpen(rel, md)
     resetBackupTimer()
+    recordRecent(state.vaultRoot, rel)
   } catch (e) {
     await messageDialog('打开失败：' + e)
   }
@@ -893,6 +960,7 @@ async function openCanvas(path) {
     highlightActiveFile()
     setStatus('已打开画布：' + path)
     resetBackupTimer()
+    recordRecent(state.vaultRoot, path)
   } catch (e) {
     await messageDialog('打开画布失败：' + ((e && e.message) || e))
   }
