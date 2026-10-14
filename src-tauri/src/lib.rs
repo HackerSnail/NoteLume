@@ -2064,6 +2064,17 @@ async fn git_r_pull_ff(vault_root: String) -> Result<String, String> {
     }
 }
 
+/// R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 `Remote::push`。
+/// 失败时回 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
+/// hostkey_mismatch / host_unknown / git_error），前端 `handleRemoteErr` 同一张表分派。
+#[tauri::command]
+async fn git_r_push(vault_root: String) -> Result<String, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::push(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::push(vault_root).await,
+    }
+}
+
 /// Phase 4 新增：一次性信任陌生 SSH host。前端从 `[host_unknown]<json>` 错误里解出 payload，
 /// 展示 key 指纹后递回本命令；System 引擎写 `~/.ssh/known_hosts`，Builtin 引擎写应用私库。
 #[tauri::command]
@@ -2695,6 +2706,7 @@ pub fn run() {
             git_r_upstream,
             git_r_ahead_behind,
             git_r_pull_ff,
+            git_r_push,
             git_r_trust_host,
             git_r_info
         ])

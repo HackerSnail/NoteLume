@@ -602,6 +602,58 @@ pub mod system {
         Ok(combined)
     }
 
+    /// R2：`git push`（当前分支 → upstream，非交互）。凭据交系统 git（GCM/ssh-agent/凭据助手）。
+    /// 非零退出时按 stderr 关键字前置 `[code]` 串（与 builtin::push 同分类契约），
+    /// 无匹配则保留原文回显，让前端 `handleRemoteErr` 走 NONFF_RE 兼容旧分支。
+    pub async fn push(vault_root: String) -> Result<String, String> {
+        let run = git_run(vault_root, vec!["push".into()]).await?;
+        let combined = format!("{}{}", run.stdout, run.stderr);
+        if run.code != 0 {
+            let lower = combined.to_lowercase();
+            let code: Option<&'static str> = if lower.contains("no upstream")
+                || lower.contains("has no upstream")
+                || lower.contains("does not have an upstream")
+            {
+                Some("no_upstream")
+            } else if lower.contains("non-fast-forward")
+                || lower.contains("fast-forward")
+                || lower.contains("[rejected]")
+                || lower.contains("fetch first")
+                || lower.contains("behind its remote")
+            {
+                Some("non_fast_forward")
+            } else if lower.contains("permission")
+                || lower.contains("authentication")
+                || lower.contains("denied")
+                || lower.contains("403")
+                || lower.contains("401")
+                || lower.contains("read-only")
+                || lower.contains("protected branch")
+            {
+                Some("auth")
+            } else if lower.contains("could not resolve host")
+                || lower.contains("connection refused")
+                || lower.contains("timed out")
+                || lower.contains("network is unreachable")
+                || lower.contains("remote end hung up")
+            {
+                Some("network")
+            } else if lower.contains("host key verification failed")
+                || lower.contains("known_hosts")
+                || lower.contains("hostkey")
+            {
+                Some("hostkey_mismatch")
+            } else {
+                None
+            };
+            return Err(match code {
+                Some(c) => format!("[{}]{}", c, combined),
+                None => combined,
+            });
+        }
+        Ok(combined)
+    }
+
     /// Phase 4：System 引擎下一次性信任——追加写 `~/.ssh/known_hosts`，同 OpenSSH 自己的行为一致，
     /// 不会弄脏应用私库（System 后端的 known_hosts 无应用私库概念）。
     pub async fn trust_host(args: TrustHostArgs) -> Result<(), String> {
@@ -774,7 +826,8 @@ pub mod builtin {
     };
     use git2::{
         build::CheckoutBuilder, cert::Cert, CertificateCheckStatus, Cred, CredentialType,
-        Error as GError, ErrorClass, FetchOptions, ObjectType, Reference, Repository, ResetType,
+        Error as GError, ErrorClass, FetchOptions, ObjectType, PushOptions, Reference, Repository,
+        ResetType,
     };
     use std::sync::{Arc, Mutex};
 
@@ -1152,6 +1205,97 @@ pub mod builtin {
                 "Fast-forward {} -> {}\n",
                 short(local_oid),
                 short(up_oid)
+            ))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// R2：内置 `Remote::push`。推当前分支→ upstream 同名分支（固定 refspec，不靠 push.default）。
+    /// 同 fetch 一样走凭据 + certificate_check 回调 + 侧信道；额外挂 `push_update_reference`
+    /// 捕远端拒因（fast-forward / permission / …）一并前置 `[code]` 同前端契约。
+    /// 无 upstream → `[no_upstream]`（内置不自动设 upstream，避免默默创远程新分支）。
+    pub async fn push(vault_root: String) -> Result<String, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let head = repo
+                .head()
+                .map_err(|_| "[git_error]无 HEAD（仓库可能为空）".to_string())?;
+            if !head.is_branch() {
+                return Err("[git_error]内置 push 需要 HEAD 在分支上（当前 detached）".into());
+            }
+            let branch = head
+                .shorthand()
+                .ok_or_else(|| "[git_error]无分支名".to_string())?
+                .to_string();
+            let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
+                "[no_upstream]当前分支无上游，无法推——先安装系统 git 跑一次 `git push -u origin <branch>`、或在面板里配置".to_string()
+            })?;
+            let up_full = up_refname_buf
+                .as_str()
+                .ok_or_else(|| "[git_error]上游 refname 非 UTF8".to_string())?
+                .to_string();
+            let up_short = up_full
+                .strip_prefix("refs/remotes/")
+                .unwrap_or(&up_full)
+                .to_string();
+            let (remote_name, remote_branch) = match up_short.split_once('/') {
+                Some((r, b)) => (r.to_string(), b.to_string()),
+                None => return Err(format!("[git_error]无法解析 upstream：{}", up_short)),
+            };
+            let refspec = format!("refs/heads/{}:refs/heads/{}", branch, remote_branch);
+
+            let entries = known_hosts_store::merged();
+            let side: HostSide = Arc::new(Mutex::new(None));
+            let reject: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+            let mut cb = make_callbacks(entries, side.clone());
+            let rj = reject.clone();
+            cb.push_update_reference(move |refname, reason| {
+                if let Some(r) = reason {
+                    if let Ok(mut g) = rj.lock() {
+                        *g = Some(format!("{}: {}", refname, r));
+                    }
+                    return Err(git2::Error::from_str("push rejected"));
+                }
+                Ok(())
+            });
+            let mut opts = PushOptions::new();
+            opts.remote_callbacks(cb);
+            let mut remote = repo
+                .find_remote(&remote_name)
+                .map_err(|e| map_err_with_side(e, &side))?;
+            let specs: Vec<&str> = vec![refspec.as_str()];
+            if let Err(e) = remote.push(&specs, Some(&mut opts)) {
+                // 优先：拒因（远端明确拒绝原因）
+                if let Ok(mut g) = reject.lock() {
+                    if let Some(reason) = g.take() {
+                        let lower = reason.to_lowercase();
+                        let code: &'static str = if lower.contains("fast-forward")
+                            || lower.contains("fetch first")
+                            || lower.contains("non-fast-forward")
+                            || lower.contains("rejected")
+                            || lower.contains("behind")
+                        {
+                            "non_fast_forward"
+                        } else if lower.contains("permission")
+                            || lower.contains("denied")
+                            || lower.contains("read-only")
+                            || lower.contains("protected")
+                            || lower.contains("auth")
+                        {
+                            "auth"
+                        } else {
+                            "git_error"
+                        };
+                        return Err(format!("[{}]push 被远端拒绝：{}", code, reason));
+                    }
+                }
+                // 次优：侧信道 host_unknown；否则 map_err 默认
+                return Err(map_err_with_side(e, &side));
+            }
+            Ok(format!(
+                "已推 refs/heads/{} -> {}/{}\n",
+                branch, remote_name, remote_branch
             ))
         })
         .await

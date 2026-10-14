@@ -333,6 +333,13 @@ export function gitRPullFf(vaultRoot) {
   return invoke('git_r_pull_ff', { vaultRoot })
 }
 
+/** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。
+ *  失败 reject，附 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
+ *  hostkey_mismatch / host_unknown / git_error），同 handleRemoteErr 分派表。*/
+export function gitRPush(vaultRoot) {
+  return invoke('git_r_push', { vaultRoot })
+}
+
 /** Phase 4 新增：一次性信任陌生 SSH 主机。args = { host, keyType, keyB64 }（同错误里 payload 的三段）。
  *  成功后下一拨 fetch/pull 会命中 known_hosts 直接放行。*/
 export function gitRTrustHost(args) {

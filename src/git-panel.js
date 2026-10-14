@@ -1,7 +1,10 @@
-// git-panel.js —— 批次 E（子项目 L + R1）本地 + 远程 Git 面板
+// git-panel.js —— 批次 E（子项目 L + R1 + R1-B + R2）本地 + 远程 Git 面板
 // 本地（L）：探测仓库 / status 改动列表 / log 历史 / 单文件 diff 预览 / 一键提交 / 初始化。
 // 远程（R1）：「同步」区——探测系统 git / 远端 origin 增改 / fetch / 领先落后 / 快进 pull。
 //   认证交系统 git（应用不碰凭据）；仅 --ff-only，非快进不自动合并。数据经 tauri-bridge 的 git_* / git_r_* 封装获取。
+// R1-B（内置引擎）：无系统 git 时自动切 git2；同步区顶部展引擎徽标；fetch/pull 错误按 `[code]` 前串分派，
+//   陌生 host 走一次性信任。
+// R2（push）：↑ Push 按钮，当前分支 → upstream 同名分支；无 upstream → `[no_upstream]` 引导。
 // 与主逻辑解耦：库根、转义、状态栏提示、pull 后集成回调经 deps 注入；promptDialog / messageDialog / confirmDialog 复用既有件。
 import {
   gitOpen,
@@ -20,6 +23,7 @@ import {
   gitRFetch,
   gitRAheadBehind,
   gitRPullFf,
+  gitRPush,
   gitRTrustHost,
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
@@ -351,7 +355,8 @@ export function createGitPanel(deps) {
     }
     if (code === 'non_fast_forward' || (!code && NONFF_RE.test(t))) {
       await messageDialog(
-        '拉取被拒（本地与远端已分叉，无法快进）：\n' +
+        opName +
+          '被拒（本地与远端已分叉，无法快进）：\n' +
           (body || t) +
           '\n\n冲突自动解决尚未支持，请先在本地提交 / 手动处理，或等待后续版本（R3 冲突解决）。',
       )
@@ -359,6 +364,14 @@ export function createGitPanel(deps) {
     }
     if (code === 'local_changes') {
       await messageDialog('本地未提交修改会阻挡快进：\n' + body + '\n\n请先提交或 stash。')
+      return
+    }
+    if (code === 'no_upstream') {
+      await messageDialog(
+        '当前分支无上游，无法推：\n' +
+          (body || t) +
+          '\n\n内置引擎不自动设 upstream（避免默默创远程新分支）。\n请一次性安装系统 git 跑 `git push -u origin <当前分支>`，或手动配好后重试。',
+      )
       return
     }
     if (code === 'hostkey_mismatch') {
@@ -470,14 +483,21 @@ export function createGitPanel(deps) {
     pullBtn.className = 'nl-git-btn nl-git-btn-primary'
     pullBtn.textContent = '↓ Pull（快进）'
     pullBtn.title = '仅快进拉取；分叉不自动合并'
+    const pushBtn = document.createElement('button')
+    pushBtn.className = 'nl-git-btn'
+    pushBtn.textContent = '↑ Push'
+    pushBtn.title = isSys
+      ? 'git push（非交互，凭据交系统 git）'
+      : '内置 push（非交互）：当前分支 → upstream同名分支；凭据同 fetch'
     const badge = document.createElement('span')
     badge.className = 'nl-git-sync-badge nl-git-muted'
     badge.textContent = origin ? '—' : ''
-    actRow.append(fetchBtn, pullBtn, badge)
+    actRow.append(fetchBtn, pullBtn, pushBtn, badge)
   
-    // 无远端时禁用 fetch/pull，仅引导添加
+    // 无远端时禁用 fetch/pull/push，仅引导添加
     fetchBtn.disabled = !origin
     pullBtn.disabled = !origin
+    pushBtn.disabled = !origin
   
     inner.append(engineRow, remoteRow, actRow)
   
@@ -488,6 +508,7 @@ export function createGitPanel(deps) {
     remoteBtn.addEventListener('click', () => setupRemote(inner, origin))
     fetchBtn.addEventListener('click', () => doFetch(origin, badge))
     pullBtn.addEventListener('click', () => doPull(origin, badge))
+    pushBtn.addEventListener('click', () => doPush(origin, badge))
   }
 
   // 添加 / 改 origin
@@ -571,6 +592,29 @@ export function createGitPanel(deps) {
       const t = errText(e)
       setStatus('拉取失败')
       await handleRemoteErr(t, '拉取', retry)
+    } finally {
+      busy = false
+    }
+  }
+
+  // R2：推当前分支→ upstream。无前置确认（推不会覆写本地文件），失败同走 handleRemoteErr（包含 host_unknown 信任重试）。
+  async function doPush(origin, badge) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    busy = true
+    setStatus('推送中…')
+    const retry = async () => {
+      await gitRPush(vaultRoot)
+      setStatus('已推送到远端')
+      await updateBadge(badge)
+    }
+    try {
+      await retry()
+    } catch (e) {
+      const t = errText(e)
+      setStatus('推送失败')
+      await handleRemoteErr(t, '推送', retry)
     } finally {
       busy = false
     }
@@ -695,6 +739,13 @@ export function createGitPanel(deps) {
     refresh()
   }
 
+  async function pushRemote() {
+    if (busy) return
+    const { origin } = await resolveOrigin()
+    await doPush(origin, document.createElement('span'))
+    refresh()
+  }
+
   async function setupRemoteCmd() {
     if (busy) return
     const { vaultRoot, origin } = await resolveOrigin()
@@ -719,7 +770,7 @@ export function createGitPanel(deps) {
     }
   }
 
-  return { refresh, open, commitAll, init, fetch: fetchRemote, pull: pullRemote, setupRemote: setupRemoteCmd }
+  return { refresh, open, commitAll, init, fetch: fetchRemote, pull: pullRemote, push: pushRemote, setupRemote: setupRemoteCmd }
 }
 
 // —— 小工具 ——

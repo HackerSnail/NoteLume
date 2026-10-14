@@ -1502,6 +1502,8 @@ function registerAppCommands() {
   // 批次 E（R1）：Git 远程（认证 + 快进 pull）——run 委托给面板暴露的方法；面板未就绪则无操作
   app('app.git.fetch', 'Git：抓取远端', null, () => { if (gitPanel) gitPanel.fetch() })
   app('app.git.pull', 'Git：拉取（仅快进）', null, () => { if (gitPanel) gitPanel.pull() })
+  // 批次 E（R2）：Git push（当前分支 → upstream）
+  app('app.git.push', 'Git：推送到远端', null, () => { if (gitPanel) gitPanel.push() })
   app('app.git.remote', 'Git：设置远端 origin…', null, () => { if (gitPanel) gitPanel.setupRemote() })
 }
 
