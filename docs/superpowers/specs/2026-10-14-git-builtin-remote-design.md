@@ -246,6 +246,20 @@ R2 作为本基础设施的自然延伸，不另开 spec（同属 R1-B 双后端
 
 实现 commit：`6ee0d9b`（feat R2 Phase 0-1）+ 本行所在 commit（docs）。
 
+## 15. R3 补记（合并拉取 + 冲突暴露与解决）
+
+R3 仍是本双后端架构的延伸（新增命令 × 2 引擎，复用 `[code]` 分派表），不另开 spec。它是 R1/R2 一直把非快进往外推的那个后续——现在把「合并 + 逐个解决冲突」落地。要点：
+
+- **触发**（D1）：同步区新增 `⇅ Pull（合并）` 按钮（独立入口，不走 ff-only）；ff-pull 被拒时 `handleRemoteErr` 的 `[non_fast_forward]` 文案从「冲突解决尚未支持（R3）」改为引导点该按钮 / 命令面板「Git：拉取（合并）」（不在错误回调里自动发起合并，避免与 `busy` 串行化重入冲突）。
+- **新命令 6 个 × 2 引擎**：`git_r_pull_merge` / `git_r_conflict_files` / `git_r_resolve` / `git_r_merge_state` / `git_r_abort_merge` / `git_r_commit_merge`。入参新增 `ResolveArgs{path,side}`、`CommitMergeArgs{message}`。
+- **pull_merge 契约**：无论引擎，成功回 `"MERGED\n…"`、有冲突回 `"CONFLICTS\n…"`，其他失败仍回 `[code]msg`。System 走 `git pull`（非零退出按 stderr 判 conflict / automatic merge failed）；Builtin 走 git2 `reference_to_annotated_commit` → `merge_analysis`（UP_TO_DATE 直接回 MERGED；NORMAL|FASTFORWARD 才 merge）→ `repo.merge` → `index.has_conflicts()` 判冲突。
+- **冲突列举**（D2）：复用变更区——`gitStatus`（git2）本就把 `Status::CONFLICTED` 标为 kind `conflicted`，故合并后冲突自动出现在变更列表，无需新命令即可渲染；`git_r_conflict_files` 供需要权威列表时调用（System 走 `git diff --diff-filter=U`，Builtin 走 `index.conflicts()` 迭代去重）。`merge_state` 用 `repo.state()==Merge` 判定是否显示顶部合并工具条。
+- **单文件解决**（D3）：每行给「用本地 / 用远端 / 编辑」三个小按钮。`resolve`：System 走 `git checkout --ours/--theirs` + `git add`；Builtin 从 `index.conflicts()` 取该 path 指定边的 `IndexEntry.id` → `find_blob` 写工作区 → `index.add_path`（stage 0 顺带清冲突阶段）+ `index.write`。「编辑」经注入的 `openFile` dep 打开带冲突标记的文件，手改保存后回来提交。
+- **提交 / 中止**：`commit_merge` System 走 `git commit`；Builtin 读 `MERGE_HEAD` 作第二父、`write_tree`+`commit(two parents)` 后清状态文件。`abort_merge` System 走 `git merge --abort`；Builtin 走 `reset(Hard, HEAD)` + 清 `MERGE_HEAD/MSG/MODE`。
+- **不变量**：仍「不代持凭据 / 不自动 force」；非快进不再被简单拒绝，而是给出可控的合并解决路径，但合并拉取前置仍会就「有未提交改动」弹确认。
+
+实现要点（git2 0.19 API 校正，均不影响对外契约）：`AnnotatedCommit` 无 `from_ref` → 用 `repo.reference_to_annotated_commit`；`merge_analysis` 只 1 参；`MergeAnalysis::is_up_to_date/is_fast_forward`；`Index` 无 `get_conflict/resolve` → 用 `conflicts()` 迭代 + `add_path`+`write` 解决；`IndexEntry` 的 `path` 是字段（`Vec<u8>`）非方法、无 `stage()` → 改 `has_conflicts()`；`Reference` 无 `peel_to_object` → `peel(ObjectType::Commit)`。
+
 ---
 
 **一句话**：R1-B 在 Rust 里加 `RemoteEngine{System, Builtin}` 双后端——装了 git 的用户继续走 R1 shell-out 保 UX，没装的自动切内置 git2 直连；HTTPS 用 Schannel 免 openssl，SSH 用 libssh2 + ssh-agent/无口令私钥；凭据一律不存不弹；ff-pull 通过 `set_target`+`checkout_tree(safe)`+`set_head` 三步原子搬 ref 与工作区，非快进/脏工作区一律拒并清晰引导；known_hosts 首次缺失以「一次性信任按钮」这种**非凭据**动作解；落地前用 Phase 0 三步验编译假设，任一失败即降级到"仅 HTTPS"或"仅 SSH"。
