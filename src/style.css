@@ -1956,6 +1956,86 @@ body {
   background:
     repeating-conic-gradient(#c9ccd1 0% 25%, #ffffff 0% 50%) 50% / 20px 20px;
 }
+/* ==================== 批次 A：今日速记（全局浮层，独立于知识库） ==================== */
+.nl-daily-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* 低于 prompt/confirm(1000)/补全(1002)，保证设置弹层浮在速记之上 */
+  z-index: 850;
+  padding: 8vh 4vw 4vh;
+}
+.nl-daily {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+  width: min(760px, 100%);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.nl-daily-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--hover);
+}
+.nl-daily-title {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nl-daily-dir {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nl-daily-cfg,
+.nl-daily-close {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  line-height: 1;
+}
+.nl-daily-cfg:hover,
+.nl-daily-close:hover {
+  background: var(--hover);
+}
+.nl-daily-ta {
+  flex: 1;
+  min-height: 42vh;
+  border: 0;
+  outline: none;
+  resize: none;
+  padding: 16px 18px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  background: var(--bg);
+  color: var(--fg);
+  tab-size: 2;
+}
+.nl-daily-status {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--hover);
+}
+
 .nl-imgv-hint {
   position: absolute;
   left: 50%;

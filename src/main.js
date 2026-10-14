@@ -39,7 +39,8 @@ import { promptDialog } from './prompt-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
-import { formatDate, builtinVars, applyTemplate } from './template.js'
+import { builtinVars, applyTemplate } from './template.js'
+import { toggleDailyCapture, configureDailyCapture } from './daily-capture.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -562,10 +563,8 @@ async function newFileIn(dirRel) {
   }
 }
 
-// —— 批次 A：模板 + 每日笔记（纯文件、零新依赖、无 Rust 改动）——
+// —— 批次 A：模板（从模板新建，纯文件、零新依赖、无 Rust 改动）——
 const TEMPLATE_DIR = () => localStorage.getItem('nl-template-dir') || 'Templates'
-const DAILY_DIR = () => localStorage.getItem('nl-daily-dir') || 'Daily'
-const DAILY_FORMAT = () => localStorage.getItem('nl-daily-format') || 'YYYY-MM-DD'
 
 // 逐段创建库内目录（已存在的段忽略报错）
 async function ensureDir(dirRel) {
@@ -611,9 +610,7 @@ async function newFromTemplate(tplRel) {
   let tpl
   try { tpl = await readMdFile(state.vaultRoot, tplRel) }
   catch (e) { await messageDialog('读取模板失败：' + errText(e)); return }
-  const isDaily = baseName(tplRel).replace(/\.md$/i, '').toLowerCase() === 'daily'
-  const defName = isDaily ? formatDate(DAILY_FORMAT(), new Date()) : ''
-  const name = await promptDialog({ title: '基于模板新建（' + baseName(tplRel) + '）', placeholder: '新文件名（可不带 .md）', defaultValue: defName })
+  const name = await promptDialog({ title: '基于模板新建（' + baseName(tplRel) + '）', placeholder: '新文件名（可不带 .md）' })
   if (!name) return
   const rel = /\.md$/i.test(name) ? name : name + '.md'
   const now = new Date()
@@ -628,35 +625,6 @@ async function newFromTemplate(tplRel) {
     setStatus('已从模板新建：' + rel)
   } catch (e) {
     await messageDialog('新建失败：' + errText(e))
-  }
-}
-
-// 每日笔记：打开今天的，不存在则按模板（Templates/Daily.md）或空白种子创建
-async function openDailyNote() {
-  if (!state.vaultRoot) { await messageDialog('请先打开知识库'); return }
-  await refreshTree()
-  const now = new Date()
-  const fname = formatDate(DAILY_FORMAT(), now)
-  let rel = joinRel(DAILY_DIR(), fname)
-  if (!/\.md$/i.test(rel)) rel += '.md'
-  let exists = true
-  try { await readMdFile(state.vaultRoot, rel) } catch (_) { exists = false }
-  if (exists) { await openFile(rel); setStatus('今日笔记：' + rel); return }
-  let content = null
-  const dailyTpl = listMdInDir(TEMPLATE_DIR()).find((p) => baseName(p).replace(/\.md$/i, '').toLowerCase() === 'daily')
-  if (dailyTpl) { try { content = await readMdFile(state.vaultRoot, dailyTpl) } catch (_) { content = null } }
-  if (content == null) content = '# {{date}} {{weekday}}\n\n'
-  const vars = builtinVars({ title: fname, filename: baseName(rel), now })
-  content = applyTemplate(content, vars)
-  try {
-    await ensureDir(parentOf(rel))
-    await writeMdFile(state.vaultRoot, rel, content)
-    renderTree(await scanVault(state.vaultRoot))
-    try { await updateIndexDoc(rel, content) } catch (_) {}
-    await openFile(rel)
-    setStatus('已创建今日笔记：' + rel)
-  } catch (e) {
-    await messageDialog('创建今日笔记失败：' + errText(e))
   }
 }
 
@@ -676,18 +644,7 @@ async function newBlankTemplate() {
   } catch (e) { await messageDialog('新建模板失败：' + errText(e)) }
 }
 
-// 每日笔记设置：存放目录 + 文件名日期格式（存 localStorage）
-async function configureDailyNote() {
-  const dir = await promptDialog({ title: '每日笔记 · 存放目录', placeholder: '如 Daily 或 Journals/2026', defaultValue: DAILY_DIR() })
-  if (dir == null) return
-  const fmt = await promptDialog({ title: '每日笔记 · 文件名日期格式', placeholder: 'YYYY-MM-DD / YYYYMMDD / YYYY年MM月DD日', defaultValue: DAILY_FORMAT() })
-  if (fmt == null) return
-  localStorage.setItem('nl-daily-dir', dir)
-  localStorage.setItem('nl-daily-format', fmt)
-  setStatus('每日笔记设置已保存：' + dir + ' / ' + fmt)
-}
-
-// 工具条「模板」菜单：列模板 + 打开今日 + 新建模板 + 每日笔记设置
+// 工具条「模板」菜单：列模板 + 今日速记 + 新建模板 + 今日速记设置
 function openTemplateMenu(anchorEl) {
   if (!state.vaultRoot) { messageDialog('请先打开知识库'); return }
   refreshTree().then(() => {
@@ -701,9 +658,9 @@ function openTemplateMenu(anchorEl) {
       tpls.forEach((p) => menu.appendChild(makeMenuItem('📄 ' + baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p))))
     }
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('📅 打开 / 新建今日笔记', () => openDailyNote()))
+    menu.appendChild(makeMenuItem('📅 今日速记（全局浮层，独立于知识库）', () => toggleDailyCapture()))
     menu.appendChild(makeMenuItem('➕ 新建空白模板…', () => newBlankTemplate()))
-    menu.appendChild(makeMenuItem('⚙ 每日笔记设置…', () => configureDailyNote()))
+    menu.appendChild(makeMenuItem('⚙ 今日速记设置…', () => configureDailyCapture()))
     const r = anchorEl.getBoundingClientRect()
     placeMenu(menu, r.left, r.bottom + 4)
   })
@@ -1285,9 +1242,9 @@ function bindShortcuts() {
       e.preventDefault()
       openGraphModal()
     } else if (key === 'd' && e.shiftKey) {
-      // 批次 A：今日笔记（Ctrl+Shift+D）
+      // 批次 A：今日速记（全局浮层，独立于知识库）
       e.preventDefault()
-      openDailyNote()
+      toggleDailyCapture()
     }
   })
 }
@@ -1370,7 +1327,7 @@ async function boot() {
   els.btnPrint.addEventListener('click', () => window.print())
   els.btnGraph.addEventListener('click', openGraphModal)
   els.btnNewCanvas.addEventListener('click', newCanvas)
-  els.btnDaily && els.btnDaily.addEventListener('click', () => openDailyNote())
+  els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
   els.btnTemplate && els.btnTemplate.addEventListener('click', (e) => openTemplateMenu(e.currentTarget))
   els.searchInput.addEventListener('input', onSearchInput)
   els.searchInput.addEventListener('keydown', (e) => {
