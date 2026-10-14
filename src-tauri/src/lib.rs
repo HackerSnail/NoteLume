@@ -1554,6 +1554,262 @@ fn copy_vault_assets(vault_root: String, args: CopyAssetsArgs) -> Result<(), Str
     Ok(())
 }
 
+// ==================== 批次 E（子项目 L）：本地 Git（只读部分）====================
+// 设计见 docs/superpowers/specs/2026-10-14-local-git-integration-design.md
+// 「库根 = 仓库」：所有命令入参带 vault_root，用 git2 在该目录（向上 discover）操作；
+// 本批仅只读查看 + 后续 E1b 的 add/commit，绝不做 checkout/reset/merge 等改写动作。
+
+/// 仓库探测结果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRepoInfo {
+    pub is_repo: bool,
+    /// 实际仓库工作目录绝对路径（可能高于 vault_root，回显以示透明）
+    pub repo_path: Option<String>,
+    pub branch: Option<String>,
+    pub has_head: bool,
+}
+
+/// 单文件状态
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileStatus {
+    /// 相对仓库工作目录、`/` 分隔
+    pub path: String,
+    /// new | modified | deleted | renamed | untracked | conflicted
+    pub kind: String,
+    /// 是否已在暂存区（index 相对 HEAD 有变动）
+    pub staged: bool,
+}
+
+/// 提交记录
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitInfo {
+    pub id: String,
+    pub id_short: String,
+    pub summary: String,
+    pub author_name: String,
+    pub author_email: String,
+    /// 提交 Unix 秒
+    pub time: i64,
+}
+
+/// 单文件 diff 入参
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffFileArgs {
+    pub path: String,
+    /// "HEAD"（工作树 vs HEAD）或某 commit id（该提交 vs 其父）
+    pub against: String,
+}
+
+/// 打开库根所在仓库；失败统一映射成可读错误
+fn open_repo(vault_root: &str) -> Result<git2::Repository, String> {
+    git2::Repository::open(vault_root).map_err(|e| format!("打开仓库失败：{}", e))
+}
+
+/// 把 Repository 收敛成 GitRepoInfo（多处复用）
+fn repo_info(repo: &git2::Repository) -> GitRepoInfo {
+    let head = repo.head().ok();
+    GitRepoInfo {
+        is_repo: true,
+        repo_path: repo.workdir().map(|p| p.to_string_lossy().to_string()),
+        branch: head.as_ref().and_then(|h| h.shorthand().map(|s| s.to_string())),
+        has_head: head.is_some(),
+    }
+}
+
+/// 探测当前库是否为 git 仓库（含向上 discover）；非仓库返回 is_repo=false 而非报错
+#[tauri::command]
+fn git_open(vault_root: String) -> Result<GitRepoInfo, String> {
+    let repo = match git2::Repository::open(&vault_root) {
+        Ok(r) => r,
+        Err(_) => {
+            return Ok(GitRepoInfo {
+                is_repo: false,
+                repo_path: None,
+                branch: None,
+                has_head: false,
+            })
+        }
+    };
+    Ok(repo_info(&repo))
+}
+
+/// 依据 git2 状态位分类；暂存区（index vs HEAD）优先于工作树（worktree vs index）
+fn classify_status(s: git2::Status) -> (String, bool) {
+    if s.contains(git2::Status::INDEX_NEW) {
+        ("new".into(), true)
+    } else if s.contains(git2::Status::INDEX_MODIFIED) {
+        ("modified".into(), true)
+    } else if s.contains(git2::Status::INDEX_DELETED) {
+        ("deleted".into(), true)
+    } else if s.contains(git2::Status::INDEX_RENAMED) {
+        ("renamed".into(), true)
+    } else if s.contains(git2::Status::CONFLICTED) {
+        ("conflicted".into(), false)
+    } else if s.contains(git2::Status::WT_NEW) {
+        ("untracked".into(), false)
+    } else if s.contains(git2::Status::WT_MODIFIED) {
+        ("modified".into(), false)
+    } else if s.contains(git2::Status::WT_DELETED) {
+        ("deleted".into(), false)
+    } else if s.contains(git2::Status::WT_RENAMED) {
+        ("renamed".into(), false)
+    } else {
+        ("modified".into(), false)
+    }
+}
+
+/// 工作树/暂存/HEAD 差异列表；封顶 1000 项
+#[tauri::command]
+fn git_status(vault_root: String) -> Result<Vec<GitFileStatus>, String> {
+    let repo = open_repo(&vault_root)?;
+    let mut opts = git2::StatusOptions::new();
+    opts.recurse_untracked_dirs(true)
+        .include_untracked(true)
+        .include_ignored(false);
+    let statuses = repo.statuses(Some(&mut opts)).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for entry in statuses.iter() {
+        let path = match entry.path() {
+            Some(p) => p.to_string(),
+            None => continue,
+        };
+        let (kind, staged) = classify_status(entry.status());
+        out.push(GitFileStatus { path, kind, staged });
+        if out.len() >= 1000 {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// 从 HEAD 沿历史走 limit 条（默认 200）；空库返回空数组
+#[tauri::command]
+fn git_log(vault_root: String, limit: Option<usize>) -> Result<Vec<GitCommitInfo>, String> {
+    let repo = open_repo(&vault_root)?;
+    if repo.head().is_err() {
+        return Ok(Vec::new()); // 无 HEAD（空库）→ 无历史
+    }
+    let limit = limit.unwrap_or(200);
+    let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
+    revwalk.push_head().map_err(|e| e.to_string())?;
+    revwalk
+        .set_sorting(git2::Sort::TIME)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for oid in revwalk.flatten().take(limit) {
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        let id = commit.id().to_string();
+        let author = commit.author();
+        out.push(GitCommitInfo {
+            id: id.clone(),
+            id_short: id.chars().take(7).collect(),
+            summary: commit.summary().unwrap_or("").to_string(),
+            author_name: author.name().unwrap_or("").to_string(),
+            author_email: author.email().unwrap_or("").to_string(),
+            time: commit.time().seconds(),
+        });
+    }
+    Ok(out)
+}
+
+/// 单文件统一 diff 文本。against="HEAD"：工作树（含未跟踪）vs HEAD；
+/// against=commit id：该提交 vs 其父（首提交对空树）。无差异返回空串。
+#[tauri::command]
+fn git_diff_file(vault_root: String, args: DiffFileArgs) -> Result<String, String> {
+    let repo = open_repo(&vault_root)?;
+
+    // against=HEAD 且 HEAD 里没有该文件（未跟踪/新文件）：git2 的 tree_to_workdir 不含未跟踪，
+    // 手工合成「对空树、全为新增」的统一 diff。
+    if (args.against.eq_ignore_ascii_case("head") || args.against.is_empty())
+        && !head_has_path(&repo, &args.path)
+    {
+        let abs = repo
+            .workdir()
+            .ok_or("仓库无工作目录")?
+            .join(Path::new(&args.path));
+        let bytes = fs::read(&abs).map_err(|e| format!("读取文件失败：{}", e))?;
+        return Ok(synthesize_added_patch(&args.path, &bytes));
+    }
+
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(&args.path)
+        .include_untracked(true)
+        .recurse_untracked_dirs(true);
+
+    let diff = if args.against.eq_ignore_ascii_case("head") || args.against.is_empty() {
+        let head_tree = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_tree().ok());
+        repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+            .map_err(|e| e.to_string())?
+    } else {
+        let oid = git2::Oid::from_str(&args.against).map_err(|e| e.to_string())?;
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        let tree = commit.tree().map_err(|e| e.to_string())?;
+        let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
+        repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+            .map_err(|e| e.to_string())?
+    };
+
+    Ok(render_patch(&diff))
+}
+
+/// HEAD 树里是否存在该相对路径
+fn head_has_path(repo: &git2::Repository, path: &str) -> bool {
+    match repo.head().ok().and_then(|h| h.peel_to_tree().ok()) {
+        Some(tree) => tree.get_path(Path::new(path)).is_ok(),
+        None => false, // 空库无 HEAD
+    }
+}
+
+/// 把一个 Diff 渲染成标准 unified patch 文本。
+/// add/del/context 行的 content() 不含 +/-/空格前缀，需补 origin()；
+/// file/hunk 头行与 binary 行的 content() 已是完整渲染行，原样拼接。
+fn render_patch(diff: &git2::Diff) -> String {
+    let mut buf = String::new();
+    let _ = diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        use git2::DiffLineType::*;
+        let content = std::str::from_utf8(line.content()).unwrap_or("");
+        match line.origin_value() {
+            Context | Addition | Deletion | ContextEOFNL | AddEOFNL | DeleteEOFNL => {
+                buf.push(line.origin());
+                buf.push_str(content);
+            }
+            _ => buf.push_str(content),
+        }
+        true
+    });
+    buf
+}
+
+/// 未跟踪/新文件：手工拼「对空树、全新增」的 unified diff
+fn synthesize_added_patch(path: &str, bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let mut out = String::new();
+    out.push_str(&format!("diff --git a/{p} b/{p}\n", p = path));
+    out.push_str("--- /dev/null\n");
+    out.push_str(&format!("+++ b/{p}\n", p = path));
+    let lines: Vec<&str> = text.split('\n').collect();
+    // 末尾因 \n 产生的空串不计
+    let n = if lines.last() == Some(&"") {
+        lines.len() - 1
+    } else {
+        lines.len()
+    };
+    out.push_str(&format!("@@ -0,0 +1,{n} @@\n"));
+    for l in lines.iter().take(n) {
+        out.push('+');
+        out.push_str(l);
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1565,6 +1821,81 @@ mod tests {
         v.sort();
         v.dedup();
         assert_eq!(v, vec!["A", "B", "C"]);
+    }
+
+    // 批次 E（L）只读链路：用 git2 裸 API 造一个含首提交的临时库，验证 open/status/log/diff
+    #[test]
+    fn git_readonly_status_log_diff() {
+        use git2::Signature;
+        let tmp = std::env::temp_dir().join(format!("notelume-git-ro-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let repo = git2::Repository::init(&tmp).unwrap();
+        let file = tmp.join("a.md");
+        fs::write(&file, "line1\nline2\n").unwrap();
+        {
+            let mut idx = repo.index().unwrap();
+            idx.add_path(std::path::Path::new("a.md")).unwrap();
+            idx.write().unwrap();
+            let tree_id = idx.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let sig = Signature::now("Tester", "tester@example.com").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init commit", &tree, &[])
+                .unwrap();
+        }
+        let root = tmp.to_string_lossy().to_string();
+
+        // git_open
+        let info = git_open(root.clone()).unwrap();
+        assert!(info.is_repo);
+        assert!(info.has_head);
+
+        // 刚提交完工作树干净：a.md 不应为 untracked/modified
+        let clean = git_status(root.clone()).unwrap();
+        assert!(clean
+            .iter()
+            .all(|f| !(f.path == "a.md" && (f.kind == "modified" || f.kind == "untracked"))));
+
+        // git_log 一条
+        let log = git_log(root.clone(), None).unwrap();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].summary, "init commit");
+        assert_eq!(log[0].author_email, "tester@example.com");
+
+        // 改 a.md + 新增 b.md → status
+        fs::write(&file, "line1\nline2 changed\n").unwrap();
+        fs::write(tmp.join("b.md"), "new\n").unwrap();
+        let st = git_status(root.clone()).unwrap();
+        assert!(st.iter().any(|f| f.path == "a.md" && f.kind == "modified"));
+        assert!(st.iter().any(|f| f.path == "b.md" && f.kind == "untracked"));
+
+        // diff a.md vs HEAD 含增删行
+        let d = git_diff_file(
+            root.clone(),
+            DiffFileArgs { path: "a.md".into(), against: "HEAD".into() },
+        )
+        .unwrap();
+        assert!(d.contains("+line2 changed"));
+        assert!(d.contains("-line2"));
+
+        // diff 未跟踪 b.md vs HEAD 含新增
+        let db = git_diff_file(
+            root.clone(),
+            DiffFileArgs { path: "b.md".into(), against: "HEAD".into() },
+        )
+        .unwrap();
+        assert!(db.contains("+new"));
+
+        // against=首提交 id，无父 → 对空树全为新增
+        let cid = log[0].id.clone();
+        let dc = git_diff_file(
+            root.clone(),
+            DiffFileArgs { path: "a.md".into(), against: cid },
+        )
+        .unwrap();
+        assert!(dc.contains("+line1"));
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -2000,7 +2331,12 @@ pub fn run() {
             get_graph_data,
             // 批次 C：整站导出
             build_site_graph,
-            copy_vault_assets
+            copy_vault_assets,
+            // 批次 E（子项目 L）：本地 Git
+            git_open,
+            git_status,
+            git_log,
+            git_diff_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
