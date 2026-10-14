@@ -84,9 +84,6 @@ const els = {
   btnOpenFile: $('btn-open-file'),
   btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
-  btnExportHtml: $('btn-export-html'),
-  btnPrint: $('btn-print'),
-  btnGraph: $('btn-graph'),
   chkAutosave: $('chk-autosave'),
   searchInput: $('search-input'),
   searchResults: $('search-results'),
@@ -101,12 +98,9 @@ const els = {
   snapshotClose: $('snapshot-close'),
   plugins: $('plugins'),
   canvasMount: $('canvas-mount'),
-  btnNewCanvas: $('btn-new-canvas'),
   btnDaily: $('btn-daily'),
-  btnTemplate: $('btn-template'),
-  btnFocus: $('btn-focus'),
-  btnType: $('btn-type'),
   btnSource: $('btn-source'),
+  btnMore: $('btn-more'),
   sourceMount: $('source-mount'),
   docstats: $('docstats'),
 }
@@ -151,7 +145,6 @@ function toggleFocusMode() {
   const on = localStorage.getItem('nl-focus') !== '1'
   localStorage.setItem('nl-focus', on ? '1' : '0')
   if (editor) editor.setFocusMode(on)
-  if (els.btnFocus) els.btnFocus.classList.toggle('active', on)
   setStatus(on ? '专注模式：开启' : '专注模式：关闭')
 }
 
@@ -159,7 +152,6 @@ function toggleTypewriterMode() {
   const on = localStorage.getItem('nl-typewriter') !== '1'
   localStorage.setItem('nl-typewriter', on ? '1' : '0')
   if (editor) editor.setTypewriterMode(on)
-  if (els.btnType) els.btnType.classList.toggle('active', on)
   setStatus(on ? '打字机模式：开启' : '打字机模式：关闭')
 }
 
@@ -530,11 +522,12 @@ function placeMenu(menu, clientX, clientY) {
   menu.style.top = y + 'px'
   treeMenuEl = menu
 }
-function makeMenuItem(label, fn, danger) {
+function makeMenuItem(label, fn, danger, checked) {
   const b = document.createElement('button')
   b.className = 'cv-menu-item' + (danger ? ' danger' : '')
   const chk = document.createElement('span')
   chk.className = 'cv-menu-check'
+  chk.textContent = checked ? '✓' : ''
   b.appendChild(chk)
   const lab = document.createElement('span')
   lab.className = 'cv-menu-label'
@@ -721,6 +714,23 @@ function openTemplateMenu(anchorEl) {
     const r = anchorEl.getBoundingClientRect()
     placeMenu(menu, r.left, r.bottom + 4)
   })
+}
+
+// 工具条「更多」菜单：收纳低频操作（导出/打印/图谱/画布/模板）与视图模式开关（专注/打字机）
+function openMoreMenu(anchorEl) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  menu.appendChild(makeMenuItem('📤 导出为 HTML', () => exportHTML()))
+  menu.appendChild(makeMenuItem('🖨 打印 / 导出 PDF (Ctrl+P)', () => window.print()))
+  menu.appendChild(makeMenuItem('🕸 知识图谱 (Ctrl+G)', () => openGraphModal()))
+  menu.appendChild(makeMenuItem('🗺 新画布 / 白板', () => newCanvas()))
+  menu.appendChild(makeMenuItem('📋 模板 / 今日速记设置', () => openTemplateMenu(anchorEl)))
+  menu.appendChild(menuSep())
+  menu.appendChild(makeMenuItem('🎯 专注模式 (Ctrl+Shift+F)', () => toggleFocusMode(), false, localStorage.getItem('nl-focus') === '1'))
+  menu.appendChild(makeMenuItem('⌨ 打字机模式 (Ctrl+Shift+T)', () => toggleTypewriterMode(), false, localStorage.getItem('nl-typewriter') === '1'))
+  const r = anchorEl.getBoundingClientRect()
+  placeMenu(menu, r.left, r.bottom + 4)
 }
 
 async function newFolderIn(dirRel) {
@@ -1405,18 +1415,10 @@ async function boot() {
   els.btnOpenFile.addEventListener('click', openSingleFile)
   els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
-  els.btnExportHtml.addEventListener('click', exportHTML)
-  els.btnPrint.addEventListener('click', () => window.print())
-  els.btnGraph.addEventListener('click', openGraphModal)
-  els.btnNewCanvas.addEventListener('click', newCanvas)
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
-  els.btnTemplate && els.btnTemplate.addEventListener('click', (e) => openTemplateMenu(e.currentTarget))
-  els.btnFocus && els.btnFocus.addEventListener('click', toggleFocusMode)
-  els.btnType && els.btnType.addEventListener('click', toggleTypewriterMode)
   els.btnSource && els.btnSource.addEventListener('click', toggleSourceMode)
+  els.btnMore && els.btnMore.addEventListener('click', (e) => openMoreMenu(e.currentTarget))
   els.docstats && els.docstats.addEventListener('click', setWordGoal)
-  if (els.btnFocus) els.btnFocus.classList.toggle('active', localStorage.getItem('nl-focus') === '1')
-  if (els.btnType) els.btnType.classList.toggle('active', localStorage.getItem('nl-typewriter') === '1')
   updateDocStats()
   els.searchInput.addEventListener('input', onSearchInput)
   els.searchInput.addEventListener('keydown', (e) => {

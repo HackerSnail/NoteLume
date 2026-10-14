@@ -104,6 +104,8 @@ body {
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .toolbar button:hover {
   background: var(--hover);
@@ -130,6 +132,11 @@ body {
 .filename {
   color: var(--muted);
   margin-left: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 .filename.dirty::after {
   content: ' •';
@@ -140,6 +147,12 @@ body {
 }
 .status {
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 30vw;
+  flex-shrink: 1;
 }
 
 /* 主体分栏 */
@@ -1432,6 +1445,8 @@ body {
   font-size: 12px;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .autosave-toggle input {
   accent-color: var(--accent);
