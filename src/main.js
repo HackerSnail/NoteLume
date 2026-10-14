@@ -41,6 +41,7 @@ import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
 import { builtinVars, applyTemplate } from './template.js'
 import { toggleDailyCapture, configureDailyCapture } from './daily-capture.js'
+import { countWords, statsLabel } from './writing-stats.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -103,6 +104,9 @@ const els = {
   btnNewCanvas: $('btn-new-canvas'),
   btnDaily: $('btn-daily'),
   btnTemplate: $('btn-template'),
+  btnFocus: $('btn-focus'),
+  btnType: $('btn-type'),
+  docstats: $('docstats'),
 }
 
 let editor
@@ -125,6 +129,45 @@ function markDirty(d) {
   state.dirty = d
   els.filename.classList.toggle('dirty', d)
   if (d) scheduleAutosave()
+}
+
+// —— 批次 B：写作统计 / 专注 / 打字机 ——
+function updateDocStats() {
+  if (!els.docstats) return
+  if (state.mode !== 'md' || !editor) { els.docstats.textContent = ''; return }
+  const words = countWords(editor.getText())
+  let label = statsLabel(words)
+  const goal = parseInt(localStorage.getItem('nl-word-goal') || '0', 10)
+  if (goal > 0) {
+    const pct = Math.min(100, Math.round((words / goal) * 100))
+    label += ' · 目标 ' + goal + '（' + pct + '%）'
+  }
+  els.docstats.textContent = label
+}
+
+function toggleFocusMode() {
+  const on = localStorage.getItem('nl-focus') !== '1'
+  localStorage.setItem('nl-focus', on ? '1' : '0')
+  if (editor) editor.setFocusMode(on)
+  if (els.btnFocus) els.btnFocus.classList.toggle('active', on)
+  setStatus(on ? '专注模式：开启' : '专注模式：关闭')
+}
+
+function toggleTypewriterMode() {
+  const on = localStorage.getItem('nl-typewriter') !== '1'
+  localStorage.setItem('nl-typewriter', on ? '1' : '0')
+  if (editor) editor.setTypewriterMode(on)
+  if (els.btnType) els.btnType.classList.toggle('active', on)
+  setStatus(on ? '打字机模式：开启' : '打字机模式：关闭')
+}
+
+async function setWordGoal() {
+  const cur = localStorage.getItem('nl-word-goal') || '0'
+  const v = await promptDialog({ title: '当日字数目标', placeholder: '输入目标字数，0 表示清除', defaultValue: cur === '0' ? '500' : cur })
+  if (v == null) return
+  const n = parseInt(String(v).replace(/[^0-9]/g, ''), 10)
+  localStorage.setItem('nl-word-goal', n > 0 ? String(n) : '0')
+  updateDocStats()
 }
 
 // —— 主题 ——（浅色 → 暗黑 → Dracula 三态循环；按钮显示当前主题名，与界面实际一致）
@@ -806,6 +849,7 @@ function setMode(mode) {
   els.editor.classList.toggle('hidden', canvasOn)
   els.canvasMount.classList.toggle('hidden', !canvasOn)
   if (frontmatterPanel) frontmatterPanel.refresh() // 画布态下属性面板转为占位
+  updateDocStats()
 }
 
 async function openCanvas(path) {
@@ -1245,6 +1289,14 @@ function bindShortcuts() {
       // 批次 A：今日速记（全局浮层，独立于知识库）
       e.preventDefault()
       toggleDailyCapture()
+    } else if (key === 'f' && e.shiftKey) {
+      // 批次 B：专注模式
+      e.preventDefault()
+      toggleFocusMode()
+    } else if (key === 't' && e.shiftKey) {
+      // 批次 B：打字机模式
+      e.preventDefault()
+      toggleTypewriterMode()
     }
   })
 }
@@ -1259,7 +1311,9 @@ async function boot() {
     suggestDocs: () => state.docNames,
     suggestTags: () => state.tagNames,
     onFrontmatterChange: () => frontmatterPanel && frontmatterPanel.refresh(),
-    onDocChange: (doc, prev) => pluginManager && pluginManager.fireDocChange(doc, prev),
+    initialFocus: localStorage.getItem('nl-focus') === '1',
+    initialTypewriter: localStorage.getItem('nl-typewriter') === '1',
+    onDocChange: (doc, prev) => { updateDocStats(); if (pluginManager) pluginManager.fireDocChange(doc, prev) },
   })
 
   // 文档属性（frontmatter）面板：查看 / 编辑当前 md 文档的 YAML 头
@@ -1329,6 +1383,12 @@ async function boot() {
   els.btnNewCanvas.addEventListener('click', newCanvas)
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
   els.btnTemplate && els.btnTemplate.addEventListener('click', (e) => openTemplateMenu(e.currentTarget))
+  els.btnFocus && els.btnFocus.addEventListener('click', toggleFocusMode)
+  els.btnType && els.btnType.addEventListener('click', toggleTypewriterMode)
+  els.docstats && els.docstats.addEventListener('click', setWordGoal)
+  if (els.btnFocus) els.btnFocus.classList.toggle('active', localStorage.getItem('nl-focus') === '1')
+  if (els.btnType) els.btnType.classList.toggle('active', localStorage.getItem('nl-typewriter') === '1')
+  updateDocStats()
   els.searchInput.addEventListener('input', onSearchInput)
   els.searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

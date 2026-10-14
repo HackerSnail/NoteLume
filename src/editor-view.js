@@ -18,6 +18,8 @@ import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
 import { mermaidPlugin } from './mermaid-preview.js'
 import { attachCodeLangPicker } from './code-lang-picker.js'
+import { createSlashMenuPlugin } from './slash-menu.js'
+import { createModesPlugin } from './editor-modes.js'
 
 /**
  * 创建编辑器实例。
@@ -32,6 +34,8 @@ import { attachCodeLangPicker } from './code-lang-picker.js'
 export function createEditor(opts) {
   let dirty = false
   let fmRaw = null // 当前文档 YAML frontmatter 原文（不含围栏）；null=无
+  // 专注/打字机模式插件（初始态由 main.js 从 localStorage 传入）
+  const modes = createModesPlugin({ focus: !!opts.initialFocus, typewriter: !!opts.initialTypewriter })
 
   // —— 行内输入规则：[[目标]] 与 #标签 触发即转成节点 ——
   const inputRulesPlugin = new Plugin({
@@ -136,6 +140,7 @@ export function createEditor(opts) {
         getDocs: opts.suggestDocs || (() => []),
         getTags: opts.suggestTags || (() => []),
       }),
+      createSlashMenuPlugin(),
       tableKeymap(),
       keymapPlugin,
       base,
@@ -143,6 +148,7 @@ export function createEditor(opts) {
       pasteImagesPlugin,
       highlightPlugin(),
       mermaidPlugin(),
+      modes.plugin,
       ...tablePlugins(),
     ],
   })
@@ -241,6 +247,13 @@ export function createEditor(opts) {
     focus() {
       view.focus()
     },
+    // 写作统计：取当前文档纯文本（块间用 \n 分隔）
+    getText() {
+      return view.state.doc.textBetween(0, view.state.doc.content.size, '\n', '\n')
+    },
+    // 专注 / 打字机模式开关（main.js 驱动并持久化）
+    setFocusMode(on) { modes.api.setFocus(on) },
+    setTypewriterMode(on) { modes.api.setTypewriter(on) },
     jumpToPos(pos) {
       const tr = view.state.tr.setSelection(
         TextSelection.create(view.state.doc, Math.min(pos + 1, view.state.doc.content.size))

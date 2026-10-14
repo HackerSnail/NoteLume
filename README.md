@@ -42,6 +42,7 @@
 | **P2** | 插件基础钩子系统（`.notelume-plugins/*.js`：快捷键 / 命令 / 输入规则 / 生命周期）                               | ✅ 已完成 |
 | **P2** | 画布 · 白板（JSON Canvas 规范，与 Obsidian`.canvas` 互操作）                                                   | ✅ 已完成 |
 | **增强** | 模板新建（`{{date}}`/`{{title}}` 等变量替换，未知 token 保留）+ 今日速记（`Ctrl+Shift+D` 全局浮层，**与知识库解绑**，自动存到固定目录）  | ✅ 已完成 |
+| **增强** | 编辑器手感包：斜杠 `/` 块菜单 + 写作统计（字数/阅读时长/目标）+ 专注模式 `Ctrl+Shift+F` + 打字机模式 `Ctrl+Shift+T`  | ✅ 已完成 |
 | **P2** | 移动端                                                                                                            | ⏳ 规划中 |
 
 ---
@@ -85,6 +86,9 @@ NoteLume/
 │   ├── canvas-view.js      # P2 画布 / 白板：JSON Canvas 渲染 / 拖拽连线缩放 / 双击编辑
 │   ├── template.js         # 模板变量替换 + 日期格式化（纯函数，供从模板新建 / 每日笔记）
 │   ├── daily-capture.js    # 全局「今日速记」浮层（textarea，与知识库解绑，自动存固定目录）
+│   ├── slash-menu.js       # 编辑器手感：空行 `/` 弹块类型菜单（Typora 式）
+│   ├── writing-stats.js    # 写作统计（字数/阅读时长，纯函数，中英日混排口径）
+│   ├── editor-modes.js     # 专注模式（当前块高亮）+ 打字机模式（当前块居中）
 │   ├── tauri-bridge.js     # Rust invoke 封装 + 系统对话框
 │   ├── style.css           # 类 Typora 排版 + 浅/暗/Dracula 主题 + 新面板样式
 │   ├── vite.config.js
