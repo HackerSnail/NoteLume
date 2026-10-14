@@ -21,6 +21,56 @@ import { mermaidPlugin } from './mermaid-preview.js'
 import { attachCodeLangPicker } from './code-lang-picker.js'
 import { createSlashMenuPlugin } from './slash-menu.js'
 import { createModesPlugin } from './editor-modes.js'
+import { normalizeBinding } from './keymap.js'
+
+// —— 批次 D：编辑器命令表 + 动态 keymap ——
+// 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Shift-Enter（硬换行）、
+// Backspace（节点后向删除）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进注册表。
+export const EDITOR_COMMANDS = [
+  { id: 'editor.undo', title: '撤销', defaultKey: 'Mod-z' },
+  { id: 'editor.redo', title: '重做', defaultKey: 'Mod-y' },
+  { id: 'editor.bold', title: '加粗', defaultKey: 'Mod-b' },
+  { id: 'editor.italic', title: '斜体', defaultKey: 'Mod-i' },
+  { id: 'editor.code', title: '行内代码', defaultKey: 'Mod-`' },
+  { id: 'editor.strike', title: '删除线', defaultKey: 'Mod-Shift-x' },
+  { id: 'editor.mathInline', title: '行内公式', defaultKey: 'Mod-m' },
+  { id: 'editor.mathBlock', title: '块级公式', defaultKey: 'Mod-Shift-m' },
+]
+
+const PM_COMMANDS = {
+  'editor.undo': undo,
+  'editor.redo': redo,
+  'editor.bold': toggleMark(schema.marks.strong),
+  'editor.italic': toggleMark(schema.marks.em),
+  'editor.code': toggleMark(schema.marks.code),
+  'editor.strike': toggleMark(schema.marks.strike),
+  'editor.mathInline': insertMath('math_inline'),
+  'editor.mathBlock': insertMath('math_block'),
+}
+
+// 硬换行命令（由固定结构键 Shift-Enter 触发）
+const nlHardBreak = chainCommands(exitCode, (state, dispatch) => {
+  dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView())
+  return true
+})
+
+// 「默认键 ∪ 覆盖」→ 编辑器 keymap 插件；固定别名/结构键始终保留
+function buildEditorKeymap(overrides) {
+  const map = {
+    'Shift-Mod-z': redo,
+    'Shift-Enter': nlHardBreak,
+    Backspace: selectNodeBackward,
+  }
+  const ov = overrides && typeof overrides === 'object' ? overrides : {}
+  for (const def of EDITOR_COMMANDS) {
+    const chosen = Object.prototype.hasOwnProperty.call(ov, def.id) ? ov[def.id] : def.defaultKey
+    if (chosen == null || chosen === '') continue // 空串 = 解绑
+    const norm = normalizeBinding(chosen)
+    if (!norm) continue // 非法或结构键目标：忽略
+    map[norm] = PM_COMMANDS[def.id]
+  }
+  return keymap(map)
+}
 
 /**
  * 创建编辑器实例。
@@ -120,22 +170,9 @@ export function createEditor(opts) {
     },
   })
 
-  const keymapPlugin = keymap({
-    'Mod-z': undo,
-    'Mod-y': redo,
-    'Shift-Mod-z': redo,
-    'Mod-b': toggleMark(schema.marks.strong),
-    'Mod-i': toggleMark(schema.marks.em),
-    'Mod-`': toggleMark(schema.marks.code),
-    'Mod-Shift-x': toggleMark(schema.marks.strike),
-    'Shift-Enter': chainCommands(exitCode, (state, dispatch) => {
-      dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView())
-      return true
-    }),
-    'Mod-m': insertMath('math_inline'),
-    'Mod-Shift-m': insertMath('math_block'),
-    Backspace: selectNodeBackward,
-  })
+  // 编辑器 keymap：由「默认键 ∪ 覆盖」动态生成（标记 __nlKeymap，供热重配时原地替换）
+  const nlKeymapPlugin = buildEditorKeymap(opts.keymapOverrides || {})
+  nlKeymapPlugin.__nlKeymap = true
   const base = keymap(baseKeymap)
 
   const state = EditorState.create({
@@ -149,7 +186,7 @@ export function createEditor(opts) {
       }),
       createSlashMenuPlugin(),
       tableKeymap(),
-      keymapPlugin,
+      nlKeymapPlugin,
       base,
       inputRulesPlugin,
       pasteImagesPlugin,
@@ -330,6 +367,29 @@ export function createEditor(opts) {
       opts.onDirty && opts.onDirty(false)
     },
     focus() {
+      view.focus()
+    },
+    // 热重配编辑器 keymap：原地替换 __nlKeymap 插件（保留其它插件与顺序），令重绑即时生效
+    setKeymapOverrides(overrides) {
+      const next = buildEditorKeymap(overrides)
+      next.__nlKeymap = true
+      const cur = view.state.plugins
+      const idx = cur.findIndex((p) => p.__nlKeymap)
+      const list = cur.slice()
+      if (idx >= 0) list[idx] = next
+      else list.splice(list.length - 1, 0, next) // 兜底：插在 base 之前以保优先级
+      view.updateState(view.state.reconfigure({ plugins: list }))
+    },
+    // 面板/设置页「主动执行」一条编辑命令：聚焦后对当前 state 求值 PM 命令
+    runEditorCommand(id) {
+      const fn = PM_COMMANDS[id]
+      if (!fn) return false
+      view.focus()
+      const ok = fn(view.state, view.dispatch, view)
+      if (ok) view.focus()
+      return !!ok
+    },
+    focusEditor() {
       view.focus()
     },
     // 写作统计：源码态按 CodeMirror 全文计数；WYSIWYG 取文档纯文本（块间用 \n 分隔）

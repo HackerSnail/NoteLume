@@ -33,13 +33,33 @@ async function importFromSource(src) {
 }
 
 export function createPluginManager(deps) {
-  const { view, panelEl, setStatus, getVaultRoot } = deps
+  const { view, panelEl, setStatus, getVaultRoot, commandRegistry } = deps
 
   let loaded = [] // { name, file, plugin, error, enabled }
   let injected = [] // 本系统注入的 PM 插件（带 __nlPlugin 标记）
   const commands = new Map() // name -> { owner, fn, ctx }
   const hooks = { onEditorReady: [], onDocChange: [], onFileOpen: [], onSave: [] }
   let busy = false
+
+  // 把插件命令并入统一命令注册表（面板可列、设置页可绑；id 命名空间 plugin.<owner>.<name>）
+  function syncPluginCommand(owner, name, fn, ctx) {
+    if (!commandRegistry) return
+    const id = 'plugin.' + String(owner).replace(/\s+/g, '_') + '.' + String(name).replace(/\s+/g, '_')
+    commandRegistry.register({
+      id,
+      title: `${owner}：${name}`,
+      category: 'plugin',
+      // 无默认键：插件自身声明的 keymap 仍走 PM 注入；这里默认只供面板/设置页绑定与执行
+      run: () => {
+        try {
+          fn(ctx)
+        } catch (e) {
+          setStatus('命令执行失败：' + ((e && e.message) || e))
+          console.error(e)
+        }
+      },
+    })
+  }
 
   function makeContext(plugin, acc) {
     return {
@@ -56,6 +76,7 @@ export function createPluginManager(deps) {
       setStatus,
       registerCommand(name, fn) {
         commands.set(name, { owner: this.name, fn, ctx: this })
+        syncPluginCommand(this.name, name, fn, this)
       },
       registerKeymap(binding, fn) {
         acc.keyBindings.push([binding, fn])
@@ -90,6 +111,7 @@ export function createPluginManager(deps) {
       clearInjected()
       loaded = []
       commands.clear()
+      if (commandRegistry) commandRegistry.removeWhere((c) => c.category === 'plugin')
       for (const k of Object.keys(hooks)) hooks[k] = []
       const acc = { keyBindings: [], inputRules: [] }
 
@@ -126,7 +148,10 @@ export function createPluginManager(deps) {
           // 静态声明式 commands / keymap
           if (plugin.commands) {
             for (const [name, fn] of Object.entries(plugin.commands)) {
-              if (typeof fn === 'function') commands.set(name, { owner: ctx.name, fn, ctx })
+              if (typeof fn === 'function') {
+                commands.set(name, { owner: ctx.name, fn, ctx })
+                syncPluginCommand(ctx.name, name, fn, ctx)
+              }
             }
           }
           if (plugin.keymap) {

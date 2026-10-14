@@ -1,7 +1,7 @@
 // main.js —— 应用装配：布局、知识库文件树、大纲、标签、主题、快捷键、打开/保存/跳转
 // P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
 // 自动保存 + 库内备份、HTML 导出、打印。
-import { createEditor } from './editor-view.js'
+import { createEditor, EDITOR_COMMANDS } from './editor-view.js'
 import { createFrontmatterPanel } from './frontmatter-panel.js'
 import { splitFrontmatter } from './frontmatter.js'
 import {
@@ -36,12 +36,16 @@ import {
   copyVaultAssets,
 } from './tauri-bridge.js'
 import { exportSite } from './site-export.js'
+import { createPalette } from './command-palette.js'
+import { createShortcutSettings } from './shortcut-settings.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
 import { promptDialog } from './prompt-dialog.js'
 import { confirm3Dialog } from './confirm3-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
+import { createRegistry } from './commands.js'
+import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, formatBinding } from './keymap.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
 import { builtinVars, applyTemplate } from './template.js'
@@ -111,6 +115,8 @@ const els = {
 }
 
 let editor
+let palette = null
+let keySettings = null
 let snapshotPanel = null
 let frontmatterPanel = null
 let pluginManager = null
@@ -514,6 +520,22 @@ function collectDocNames(nodes) {
   return out
 }
 
+// 递归收集库内 .md 文件 {name(去.md), rel}，供命令面板跳文档
+function collectDocPaths(nodes) {
+  const out = []
+  const walk = (arr) => {
+    ;(arr || []).forEach((n) => {
+      if (n.type === 'file') {
+        if (/\.md$/i.test(n.path)) out.push({ name: baseName(n.path).replace(/\.md$/i, ''), rel: n.path })
+      } else if (n.type === 'folder') {
+        walk(n.children)
+      }
+    })
+  }
+  walk(nodes)
+  return out
+}
+
 function renderNode(node) {
   if (node.type === 'folder') {
     const details = document.createElement('details')
@@ -771,6 +793,8 @@ function openMoreMenu(anchorEl) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
+  menu.appendChild(makeMenuItem('⌘ 命令面板 (Ctrl+Shift+P)', () => palette && palette.open()))
+  menu.appendChild(makeMenuItem('🎛 快捷键设置…', () => keySettings && keySettings.open()))
   menu.appendChild(makeMenuItem('📤 导出为 HTML', () => exportHTML()))
   menu.appendChild(makeMenuItem('🌐 导出整站…', () => exportSiteFull()))
   menu.appendChild(makeMenuItem('🖨 打印 / 导出 PDF (Ctrl+P)', () => window.print()))
@@ -1425,48 +1449,113 @@ async function openGraphModal() {
   }
 }
 
-// —— 快捷键（应用级）——
+// —— 快捷键（应用级）：统一命令注册表 + 全局分发器（批次 D）——
+// 命令集中注册为闭包；分发器读「默认键 ∪ localStorage['nl-keymap'] 覆盖」的有效绑定，
+// 取代旧的硬编码 if/else 链。editor / plugin 命令在后续步骤并入同一注册表。
+const commandRegistry = createRegistry()
+const IS_MAC = detectIsMac()
+let effectiveKeymap = new Map() // 解析后键形 → 命令 id
+
+// 读用户覆盖；损坏 JSON 视为空覆盖（回退默认）
+function loadKeymapOverrides() {
+  try {
+    const raw = localStorage.getItem('nl-keymap')
+    const obj = raw ? JSON.parse(raw) : null
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch {
+    return {}
+  }
+}
+
+// 重算全局分发的有效绑定表：仅 app/plugin（editor 命令留在 PM keymap，见 editor-view）
+function rebuildKeymap() {
+  const cmds = commandRegistry.list().filter((c) => c.category !== 'editor')
+  const { map } = effectiveBindings(cmds, loadKeymapOverrides(), IS_MAC)
+  effectiveKeymap = map
+}
+
+function registerAppCommands() {
+  const app = (id, title, defaultKey, run) =>
+    commandRegistry.register({ id, title, category: 'app', defaultKey, run })
+  app('app.save', '保存当前文件', 'Mod-s', () => saveCurrent(true))
+  app('app.openFile', '打开单个文件', 'Mod-o', () => openSingleFile())
+  app('app.openFolder', '打开知识库文件夹', 'Mod-Shift-o', () => openFolder())
+  app('app.search', '聚焦侧栏搜索', 'Mod-f', () => { els.searchInput.focus(); els.searchInput.select() })
+  // 打印收窄为纯 Ctrl+P：旧实现 key==='p' 未排除 shift，会吞掉 Ctrl+Shift+P（留给命令面板）
+  app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
+  app('app.graph', '打开知识图谱', 'Mod-g', () => openGraphModal())
+  app('app.dailyCapture', '今日速记', 'Mod-Shift-d', () => toggleDailyCapture())
+  app('app.focusMode', '专注模式', 'Mod-Shift-f', () => toggleFocusMode())
+  app('app.typewriterMode', '打字机模式', 'Mod-Shift-t', () => toggleTypewriterMode())
+  app('app.sourceMode', 'Markdown 源码模式', 'Mod-/', () => toggleSourceMode())
+  app('app.palette', '命令面板', 'Mod-Shift-p', () => { if (palette) palette.open() })
+}
+
+// editor 命令入注册表：与 app 同一张表（面板可列、可重绑），但执行经 ctx.runEditorCommand 转给 PM
+// 注：全局分发器不跳 editor 类（已按 category 过滤），避免与 PM keymap 重复触发
+function registerEditorCommands() {
+  for (const def of EDITOR_COMMANDS) {
+    commandRegistry.register({
+      id: def.id,
+      title: def.title,
+      category: 'editor',
+      defaultKey: def.defaultKey,
+      when: 'editor',
+      run: (ctx) => ctx.runEditorCommand(def.id),
+    })
+  }
+}
+
+// 传给 commandRegistry.run 的执行上下文
+function commandCtx() {
+  return {
+    setStatus,
+    registry: commandRegistry,
+    // editor 命令经编辑器实例执行（面板/设置页「主动执行」用）
+    runEditorCommand: (id) => (editor ? editor.runEditorCommand(id) : false),
+    focusEditor: () => { if (editor) editor.focusEditor() },
+  }
+}
+
+// 命令当前有效键的可读形式（面板右侧提示）：覆盖 ∪ 默认，按平台展示
+function commandBindingFor(id) {
+  const cmd = commandRegistry.get(id)
+  if (!cmd) return ''
+  const ov = loadKeymapOverrides()
+  const chosen = Object.prototype.hasOwnProperty.call(ov, id) ? ov[id] : cmd.defaultKey
+  if (!chosen) return ''
+  return formatBinding(chosen, IS_MAC)
+}
+
+// 保存覆盖表到 localStorage 并令两层同时生效：重建全局分发器 + 热重配编辑器 keymap
+function saveKeymapOverrides(overrides) {
+  const ov = overrides && typeof overrides === 'object' ? overrides : {}
+  try {
+    localStorage.setItem('nl-keymap', JSON.stringify(ov))
+  } catch (e) {
+    setStatus('保存快捷键失败：' + ((e && e.message) || e))
+    return
+  }
+  rebuildKeymap()
+  if (editor) editor.setKeymapOverrides(ov)
+}
+
 function bindShortcuts() {
+  registerAppCommands()
+  registerEditorCommands()
+  rebuildKeymap()
+  if (editor) editor.setKeymapOverrides(loadKeymapOverrides()) // 编辑器层：应用持久化的重绑
   document.addEventListener('keydown', (e) => {
-    const mod = e.ctrlKey || e.metaKey
-    if (!mod) return
-    const key = e.key.toLowerCase()
-    if (key === 's') {
-      e.preventDefault()
-      saveCurrent(true)
-    } else if (key === 'o') {
-      e.preventDefault()
-      if (e.shiftKey) openFolder()
-      else openSingleFile()
-    } else if (key === 'f' && !e.shiftKey) {
-      // 焦点交给侧栏搜索框
-      e.preventDefault()
-      els.searchInput.focus()
-      els.searchInput.select()
-    } else if (key === 'p') {
-      // 打印（浏览器/系统会弹出打印对话框，可选另存 PDF）
-      e.preventDefault()
-      window.print()
-    } else if (key === 'g') {
-      // P2：知识图谱
-      e.preventDefault()
-      openGraphModal()
-    } else if (key === 'd' && e.shiftKey) {
-      // 批次 A：今日速记（全局浮层，独立于知识库）
-      e.preventDefault()
-      toggleDailyCapture()
-    } else if (key === 'f' && e.shiftKey) {
-      // 批次 B：专注模式
-      e.preventDefault()
-      toggleFocusMode()
-    } else if (key === 't' && e.shiftKey) {
-      // 批次 B：打字机模式
-      e.preventDefault()
-      toggleTypewriterMode()
-    } else if (key === '/') {
-      // Markdown 源码模式：整篇切换 WYSIWYG <-> 原文
-      e.preventDefault()
-      toggleSourceMode()
+    if (!(e.ctrlKey || e.metaKey || e.altKey)) return
+    const logical = eventToBinding(e, IS_MAC)
+    if (!logical) return
+    const id = effectiveKeymap.get(resolveBinding(logical, IS_MAC))
+    if (!id) return
+    e.preventDefault()
+    try {
+      commandRegistry.run(id, commandCtx())
+    } catch (err) {
+      setStatus('命令执行失败：' + (err?.message || err))
     }
   })
 }
@@ -1526,6 +1615,7 @@ async function boot() {
     panelEl: els.plugins,
     setStatus,
     getVaultRoot: () => state.vaultRoot,
+    commandRegistry,
   })
 
   // P2 画布 / 白板：.canvas 文件的独立视图（文件读写在本模块内，复用通用文本命令）
@@ -1560,6 +1650,26 @@ async function boot() {
       els.searchInput.value = ''
       els.searchResults.innerHTML = ''
     }
+  })
+  palette = createPalette({
+    getCommands: () => commandRegistry.list(),
+    getDocs: () => collectDocPaths(state.tree),
+    runCommand: (id) => {
+      try {
+        commandRegistry.run(id, commandCtx())
+      } catch (e) {
+        setStatus('命令执行失败：' + ((e && e.message) || e))
+      }
+    },
+    openFile: (rel) => openFile(rel),
+    bindingFor: commandBindingFor,
+  })
+  keySettings = createShortcutSettings({
+    getCommands: () => commandRegistry.list(),
+    getOverrides: loadKeymapOverrides,
+    saveOverrides: saveKeymapOverrides,
+    isMac: IS_MAC,
+    setStatus,
   })
   bindShortcuts()
   setupCloseGuard()
