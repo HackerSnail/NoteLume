@@ -1504,6 +1504,8 @@ function registerAppCommands() {
   app('app.git.pull', 'Git：拉取（仅快进）', null, () => { if (gitPanel) gitPanel.pull() })
   // 批次 E（R2）：Git push（当前分支 → upstream）
   app('app.git.push', 'Git：推送到远端', null, () => { if (gitPanel) gitPanel.push() })
+    // 批次 E（R3）：合并拉取（非 ff-only，冲突交面板解决）
+    app('app.git.pullMerge', 'Git：拉取（合并）…', null, () => { if (gitPanel) gitPanel.merge() })
   app('app.git.remote', 'Git：设置远端 origin…', null, () => { if (gitPanel) gitPanel.setupRemote() })
 }
 
@@ -1666,6 +1668,7 @@ async function boot() {
     escapeHtml,
     setStatus,
     onPullDone: () => afterRemotePull(),
+    openFile: (rel) => openFile(rel),
   })
   gitPanel.refresh()
 

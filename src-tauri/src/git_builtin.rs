@@ -325,6 +325,22 @@ pub struct TrustHostArgs {
     pub key_b64: String,
 }
 
+/// R3：`git_r_resolve` 入参。side = "ours" | "theirs"。
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveArgs {
+    pub path: String,
+    /// "ours" | "theirs"
+    pub side: String,
+}
+
+/// R3：`git_r_commit_merge` 入参。
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitMergeArgs {
+    pub message: String,
+}
+
 // ==================== Phase 2：共享 serde 契约（从 lib.rs 搬入）====================
 
 /// `git remote -v` 解析出的单个远端
@@ -398,7 +414,8 @@ pub fn cached_engine() -> Engine {
 /// 通过 `match cached_engine() { System => system::*, Builtin => builtin::* }` 分派。
 pub mod system {
     use super::{
-        format_known_hosts_line, AheadBehind, GitSyncInfo, Remote, RemoteArgs, TrustHostArgs,
+        format_known_hosts_line, AheadBehind, CommitMergeArgs, GitSyncInfo, Remote, RemoteArgs,
+        ResolveArgs, TrustHostArgs,
     };
 
     /// 一次 git 进程调用的收敛结果
@@ -654,6 +671,102 @@ pub mod system {
         Ok(combined)
     }
 
+    // ---------- R3：合并拉取 + 冲突解决 ----------
+
+    /// R3：尝试 `git pull`（不带 --ff-only），合并远端。
+    /// 成功无冲突 → Ok("MERGED\n…")；有冲突 → Ok("CONFLICTS\n…")；其他失败 → Err。
+    pub async fn pull_merge(vault_root: String) -> Result<String, String> {
+        let run = git_run(vault_root, vec!["pull".into()]).await?;
+        let combined = format!("{}{}", run.stdout, run.stderr);
+        if run.code == 0 {
+            return Ok(format!("MERGED\n{}", combined));
+        }
+        // git pull 有冲突时退出码非零，stderr 含 "CONFLICT" / "Automatic merge failed"
+        let lower = combined.to_lowercase();
+        if lower.contains("conflict") || lower.contains("automatic merge failed") || lower.contains("merge conflict") {
+            return Ok(format!("CONFLICTS\n{}", combined));
+        }
+        // 其他失败同 push 分类前置 [code]
+        let code = super::map_err_text(&combined);
+        Err(format!("[{}]{}", code.as_str(), combined))
+    }
+
+    /// R3：列冲突文件。`git diff --name-only --diff-filter=U`。
+    pub async fn conflict_files(vault_root: String) -> Result<Vec<String>, String> {
+        let run = git_run(
+            vault_root,
+            vec!["diff".into(), "--name-only".into(), "--diff-filter=U".into()],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(run
+            .stdout
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect())
+    }
+
+    /// R3：解决单个冲突文件——选边 + stage。
+    pub async fn resolve(vault_root: String, args: ResolveArgs) -> Result<(), String> {
+        let flag = match args.side.as_str() {
+            "ours" => "--ours",
+            "theirs" => "--theirs",
+            _ => return Err("[git_error]side 必须是 ours 或 theirs".into()),
+        };
+        let r1 = git_run(
+            vault_root.clone(),
+            vec!["checkout".into(), flag.into(), "--".into(), args.path.clone()],
+        )
+        .await?;
+        if r1.code != 0 {
+            return Err(git_err_msg(&r1));
+        }
+        let r2 = git_run(
+            vault_root,
+            vec!["add".into(), "--".into(), args.path],
+        )
+        .await?;
+        if r2.code != 0 {
+            return Err(git_err_msg(&r2));
+        }
+        Ok(())
+    }
+
+    /// R3：检查是否处于 merge-in-progress 状态。
+    pub async fn merge_state(vault_root: String) -> Result<bool, String> {
+        let run = git_run(
+            vault_root,
+            vec!["rev-parse".into(), "--verify".into(), "MERGE_HEAD".into()],
+        )
+        .await?;
+        Ok(run.code == 0)
+    }
+
+    /// R3：中止合并（回到 pull 前状态）。
+    pub async fn abort_merge(vault_root: String) -> Result<(), String> {
+        let run = git_run(vault_root, vec!["merge".into(), "--abort".into()]).await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(())
+    }
+
+    /// R3：提交合并（当前已 stage 的内容 + merge commit）。
+    pub async fn commit_merge(vault_root: String, args: CommitMergeArgs) -> Result<(), String> {
+        let run = git_run(
+            vault_root,
+            vec!["commit".into(), "--no-edit".into(), "-m".into(), args.message],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(())
+    }
+
     /// Phase 4：System 引擎下一次性信任——追加写 `~/.ssh/known_hosts`，同 OpenSSH 自己的行为一致，
     /// 不会弄脏应用私库（System 后端的 known_hosts 无应用私库概念）。
     pub async fn trust_host(args: TrustHostArgs) -> Result<(), String> {
@@ -820,14 +933,14 @@ pub mod known_hosts_store {
 /// ff-pull 走 §5 契约：先 fetch、后 checkout_tree+reset Soft（同一步搬 ref + 工作区），失败回滚。
 pub mod builtin {
     use super::{
-        b64, key_type_from_blob, known_hosts_store, lookup_known_host, map_err_text, AheadBehind,
-        BuiltinErrCode, GitSyncInfo, HostUnknownPayload, KnownHostEntry, Remote, RemoteArgs,
-        TrustHostArgs,
+        b64, key_type_from_blob, known_hosts_store, lookup_known_host, map_err_text,
+        AheadBehind, BuiltinErrCode, CommitMergeArgs, GitSyncInfo, HostUnknownPayload,
+        KnownHostEntry, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
     };
     use git2::{
         build::CheckoutBuilder, cert::Cert, CertificateCheckStatus, Cred, CredentialType,
-        Error as GError, ErrorClass, FetchOptions, ObjectType, PushOptions, Reference, Repository,
-        ResetType,
+        Error as GError, ErrorClass, FetchOptions, MergeOptions, ObjectType, PushOptions,
+        Reference, Repository, RepositoryState, ResetType,
     };
     use std::sync::{Arc, Mutex};
 
@@ -1297,6 +1410,207 @@ pub mod builtin {
                 "已推 refs/heads/{} -> {}/{}\n",
                 branch, remote_name, remote_branch
             ))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    // ---------- R3：合并拉取 + 冲突解决（git2 merge API） ----------
+
+    /// R3：尝试合并拉取。同 pull_ff 先 fetch、后 merge（而非 ff）。
+    /// 无冲突 → Ok("MERGED\n…")；有冲突 → Ok("CONFLICTS\n…")。
+    pub async fn pull_merge(vault_root: String) -> Result<String, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let info = read_head_info(&repo)?;
+
+            // 1) fetch（同 pull_ff）
+            let entries = known_hosts_store::merged();
+            let side: HostSide = Arc::new(Mutex::new(None));
+            let cb = make_callbacks(entries, side.clone());
+            let mut fo = FetchOptions::new();
+            fo.remote_callbacks(cb);
+            let mut remote = repo
+                .find_remote(&info.remote_name)
+                .map_err(|e| map_err_with_side(e, &side))?;
+            remote
+                .fetch(&[] as &[&str], Some(&mut fo), None)
+                .map_err(|e| map_err_with_side(e, &side))?;
+
+            // 2) 取 upstream ref → AnnotatedCommit
+            let up_full = format!("refs/remotes/{}", info.up_short);
+            let up_ref = repo.find_reference(&up_full).map_err(map_err)?;
+            let up_annotated = repo
+                .reference_to_annotated_commit(&up_ref)
+                .map_err(map_err)?;
+
+            // 3) merge_analysis
+            let (analysis, _pref) = repo.merge_analysis(&[&up_annotated]).map_err(map_err)?;
+            if analysis.is_up_to_date() {
+                return Ok("MERGED\n已经是最新\n".into());
+            }
+            if !(analysis.is_normal() || analysis.is_fast_forward()) {
+                return Err("[git_error]无法执行合并（非正常 merge 场景）".into());
+            }
+
+            // 4) merge
+            let mut mopts = MergeOptions::new();
+            repo.merge(&[&up_annotated], Some(&mut mopts), None)
+                .map_err(map_err)?;
+
+            // 5) 检冲突
+            let idx = repo.index().map_err(map_err)?;
+            if idx.has_conflicts() {
+                Ok("CONFLICTS\n合并产生了冲突，请在面板解决\n".into())
+            } else {
+                Ok("MERGED\n合并成功\n".into())
+            }
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// R3：列冲突文件（index stage>0 的唯一路径）。
+    pub async fn conflict_files(vault_root: String) -> Result<Vec<String>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let idx = repo.index().map_err(map_err)?;
+            let mut out: Vec<String> = Vec::new();
+            for c in idx.conflicts().map_err(map_err)? {
+                let c = c.map_err(map_err)?;
+                let p = c
+                    .our
+                    .as_ref()
+                    .or(c.their.as_ref())
+                    .or(c.ancestor.as_ref())
+                    .map(|e| String::from_utf8_lossy(&e.path).to_string())
+                    .unwrap_or_default();
+                if !p.is_empty() && !out.contains(&p) {
+                    out.push(p);
+                }
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// R3：解决单个冲突文件（选 ours/theirs + 写工作区 + resolve index）。
+    pub async fn resolve(vault_root: String, args: ResolveArgs) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let mut idx = repo.index().map_err(map_err)?;
+            // 在冲突迭代器里找该路径，取指定边的 IndexEntry.id
+            let mut chosen: Option<git2::Oid> = None;
+            for c in idx.conflicts().map_err(map_err)? {
+                let c = c.map_err(map_err)?;
+                let cur = c
+                    .our
+                    .as_ref()
+                    .or(c.their.as_ref())
+                    .or(c.ancestor.as_ref())
+                    .map(|e| String::from_utf8_lossy(&e.path).to_string())
+                    .unwrap_or_default();
+                if cur != args.path {
+                    continue;
+                }
+                let side_entry = match args.side.as_str() {
+                    "ours" => c.our.as_ref(),
+                    "theirs" => c.their.as_ref(),
+                    _ => return Err("[git_error]side 必须是 ours 或 theirs".into()),
+                };
+                match side_entry {
+                    Some(e) => chosen = Some(e.id),
+                    None => {
+                        return Err(format!("[git_error]{} 无 {} 版本", args.path, args.side))
+                    }
+                }
+                break;
+            }
+            let oid = chosen.ok_or_else(|| format!("[git_error]{} 不在冲突状态", args.path))?;
+            // 取该 blob 写工作区
+            let blob = repo.find_blob(oid).map_err(map_err)?;
+            let workdir = repo
+                .workdir()
+                .ok_or("[git_error]裸仓库无工作区")?
+                .join(&args.path);
+            std::fs::write(&workdir, blob.content())
+                .map_err(|e| format!("写工作区失败：{}", e))?;
+            // stage 到 0（同时清除该路径的冲突阶段），落盘 index
+            idx.add_path(std::path::Path::new(&args.path))
+                .map_err(map_err)?;
+            idx.write().map_err(map_err)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// R3：检 merge-in-progress（repo.state() == Merge）。
+    pub async fn merge_state(vault_root: String) -> Result<bool, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            Ok(repo.state() == RepositoryState::Merge)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// R3：中止合并—— hard reset 回 HEAD + 清 MERGE_HEAD。
+    pub async fn abort_merge(vault_root: String) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let head_obj = repo
+                .head()
+                .map_err(map_err)?
+                .peel(ObjectType::Commit)
+                .map_err(map_err)?;
+            repo.reset(&head_obj, ResetType::Hard, None).map_err(map_err)?;
+            // 清 MERGE_HEAD / MERGE_MSG 等状态文件
+            for f in &["MERGE_HEAD", "MERGE_MSG", "MERGE_MODE"] {
+                let _ = std::fs::remove_file(repo.path().join(f));
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+    }
+
+    /// R3：提交合并（index → tree → commit with two parents）。
+    pub async fn commit_merge(vault_root: String, args: CommitMergeArgs) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let mut idx = repo.index().map_err(map_err)?;
+            let tree_oid = idx.write_tree().map_err(map_err)?;
+            let tree = repo.find_tree(tree_oid).map_err(map_err)?;
+            let head_commit = repo
+                .head()
+                .map_err(map_err)?
+                .peel_to_commit()
+                .map_err(map_err)?;
+            // 读 MERGE_HEAD 作第二父
+            let mh_content =
+                std::fs::read_to_string(repo.path().join("MERGE_HEAD")).map_err(|_| {
+                    "[git_error]无 MERGE_HEAD，不在合并状态".to_string()
+                })?;
+            let mh_oid =
+                git2::Oid::from_str(mh_content.trim()).map_err(|e| format!("[git_error]{}", e))?;
+            let mh_commit = repo.find_commit(mh_oid).map_err(map_err)?;
+            let sig = repo.signature().map_err(map_err)?;
+            repo.commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                &args.message,
+                &tree,
+                &[&head_commit, &mh_commit],
+            )
+            .map_err(map_err)?;
+            // 清状态文件
+            for f in &["MERGE_HEAD", "MERGE_MSG", "MERGE_MODE"] {
+                let _ = std::fs::remove_file(repo.path().join(f));
+            }
+            Ok(())
         })
         .await
         .map_err(|e| format!("spawn_blocking 失败：{}", e))?

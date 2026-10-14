@@ -340,6 +340,37 @@ export function gitRPush(vaultRoot) {
   return invoke('git_r_push', { vaultRoot })
 }
 
+/** R3 新增：合并拉取（不带 --ff-only）。resolve 为 `MERGED\n…` 或 `CONFLICTS\n…`；
+ *  其他失败 reject 附 `[code]msg` 前串。 */
+export function gitRPullMerge(vaultRoot) {
+  return invoke('git_r_pull_merge', { vaultRoot })
+}
+
+/** R3 新增：列当前冲突文件（相对路径数组）。 */
+export function gitRConflictFiles(vaultRoot) {
+  return invoke('git_r_conflict_files', { vaultRoot })
+}
+
+/** R3 新增：解决单个冲突文件。args = { path, side }，side 为 'ours' | 'theirs'。 */
+export function gitRResolve(vaultRoot, args) {
+  return invoke('git_r_resolve', { vaultRoot, args })
+}
+
+/** R3 新增：是否处于 merge-in-progress（resolve 为 bool）。 */
+export function gitRMergeState(vaultRoot) {
+  return invoke('git_r_merge_state', { vaultRoot })
+}
+
+/** R3 新增：中止合并，回到 pull 前状态。 */
+export function gitRAbortMerge(vaultRoot) {
+  return invoke('git_r_abort_merge', { vaultRoot })
+}
+
+/** R3 新增：提交合并（冲突全解后生成 merge commit）。args = { message }。 */
+export function gitRCommitMerge(vaultRoot, args) {
+  return invoke('git_r_commit_merge', { vaultRoot, args })
+}
+
 /** Phase 4 新增：一次性信任陌生 SSH 主机。args = { host, keyType, keyB64 }（同错误里 payload 的三段）。
  *  成功后下一拨 fetch/pull 会命中 known_hosts 直接放行。*/
 export function gitRTrustHost(args) {

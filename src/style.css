@@ -2423,6 +2423,55 @@ body {
 .nl-git-badge-deleted { background: #e53e3e; }
 .nl-git-badge-renamed { background: #3182ce; }
 .nl-git-badge-conflicted { background: #d53f8c; }
+/* 批次 E（R3）：冲突行 + 行内小按钮 + 合并工具条 */
+.nl-git-conflict {
+  background: rgba(213, 63, 140, 0.08);
+  border-color: rgba(213, 63, 140, 0.35);
+}
+.nl-git-conflict:hover {
+  background: rgba(213, 63, 140, 0.14);
+}
+.nl-git-conflict .nl-git-path {
+  color: #d53f8c;
+}
+.nl-git-conflict-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.nl-git-mini {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nl-git-mini:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+.nl-git-merge-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(213, 63, 140, 0.35);
+  border-radius: 6px;
+  background: rgba(213, 63, 140, 0.08);
+}
+.nl-git-merge-bar .nl-git-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.nl-git-merge-msg {
+  font-size: 12px;
+  color: var(--fg);
+}
 .nl-git-path {
   overflow: hidden;
   text-overflow: ellipsis;

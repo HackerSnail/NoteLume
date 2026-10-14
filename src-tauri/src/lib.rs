@@ -12,7 +12,9 @@ mod git_builtin;
 
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
-pub use git_builtin::{AheadBehind, GitSyncInfo, Remote, RemoteArgs, TrustHostArgs};
+pub use git_builtin::{
+    AheadBehind, CommitMergeArgs, GitSyncInfo, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
+};
 
 // ==================== P0 已有类型 ====================
 
@@ -2075,6 +2077,61 @@ async fn git_r_push(vault_root: String) -> Result<String, String> {
     }
 }
 
+/// R3 新增：合并拉取（不带 --ff-only）。System 走 `git pull`；Builtin 走 git2 merge API。
+/// 无冲突回 `MERGED\n…`；有冲突回 `CONFLICTS\n…`；其他失败回 `[code]msg`。
+#[tauri::command]
+async fn git_r_pull_merge(vault_root: String) -> Result<String, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::pull_merge(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::pull_merge(vault_root).await,
+    }
+}
+
+/// R3 新增：列当前冲突文件（相对路径）。System 走 `git diff --diff-filter=U`；Builtin 扫 index stage>0。
+#[tauri::command]
+async fn git_r_conflict_files(vault_root: String) -> Result<Vec<String>, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::conflict_files(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::conflict_files(vault_root).await,
+    }
+}
+
+/// R3 新增：解决单个冲突文件——选 ours/theirs 边 + stage。args.path 相对路径、args.side "ours"|"theirs"。
+#[tauri::command]
+async fn git_r_resolve(vault_root: String, args: ResolveArgs) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::resolve(vault_root, args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::resolve(vault_root, args).await,
+    }
+}
+
+/// R3 新增：是否处于 merge-in-progress（MERGE_HEAD 存在）。前端刷新时用它决定是否显冲突工具条。
+#[tauri::command]
+async fn git_r_merge_state(vault_root: String) -> Result<bool, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::merge_state(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::merge_state(vault_root).await,
+    }
+}
+
+/// R3 新增：中止合并，回到 pull 前状态。
+#[tauri::command]
+async fn git_r_abort_merge(vault_root: String) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::abort_merge(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::abort_merge(vault_root).await,
+    }
+}
+
+/// R3 新增：提交合并（冲突全部解决后，生成带两父的 merge commit）。
+#[tauri::command]
+async fn git_r_commit_merge(vault_root: String, args: CommitMergeArgs) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::commit_merge(vault_root, args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::commit_merge(vault_root, args).await,
+    }
+}
+
 /// Phase 4 新增：一次性信任陌生 SSH host。前端从 `[host_unknown]<json>` 错误里解出 payload，
 /// 展示 key 指纹后递回本命令；System 引擎写 `~/.ssh/known_hosts`，Builtin 引擎写应用私库。
 #[tauri::command]
@@ -2707,6 +2764,13 @@ pub fn run() {
             git_r_ahead_behind,
             git_r_pull_ff,
             git_r_push,
+            // 批次 E（子项目 R3）：合并拉取 + 冲突暴露与解决
+            git_r_pull_merge,
+            git_r_conflict_files,
+            git_r_resolve,
+            git_r_merge_state,
+            git_r_abort_merge,
+            git_r_commit_merge,
             git_r_trust_host,
             git_r_info
         ])

@@ -5,7 +5,8 @@
 // R1-B（内置引擎）：无系统 git 时自动切 git2；同步区顶部展引擎徽标；fetch/pull 错误按 `[code]` 前串分派，
 //   陌生 host 走一次性信任。
 // R2（push）：↑ Push 按钮，当前分支 → upstream 同名分支；无 upstream → `[no_upstream]` 引导。
-// 与主逻辑解耦：库根、转义、状态栏提示、pull 后集成回调经 deps 注入；promptDialog / messageDialog / confirmDialog 复用既有件。
+// R3（合并拉取 + 冲突解决）：⇅ Pull（合并）按钮；冲突文件在变更列表逐行给出「用本地 / 用远端 / 编辑」，顶部合并工具条可提交合并 / 中止合并。
+// 与主逻辑解耦：库根、转义、状态栏提示、pull 后集成回调、打开文件经 deps 注入；promptDialog / messageDialog / confirmDialog 复用既有件。
 import {
   gitOpen,
   gitStatus,
@@ -24,6 +25,11 @@ import {
   gitRAheadBehind,
   gitRPullFf,
   gitRPush,
+  gitRPullMerge,
+  gitRResolve,
+  gitRMergeState,
+  gitRAbortMerge,
+  gitRCommitMerge,
   gitRTrustHost,
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
@@ -56,7 +62,7 @@ function relTime(sec) {
 }
 
 export function createGitPanel(deps) {
-  const { rootEl, getVaultRoot, escapeHtml, setStatus, onPullDone } = deps
+  const { rootEl, getVaultRoot, escapeHtml, setStatus, onPullDone, openFile } = deps
 
   let curRepoPath = null // 当前显示仓库的工作目录（可能高于 vaultRoot）
   let busy = false // 防重入（刷新/提交期间忽略并发）
@@ -138,8 +144,9 @@ export function createGitPanel(deps) {
     } else {
       items.forEach((it) => {
         const [badge, label] = KIND_BADGE[it.kind] || ['•', it.kind]
+        const conflicted = it.kind === 'conflicted'
         const row = document.createElement('div')
-        row.className = 'nl-git-item'
+        row.className = 'nl-git-item' + (conflicted ? ' nl-git-conflict' : '')
         row.title = it.path + (it.staged ? '（已暂存）' : '')
         const b = document.createElement('span')
         b.className = 'nl-git-badge nl-git-badge-' + it.kind
@@ -148,7 +155,18 @@ export function createGitPanel(deps) {
         p.className = 'nl-git-path'
         p.textContent = it.path
         row.append(b, p)
-        row.addEventListener('click', () => showDiff(it.path, 'HEAD', label + '：' + it.path))
+        if (conflicted) {
+          const tools = document.createElement('span')
+          tools.className = 'nl-git-conflict-tools'
+          tools.append(
+            miniBtn('用本地', () => resolveConf(it.path, 'ours')),
+            miniBtn('用远端', () => resolveConf(it.path, 'theirs')),
+            miniBtn('编辑', () => editConflict(it.path)),
+          )
+          row.appendChild(tools)
+        } else {
+          row.addEventListener('click', () => showDiff(it.path, 'HEAD', label + '：' + it.path))
+        }
         list.appendChild(row)
       })
       if (items.length >= 1000) {
@@ -264,13 +282,44 @@ export function createGitPanel(deps) {
     showDiffInBox('提交 ' + c.idShort, detail)
   }
 
-  function renderBody(items, commits) {
+  function renderBody(items, commits, merging) {
     body.innerHTML = ''
     const sync = buildSyncSection()
-    body.append(renderChanges(items), renderHistory(commits), sync.sec, diffBox)
+    const parts = []
+    if (merging) parts.push(renderMergeBar(items))
+    parts.push(renderChanges(items), renderHistory(commits), sync.sec, diffBox)
+    body.append(...parts)
     diffBox.classList.add('hidden')
     diffBox.innerHTML = ''
     populateSync(sync.inner) // 异步填充，不阻塞本地列表渲染
+  }
+
+  // R3：合并进行中工具条（列冲突数 + 提交/中止合并）
+  function renderMergeBar(items) {
+    const conflictCount = items.filter((i) => i.kind === 'conflicted').length
+    const sec = document.createElement('div')
+    sec.className = 'nl-git-section nl-git-merge-bar'
+    const msg = document.createElement('span')
+    msg.className = 'nl-git-merge-msg' + (conflictCount ? ' nl-git-sync-behind' : '')
+    msg.textContent = conflictCount
+      ? `⇅ 合并进行中 · ${conflictCount} 个冲突待解决`
+      : '⇅ 合并进行中 · 冲突已全部解决，可提交合并'
+    const actions = document.createElement('span')
+    actions.className = 'nl-git-actions'
+    const okBtn = document.createElement('button')
+    okBtn.className = 'nl-git-btn nl-git-btn-primary'
+    okBtn.textContent = '✓ 提交合并'
+    okBtn.disabled = conflictCount > 0
+    okBtn.title = conflictCount > 0 ? '请先解决所有冲突' : '生成 merge commit'
+    okBtn.addEventListener('click', () => doCommitMerge())
+    const abortBtn = document.createElement('button')
+    abortBtn.className = 'nl-git-btn'
+    abortBtn.textContent = '✕ 中止合并'
+    abortBtn.title = '回到合并前状态（merge --abort）'
+    abortBtn.addEventListener('click', () => doAbortMerge())
+    actions.append(okBtn, abortBtn)
+    sec.append(msg, actions)
+    return sec
   }
 
   // ===== R1：同步区 =====
@@ -358,7 +407,7 @@ export function createGitPanel(deps) {
         opName +
           '被拒（本地与远端已分叉，无法快进）：\n' +
           (body || t) +
-          '\n\n冲突自动解决尚未支持，请先在本地提交 / 手动处理，或等待后续版本（R3 冲突解决）。',
+          '\n\n可用「同步」区的『⇅ Pull（合并）』按钮，或命令面板『Git：拉取（合并）』改走合并拉取；\n产生的冲突会在「变更」列表逐行列出，可选用本地 / 用远端 / 手动编辑，全部解决后提交合并。',
       )
       return
     }
@@ -489,15 +538,22 @@ export function createGitPanel(deps) {
     pushBtn.title = isSys
       ? 'git push（非交互，凭据交系统 git）'
       : '内置 push（非交互）：当前分支 → upstream同名分支；凭据同 fetch'
+    const mergeBtn = document.createElement('button')
+    mergeBtn.className = 'nl-git-btn'
+    mergeBtn.textContent = '⇅ Pull（合并）'
+    mergeBtn.title = isSys
+      ? 'git pull（合并方式，非 ff-only）：分叉时产生冲突，可在变更列表逐个解决'
+      : '内置合并拉取：分叉时产生冲突，可在变更列表逐个解决'
     const badge = document.createElement('span')
     badge.className = 'nl-git-sync-badge nl-git-muted'
     badge.textContent = origin ? '—' : ''
-    actRow.append(fetchBtn, pullBtn, pushBtn, badge)
+    actRow.append(fetchBtn, pullBtn, pushBtn, mergeBtn, badge)
   
     // 无远端时禁用 fetch/pull/push，仅引导添加
     fetchBtn.disabled = !origin
     pullBtn.disabled = !origin
     pushBtn.disabled = !origin
+    mergeBtn.disabled = !origin
   
     inner.append(engineRow, remoteRow, actRow)
   
@@ -509,6 +565,7 @@ export function createGitPanel(deps) {
     fetchBtn.addEventListener('click', () => doFetch(origin, badge))
     pullBtn.addEventListener('click', () => doPull(origin, badge))
     pushBtn.addEventListener('click', () => doPush(origin, badge))
+    mergeBtn.addEventListener('click', () => doMergePull(origin, badge))
   }
 
   // 添加 / 改 origin
@@ -620,6 +677,129 @@ export function createGitPanel(deps) {
     }
   }
 
+  // R3：合并拉取（非 ff-only）。成功无冲突→回调 onPullDone；有冲突→refresh 让变更列表出 C 行 + 合并工具条。
+  async function doMergePull(origin, badge) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    try {
+      const items = await gitStatus(vaultRoot)
+      if (items && items.length) {
+        const ok = await confirmDialog(
+          '有未提交改动，合并可能失败或加深冲突，建议先提交。仍要合并拉取？',
+          '拉取（合并）',
+        )
+        if (!ok) return
+      }
+    } catch (_) {
+      /* status 读失败不阻断，交由合并定夺 */
+    }
+    busy = true
+    setStatus('合并拉取中…')
+    const retry = async () => {
+      const r = await gitRPullMerge(vaultRoot)
+      const first = (r || '').split('\n')[0].trim()
+      if (first === 'CONFLICTS') {
+        setStatus('有冲突待解决')
+      } else {
+        setStatus('已合并拉取')
+        if (typeof onPullDone === 'function') await onPullDone()
+        await updateBadge(badge)
+      }
+    }
+    try {
+      await retry()
+    } catch (e) {
+      const t = errText(e)
+      setStatus('合并拉取失败')
+      await handleRemoteErr(t, '合并拉取', retry)
+    } finally {
+      busy = false
+      await refresh()
+    }
+  }
+
+  // R3：解决单个冲突文件（选边）。busy 串行化，完成后 load() 重渲染。
+  async function resolveConf(path, side) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    busy = true
+    try {
+      await gitRResolve(vaultRoot, { path, side })
+      setStatus('已解决：' + path)
+      await load()
+    } catch (e) {
+      await messageDialog('解决冲突失败：' + errText(e))
+    } finally {
+      busy = false
+    }
+  }
+
+  // R3：手动编辑冲突文件（交编辑器解决 <<<<<<< 标记后，回来点「提交合并」）。
+  function editConflict(path) {
+    if (typeof openFile === 'function') openFile(path)
+    else
+      messageDialog(
+        '请手动打开「' + path + '」解决冲突标记（<<<<<<< / ======= / >>>>>>>），保存后回来点「提交合并」。',
+      )
+  }
+
+  // R3：提交合并（冲突全解后生成 merge commit）。
+  async function doCommitMerge() {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const message = await promptDialog({
+      title: '提交合并',
+      placeholder: '合并提交信息',
+      defaultValue: 'Merge remote-tracking branch',
+      confirmLabel: '提交合并',
+    })
+    if (!message) return
+    busy = true
+    try {
+      await gitRCommitMerge(vaultRoot, { message })
+      setStatus('已提交合并')
+      if (typeof onPullDone === 'function') await onPullDone()
+      await load()
+    } catch (e) {
+      await messageDialog('提交合并失败：' + errText(e))
+    } finally {
+      busy = false
+    }
+  }
+
+  // R3：中止合并（回到合并前状态）。
+  async function doAbortMerge() {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const ok = await confirmDialog(
+      '中止合并会把工作树回退到合并前状态，冲突标记将被清除。确定？',
+      '中止合并',
+    )
+    if (!ok) return
+    busy = true
+    try {
+      await gitRAbortMerge(vaultRoot)
+      setStatus('已中止合并')
+      if (typeof onPullDone === 'function') await onPullDone()
+      await load()
+    } catch (e) {
+      await messageDialog('中止合并失败：' + errText(e))
+    } finally {
+      busy = false
+    }
+  }
+
+  // R3：命令面板共用的合并拉取入口（自行解析 origin；面板空闲时调用）。
+  async function mergePullViaCmd() {
+    if (busy) return
+    const { origin } = await resolveOrigin()
+    await doMergePull(origin, document.createElement('span'))
+  }
+
   // —— 公共动作 ——
   // load 做实际拉取与渲染，假定调用方已持有 busy（供 commit/init 完成后直接复用，避免被重入守卫吞掉）。
   async function load() {
@@ -641,8 +821,14 @@ export function createGitPanel(deps) {
         return
       }
       const [items, commits] = await Promise.all([gitStatus(vaultRoot), gitLog(vaultRoot)])
+      let merging = false
+      try {
+        merging = await gitRMergeState(vaultRoot)
+      } catch (_) {
+        merging = false
+      }
       renderHead(info, items.length)
-      renderBody(items, commits)
+      renderBody(items, commits, merging)
     } catch (e) {
       renderPlaceholder('读取 Git 状态失败：' + escapeHtml(errText(e)))
     }
@@ -770,7 +956,7 @@ export function createGitPanel(deps) {
     }
   }
 
-  return { refresh, open, commitAll, init, fetch: fetchRemote, pull: pullRemote, push: pushRemote, setupRemote: setupRemoteCmd }
+  return { refresh, open, commitAll, init, fetch: fetchRemote, pull: pullRemote, push: pushRemote, merge: mergePullViaCmd, setupRemote: setupRemoteCmd }
 }
 
 // —— 小工具 ——
@@ -783,4 +969,16 @@ function el(tag, cls, text) {
 
 function errText(e) {
   return (e && (e.message || e)) || '未知错误'
+}
+
+// R3：变更行内的小按钮（阻止冒泡，避免触发行本身的 diff 点击）。
+function miniBtn(text, onClick) {
+  const b = document.createElement('button')
+  b.className = 'nl-git-mini'
+  b.textContent = text
+  b.addEventListener('click', (ev) => {
+    ev.stopPropagation()
+    onClick()
+  })
+  return b
 }
