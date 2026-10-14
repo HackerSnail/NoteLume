@@ -285,9 +285,17 @@ export function gitCommitAll(vaultRoot, message, name, email) {
 // 应用绝不接触/存储任何凭据——认证全交系统 git（凭据助手 / ssh-agent / GCM）。
 // 仅 --ff-only 快进 pull，非快进/分叉由前端按 stderr 关键字识别并引导（冲突解决属 R3）。
 
-/** 探测系统 git：返回版本串（如 "git version 2.45.0"）或 null（未安装 → 前端隐藏同步区） */
+/** 探测系统 git：返回版本串（如 "git version 2.45.0"）或 null（未安装 → 前端隐藏同步区）
+ *  Phase 4 后推荐改用 gitRInfo()，本函数仅保留向后兼容。*/
 export function gitRHave() {
   return invoke('git_r_have', {})
+}
+
+/** Phase 4 新增：上报当前引擎与系统 git 版本。返回：
+ *  { engine: "system"|"builtin", gitVersion: string|null, builtinReady: boolean }
+ *  前端徽标与错误引导分派需。*/
+export function gitRInfo() {
+  return invoke('git_r_info', {})
 }
 
 /** 列现有远端：[{ name, url }]（每个 remote 取 fetch URL） */
@@ -323,4 +331,10 @@ export function gitRAheadBehind(vaultRoot) {
 /** 快进 pull（git pull --ff-only）：成功 resolve 为摘要文本；非零退出 reject 附 stdout+stderr（供关键字判定） */
 export function gitRPullFf(vaultRoot) {
   return invoke('git_r_pull_ff', { vaultRoot })
+}
+
+/** Phase 4 新增：一次性信任陌生 SSH 主机。args = { host, keyType, keyB64 }（同错误里 payload 的三段）。
+ *  成功后下一拨 fetch/pull 会命中 known_hosts 直接放行。*/
+export function gitRTrustHost(args) {
+  return invoke('git_r_trust_host', { args })
 }

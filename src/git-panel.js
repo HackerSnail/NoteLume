@@ -13,13 +13,14 @@ import {
   gitCommitAll,
   messageDialog,
   confirmDialog,
-  gitRHave,
+  gitRInfo,
   gitRRemoteList,
   gitRRemoteAdd,
   gitRRemoteSetUrl,
   gitRFetch,
   gitRAheadBehind,
   gitRPullFf,
+  gitRTrustHost,
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
 
@@ -291,6 +292,90 @@ export function createGitPanel(deps) {
     return ''
   }
 
+  // Phase 4：拆解 `[code]body` 前串。System 引擎旧格式无 → code=null（回关键字判定）。
+  // [host_unknown]<json> 额外 JSON.parse body → payload（前端一次性信任弹框需）。
+  function parseErrCode(t) {
+    const m = /^\[([a-z_]+)\]([\s\S]*)$/.exec(t || '')
+    if (!m) return { code: null, body: t || '', payload: null }
+    const code = m[1]
+    const body = m[2]
+    let payload = null
+    if (code === 'host_unknown') {
+      try {
+        payload = JSON.parse(body)
+      } catch (_) {
+        payload = null
+      }
+    }
+    return { code, body, payload }
+  }
+
+  // Phase 4/5：远程错误分派总入口：
+  // 1) host_unknown → 一次性信任弹框 → gitRTrustHost → retryFn
+  // 2) non_fast_forward / 无 code 但命中 NONFF_RE → 分叉引导
+  // 3) local_changes / hostkey_mismatch / network / auth → 对应引导
+  // 4) 其余 → 原文 + credHint
+  async function handleRemoteErr(t, opName, retryFn) {
+    const { code, body, payload } = parseErrCode(t)
+    if (code === 'host_unknown' && payload && payload.host) {
+      const msg =
+        '首次连接 SSH 主机：' +
+        payload.host +
+        '\n密钥类型：' +
+        (payload.keyType || 'unknown') +
+        (payload.fingerprint ? '\n指纹：' + payload.fingerprint : '') +
+        '\n\n与官方公告核对无误后选「信任」，下次同 host 将自动放行。\n' +
+        '若并非首次连接且已看到 mismatch 提示，请拒绝并在终端手工核对。'
+      const ok = await confirmDialog(msg, '信任此主机？')
+      if (!ok) {
+        await messageDialog('已取消' + opName + '：' + body)
+        return
+      }
+      try {
+        await gitRTrustHost({
+          host: payload.host,
+          keyType: payload.keyType,
+          keyB64: payload.keyB64,
+        })
+      } catch (e) {
+        await messageDialog('写 known_hosts 失败：' + errText(e))
+        return
+      }
+      try {
+        if (typeof retryFn === 'function') await retryFn()
+      } catch (e2) {
+        const t2 = errText(e2)
+        await messageDialog(opName + '仍失败：' + t2 + credHint(t2))
+      }
+      return
+    }
+    if (code === 'non_fast_forward' || (!code && NONFF_RE.test(t))) {
+      await messageDialog(
+        '拉取被拒（本地与远端已分叉，无法快进）：\n' +
+          (body || t) +
+          '\n\n冲突自动解决尚未支持，请先在本地提交 / 手动处理，或等待后续版本（R3 冲突解决）。',
+      )
+      return
+    }
+    if (code === 'local_changes') {
+      await messageDialog('本地未提交修改会阻挡快进：\n' + body + '\n\n请先提交或 stash。')
+      return
+    }
+    if (code === 'hostkey_mismatch') {
+      await messageDialog(
+        '⚠ 主机密钥与已存 known_hosts 不匹配：可能是中间人攻击或服务器重新生成密钥。\n\n' +
+          body +
+          '\n\n请在官方渠道核对指纹后，手动删除对应 known_hosts 条目并重试。',
+      )
+      return
+    }
+    if (code === 'network') {
+      await messageDialog(body + '\n\n提示：请检查网络 / 代理 / 防火墙。')
+      return
+    }
+    await messageDialog(opName + '失败：' + t + credHint(t))
+  }
+
   // 刷新领先/落后徽标（fetch / pull 后调用）
   async function updateBadge(badge) {
     const vaultRoot = getVaultRoot()
@@ -311,28 +396,26 @@ export function createGitPanel(deps) {
     }
   }
 
-  // 实际填充同步区控件：远端行 + Fetch/Pull + 徽标。按钮动作复用面板 busy 串行化。
+  // 实际填充同步区控件：引擎徽标 + 远端行 + Fetch/Pull + 徽标。按钮动作复用面板 busy 串行化。
   async function populateSync(inner) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) {
       inner.innerHTML = '<div class="nl-git-empty-inline">打开知识库后可用</div>'
       return
     }
-    let ver = null
+    let info = null
     try {
-      ver = await gitRHave()
+      info = await gitRInfo()
     } catch (_) {
-      ver = null
+      info = null
     }
     if (!inner.isConnected) return
-    if (!ver) {
+    if (!info || !info.builtinReady) {
       inner.innerHTML =
-        '<div class="nl-git-empty-inline">远程同步需先安装系统 Git（' +
-        escapeHtml('git') +
-        ' 不在 PATH）。本地提交 / 历史功能不受影响。</div>'
+        '<div class="nl-git-empty-inline">远程同步不可用（内置引擎未就绪）。</div>'
       return
     }
-
+  
     // 读远端（优先 origin，否则首个远端）
     let remotes = []
     try {
@@ -342,9 +425,24 @@ export function createGitPanel(deps) {
     }
     if (!inner.isConnected) return
     const origin = remotes.find((r) => r.name === 'origin') || remotes[0] || null
-
+  
     inner.innerHTML = ''
-
+  
+    // —— 引擎徽标行 ——
+    const engineRow = document.createElement('div')
+    engineRow.className = 'nl-git-sync-engine'
+    const engBadge = document.createElement('span')
+    const isSys = info.engine === 'system'
+    engBadge.className =
+      'nl-git-engine-badge ' + (isSys ? 'nl-git-engine-system' : 'nl-git-engine-builtin')
+    engBadge.textContent = isSys
+      ? '🛡 系统 git · ' + (info.gitVersion || '')
+      : '📦 内置引擎（无系统 git 也可用）'
+    engBadge.title = isSys
+      ? '当前使用系统安装的 git（shell-out），凭据走 GCM / ssh-agent。'
+      : '当前使用内置 libgit2（本 R1-B）：认证靠 ssh-agent / env token / 无口令私钥；SSH 首次连陌生 host 会弹一次性信任。'
+    engineRow.append(engBadge)
+  
     // —— 远端行 ——
     const remoteRow = document.createElement('div')
     remoteRow.className = 'nl-git-sync-row'
@@ -357,32 +455,35 @@ export function createGitPanel(deps) {
     remoteBtn.textContent = origin ? '改地址' : '＋ 添加远端'
     remoteBtn.title = origin ? 'git remote set-url ' + origin.name : 'git remote add origin <url>'
     remoteRow.append(remoteLabel, remoteBtn)
-
+  
     // —— 动作行：Fetch / Pull + 徽标 ——
     const actRow = document.createElement('div')
     actRow.className = 'nl-git-sync-row nl-git-sync-actions'
     const fetchBtn = document.createElement('button')
     fetchBtn.className = 'nl-git-btn'
     fetchBtn.textContent = '⟳ Fetch'
-    fetchBtn.title = 'git fetch --prune（非交互，凭据交系统 git）'
+    fetchBtn.title =
+      isSys
+        ? 'git fetch --prune（非交互，凭据交系统 git）'
+        : '内置 fetch（非交互）：SSH 先试 ssh-agent → 无口令私钥；HTTPS 先试 env token'
     const pullBtn = document.createElement('button')
     pullBtn.className = 'nl-git-btn nl-git-btn-primary'
     pullBtn.textContent = '↓ Pull（快进）'
-    pullBtn.title = 'git pull --ff-only（仅快进；分叉不自动合并）'
+    pullBtn.title = '仅快进拉取；分叉不自动合并'
     const badge = document.createElement('span')
     badge.className = 'nl-git-sync-badge nl-git-muted'
     badge.textContent = origin ? '—' : ''
     actRow.append(fetchBtn, pullBtn, badge)
-
+  
     // 无远端时禁用 fetch/pull，仅引导添加
     fetchBtn.disabled = !origin
     pullBtn.disabled = !origin
-
-    inner.append(remoteRow, actRow)
-
+  
+    inner.append(engineRow, remoteRow, actRow)
+  
     // 已有远端时顺手拉一次领先/落后展示
     if (origin) updateBadge(badge)
-
+  
     // —— 事件 ——
     remoteBtn.addEventListener('click', () => setupRemote(inner, origin))
     fetchBtn.addEventListener('click', () => doFetch(origin, badge))
@@ -421,14 +522,17 @@ export function createGitPanel(deps) {
     if (!vaultRoot) return
     busy = true
     setStatus('抓取远端中…')
-    try {
+    const retry = async () => {
       await gitRFetch(vaultRoot, origin ? origin.name : undefined)
       await updateBadge(badge)
       setStatus('已抓取远端')
+    }
+    try {
+      await retry()
     } catch (e) {
       const t = errText(e)
       setStatus('抓取失败')
-      await messageDialog('抓取失败：' + t + credHint(t))
+      await handleRemoteErr(t, '抓取', retry)
     } finally {
       busy = false
     }
@@ -455,23 +559,18 @@ export function createGitPanel(deps) {
     }
     busy = true
     setStatus('快进拉取中…')
-    try {
+    const retry = async () => {
       await gitRPullFf(vaultRoot)
       setStatus('已快进拉取')
       if (typeof onPullDone === 'function') await onPullDone()
       await updateBadge(badge)
+    }
+    try {
+      await retry()
     } catch (e) {
       const t = errText(e)
       setStatus('拉取失败')
-      if (NONFF_RE.test(t)) {
-        await messageDialog(
-          '拉取被拒（本地与远端已分叉，无法快进）：\n' +
-            t +
-            '\n\n冲突自动解决尚未支持，请先在本地提交 / 手动处理，或等待后续版本（R3 冲突解决）。',
-        )
-      } else {
-        await messageDialog('拉取失败：' + t + credHint(t))
-      }
+      await handleRemoteErr(t, '拉取', retry)
     } finally {
       busy = false
     }
