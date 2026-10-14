@@ -39,6 +39,7 @@ import { promptDialog } from './prompt-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
+import { formatDate, builtinVars, applyTemplate } from './template.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -53,6 +54,7 @@ const state = {
   indexReady: false,
   docNames: [], // 全库 .md 文件名（去 .md）——供 [[ 自动补全
   tagNames: [], // 全库标签——供 # 自动补全
+  tree: [], // 最近一次 scanVault 的文件树——供模板/每日笔记列目录
   autosave: {
     enabled: localStorage.getItem('nl-autosave') === '1',
     idleTimer: null,
@@ -98,6 +100,8 @@ const els = {
   plugins: $('plugins'),
   canvasMount: $('canvas-mount'),
   btnNewCanvas: $('btn-new-canvas'),
+  btnDaily: $('btn-daily'),
+  btnTemplate: $('btn-template'),
 }
 
 let editor
@@ -250,6 +254,7 @@ function renderSingleFileTree(name) {
 
 // —— 渲染文件树（folder 用 <details> 折叠，file 用可点击项）——
 function renderTree(nodes) {
+  state.tree = nodes || []
   state.docNames = collectDocNames(nodes)
   const ul = document.createElement('ul')
   ul.className = 'tree-root'
@@ -555,6 +560,153 @@ async function newFileIn(dirRel) {
   } catch (e) {
     await messageDialog('新建失败：' + errText(e))
   }
+}
+
+// —— 批次 A：模板 + 每日笔记（纯文件、零新依赖、无 Rust 改动）——
+const TEMPLATE_DIR = () => localStorage.getItem('nl-template-dir') || 'Templates'
+const DAILY_DIR = () => localStorage.getItem('nl-daily-dir') || 'Daily'
+const DAILY_FORMAT = () => localStorage.getItem('nl-daily-format') || 'YYYY-MM-DD'
+
+// 逐段创建库内目录（已存在的段忽略报错）
+async function ensureDir(dirRel) {
+  if (!dirRel) return
+  let cur = ''
+  for (const s of dirRel.split('/').filter(Boolean)) {
+    cur = cur ? cur + '/' + s : s
+    try { await createDir(state.vaultRoot, cur) } catch (_) { /* 已存在/竞态，忽略 */ }
+  }
+}
+
+// 从缓存文件树里找某个库内目录节点
+function findFolderNode(dirRel) {
+  const target = (dirRel || '').replace(/\/+$/, '')
+  let found = null
+  ;(function walk(nodes) {
+    (nodes || []).forEach((n) => {
+      if (found) return
+      if (n.type === 'folder') {
+        if (n.path === target) { found = n; return }
+        walk(n.children)
+      }
+    })
+  })(state.tree || [])
+  return found
+}
+// 列出某目录下的 .md 模板（相对路径，按名排序）
+function listMdInDir(dirRel) {
+  const folder = findFolderNode(dirRel)
+  if (!folder) return []
+  return (folder.children || [])
+    .filter((n) => n.type === 'file' && /\.md$/i.test(n.path))
+    .map((n) => n.path)
+    .sort((a, b) => baseName(a).localeCompare(baseName(b)))
+}
+async function refreshTree() {
+  try { state.tree = await scanVault(state.vaultRoot) } catch (_) {}
+}
+
+// 从指定模板新建文档：填名 → 变量替换 → 落库 → 打开
+async function newFromTemplate(tplRel) {
+  if (!state.vaultRoot) return
+  let tpl
+  try { tpl = await readMdFile(state.vaultRoot, tplRel) }
+  catch (e) { await messageDialog('读取模板失败：' + errText(e)); return }
+  const isDaily = baseName(tplRel).replace(/\.md$/i, '').toLowerCase() === 'daily'
+  const defName = isDaily ? formatDate(DAILY_FORMAT(), new Date()) : ''
+  const name = await promptDialog({ title: '基于模板新建（' + baseName(tplRel) + '）', placeholder: '新文件名（可不带 .md）', defaultValue: defName })
+  if (!name) return
+  const rel = /\.md$/i.test(name) ? name : name + '.md'
+  const now = new Date()
+  const vars = builtinVars({ title: baseName(rel).replace(/\.md$/i, ''), filename: baseName(rel), now })
+  const content = applyTemplate(tpl, vars)
+  try {
+    await ensureDir(parentOf(rel))
+    await writeMdFile(state.vaultRoot, rel, content)
+    renderTree(await scanVault(state.vaultRoot))
+    try { await updateIndexDoc(rel, content) } catch (_) {}
+    await openFile(rel)
+    setStatus('已从模板新建：' + rel)
+  } catch (e) {
+    await messageDialog('新建失败：' + errText(e))
+  }
+}
+
+// 每日笔记：打开今天的，不存在则按模板（Templates/Daily.md）或空白种子创建
+async function openDailyNote() {
+  if (!state.vaultRoot) { await messageDialog('请先打开知识库'); return }
+  await refreshTree()
+  const now = new Date()
+  const fname = formatDate(DAILY_FORMAT(), now)
+  let rel = joinRel(DAILY_DIR(), fname)
+  if (!/\.md$/i.test(rel)) rel += '.md'
+  let exists = true
+  try { await readMdFile(state.vaultRoot, rel) } catch (_) { exists = false }
+  if (exists) { await openFile(rel); setStatus('今日笔记：' + rel); return }
+  let content = null
+  const dailyTpl = listMdInDir(TEMPLATE_DIR()).find((p) => baseName(p).replace(/\.md$/i, '').toLowerCase() === 'daily')
+  if (dailyTpl) { try { content = await readMdFile(state.vaultRoot, dailyTpl) } catch (_) { content = null } }
+  if (content == null) content = '# {{date}} {{weekday}}\n\n'
+  const vars = builtinVars({ title: fname, filename: baseName(rel), now })
+  content = applyTemplate(content, vars)
+  try {
+    await ensureDir(parentOf(rel))
+    await writeMdFile(state.vaultRoot, rel, content)
+    renderTree(await scanVault(state.vaultRoot))
+    try { await updateIndexDoc(rel, content) } catch (_) {}
+    await openFile(rel)
+    setStatus('已创建今日笔记：' + rel)
+  } catch (e) {
+    await messageDialog('创建今日笔记失败：' + errText(e))
+  }
+}
+
+// 新建一个空白模板（带示例变量），存于模板目录
+async function newBlankTemplate() {
+  if (!state.vaultRoot) { await messageDialog('请先打开知识库'); return }
+  const name = await promptDialog({ title: '新建模板（存于 ' + TEMPLATE_DIR() + '/）', placeholder: '模板文件名（可不带 .md）' })
+  if (!name) return
+  const rel = joinRel(TEMPLATE_DIR(), /\.md$/i.test(name) ? name : name + '.md')
+  const seed = '# {{title}}\n\n日期：{{date}} {{weekday}}　时间：{{time}}\n\n## 待办\n- [ ] \n'
+  try {
+    await ensureDir(TEMPLATE_DIR())
+    await writeMdFile(state.vaultRoot, rel, seed)
+    renderTree(await scanVault(state.vaultRoot))
+    await openFile(rel)
+    setStatus('已新建模板：' + rel)
+  } catch (e) { await messageDialog('新建模板失败：' + errText(e)) }
+}
+
+// 每日笔记设置：存放目录 + 文件名日期格式（存 localStorage）
+async function configureDailyNote() {
+  const dir = await promptDialog({ title: '每日笔记 · 存放目录', placeholder: '如 Daily 或 Journals/2026', defaultValue: DAILY_DIR() })
+  if (dir == null) return
+  const fmt = await promptDialog({ title: '每日笔记 · 文件名日期格式', placeholder: 'YYYY-MM-DD / YYYYMMDD / YYYY年MM月DD日', defaultValue: DAILY_FORMAT() })
+  if (fmt == null) return
+  localStorage.setItem('nl-daily-dir', dir)
+  localStorage.setItem('nl-daily-format', fmt)
+  setStatus('每日笔记设置已保存：' + dir + ' / ' + fmt)
+}
+
+// 工具条「模板」菜单：列模板 + 打开今日 + 新建模板 + 每日笔记设置
+function openTemplateMenu(anchorEl) {
+  if (!state.vaultRoot) { messageDialog('请先打开知识库'); return }
+  refreshTree().then(() => {
+    closeTreeMenu()
+    const menu = document.createElement('div')
+    menu.className = 'cv-menu tree-menu'
+    const tpls = listMdInDir(TEMPLATE_DIR())
+    if (!tpls.length) {
+      menu.appendChild(makeMenuItem('（' + TEMPLATE_DIR() + '/ 暂无模板）', () => {}))
+    } else {
+      tpls.forEach((p) => menu.appendChild(makeMenuItem('📄 ' + baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p))))
+    }
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem('📅 打开 / 新建今日笔记', () => openDailyNote()))
+    menu.appendChild(makeMenuItem('➕ 新建空白模板…', () => newBlankTemplate()))
+    menu.appendChild(makeMenuItem('⚙ 每日笔记设置…', () => configureDailyNote()))
+    const r = anchorEl.getBoundingClientRect()
+    placeMenu(menu, r.left, r.bottom + 4)
+  })
 }
 
 async function newFolderIn(dirRel) {
@@ -1132,6 +1284,10 @@ function bindShortcuts() {
       // P2：知识图谱
       e.preventDefault()
       openGraphModal()
+    } else if (key === 'd' && e.shiftKey) {
+      // 批次 A：今日笔记（Ctrl+Shift+D）
+      e.preventDefault()
+      openDailyNote()
     }
   })
 }
@@ -1214,6 +1370,8 @@ async function boot() {
   els.btnPrint.addEventListener('click', () => window.print())
   els.btnGraph.addEventListener('click', openGraphModal)
   els.btnNewCanvas.addEventListener('click', newCanvas)
+  els.btnDaily && els.btnDaily.addEventListener('click', () => openDailyNote())
+  els.btnTemplate && els.btnTemplate.addEventListener('click', (e) => openTemplateMenu(e.currentTarget))
   els.searchInput.addEventListener('input', onSearchInput)
   els.searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

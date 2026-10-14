@@ -41,6 +41,7 @@
 | **P2** | 版本快照 UI（历史备份列表 · 全文预览 · 一键回滚）                                                               | ✅ 已完成 |
 | **P2** | 插件基础钩子系统（`.notelume-plugins/*.js`：快捷键 / 命令 / 输入规则 / 生命周期）                               | ✅ 已完成 |
 | **P2** | 画布 · 白板（JSON Canvas 规范，与 Obsidian`.canvas` 互操作）                                                   | ✅ 已完成 |
+| **增强** | 模板新建（`{{date}}`/`{{title}}` 等变量替换，未知 token 保留）+ 每日笔记（`Ctrl+Shift+D` 打开/新建今日，可设目录与命名）  | ✅ 已完成 |
 | **P2** | 移动端                                                                                                            | ⏳ 规划中 |
 
 ---
@@ -82,6 +83,7 @@ NoteLume/
 │   ├── snapshot-panel.js   # P2 版本快照：历史列表 / 预览 / 回滚
 │   ├── plugin-loader.js    # P2 插件钩子：动态加载 / 快捷键注入 / 生命周期总线 / 面板
 │   ├── canvas-view.js      # P2 画布 / 白板：JSON Canvas 渲染 / 拖拽连线缩放 / 双击编辑
+│   ├── template.js         # 模板变量替换 + 日期格式化（纯函数，供从模板新建 / 每日笔记）
 │   ├── tauri-bridge.js     # Rust invoke 封装 + 系统对话框
 │   ├── style.css           # 类 Typora 排版 + 浅/暗/Dracula 主题 + 新面板样式
 │   ├── vite.config.js
