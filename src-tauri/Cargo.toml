@@ -20,5 +20,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 trash = "5.2.9"
-# 批次 E（子项目 L）：本地 Git。L 不碰网络，故关掉默认 ssh/https（避免引 vendored-openssl 需 perl+cmake），只自带编译 libgit2
-git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+# 批次 E：本地 Git（L）+ 内置远程（R1-B）。R1-B 需 ssh+https 两个 feature；Windows MSVC 目标下预期 libgit2 自动选 Schannel TLS（免 openssl）、libssh2 用 win32-crypto 后端（亦免 openssl）。Phase 0 闸口验证这个假设；若 cargo tree 出现 openssl-sys 即假设失败降级。
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2", "ssh", "https"] }
