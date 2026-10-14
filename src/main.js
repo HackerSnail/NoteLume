@@ -36,6 +36,7 @@ import {
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
 import { promptDialog } from './prompt-dialog.js'
+import { confirm3Dialog } from './confirm3-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
@@ -124,7 +125,39 @@ function setStatus(msg) {
 function markDirty(d) {
   state.dirty = d
   els.filename.classList.toggle('dirty', d)
-  if (d) scheduleAutosave()
+  if (d) {
+    scheduleAutosave()
+  } else if (state.autosave.idleTimer) {
+    // 变干净（已保存 / 撤销回原状）：清掉待触发的自动保存，避免多余写盘
+    clearTimeout(state.autosave.idleTimer)
+    state.autosave.idleTimer = null
+  }
+}
+
+// 离开当前文档（切换 / 打开别处 / 新建）前处理未保存改动：
+//  · 无改动 → 直接放行
+//  · 开了自动保存 → 立即存一次再放行（避免切走后 pending 定时器存错文件）
+//  · 未开自动保存 → 弹「保存 / 不保存 / 取消」；取消则中止操作
+// 返回 true = 可继续离开，false = 取消（留在当前文档不切换）
+async function ensureSavedBeforeLeave() {
+  if (!state.dirty) return true
+  if (state.autosave.enabled) {
+    await saveCurrent(false)
+    return !state.dirty
+  }
+  const choice = await confirm3Dialog({
+    title: '未保存的更改',
+    message: '「' + (state.currentFile || '当前文档') + '」尚未保存，是否保存更改？',
+    confirmLabel: '保存',
+    neutralLabel: '不保存',
+    cancelLabel: '取消',
+  })
+  if (choice === 'cancel') return false
+  if (choice === 'confirm') {
+    await saveCurrent(true)
+    return !state.dirty // 保存失败（仍脏）则不继续，避免丢改动
+  }
+  return true // 不保存：放弃改动继续
 }
 
 // —— 批次 B：写作统计 / 专注 / 打字机 ——
@@ -254,10 +287,7 @@ function splitAbs(p) {
 
 async function openSingleFile() {
   try {
-    if (state.dirty) {
-      const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '打开文件')
-      if (!ok) return
-    }
+    if (!(await ensureSavedBeforeLeave())) return
     const abs = await pickFile()
     if (!abs) return
     const { dir, name } = splitAbs(abs)
@@ -780,10 +810,7 @@ function openRecentMenu(anchorEl) {
   placeMenu(menu, r.left, r.bottom + 4)
 }
 async function reopenRecent(entry) {
-  if (state.dirty) {
-    const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '打开最近文件')
-    if (!ok) return
-  }
+  if (!(await ensureSavedBeforeLeave())) return
   try {
     state.vaultRoot = entry.root
     state.currentFile = null // 避免 openFile 的“同一相对路径”早退（跨库可能同名）
@@ -906,10 +933,7 @@ async function openFile(rel, skipDirtyConfirm) {
     return
   }
   if (rel === state.currentFile) return
-  if (state.dirty && !skipDirtyConfirm) {
-    const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '切换文档')
-    if (!ok) return
-  }
+  if (!skipDirtyConfirm && !(await ensureSavedBeforeLeave())) return
   if (isCanvasPath(rel)) {
     await openCanvas(rel)
     return
@@ -972,10 +996,7 @@ async function newCanvas() {
     await messageDialog('新建画布前请先打开一个知识库文件夹（画布会保存为库内的 .canvas 文件）。', 'info')
     return
   }
-  if (state.dirty) {
-    const ok = await confirmDialog('当前文档尚未保存，是否放弃更改？', '新建画布')
-    if (!ok) return
-  }
+  if (!(await ensureSavedBeforeLeave())) return
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`

@@ -541,6 +541,11 @@ body {
   font-size: 13px;
   font-weight: 600;
 }
+.nl-prompt-msg {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
 .nl-prompt-input {
   width: 100%;
   box-sizing: border-box;
