@@ -587,6 +587,33 @@ body {
   outline: none;
   min-height: 100%;
 }
+/* Markdown 源码模式（CodeMirror 6）：整篇替换主编辑区；行自动换行、随内容长高、窗格滚动 */
+.nl-source {
+  width: 100%;
+  max-width: 900px; /* 源码可比正文略宽 */
+  box-sizing: border-box;
+  font-size: 14px;
+}
+.nl-source .cm-editor {
+  height: auto;
+  background: transparent;
+}
+.nl-source .cm-editor.cm-focused {
+  outline: none;
+}
+.nl-source .cm-scroller {
+  overflow: visible; /* 不自建滚动，交给 .editor-pane */
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  line-height: 1.75;
+}
+.nl-source .cm-content {
+  padding: 24px 12px 120px;
+}
+.nl-source .cm-gutters {
+  position: sticky;
+  left: 0;
+  min-height: 100%;
+}
 
 /* ==================== P2：画布 / 白板 ==================== */
 .hidden {

@@ -106,6 +106,8 @@ const els = {
   btnTemplate: $('btn-template'),
   btnFocus: $('btn-focus'),
   btnType: $('btn-type'),
+  btnSource: $('btn-source'),
+  sourceMount: $('source-mount'),
   docstats: $('docstats'),
 }
 
@@ -170,6 +172,17 @@ async function setWordGoal() {
   updateDocStats()
 }
 
+async function toggleSourceMode() {
+  if (!editor) return
+  if (state.mode !== 'md') {
+    setStatus('源码模式仅用于 Markdown 文档')
+    return
+  }
+  const on = await editor.toggleSource()
+  if (els.btnSource) els.btnSource.classList.toggle('active', on)
+  setStatus(on ? '源码模式：开启（保存即写回原文，不被重新格式化）' : '源码模式：关闭（回到所见即所得）')
+}
+
 // —— 主题 ——（浅色 → 暗黑 → Dracula 三态循环；按钮显示当前主题名，与界面实际一致）
 const THEMES = ['light', 'dark', 'vampire']
 const THEME_LABEL = { light: '☀️ 浅色', dark: '🌙 暗黑', vampire: '🧛 Dracula' }
@@ -182,6 +195,7 @@ function applyTheme(theme) {
   els.btnTheme.textContent = THEME_LABEL[theme]
   // 通知视图层按新主题重渲染依赖配色的部件（如 mermaid 图表）
   window.dispatchEvent(new Event('nl-theme-change'))
+  if (editor) editor.setSourceTheme(theme)
 }
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') || 'light'
@@ -846,7 +860,15 @@ async function openFile(rel) {
 function setMode(mode) {
   state.mode = mode
   const canvasOn = mode === 'canvas'
-  els.editor.classList.toggle('hidden', canvasOn)
+  // 切画布前先退出源码模式（同步回灌模型），避免源码容器盖住画布
+  if (canvasOn && editor && editor.isSourceMode()) {
+    editor.exitSource()
+    if (els.btnSource) els.btnSource.classList.remove('active')
+  }
+  // md 态下若仍在源码模式，保持主编辑器隐藏、源码容器可见（供 openFile 调 setMode('md') 时不破坏源码态）
+  const inSource = !canvasOn && !!editor && editor.isSourceMode()
+  els.editor.classList.toggle('hidden', canvasOn || inSource)
+  els.sourceMount && els.sourceMount.classList.toggle('hidden', !inSource)
   els.canvasMount.classList.toggle('hidden', !canvasOn)
   if (frontmatterPanel) frontmatterPanel.refresh() // 画布态下属性面板转为占位
   updateDocStats()
@@ -1297,6 +1319,10 @@ function bindShortcuts() {
       // 批次 B：打字机模式
       e.preventDefault()
       toggleTypewriterMode()
+    } else if (key === '/') {
+      // Markdown 源码模式：整篇切换 WYSIWYG <-> 原文
+      e.preventDefault()
+      toggleSourceMode()
     }
   })
 }
@@ -1313,6 +1339,8 @@ async function boot() {
     onFrontmatterChange: () => frontmatterPanel && frontmatterPanel.refresh(),
     initialFocus: localStorage.getItem('nl-focus') === '1',
     initialTypewriter: localStorage.getItem('nl-typewriter') === '1',
+    sourceMountEl: els.sourceMount,
+    onSourceTextChange: () => { updateDocStats(); if (frontmatterPanel) frontmatterPanel.refresh() },
     onDocChange: (doc, prev) => { updateDocStats(); if (pluginManager) pluginManager.fireDocChange(doc, prev) },
   })
 
@@ -1385,6 +1413,7 @@ async function boot() {
   els.btnTemplate && els.btnTemplate.addEventListener('click', (e) => openTemplateMenu(e.currentTarget))
   els.btnFocus && els.btnFocus.addEventListener('click', toggleFocusMode)
   els.btnType && els.btnType.addEventListener('click', toggleTypewriterMode)
+  els.btnSource && els.btnSource.addEventListener('click', toggleSourceMode)
   els.docstats && els.docstats.addEventListener('click', setWordGoal)
   if (els.btnFocus) els.btnFocus.classList.toggle('active', localStorage.getItem('nl-focus') === '1')
   if (els.btnType) els.btnType.classList.toggle('active', localStorage.getItem('nl-typewriter') === '1')

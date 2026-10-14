@@ -43,6 +43,7 @@
 | **P2** | 画布 · 白板（JSON Canvas 规范，与 Obsidian`.canvas` 互操作）                                                   | ✅ 已完成 |
 | **增强** | 模板新建（`{{date}}`/`{{title}}` 等变量替换，未知 token 保留）+ 今日速记（`Ctrl+Shift+D` 全局浮层，**与知识库解绑**，自动存到固定目录）  | ✅ 已完成 |
 | **增强** | 编辑器手感包：斜杠 `/` 块菜单 + 写作统计（字数/阅读时长/目标）+ 专注模式 `Ctrl+Shift+F` + 打字机模式 `Ctrl+Shift+T`  | ✅ 已完成 |
+| **增强** | 正文 Markdown 源码双模式（CodeMirror 6，`Ctrl+/` 整篇互切，语法高亮/行号，**原文保真**保存不重排）  | ✅ 已完成 |
 | **P2** | 移动端                                                                                                            | ⏳ 规划中 |
 
 ---
@@ -89,6 +90,8 @@ NoteLume/
 │   ├── slash-menu.js       # 编辑器手感：空行 `/` 弹块类型菜单（Typora 式）
 │   ├── writing-stats.js    # 写作统计（字数/阅读时长，纯函数，中英日混排口径）
 │   ├── editor-modes.js     # 专注模式（当前块高亮）+ 打字机模式（当前块居中）
+│   ├── source-editor.js    # 正文源码模式（CodeMirror 6，CM/@lezer 全懒加载）
+│   ├── source-sync.js      # 进源码展示原文 vs 序列化的纯判定
 │   ├── tauri-bridge.js     # Rust invoke 封装 + 系统对话框
 │   ├── style.css           # 类 Typora 排版 + 浅/暗/Dracula 主题 + 新面板样式
 │   ├── vite.config.js

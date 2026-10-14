@@ -20,6 +20,7 @@
         <button id="btn-template" title="从模板新建 / 今日速记设置">📋 模板</button>
         <button id="btn-focus" title="专注模式（当前段高亮，其余淡出） (Ctrl+Shift+F)">🎯 专注</button>
         <button id="btn-type" title="打字机模式（当前行保持居中） (Ctrl+Shift+T)">⌨ 打字机</button>
+        <button id="btn-source" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+/)">&lt;/&gt; 源码</button>
         <span id="docstats" class="docstats" title="写作统计（点击设置字数目标）"></span>
         <span id="filename" class="filename">未打开文档</span>
         <span class="spacer"></span>
@@ -75,6 +76,7 @@
 
         <main class="editor-pane">
           <div id="editor" class="editor"></div>
+          <div id="source-mount" class="nl-source hidden"></div>
           <div id="canvas-mount" class="hidden"></div>
         </main>
       </div>

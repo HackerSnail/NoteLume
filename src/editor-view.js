@@ -9,6 +9,7 @@ import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
 import { schema, parseMarkdown, serializeMarkdown } from './editor-schema.js'
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js'
+import { resolveSourceText } from './source-sync.js'
 import * as yaml from 'js-yaml'
 import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
@@ -34,6 +35,12 @@ import { createModesPlugin } from './editor-modes.js'
 export function createEditor(opts) {
   let dirty = false
   let fmRaw = null // 当前文档 YAML frontmatter 原文（不含围栏）；null=无
+  // 源码模式（CodeMirror）：与 WYSIWYG 整篇互切
+  let sourceMode = false
+  let rawSource = null // 进入源码应展示的文本：打开即原始字节；WYSIWYG 改后置为最新全文
+  let modelDirty = false // 自上次同步以来 WYSIWYG 是否改过模型（决定进源码展示 raw 还是序列化）
+  let src = null // 懒建的 CodeMirror 封装实例
+  let srcChangeTimer = null
   // 专注/打字机模式插件（初始态由 main.js 从 localStorage 传入）
   const modes = createModesPlugin({ focus: !!opts.initialFocus, typewriter: !!opts.initialTypewriter })
 
@@ -165,6 +172,7 @@ export function createEditor(opts) {
       const next = view.state.apply(tr)
       view.updateState(next)
       if (tr.docChanged) {
+        if (!sourceMode) modelDirty = true
         if (!dirty) {
           dirty = true
           opts.onDirty && opts.onDirty(true)
@@ -206,9 +214,73 @@ export function createEditor(opts) {
     insertImageFiles(view, pos ? pos.pos : view.state.selection.from, files, opts)
   })
 
+  // —— 源码模式（CodeMirror 6，懒加载）与 WYSIWYG 的双向同步 ——
+  function serializedFull() {
+    return joinFrontmatter(fmRaw, serializeMarkdown(view.state.doc))
+  }
+  function currentThemeName() {
+    return document.documentElement.getAttribute('data-theme') || 'light'
+  }
+  async function ensureSrc() {
+    if (src) return src
+    const mod = await import('./source-editor.js')
+    src = await mod.createSourceEditor({ mountEl: opts.sourceMountEl, theme: currentThemeName(), onChange: onSourceChange })
+    return src
+  }
+  function onSourceChange(text) {
+    rawSource = text
+    modelDirty = false // 源码即最新全文，模型将据其重建
+    if (!dirty) { dirty = true; opts.onDirty && opts.onDirty(true) }
+    if (srcChangeTimer) clearTimeout(srcChangeTimer)
+    srcChangeTimer = setTimeout(() => { opts.onSourceTextChange && opts.onSourceTextChange(text) }, 200)
+  }
+  async function enterSource() {
+    const text = resolveSourceText({ modelDirty, rawSource, serialized: serializedFull() })
+    rawSource = text
+    // 先隐藏整个编辑器容器、显示源码容器并（懒）建 CM —— 保证 CM 在可见且有尺寸的容器里测量
+    if (opts.mountEl) opts.mountEl.classList.add('hidden')
+    if (opts.sourceMountEl) opts.sourceMountEl.classList.remove('hidden')
+    await ensureSrc()
+    src.setDoc(text)
+    sourceMode = true
+    src.focus()
+    opts.onFrontmatterChange && opts.onFrontmatterChange()
+    return true
+  }
+  function exitSource() {
+    if (!sourceMode) return false
+    const text = src ? src.getDoc() : rawSource || ''
+    const { yaml: fm, body } = splitFrontmatter(text)
+    fmRaw = fm
+    view.updateState(EditorState.create({ schema, doc: parseMarkdown(body), plugins: view.state.plugins }))
+    rawSource = text
+    modelDirty = false
+    sourceMode = false
+    if (opts.sourceMountEl) opts.sourceMountEl.classList.add('hidden')
+    if (opts.mountEl) opts.mountEl.classList.remove('hidden')
+    emitMeta(view, opts)
+    opts.onFrontmatterChange && opts.onFrontmatterChange()
+    view.focus()
+    return false
+  }
+  function setSourceTheme(name) { if (src) src.setTheme(name) }
+
   return {
     view,
     setMarkdown(md) {
+      rawSource = md
+      modelDirty = false
+      if (sourceMode && src) {
+        // 源码态下打开/重载文件：原文直接进 CodeMirror，不重解析模型
+        fmRaw = splitFrontmatter(md).yaml
+        src.setDoc(md)
+        dirty = false
+        opts.onDirty && opts.onDirty(false)
+        opts.onFrontmatterChange && opts.onFrontmatterChange()
+        if (srcChangeTimer) clearTimeout(srcChangeTimer)
+        opts.onSourceTextChange && opts.onSourceTextChange(md)
+        return
+      }
       // 剥离开头 frontmatter，只把正文交给模型；原始 yaml 存于 fmRaw 供原样补回
       const { yaml: fm, body } = splitFrontmatter(md)
       fmRaw = fm
@@ -219,22 +291,35 @@ export function createEditor(opts) {
       opts.onFrontmatterChange && opts.onFrontmatterChange()
     },
     getMarkdown() {
-      return joinFrontmatter(fmRaw, serializeMarkdown(view.state.doc))
+      // 源码态返回 CodeMirror 全文（原文，不被重新序列化）；WYSIWYG 态序列化补回 frontmatter
+      return sourceMode && src ? src.getDoc() : serializedFull()
     },
     // frontmatter：读原始文本 + 解析后的对象；解析失败/非对象时降级为 {}（不抛，原文仍在 raw）
+    // 源码态从 CodeMirror 全文现取 fm（原文里的 --- 块），WYSIWYG 态取 fmRaw
     getFrontmatter() {
-      if (fmRaw == null) return { raw: null, data: {} }
+      const raw = sourceMode && src ? splitFrontmatter(src.getDoc()).yaml : fmRaw
+      if (raw == null) return { raw: null, data: {} }
       let data = {}
       try {
-        const d = yaml.load(fmRaw)
+        const d = yaml.load(raw)
         if (d && typeof d === 'object' && !Array.isArray(d)) data = d
       } catch (_) {
         data = {}
       }
-      return { raw: fmRaw, data }
+      return { raw, data }
     },
     // 面板编辑后写回：raw=null 表示移除 frontmatter；置脏并触发自动保存与面板刷新
     setFrontmatter(raw) {
+      if (sourceMode && src) {
+        const { body } = splitFrontmatter(src.getDoc())
+        src.setDoc(joinFrontmatter(raw, body)) // 程序化写入，不触发 onChange
+        rawSource = src.getDoc()
+        modelDirty = false
+        dirty = true
+        opts.onDirty && opts.onDirty(true)
+        opts.onFrontmatterChange && opts.onFrontmatterChange()
+        return
+      }
       fmRaw = raw == null ? null : String(raw)
       dirty = true
       opts.onDirty && opts.onDirty(true)
@@ -247,10 +332,17 @@ export function createEditor(opts) {
     focus() {
       view.focus()
     },
-    // 写作统计：取当前文档纯文本（块间用 \n 分隔）
+    // 写作统计：源码态按 CodeMirror 全文计数；WYSIWYG 取文档纯文本（块间用 \n 分隔）
     getText() {
+      if (sourceMode && src) return src.getDoc()
       return view.state.doc.textBetween(0, view.state.doc.content.size, '\n', '\n')
     },
+    // 源码模式：整篇切换 WYSIWYG <-> Markdown 原文（CodeMirror，懒加载）
+    isSourceMode() { return sourceMode },
+    enterSource,
+    exitSource,
+    async toggleSource() { return sourceMode ? exitSource() : await enterSource() },
+    setSourceTheme,
     // 专注 / 打字机模式开关（main.js 驱动并持久化）
     setFocusMode(on) { modes.api.setFocus(on) },
     setTypewriterMode(on) { modes.api.setTypewriter(on) },
