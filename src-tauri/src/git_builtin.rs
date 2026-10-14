@@ -601,39 +601,317 @@ pub mod system {
     }
 }
 
-// ==================== Phase 2：Builtin 后端占位（Phase 3 填实装）====================
+// ==================== Phase 3：Builtin 后端实装（git2）====================
 
-/// 内置 git2 后端。Phase 2 只搭骨架，所有函数返回“待 Phase 3 落地”错误；
-/// 无网络默认 → Err 与 命令壳直接相应。Phase 3 会替换成实际 git2 网络/凭据/ff-pull 实现。
-#[allow(dead_code)] // Phase 3 前内置实现未接入，占位属预期
+/// 内置 git2 后端。凭据回调遵 spec §3：SSH 先试 agent、后试无口令私钥；HTTPS 读 env token。
+/// 主机密钥仍走 libgit2 默认（读 ~/.ssh/known_hosts、严格匹配）；Phase 4 接 self-manage + 一次性信任。
+/// ff-pull 走 §5 契约：先 fetch、后 reset Hard（同一步搬 ref + 工作区），safe_files 默认开。
 pub mod builtin {
-    use super::{AheadBehind, Remote, RemoteArgs};
+    use super::{map_err_text, AheadBehind, BuiltinErrCode, Remote, RemoteArgs};
+    use git2::{
+        build::CheckoutBuilder, Cred, CredentialType, Error as GError, ErrorClass, FetchOptions,
+        ObjectType, Reference, Repository, ResetType,
+    };
 
-    const PENDING: &str = "内置远程后端（Phase 3）待落地，请暂用系统 git 或等下一提交";
+    // ---------- 小 helper ----------
+
+    fn open_repo(vault_root: &str) -> Result<Repository, String> {
+        Repository::open(vault_root).map_err(|e| format!("[git_error]打开仓库失败：{}", e))
+    }
+
+    fn home_dir() -> Option<std::path::PathBuf> {
+        std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(std::path::PathBuf::from)
+    }
+
+    fn env_token() -> Option<String> {
+        ["NOTE_LUME_GIT_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN"]
+            .iter()
+            .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+    }
+
+    fn has_ssh_agent() -> bool {
+        std::env::var_os("SSH_AUTH_SOCK").is_some()
+    }
+
+    /// 将 git2 错误归一为 `[code]msg` 前串；code 同 spec §6。
+    fn map_err(e: GError) -> String {
+        let code = classify_err(&e);
+        let msg = e.message();
+        format!("[{}]{}", code.as_str(), msg)
+    }
+
+    fn classify_err(e: &GError) -> BuiltinErrCode {
+        if matches!(e.class(), ErrorClass::Net) {
+            return BuiltinErrCode::Network;
+        }
+        map_err_text(e.message())
+    }
+
+    /// 拼建凭据回调（spec §3）。无 known_hosts 回调——Phase 4 接。
+    fn make_callbacks<'a>() -> git2::RemoteCallbacks<'a> {
+        let mut cb = git2::RemoteCallbacks::new();
+        cb.credentials(|_url, user_from_url, allowed| {
+            let user = user_from_url.unwrap_or("git");
+            // SSH：先试 agent、后试无口令私钥
+            if allowed.intersects(CredentialType::SSH_KEY | CredentialType::SSH_MEMORY) {
+                if has_ssh_agent() {
+                    if let Ok(c) = Cred::ssh_key_from_agent(user) {
+                        return Ok(c);
+                    }
+                }
+                if let Some(home) = home_dir() {
+                    let ssh = home.join(".ssh");
+                    for fname in ["id_ed25519", "id_rsa", "id_ecdsa"] {
+                        let p = ssh.join(fname);
+                        if p.exists() {
+                            if let Ok(c) = Cred::ssh_key(user, None, &p, None) {
+                                return Ok(c);
+                            }
+                        }
+                    }
+                }
+            }
+            // HTTPS：env token 优先（无 → Cred::default() 让 libgit2 匿名拉公开仓）
+            if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
+                if let Some(tok) = env_token() {
+                    let user_https = user_from_url.unwrap_or("x-access-token");
+                    return Cred::userpass_plaintext(user_https, &tok);
+                }
+            }
+            Cred::default()
+        });
+        cb
+    }
+
+    /// 当前分支与上游元信息（无上游 → Err 带引导）
+    struct HeadInfo {
+        up_short: String,
+        remote_name: String,
+    }
+
+    fn read_head_info(repo: &Repository) -> Result<HeadInfo, String> {
+        let head = repo
+            .head()
+            .map_err(|_| "[git_error]无 HEAD（仓库可能为空）".to_string())?;
+        if !head.is_branch() {
+            return Err("[git_error]内置 pull 需要 HEAD 在分支上（当前 detached）".into());
+        }
+        let branch = head
+            .shorthand()
+            .ok_or_else(|| "[git_error]无分支名".to_string())?
+            .to_string();
+        let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
+            "[auth]当前分支无上游；先安装系统 git 运行 `git branch --set-upstream-to=origin/<br>`、或在面板里配置".to_string()
+        })?;
+        let up_full = up_refname_buf
+            .as_str()
+            .ok_or_else(|| "[git_error]上游 refname 非 UTF8".to_string())?
+            .to_string();
+        let up_short = up_full
+            .strip_prefix("refs/remotes/")
+            .unwrap_or(&up_full)
+            .to_string();
+        let remote_name = up_short
+            .split('/')
+            .next()
+            .ok_or_else(|| "[git_error]无法解析 remote 名".to_string())?
+            .to_string();
+        Ok(HeadInfo { up_short, remote_name })
+    }
+
+    // ---------- 命令实现 ----------
 
     pub async fn have() -> Option<String> {
         None
     }
-    pub async fn remote_list(_vault_root: String) -> Result<Vec<Remote>, String> {
-        Err(PENDING.into())
+
+    pub async fn remote_list(vault_root: String) -> Result<Vec<Remote>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let names = repo.remotes().map_err(map_err)?;
+            let mut out = Vec::new();
+            for n in names.iter() {
+                let name = match n { Some(s) => s, None => continue };
+                if let Ok(r) = repo.find_remote(name) {
+                    if let Some(url) = r.url() {
+                        out.push(Remote { name: name.to_string(), url: url.to_string() });
+                    }
+                }
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
-    pub async fn remote_add(_vault_root: String, _args: RemoteArgs) -> Result<(), String> {
-        Err(PENDING.into())
+
+    pub async fn remote_add(vault_root: String, args: RemoteArgs) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            repo.remote(&args.name, &args.url).map_err(map_err)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
-    pub async fn remote_set_url(_vault_root: String, _args: RemoteArgs) -> Result<(), String> {
-        Err(PENDING.into())
+
+    pub async fn remote_set_url(vault_root: String, args: RemoteArgs) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            repo.remote_set_url(&args.name, &args.url).map_err(map_err)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
-    pub async fn fetch(_vault_root: String, _remote: Option<String>) -> Result<String, String> {
-        Err(PENDING.into())
+
+    pub async fn fetch(vault_root: String, remote: Option<String>) -> Result<String, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let cb = make_callbacks();
+            let mut fo = FetchOptions::new();
+            fo.remote_callbacks(cb);
+            let mut summary = String::new();
+            let target = remote.filter(|r| !r.trim().is_empty());
+            match target {
+                Some(name) => {
+                    let mut r = repo.find_remote(&name).map_err(map_err)?;
+                    r.fetch(&[] as &[&str], Some(&mut fo), None).map_err(map_err)?;
+                    summary.push_str(&format!("fetched {}\n", name));
+                }
+                None => {
+                    let names = repo.remotes().map_err(map_err)?;
+                    for n in names.iter() {
+                        let name = match n { Some(s) => s, None => continue };
+                        if let Ok(mut r) = repo.find_remote(name) {
+                            r.fetch(&[] as &[&str], Some(&mut fo), None).map_err(map_err)?;
+                            summary.push_str(&format!("fetched {}\n", name));
+                        }
+                    }
+                }
+            }
+            Ok(summary)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
-    pub async fn upstream(_vault_root: String) -> Result<Option<String>, String> {
-        Err(PENDING.into())
+
+    pub async fn upstream(vault_root: String) -> Result<Option<String>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            match read_head_info(&repo) {
+                Ok(info) => Ok(Some(info.up_short)),
+                Err(_) => Ok(None),
+            }
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
-    pub async fn ahead_behind(_vault_root: String) -> Result<Option<AheadBehind>, String> {
-        Err(PENDING.into())
+
+    pub async fn ahead_behind(vault_root: String) -> Result<Option<AheadBehind>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let info = match read_head_info(&repo) {
+                Ok(v) => v,
+                Err(_) => return Ok(None),
+            };
+            let head = repo.head().map_err(map_err)?;
+            let local_oid = match head.target() {
+                Some(o) => o,
+                None => return Ok(None),
+            };
+            let up_full = format!("refs/remotes/{}", info.up_short);
+            let up_ref: Reference = repo.find_reference(&up_full).map_err(map_err)?;
+            let up_oid = match up_ref.target() {
+                Some(o) => o,
+                None => {
+                    // 可能为 symbolic ref（少见）→ peel
+                    let c = up_ref.peel_to_commit().map_err(map_err)?;
+                    c.id()
+                }
+            };
+            let (ahead, behind) =
+                repo.graph_ahead_behind(local_oid, up_oid).map_err(map_err)?;
+            Ok(Some(AheadBehind {
+                ahead,
+                behind,
+                upstream: info.up_short,
+            }))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
-    pub async fn pull_ff(_vault_root: String) -> Result<String, String> {
-        Err(PENDING.into())
+
+    pub async fn pull_ff(vault_root: String) -> Result<String, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let info = read_head_info(&repo)?;
+
+            // 1) fetch 目标 remote，同 libgit2 默认 refspec
+            let cb = make_callbacks();
+            let mut fo = FetchOptions::new();
+            fo.remote_callbacks(cb);
+            let mut remote = repo.find_remote(&info.remote_name).map_err(map_err)?;
+            remote.fetch(&[] as &[&str], Some(&mut fo), None).map_err(map_err)?;
+
+            // 2) 取 fetch 后的 up_oid
+            let head = repo.head().map_err(map_err)?;
+            let local_oid = head.target().ok_or("[git_error]HEAD 无 target")?;
+            let up_full = format!("refs/remotes/{}", info.up_short);
+            let up_ref = repo.find_reference(&up_full).map_err(map_err)?;
+            let up_oid = match up_ref.target() {
+                Some(o) => o,
+                None => up_ref.peel_to_commit().map_err(map_err)?.id(),
+            };
+
+            // 3) 同 oid → AlreadyUp
+            if local_oid == up_oid {
+                return Ok("已经是最新\n".into());
+            }
+            let (ahead, behind) =
+                repo.graph_ahead_behind(local_oid, up_oid).map_err(map_err)?;
+            let dec = super::ff_decision(ahead, behind, false);
+            if dec == super::FfDecision::Divergent {
+                return Err(format!(
+                    "[non_fast_forward]分叉：ahead={} behind={}；本 R1-B 不自动 merge/rebase，请用系统 git 工作流或批次 L 快照手动处理",
+                    ahead, behind
+                ));
+            }
+
+            // 4) 原子 ff：先 checkout_tree(safe) 搬工作区+index，失败 → local_changes
+            let up_obj = repo
+                .find_object(up_oid, Some(ObjectType::Commit))
+                .map_err(map_err)?;
+            let mut opts = CheckoutBuilder::new();
+            opts.update_index(true).allow_conflicts(false);
+            // 默认就是 safe（不删未跟踪、不覆本地修改）——不需显式开
+            if let Err(e) = repo.checkout_tree(&up_obj, Some(&mut opts)) {
+                return Err(map_err(e));
+            }
+
+            // 5) 搬分支 ref（reset soft）；失败则回滚 checkout
+            if let Err(e) = repo.reset(&up_obj, ResetType::Soft, None) {
+                // 回滚：把文件恢复至 local_oid
+                if let Ok(prev_obj) =
+                    repo.find_object(local_oid, Some(ObjectType::Commit))
+                {
+                    let mut back = CheckoutBuilder::new();
+                    back.update_index(true).force();
+                    let _ = repo.checkout_tree(&prev_obj, Some(&mut back));
+                }
+                return Err(map_err(e));
+            }
+
+            let short = |o: git2::Oid| -> String { o.to_string().chars().take(7).collect() };
+            Ok(format!(
+                "Fast-forward {} -> {}\n",
+                short(local_oid),
+                short(up_oid)
+            ))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
     }
 }
 
