@@ -1810,6 +1810,170 @@ fn synthesize_added_patch(path: &str, bytes: &[u8]) -> String {
     out
 }
 
+// —— E1b 写命令：身份读取 / init（+gitignore seeding）/ add -A + commit ——
+
+/// 提交身份
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Identity {
+    pub name: String,
+    pub email: String,
+}
+
+/// commit 入参
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitArgs {
+    pub message: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+/// commit 结果
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitResult {
+    pub id: String,
+    pub id_short: String,
+}
+
+/// 读仓库配置里的 user.name/user.email。两者齐备才 Some。
+/// 两个关键坑：
+/// 1) git2 0.19 的 Config::get_str 必须在 snapshot() 上调用（直接对 open 出的 config 取键会 Err）；
+/// 2) 故意按文件路径直接打开本地 .git/config 读（避开 libgit2 对 repo.config() 的快照缓存），
+///    本地缺的键再回退全局。
+fn read_identity(repo: &git2::Repository) -> Result<Option<Identity>, String> {
+    let local_path = repo.path().join("config");
+    let mut name: Option<String> = None;
+    let mut email: Option<String> = None;
+    if let Ok(mut cfg) = git2::Config::open(&local_path) {
+        name = cfg
+            .snapshot()
+            .ok()
+            .and_then(|s| s.get_str("user.name").ok().map(|v| v.to_string()));
+        email = cfg
+            .snapshot()
+            .ok()
+            .and_then(|s| s.get_str("user.email").ok().map(|v| v.to_string()));
+    }
+    if name.as_deref().map_or(true, |v| v.trim().is_empty())
+        || email.as_deref().map_or(true, |v| v.trim().is_empty())
+    {
+        if let Ok(mut cfg) = git2::Config::open_default() {
+            if name.as_deref().map_or(true, |v| v.trim().is_empty()) {
+                name = cfg
+                    .snapshot()
+                    .ok()
+                    .and_then(|s| s.get_str("user.name").ok().map(|v| v.to_string()));
+            }
+            if email.as_deref().map_or(true, |v| v.trim().is_empty()) {
+                email = cfg
+                    .snapshot()
+                    .ok()
+                    .and_then(|s| s.get_str("user.email").ok().map(|v| v.to_string()));
+            }
+        }
+    }
+    match (name, email) {
+        (Some(n), Some(e)) if !n.trim().is_empty() && !e.trim().is_empty() => {
+            Ok(Some(Identity { name: n, email: e }))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// 暴露给面板：探测时顺便读身份；非仓库返回 None
+#[tauri::command]
+fn git_config_identity(vault_root: String) -> Result<Option<Identity>, String> {
+    let repo = open_repo(&vault_root)?;
+    read_identity(&repo)
+}
+
+/// 初始化仓库；若仓库根无 .gitignore 则写一份排除 .notelume-backup/（已存在则不碰）
+#[tauri::command]
+fn git_init(vault_root: String) -> Result<GitRepoInfo, String> {
+    let repo =
+        git2::Repository::init(&vault_root).map_err(|e| format!("初始化仓库失败：{}", e))?;
+    let gi = Path::new(&vault_root).join(".gitignore");
+    if !gi.exists() {
+        fs::write(&gi, ".notelume-backup/\n").map_err(|e| format!("写 .gitignore 失败：{}", e))?;
+    }
+    Ok(repo_info(&repo))
+}
+
+/// 确定签名身份：优先传入（来自“问一次”），否则读配置；两者都缺则报错。
+fn resolve_identity(
+    repo: &git2::Repository,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> Result<(String, String), String> {
+    let from_cfg = read_identity(repo)?;
+    let n = name
+        .map(|s| s.to_string())
+        .or_else(|| from_cfg.as_ref().map(|i| i.name.clone()));
+    let e = email
+        .map(|s| s.to_string())
+        .or_else(|| from_cfg.as_ref().map(|i| i.email.clone()));
+    match (n, e) {
+        (Some(n), Some(e)) if !n.trim().is_empty() && !e.trim().is_empty() => Ok((n, e)),
+        _ => Err("缺少提交身份：请配置 git user.name / user.email".into()),
+    }
+}
+
+/// 等价 git add -A（尊重忽略）+ 带签名 commit。无改动可提交/空消息均拒。
+/// 若身份来自传入参数（“问一次”流程）则回写 repo 本地配置。
+#[tauri::command]
+fn git_commit_all(vault_root: String, args: CommitArgs) -> Result<GitCommitResult, String> {
+    let repo = open_repo(&vault_root)?;
+    let message = args.message.trim_end();
+    if message.trim().is_empty() {
+        return Err("提交信息不能为空".into());
+    }
+    let (name, email) = resolve_identity(&repo, args.name.as_deref(), args.email.as_deref())?;
+
+    let mut idx = repo.index().map_err(|e| e.to_string())?;
+    idx.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| e.to_string())?;
+    idx.update_all(["*"].iter(), None)
+        .map_err(|e| e.to_string())?;
+    idx.write().map_err(|e| e.to_string())?;
+    let tree_id = idx.write_tree().map_err(|e| e.to_string())?;
+    let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
+
+    // HEAD 父提交（首提交时 None）
+    let parent_commit: Option<git2::Commit> = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok());
+    // 无改动可提交：树与 HEAD 相同则拒
+    if let Some(hct) = parent_commit.as_ref().and_then(|c| c.tree().ok()) {
+        if hct.id() == tree_id {
+            return Err("没有需要提交的改动".into());
+        }
+    }
+
+    let sig = git2::Signature::now(&name, &email).map_err(|e| e.to_string())?;
+    let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
+    let oid = repo
+        .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+        .map_err(|e| e.to_string())?;
+
+    // 身份来自参数且原本缺失 → 回写本地配置（下次直接读）
+    if args.name.is_some() && args.email.is_some() && read_identity(&repo)?.is_none() {
+        // 显式打开 .git/config 本地文件写（repo.config() 快照的 open_level 写入不可靠）
+        if let Ok(mut local) = git2::Config::open(&repo.path().join("config")) {
+            let _ = local.set_str("user.name", &name);
+            let _ = local.set_str("user.email", &email);
+        }
+    }
+
+    let id = oid.to_string();
+    Ok(GitCommitResult {
+        id_short: id.chars().take(7).collect(),
+        id,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1894,6 +2058,76 @@ mod tests {
         )
         .unwrap();
         assert!(dc.contains("+line1"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // 批次 E（L）写链路：git_init + gitignore seeding + git_commit_all 回环
+    #[test]
+    fn git_write_commit_roundtrip() {
+        let tmp = std::env::temp_dir().join(format!("notelume-git-wt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let root = tmp.to_string_lossy().to_string();
+
+        // init：应创建仓库并写 .gitignore（含 .notelume-backup/）
+        let info = git_init(root.clone()).unwrap();
+        assert!(info.is_repo);
+        let gi = tmp.join(".gitignore");
+        assert!(gi.exists());
+        assert!(fs::read_to_string(&gi).unwrap().contains(".notelume-backup/"));
+        // .gitignore 已存在时 init 不覆盖
+        fs::write(&gi, "custom\n").unwrap();
+        git_init(root.clone()).unwrap();
+        assert_eq!(fs::read_to_string(&gi).unwrap(), "custom\n");
+        fs::write(&gi, ".notelume-backup/\n").unwrap();
+
+        // 传显式 name/email 提交（首提交）
+        fs::write(tmp.join("a.md"), "hello\n").unwrap();
+        let r = git_commit_all(
+            root.clone(),
+            CommitArgs {
+                message: "first".into(),
+                name: Some("W".into()),
+                email: Some("w@e.com".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(r.id.chars().count(), 40);
+
+        // 提交后 log 有 1 条；身份已回写本地配置（再读应 Some）
+        let log = git_log(root.clone(), None).unwrap();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].summary, "first");
+        assert!(git_config_identity(root.clone()).unwrap().is_some());
+
+        // status 应干净（a.md 已入库）
+        let st = git_status(root.clone()).unwrap();
+        assert!(!st.iter().any(|f| f.path == "a.md"));
+
+        // 无改动再提交 → 拒
+        let dup = git_commit_all(
+            root.clone(),
+            CommitArgs { message: "noop".into(), name: None, email: None },
+        );
+        assert!(dup.is_err(), "无改动应拒绝");
+
+        // 空消息 → 拒
+        fs::write(tmp.join("b.md"), "x\n").unwrap();
+        let empty = git_commit_all(
+            root.clone(),
+            CommitArgs { message: "   ".into(), name: None, email: None },
+        );
+        assert!(empty.is_err(), "空消息应拒绝");
+
+        // 第二次提交（复用已配置身份，不传 name/email）
+        let r2 = git_commit_all(
+            root.clone(),
+            CommitArgs { message: "second".into(), name: None, email: None },
+        )
+        .unwrap();
+        assert!(!r2.id_short.is_empty());
+        assert_eq!(git_log(root.clone(), None).unwrap().len(), 2);
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -2336,7 +2570,10 @@ pub fn run() {
             git_open,
             git_status,
             git_log,
-            git_diff_file
+            git_diff_file,
+            git_config_identity,
+            git_init,
+            git_commit_all
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
