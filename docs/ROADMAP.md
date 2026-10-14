@@ -68,11 +68,11 @@
 
 ### 6. 插件系统 v2
 - 现状（P2 v1）：钩子与主线程**同权、无沙箱**；schema 创建后不可变，故不支持运行时扩展节点。
-- 下一步：
-  - **权限声明**：插件 manifest 声明所需能力（fs/network/…），加载时征求同意。
-  - **隔离**：Worker / iframe 沙箱执行不可信插件。
-  - **`registerNodeSpec` 支持**：这是扩展语法能力的**唯一入口**，但受"schema 不可变"限制——需设计"装配前收集插件的 spec、统一构建 schema"的加载时机（热加载需重建 state/视图）。
-  - 三者齐备后才谈得上**插件市场**。体量大、架构性强，排在功能快赢之后。
+- 按依赖链拆为 **F1~F4**，逐块独立立项（每块各自 spec → plan → 实现）：
+  - ✅ **F1（已完成）**：**文件夹化插件包 + 声明式清单 + 权限同意软闸门**——`.notelume-plugins/<id>/{manifest.json,main.js}`（目录名===`manifest.id`，**破坏性**：不再识别平铺 `.js`、仅面板提示迁移）；Rust `list_plugins` 只当文件系统枚举器（读 `manifestRaw`+探 `mainExists`、**不解析 JSON/不校 id·scope**，唯一真源移到前端 `src/plugin-manifest.js`）；首载**一律弹**同意（含空权限），consent 存 localStorage `nl-plugin-consent`，权限变更重弹；面板显权限 chip/版本·作者/旧版提示 + 授予/重设。**纯声明+知情同意，不改 ctx、不做技术拦截**。见 [`docs/superpowers/specs/2026-10-15-plugin-manifest-permission-design.md`](superpowers/specs/2026-10-15-plugin-manifest-permission-design.md)。**含 Rust，须重启 `tauri dev` 重编生效**。
+  - ⏳ **F2（待做）**：**`registerNodeSpec` 支持**（消费 F1 预留的 `schema` scope）——受 ProseMirror「schema 不可变」约束，需设计「装配前收集插件 spec、统一构建 schema」的加载时机（热加载需重建 state/视图），是扩展语法的唯一入口。
+  - ⏳ **F3（待做）**：**权限技术拦截 + 可选隔离**——把 F1 的 scope 契约落成 ctx 能力包装 / `fetch`·fs·git 运行时拦截；混合隔离路线（默认 Obsidian 式信任 + 非编辑器类插件可选 Worker）。深度 PM 集成与硬沙箱互斥，故隔离只对放弃编辑器钩子的插件开放。
+  - ⏳ **F4（待做）**：**插件市场**——在线发现/安装/更新/策展，依赖 F1 文件夹包作分发单元。四块齐备才谈得上生态。
 
 ### 7. 移动端
 - Tauri v2 原生支持 iOS/Android，但真正成本在**触屏交互重排**（侧栏/工具条/右键菜单/拖拽/悬浮预览都要改造）。已在 CHANGELOG 标"计划中"，**建议单独立项**，不占功能迭代节奏。
@@ -84,7 +84,7 @@
 - **批次 C**：整库导出 HTML 静态站（pandoc 作为检测到才启用的可选项）— ✅ 已完成（新 Rust `build_site_graph`/`copy_vault_assets`（附单测，需重启 tauri dev）+ 新前端 `src/site-export.js`（全保真渲染/链接重写/导航/反链/首页/搜索，Tauri I/O 依赖注入）+ `src/tauri-bridge.js` 封装 + ▾ 更多「🌐 导出整站…」；Node 单测 `src/tests/site-export.test.mjs`）
 - **批次 D**：命令面板 + 快捷键自定义（顺带收敛统一命令注册表）— ✅ 已完成（新 `src/commands.js` 统一注册表 + `src/keymap.js` 快捷键纯逻辑 + `src/command-palette.js` `Ctrl+Shift+P` 命令/文档面板 + `src/shortcut-settings.js` 可重绑/冲突硬阻止；`main.js` `bindShortcuts` 改注册表驱动全局分发器、打印收窄纯 Ctrl+P；`editor-view.js` 方案 B 动态 keymap 热重配 + `plugin-loader.js` 插件命令并入；均无 Rust，刷新即生效；`keymap.test` 14、`roundtrip` 35、`build:web` 全绿）
 - **批次 E**：Git 集成——子项目 L（本地基础）✅ + 子项目 R1（远程 shell-out 认证 + 快进 pull）✅ + 子项目 R1-B（内置 libgit2 远程，免装 git）✅ + 子项目 R2（内置 push，双后端 + `[code]` 前串同张分派表）✅ + 子项目 R3（合并拉取 + 冲突暴露与解决，6 命令 × 2 引擎）✅ 均已完成；R4 经评估放弃 LFS（与内置自包含冲突），仅余可选大文件提交提示
-- **批次 F**：插件系统 v2（权限 → 隔离 → registerNodeSpec → 市场）
+- **批次 F**：插件系统 v2（按依赖链拆 F1 清单+权限同意 → F2 registerNodeSpec → F3 拦截+隔离 → F4 市场）— **F1 ✅ 已完成**（文件夹化包 + 声明式清单 + 首载一律弹权限同意软闸门；破坏性：不再识别平铺 `.js`；不改 ctx、不做技术拦截属 F3）；F2/F3/F4 待做
 - **批次 G**：移动端（单独立项）
 
 ## 五、暂缓 / 存疑（避免踩坑）
@@ -95,4 +95,4 @@
 - **知识图谱大图 / 复杂 3D**：维持"可选附加、不默认渲染"的既定取舍。
 
 ---
-_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E 子项目 L（本地）+ R1（远程认证 + 快进 pull）+ R1-B（内置引擎）+ R2（push）+ R3（冲突解决）已完成，R4（LFS）经评估不做——批次 E 闭环；批次 F（插件 v2）/ G（移动端）未开始。_
+_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E（Git 集成 L + R1 + R1-B + R2 + R3，R4 经评估不做 LFS）已闭环；批次 F（插件 v2）已拆 F1~F4，**F1（文件夹化清单 + 权限同意软闸门）已完成**、F2/F3/F4 待做；批次 G（移动端）未开始。_

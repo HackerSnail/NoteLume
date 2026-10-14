@@ -52,6 +52,7 @@
 | **增强** | Git 远程内置引擎（R1-B：免装系统 git 也能 fetch/pull——`git2` 新开 `ssh`+`https` feature，Windows MSVC 下 libgit2 走 Schannel、libssh2 走 win32-crypto，**零 openssl**；凭据不存不弹：SSH 先试 ssh-agent → 无口令私钥、HTTPS 先试 env token；SSH 首次陌生 host 走一次性信任，写应用私库 `git-known_hosts`；面板顶部徽标 🛡 系统 git / 📦 内置引擎；装了 git 优先走 R1 shell-out、没装自动切内置） | ✅ 已完成 |
 | **增强** | Git 远程 push（R2：`git_r_push` 双后端——System 走 `git push`、Builtin 走 git2 `Remote::push`；当前分支 → upstream 同名分支，固定 refspec、不自动 force；无 upstream 明确引导、不自动先 pull（同 R1 插不自动 merge/rebase）；同 `[code]` 前串分派表复用 R1-B `handleRemoteErr`） | ✅ 已完成 |
 | **增强** | Git 合并拉取 + 冲突解决（R3：`⇅ Pull（合并）` 双后端——pull_merge 统回 `MERGED`/`CONFLICTS`/`[code]msg`；冲突文件在「变更」列表逐行列出，每个可选「用本地 / 用远端 / 编辑」；顶部合并工具条一键提交 merge commit / 中止回退；不代持凭据、不自动 force） | ✅ 已完成 |
+| **增强** | 插件系统 v2·F1（文件夹化插件包 `.notelume-plugins/<id>/{manifest.json,main.js}` + 声明式清单校验 + 首载「一律弹」权限同意软闸门；基线能力（命令/快捷键/输入规则/生命周期）不算权限，只管额外可达面 network/fs-vault/fs-outside/git/schema/persistent-store；**破坏性**：不再识别平铺 `.js`，仅面板提示迁移。不改 ctx、不做技术拦截——那是 F3） | ✅ 已完成 |
 | **P2** | 移动端 | ⏳ 规划中 |
 
 ---
@@ -92,7 +93,9 @@ NoteLume/
 │   ├── graph-view.js       # P2 知识图谱（Canvas 2D 力导向）
 │   ├── snapshot-panel.js   # P2 版本快照：历史列表 / 预览 / 回滚
 │   ├── git-panel.js         # 批次 E（L+R1+R1-B+R2+R3）本地+远程 Git：本地探测/status/log/diff/提交/初始化 + 远程「同步」区（引擎徽标/远端增改/fetch/领先落后/快进 pull/Push/合并 pull/冲突解决/一次性 SSH host 信任/错误分类引导）
-│   ├── plugin-loader.js    # P2 插件钩子：动态加载 / 快捷键注入 / 生命周期总线 / 面板
+│   ├── plugin-loader.js    # P2/F1 插件：文件夹化包加载编排 / 权限同意 / 快捷键注入 / 生命周期总线 / 面板
+│   ├── plugin-manifest.js  # 批次 F1 纯逻辑：manifest 解析校验 + 权限同意决策（可 Node 单测）
+│   ├── plugin-consent-dialog.js # 批次 F1：插件权限同意模态（多插件合并一次、全有/全无）
 │   ├── canvas-view.js      # P2 画布 / 白板：JSON Canvas 渲染 / 拖拽连线缩放 / 双击编辑
 │   ├── template.js         # 模板变量替换 + 日期格式化（纯函数，供从模板新建 / 每日笔记）
 │   ├── daily-capture.js    # 全局「今日速记」浮层（textarea，与知识库解绑，自动存固定目录）
@@ -173,7 +176,7 @@ npm run build
 10. 右上角主题按钮显示当前主题（☀️ 浅色 / 🌙 暗黑 / 🧛 Dracula），点击循环切换 浅色 → 暗黑 → Dracula（记忆在 localStorage）
 11. 工具条 🕸 图谱（或 Ctrl+G）打开知识图谱模态；拖平移、滚轮缩放、拖节点重定位、点节点跳文档，当前文档红点高亮
 12. 侧栏 📦 历史版本面板：列出当前文档历次保存/自动保存产生的快照（最新在前），点条目预览全文，右下角“↩ 回滚到此版本”一键覆盖（覆盖前会自动另存当前版，回滚可逆）
-13. 插件：把 `.js` 文件放进知识库根的 `.notelume-plugins/`，打开知识库后自动加载；侧栏 🔌 插件面板可启用/禁用（记忆）与点击执行插件命令。示例见 `examples/notelume-plugins/hello.js`（注册 Mod-Shift+H 快捷键 + 插入时间命令）
+13. 插件（批次 F1）：把插件文件夹 `<id>/`（含 `manifest.json` + `main.js`）放进知识库根的 `.notelume-plugins/`，打开知识库后自动识别；**首次加载会弹出「插件权限同意」**（列出该插件所需权限，同意后才运行，面板内可「重设权限」再次征求）。侧栏 🔌 面板可启用/禁用（记忆）、查看权限、点击执行插件命令。⚠ 旧版平铺 `.js` 不再识别（面板会提示迁移）。示例见 `examples/notelume-plugins/hello/`（注册 Mod-Shift+H 快捷键 + 插入时间命令）
 14. 命令面板 `Ctrl+Shift+P`（或 `▾ 更多 → ⌘ 命令面板`）：直接输入即模糊搜文档回车跳转，以 `>` 开头则模糊搜命令回车执行（应用/编辑器/插件命令均在列）。`▾ 更多 → 🎛 快捷键设置…` 可逐条重绑快捷键（录制新键/解绑/重置），撞键会硬阻止保存并提示占用者；改完即时生效并存于 localStorage
 15. 画布 / 白板：工具条 🗺 新画布 新建 `.canvas`（或双击画布空白处新建卡片）；拖拽移动 /  shift 多选 / 拖端口连线 / 拖角点缩放 / 双击编辑文字 / 六色色板 / 滚轮缩放 / ⤢ 适应 / 多选对齐（六向 + 等距分布）/ 拖拽磁吸对齐（靠近他卡自动吸附 + 参考线，Alt 禁用）/ 编组解组（拖框边整体移动）/ 撤销重做（Ctrl+Z / Ctrl+Shift+Z）/ 双击连线编辑标签（新连线自带方向箭头）/ 框选（背景+Shift 拖拽）/ 方向键微调（Shift ×10）/ Ctrl+A 全选 / Ctrl+C·V·D 复制粘贴重复 / −＋ 缩放按钮（Ctrl +/-/0）/**右键上下文菜单**（背景/卡片/连线三类，聚合新建·粘贴·对齐·分组·颜色·编组·撤销重做等）/**卡片内 Markdown 渲染**（标题/粗斜体/列表/代码/引用/表格/删除线等，.canvas 仍存原始 markdown、往返无损）/**缩略图 minimap**（右下角全局小地图 + 视口框，点击/拖拽导航，▦ 按钮显隐）；`.canvas` 文件遵循 JSON Canvas 规范，可被 Obsidian 直接打开互操作
 16. 表格：光标入单元格后 **Tab / Shift-Tab** 在格间跳转（末行 Tab 自动补一行）；拖动单元格右边线可**调整列宽**（仅预览、不写进 `.md`）；**右键单元格**弹出菜单——上/下方插入行、左/右侧插入列、删除本行/列、单元格左/中/右对齐、切换首行为表头、删除整个表格（GFM 不支持合并单元格，故无 merge/split）
@@ -229,7 +232,7 @@ npm run build
 - 搜索为 substring 匹配，未上分词/拼音；索引内容全量存内存，知识库量级至数百 md 文件时无压力，未来可换 fallthru + 磁盘索引
 - `assets/` 目前放在每个 md **同目录**（相对链接最稳）；库根级 `assets` 归一化留待后续
 - 备份文件写入 `.notelume-backup/`（已默认不入库根扫描）；P2 版本快照 UI 已提供历史列表 / 预览 / 一键回滚
-- 插件钩子（P2 v1）：`.notelume-plugins/*.js` 可注册快捷键 / 命令 / 输入规则 / 生命周期回调；暂不支持运行时扩展 schema（registerNodeSpec / MarkSpec），且无沙箱——插件与主线程同权，用户自担风险
+- 插件系统（P2 v1 → 批次 F1）：已改为文件夹化安装包 `.notelume-plugins/<id>/{manifest.json,main.js}` + 声明式权限清单 + 首载「一律弹」权限同意（软闸门，**不改 ctx、不做技术拦截**——主线程插件与宿主同权，用户自担风险；技术隔离属后续 F3）。注册命令/快捷键/输入规则/生命周期为基线能力、不算权限；暂不支持运行时扩展 schema（registerNodeSpec / MarkSpec，属 F2）；平铺 `.js` 不再识别
 - 画布（P2）：已覆盖卡片/连线（含方向箭头 toEnd/fromEnd）/缩放/颜色/文件节点/多选对齐（六向+等距分布）/分组（Obsidian 兼容 `type:group`，拖框连带成员）/撤销重做/边标签编辑/框选/方向键微调/全选/复制粘贴重复/缩放控件/拖拽磁吸对齐；JSON Canvas 其余字段留待后续
 
 ---

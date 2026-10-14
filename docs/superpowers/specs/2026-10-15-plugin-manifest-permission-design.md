@@ -151,3 +151,13 @@ renderPanel()
 ## 12. 待实现期确认的小项
 - `PluginPackage`/`PluginList` 最终字段命名以后端实现时对齐现有 serde 风格为准（本文给的是意图）。
 - `nl-plugin-consent` 记录是否随"禁用"清理：默认不联动（禁用≠撤权），仅在"重设"或"拒绝"时变更 consent。
+
+## 13. 落地补记（实现与设计的差异回填）
+实现按 P0 Rust → P1 前端 → P2 文档 三相落地，代码 `178cf69`（feat F1 P0-P1）与设计一致；以下为落地时确定的实现细节与有意偏差：
+- **`mainExists` 仅按默认名探测**：Rust `list_plugins` 不解析 manifest JSON，`mainExists = <dir>/main.js.exists() || <dir>/main.mjs.exists()`。若插件把 `manifest.main` 指成非默认名，P0 探测会误报"缺 main"，但前端拿到 `manifestRaw` 后以真实 `main` 走 `read_plugin`——非默认名依赖前端读失败报错。示例插件用默认名，此取舍可接受。
+- **字段命名**（对齐 serde camelCase）：`PluginPackage{ dirName, manifestPath, manifestRaw, mainExists }`、`PluginList{ packages, legacyFlat }`，与 §8 意图一致。
+- **`write` 端与 ctx 不变**：`read_plugin` 签名/防穿越双重防线（`.notelume-plugins/` 前缀 + `abs_in_vault`）原样沿用；插件 `makeContext` 未改动（不包能力句柄属 F3）。
+- **同意弹窗实现**：`plugin-consentDialog({ items })` 用 `document.createElement`+`textContent`（不依赖 escapeHtml、无 XSS），多插件合并一次、全有/全无，点遮罩不关（避免误放行）；含"主线程无法强制阻止未授权行为，此同意用于知情与授权留档"的诚实文案。
+- **单一真源**：`SCOPE_LABELS` 只在 `plugin-manifest.js` 定义，`plugin-consent-dialog.js`/`plugin-loader.js` 均 import 复用，不内联重复。
+- **验收数据**：`cargo test --lib` 51 passed / 0 失败（改写 `list_and_read_plugins_folder_packages`）；新 `src/tests/plugin-manifest.test.mjs` 15 passed；既有 `roundtrip` 35 / `keymap` 14 等仍全过；`npm run build` 2325 modules 无错。
+- **待手测**（含 Rust 须重启 `tauri dev`）：丢 `hello/` 包→首载弹同意→同意后命令/快捷键生效→面板显权限 chip→"重设"后再弹。
