@@ -264,16 +264,20 @@ const imgDataCache = new Map() // key(vault|md|src) -> dataUri
 function makeImageNodeView(getVault) {
   return (node) => {
     const img = document.createElement('img')
+    // 包一层 host：加载失败时在原地显示「未找到图片：<路径>」提示（而非空白框）
+    const host = document.createElement('span')
+    host.className = 'nl-img-host'
+    host.appendChild(img)
     const apply = (n) => {
       if (n.attrs.alt) img.setAttribute('alt', n.attrs.alt)
       else img.removeAttribute('alt')
       if (n.attrs.title) img.setAttribute('title', n.attrs.title)
       else img.removeAttribute('title')
-      loadImgSrc(img, n.attrs.src, getVault)
+      loadImgSrc(img, host, n.attrs.src, getVault)
     }
     apply(node)
     return {
-      dom: img,
+      dom: host,
       ignoreMutation: () => true,
       update(next) {
         if (next.type.name !== 'image') return false
@@ -281,17 +285,24 @@ function makeImageNodeView(getVault) {
         return true
       },
       selectNode() {
-        img.classList.add('ProseMirror-selectednode')
+        host.classList.add('ProseMirror-selectednode')
       },
       deselectNode() {
-        img.classList.remove('ProseMirror-selectednode')
+        host.classList.remove('ProseMirror-selectednode')
       },
     }
   }
 }
 
-// 异步把 src 装到 img 上；用 img.__key 防止 update 竞态下旧请求覆盖新图
-function loadImgSrc(img, src, getVault) {
+// 异步把 src 装到 img 上；用 img.__key 防止 update 竞态下旧请求覆盖新图。
+// 加载失败：隐藏破图，在 host 内显示「未找到图片：<src>」提示（hover 有完整路径）。
+function loadImgSrc(img, host, src, getVault) {
+  // 每次（重）加载先清除上一次的缺失态
+  host.classList.remove('is-missing')
+  const oldHint = host.querySelector('.nl-img-hint')
+  if (oldHint) oldHint.remove()
+  img.classList.remove('nl-img-missing')
+
   if (!src) {
     img.removeAttribute('src')
     img.__key = null
@@ -322,10 +333,16 @@ function loadImgSrc(img, src, getVault) {
       if (img.__key === key) img.src = uri
     })
     .catch(() => {
-      if (img.__key === key) {
-        img.removeAttribute('src')
-        img.classList.add('nl-img-missing')
-      }
+      if (img.__key !== key) return
+      img.removeAttribute('src')
+      img.classList.add('nl-img-missing')
+      host.classList.add('is-missing')
+      const hint = document.createElement('span')
+      hint.className = 'nl-img-hint'
+      hint.setAttribute('contenteditable', 'false')
+      hint.textContent = '未找到图片：' + src
+      hint.title = src
+      host.appendChild(hint)
     })
 }
 
