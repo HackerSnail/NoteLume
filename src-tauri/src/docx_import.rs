@@ -806,21 +806,52 @@ fn omml_node_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
     }
 }
 
+/// 转义字面文本里的 LaTeX 特殊字符（数学模式下这些字符有语法含义或非法，来自 m:t 时均为字面）。
+/// 不转义 `+ - = ( ) , | < >` 等（它们在数学模式合法）。
+fn escape_math_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '#' | '%' | '&' | '_' | '{' | '}' | '$' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            '\\' => out.push_str("\\backslash "),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// 是否含 CJK / 全角字符（判定一个 run 是否为文本标签）。
+fn has_cjk(s: &str) -> bool {
+    s.chars().any(|c| {
+        matches!(c as u32,
+            0x2E80..=0x2FFF | 0x3000..=0x303F | 0x3400..=0x4DBF | 0x4E00..=0x9FFF
+            | 0xF900..=0xFAFF | 0xFF00..=0xFFEF)
+    })
+}
+
 /// m:r → LaTeX：取所有 m:t 文本拼接；依 rPr 的 nor/scr/sty 包基命令。
 fn omml_run_to_latex(n: roxmltree::Node) -> String {
     let rpr = mchild(n, "rPr");
     let nor = rpr.and_then(|x| mchild(x, "nor")).is_some();
     let sty = rpr.and_then(|x| mchild(x, "sty")).and_then(|s| mattr(s, "val").map(|v| v.to_string()));
     let scr = rpr.and_then(|x| mchild(x, "scr")).and_then(|s| mattr(s, "val").map(|v| v.to_string()));
-    let mut text = String::new();
+    let mut raw = String::new();
     for c in n.children() {
         if is_mel(c, "t") {
-            text.push_str(c.text().unwrap_or(""));
+            raw.push_str(c.text().unwrap_or(""));
         }
     }
-    let text = text.replace('$', "\\$");
+    // m:t 是字面文本：LaTeX 特殊字符必须转义，否则 KaTeX 报错（如 # 会断整个数学区间）。
+    let text = escape_math_text(&raw);
     if text.is_empty() {
         return String::new();
+    }
+    // 含 CJK 的 run 属于文本标签（如公式编号“#式(3.16)”），包 \text{} 避免“数学模式用 Unicode 文本”告警。
+    if has_cjk(&text) {
+        return format!("\\text{{{}}}", text);
     }
     if nor {
         format!("\\mathrm{{{}}}", text)
@@ -2335,5 +2366,17 @@ mod tests {
         assert_eq!(s.math, 1, "one oMath counted");
         assert!(w.iter().any(|x| x.code == "math"), "unknown construct warns");
         assert!(md.contains('x'), "content not dropped: {}", md);
+    }
+
+    #[test]
+    fn math_escapes_special_hash() {
+        // m:t 里的字面 # 必须转义为 \#（否则 KaTeX 断整个区间）
+        assert!(mpara(&om(&mr("a#b"))).contains(r#"$a\#b$"#));
+    }
+
+    #[test]
+    fn math_wraps_cjk_run_in_text() {
+        // 含中文的 run → \text{}（公式编号标签场景）
+        assert!(mpara(&om(&mr("式(3.16)"))).contains(r#"\text{式(3.16)}"#));
     }
 }

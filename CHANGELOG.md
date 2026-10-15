@@ -9,7 +9,7 @@
 
 ### Added
 
-* **docx→md 导入支持公式解析（OMML→LaTeX，批次 F 子项目②）**：Word 文档里的数学公式（OMML）此前被静默丢弃；现 `src-tauri/src/docx_import.rs` 递归映射为 Markdown 的 LaTeX 数学（行内 `$..$`、块级 `$$..$$`，产物可被编辑器 math tokenizer 原样读回），覆盖分数/上下标/根号/大运算符(∑∫∏)/定界符/矩阵(按定界符选 pmatrix 等)/重音/函数名/极限/方程组(cases)/上划线/花括号标注/盒框/数字体(\mathbb 等)；未覆盖构造降级为内容拼接 + `math` warning，绝不静默丢。新增 `DocxStats.math` 计数。坚持纯 Rust、零新依赖、无前端改动；命名空间感知访问避开 `m:r/m:t` 与 `w:r/w:t` 撞名坑。`cargo test` 94 passed（含 15 条公式黄金用例）。
+* **docx→md 导入支持公式解析（OMML→LaTeX，批次 F 子项目②）**：Word 文档里的数学公式（OMML）此前被静默丢弃；现 `src-tauri/src/docx_import.rs` 递归映射为 Markdown 的 LaTeX 数学（行内 `$..$`、块级 `$$..$$`，产物可被编辑器 math tokenizer 原样读回），覆盖分数/上下标/根号/大运算符(∑∫∏)/定界符/矩阵(按定界符选 pmatrix 等)/重音/函数名/极限/方程组(cases)/上划线/花括号标注/盒框/数字体(\mathbb 等)；未覆盖构造降级为内容拼接 + `math` warning，绝不静默丢。新增 `DocxStats.math` 计数。坚持纯 Rust、零新依赖、无前端改动；命名空间感知访问避开 `m:r/m:t` 与 `w:r/w:t` 撞名坑。`m:t` 字面文本中的 LaTeX 特殊字符（`# % & _ { } $`）转义、含中文的 run 包 `\text{}`（修：用真实论文回归时发现 `#式(3.16)` 等公式编号标签导致 KaTeX 报错、公式不渲染）。`cargo test` 96 passed（含 17 条公式黄金用例）。
 
 ### Fixed
 
