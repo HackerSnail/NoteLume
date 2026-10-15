@@ -48,6 +48,11 @@ export function ensureTempImportDir() {
   return invoke('ensure_temp_import_dir')
 }
 
+/** 把 temp 导入目录整树递归拷贝到目标目录（保留相对路径、覆写同名，不删源）——独立模式下 Ctrl+S「另存为」时使用 */
+export function relocateImport(fromRoot, toRoot) {
+  return invoke('relocate_import', { fromRoot, toRoot })
+}
+
 /** 另存为对话框（导出用，P1） */
 export async function pickSaveAs(defaultPath) {
   return await save({ defaultPath, title: '保存文件' })

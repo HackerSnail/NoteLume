@@ -1421,6 +1421,38 @@ pub fn ensure_temp_import_dir() -> Result<String, String> {
     Ok(dir.to_string_lossy().to_string())
 }
 
+/// 把「源目录」整棵树递归复制到「目标目录」（保留相对路径），已存在的目标文件覆写。
+/// 独立解析模式下 Ctrl+S「另存为」时使用：把系统 temp 一次性目录里的 .md + 附件图片 全部落到
+/// 用户选定的正式目录。**不删除源目录**（交系统 temp 自动回收；避免中途失败丢内容）。
+/// 目标不存在时按需创建。源必须存在（内部会 canonicalize，与 `docx_commit` 的 root 校验对称）。
+#[tauri::command]
+pub fn relocate_import(from_root: String, to_root: String) -> Result<(), String> {
+    let src = fs_canonicalize(&from_root)?;
+    let dst_raw = Path::new(&to_root);
+    if !dst_raw.exists() {
+        fs_create_dir_all(dst_raw)?;
+    }
+    let dst = fs_canonicalize(&dst_raw.to_string_lossy())?;
+    copy_tree(&src, &dst)
+}
+
+fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(src).map_err(|e| format!("读取目录失败 {}：{}", src.display(), e))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        let target = dst.join(entry.file_name());
+        if ft.is_dir() {
+            fs_create_dir_all(&target)?;
+            copy_tree(&entry.path(), &target)?;
+        } else if ft.is_file() {
+            std::fs::copy(&entry.path(), &target)
+                .map_err(|e| format!("复制失败 {}→{}：{}", entry.path().display(), target.display(), e))?;
+        }
+        // 符号链接等其他类型：忽略（temp 导入目录里不会出现）
+    }
+    Ok(())
+}
+
 // ==================== fs 薄封装（集中错误串，便于跨平台） ====================
 
 fn fs_read(p: &str) -> Result<Vec<u8>, String> {
@@ -1720,5 +1752,35 @@ mod tests {
     fn commit_rejects_path_escape() {
         let v = temp_vault("escape");
         assert!(docx_commit(commit_args(&v, "../evil.md", "x", vec![], HashMap::new())).is_err());
+    }
+
+    #[test]
+    fn relocate_import_copies_tree_into_target() {
+        // 模拟独立解析模式“另存为”：源 = temp 一次性目录（含 .md + 嵌套子目录下的图），
+        // 目标 = 用户选定的新目录。验证递归复制、保留相对路径、覆写已存在的目标。
+        let src = temp_vault("relocate_src");
+        let dst = temp_vault("relocate_dst");
+        std::fs::create_dir_all(src.join("附件").join("Doc")).unwrap();
+        std::fs::write(src.join("Doc.md"), b"# hi").unwrap();
+        std::fs::write(src.join("附件").join("Doc").join("a.png"), b"PNGDATA").unwrap();
+        // 预置同名目标文件，验证被覆写
+        std::fs::write(dst.join("Doc.md"), b"stale").unwrap();
+        relocate_import(src.display().to_string(), dst.display().to_string()).unwrap();
+        assert_eq!(std::fs::read_to_string(dst.join("Doc.md")).unwrap(), "# hi");
+        assert!(dst.join("附件").join("Doc").join("a.png").exists());
+        assert_eq!(std::fs::read(dst.join("附件").join("Doc").join("a.png")).unwrap(), b"PNGDATA");
+        // 不删源
+        assert!(src.join("Doc.md").exists());
+    }
+
+    #[test]
+    fn relocate_import_creates_missing_target_dir() {
+        // 目标不存在 → 应自动建目录（允许用户选一个新建路径）
+        let src = temp_vault("relocate2_src");
+        let base = temp_vault("relocate2_dstbase");
+        let dst = base.join("does-not-exist-yet");
+        std::fs::write(src.join("x.md"), b"x").unwrap();
+        relocate_import(src.display().to_string(), dst.display().to_string()).unwrap();
+        assert!(dst.join("x.md").exists());
     }
 }

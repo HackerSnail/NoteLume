@@ -38,6 +38,7 @@ import {
   docxPreview,
   docxCommit,
   ensureTempImportDir,
+  relocateImport,
   fileToBase64,
 } from './tauri-bridge.js'
 import { exportSite } from './site-export.js'
@@ -68,6 +69,7 @@ const exportMd = MarkdownIt('commonmark', { html: false }).enable(['table', 'str
 const state = {
   vaultRoot: null, // 知识库根（绝对路径）
   currentFile: null, // 当前文档库内相对路径
+  tempImportRoot: '', // 非空 = 当前 vaultRoot 来自 Word 导入的系统 temp 一次性目录（手动保存会升级为“另存为”）
   mode: 'md', // 'md' 编辑器 | 'canvas' 画布
   dirty: false,
   indexReady: false,
@@ -269,6 +271,7 @@ async function openFolder() {
     const root = await pickFolder()
     if (!root) return
     state.vaultRoot = root
+    state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
     const tree = await scanVault(root)
     renderTree(tree)
     setStatus('知识库已加载：' + root + '（索引构建中…）')
@@ -328,6 +331,7 @@ async function openSingleFile() {
     if (!abs) return
     const { dir, name } = splitAbs(abs)
     state.vaultRoot = dir
+    state.tempImportRoot = ''
     if (isCanvasPath(name)) {
       renderSingleFileTree(name)
       await openCanvas(name)
@@ -607,6 +611,7 @@ async function importWordFlow(sources, destDir = '', target = {}) {
       // 立即回显：独立模式先把 temp 一次性目录作为工作根打开（侧栏树列出全部导入篇、可点），再打开首篇
       if (!intoVault && tempRoot) {
         state.vaultRoot = tempRoot
+        state.tempImportRoot = tempRoot
         state.currentFile = null
         renderTree(await scanVault(tempRoot))
         startIndexPolling()
@@ -978,6 +983,7 @@ async function reopenRecent(entry) {
   if (!(await ensureSavedBeforeLeave())) return
   try {
     state.vaultRoot = entry.root
+    state.tempImportRoot = ''
     state.currentFile = null // 避免 openFile 的“同一相对路径”早退（跨库可能同名）
     const tree = await scanVault(entry.root)
     renderTree(tree)
@@ -1186,6 +1192,10 @@ async function saveCurrent(manual = true) {
     if (manual) setStatus('没有可保存的文档')
     return
   }
+  // 独立解析模式（temp 一次性目录）下的手动保存 → 升级为“另存为”，避免默认行为就是默默覆写 temp
+  if (manual && state.tempImportRoot && normVaultPath(state.vaultRoot) === normVaultPath(state.tempImportRoot)) {
+    return saveTempAsFormal()
+  }
   try {
     if (state.mode === 'canvas') {
       await canvasView.save()
@@ -1211,6 +1221,43 @@ async function saveCurrent(manual = true) {
   } catch (e) {
     if (manual) await messageDialog('保存失败：' + e)
     else console.warn('自动保存失败', e)
+  }
+}
+
+/**
+ * 独立解析模式下手动保存的“另存为”升级：先写一次 temp（保证即使取消弹框也不丢改动），
+ * 然后让用户选一个正式目录，把 temp 目录整棵树递归拷过去（包含同次导入的其它篇与图），
+ * 成功后把工作根切到新目录（退出“临时”态）。取消选目录 = 不丢数据，仅提示已存回临时。
+ */
+async function saveTempAsFormal() {
+  const tempRoot = state.tempImportRoot
+  try {
+    // 1) 先把当前编辑器内容回写到 temp，确保取消弹框时不丢修改
+    if (state.mode === 'canvas') {
+      await canvasView.save()
+    } else {
+      await writeMdFile(tempRoot, state.currentFile, editor.getMarkdown())
+      editor.markSaved()
+    }
+    // 2) 选目标目录
+    const target = await pickFolder()
+    if (!target) {
+      setStatus('已保存到临时目录（未选择保存位置）')
+      return
+    }
+    // 3) 递归拷贝整棵 temp → target（覆写同名，保留相对路径）
+    await relocateImport(tempRoot, target)
+    // 4) 切换工作根到新目录：同 rel 内容已存在，无需重开文件，只换 vaultRoot 标识
+    state.vaultRoot = target
+    state.tempImportRoot = ''
+    renderTree(await scanVault(target))
+    startIndexPolling()
+    if (pluginManager) pluginManager.reload()
+    if (gitPanel) gitPanel.refresh()
+    setStatus('已另存为：' + target)
+  } catch (e) {
+    await messageDialog('另存为失败：' + ((e && e.message) || e))
+    setStatus('另存为失败')
   }
 }
 
