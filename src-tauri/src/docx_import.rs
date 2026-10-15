@@ -21,6 +21,8 @@ use crate::{b64_decode, b64_encode, vault_join};
 // 无默认命名空间；rels 文件元素/属性走各自默认命名空间。故映射按**局部名**匹配即可（见下方 helper）。
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+// 数学（OMML）命名空间：document.xml 里 m: 前缀元素/属性属此。子项目② 公式解析用。
+const M: &str = "http://schemas.openxmlformats.org/officeDocument/2006/math";
 
 // ==================== 命令契约（serde camelCase，见 I spec §5） ====================
 
@@ -68,6 +70,7 @@ pub struct DocxStats {
     pub merged_tables: u64,
     pub footnotes: u64,
     pub dropped_textboxes: u64,
+    pub math: u64,
 }
 
 #[derive(Serialize)]
@@ -137,6 +140,34 @@ fn rattr<'a, 'input>(n: roxmltree::Node<'a, 'input>, name: &str) -> Option<&'a s
 /// 无命名空间属性（rels 的 Id/Type/Target 等）
 fn attr0<'a, 'input>(n: roxmltree::Node<'a, 'input>, name: &str) -> Option<&'a str> {
     n.attribute(name)
+}
+
+// ---- 命名空间感知 helper（数学解析专用；is_el 只比局部名，OMML 的 m:r/m:t 与 w:r/w:t 撞名，
+// 故数学节点必须走以下带命名空间判定的访问，绝不复用 is_el/child）----
+
+/// 元素属于命名空间 `ns` 且局部名 == `name`
+fn ns_is(n: roxmltree::Node, ns: &str, name: &str) -> bool {
+    n.is_element() && n.tag_name().name() == name && n.tag_name().namespace() == Some(ns)
+}
+
+/// OMML（m:）元素判定
+fn is_mel(n: roxmltree::Node, name: &str) -> bool {
+    ns_is(n, M, name)
+}
+
+/// 取第一个 m: 命名空间、指定局部名的直接子元素
+fn mchild<'a, 'input>(n: roxmltree::Node<'a, 'input>, name: &str) -> Option<roxmltree::Node<'a, 'input>> {
+    n.children().find(|c| is_mel(*c, name))
+}
+
+/// 所有 m: 命名空间、指定局部名的直接子元素（文档序）
+fn mchildren<'a, 'input>(n: roxmltree::Node<'a, 'input>, name: &str) -> Vec<roxmltree::Node<'a, 'input>> {
+    n.children().filter(|c| is_mel(*c, name)).collect()
+}
+
+/// m:val 之类带 m 前缀的属性
+fn mattr<'a, 'input>(n: roxmltree::Node<'a, 'input>, name: &str) -> Option<&'a str> {
+    n.attribute((M, name))
 }
 
 // ==================== 关系表 / 编号 / 样式 解析（纯） ====================
@@ -332,6 +363,7 @@ enum Block {
     ListItem { indent: u32, marker: String, text: String },
     Code(String),
     TableHtml(String),
+    Math(String),
 }
 
 fn compose(blocks: &[Block]) -> String {
@@ -355,6 +387,10 @@ fn compose(blocks: &[Block]) -> String {
             }
             Block::TableHtml(html) => {
                 parts.push(html.clone());
+                prev_list = false;
+            }
+            Block::Math(latex) => {
+                parts.push(format!("$$\n{}\n$$", latex.trim()));
                 prev_list = false;
             }
             Block::ListItem { indent, marker, text } => {
@@ -483,6 +519,22 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
         }
     }
 
+    // 块级公式：段落含 m:oMathPara 且无正文文本（w:t）→ 独立 $$..$$（置于等宽/列表前，
+    // 避开 para_all_runs_mono 把 m:r 误当 run）。
+    if let Some(omp) = mchild(p, "oMathPara") {
+        let has_text = p
+            .descendants()
+            .any(|d| ns_is(d, W, "t") && !d.text().unwrap_or("").trim().is_empty());
+        if !has_text {
+            let latex = omml_para_to_latex(omp, ctx);
+            if !latex.trim().is_empty() {
+                ctx.ordered.clear();
+                blocks.push(Block::Math(latex));
+                return;
+            }
+        }
+    }
+
     // 等宽样式段落 -> 代码行（启发式；与上一块 Code 合并）
     let monospace = style.map(|st| st.monospace).unwrap_or(false) || para_all_runs_mono(p, ctx);
     if monospace {
@@ -579,6 +631,363 @@ fn strip_markdown_for_code(s: &str) -> String {
     out
 }
 
+// ==================== 子项目②：OMML → LaTeX（数学解析，纯函数） ====================
+// Word 公式以 OMML（m: 命名空间）存于 document.xml。此处递归映射为 LaTeX。
+// 关键约束：OMML 的 m:r/m:t 与 Word 的 w:r/w:t 局部名相同，故一律走 is_mel/mchild/mchildren/mattr
+// 命名空间感知访问；绝不把数学节点交给通用 map_run/mergeable_run（它们按 w: 语义解释）。
+
+/// 顶层：把一个 m:oMath 的内容拼为行内 LaTeX（无裸换行）。每调用一次计一次 stats.math。
+fn omml_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    ctx.stats.math += 1;
+    collapse_ws(&omml_contents(n, ctx))
+}
+
+/// oMathPara 可含多个 oMath（多式）：逐个转 LaTeX，以换行分隔。
+fn omml_para_to_latex(omp: roxmltree::Node, ctx: &mut Ctx) -> String {
+    let maths = mchildren(omp, "oMath");
+    if maths.is_empty() {
+        return omml_contents(omp, ctx);
+    }
+    let parts: Vec<String> = maths.iter().map(|m| omml_to_latex(*m, ctx)).collect();
+    parts.join("\n")
+}
+
+/// 连接节点所有元素子节点（文档序）的 LaTeX —— 用于操作数槽与降级拼接。
+fn omml_contents(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    let mut s = String::new();
+    for c in n.children() {
+        if c.is_element() {
+            s.push_str(&omml_node_to_latex(c, ctx));
+        }
+    }
+    s
+}
+
+/// 取某操作数槽（可缺失）的内容 LaTeX。
+fn omml_slot(n: Option<roxmltree::Node>, ctx: &mut Ctx) -> String {
+    match n {
+        Some(x) => omml_contents(x, ctx),
+        None => String::new(),
+    }
+}
+
+/// 折叠连续空白/换行为单空格（行内数学不允许裸换行）。
+fn collapse_ws(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut last_ws = false;
+    for ch in s.chars() {
+        if ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r' {
+            if !last_ws {
+                out.push(' ');
+                last_ws = true;
+            }
+        } else {
+            out.push(ch);
+            last_ws = false;
+        }
+    }
+    out.trim().to_string()
+}
+
+/// 分派：已知 m: 构造映射为 LaTeX；未知 m: 容器降级为内容拼接 + warning；非 m:（属性/w:）忽略。
+fn omml_node_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    if !n.is_element() {
+        return String::new();
+    }
+    if n.tag_name().namespace() != Some(M) {
+        return String::new(); // 属性元素（w:rPr 等）不含数学内容
+    }
+    match n.tag_name().name() {
+        "r" => omml_run_to_latex(n),
+        "e" => omml_contents(n, ctx), // 独立成组（少见）
+        "f" => {
+            let num = omml_slot(mchild(n, "num"), ctx);
+            let den = omml_slot(mchild(n, "den"), ctx);
+            format!("\\frac{{{}}}{{{}}}", num, den)
+        }
+        "sSup" => {
+            let e = omml_slot(mchild(n, "e"), ctx);
+            let sup = omml_slot(mchild(n, "sup"), ctx);
+            format!("{{{}}}^{{{}}}", e, sup)
+        }
+        "sSub" => {
+            let e = omml_slot(mchild(n, "e"), ctx);
+            let sub = omml_slot(mchild(n, "sub"), ctx);
+            format!("{{{}}}_{{{}}}", e, sub)
+        }
+        "sSubSup" => {
+            let e = omml_slot(mchild(n, "e"), ctx);
+            let sub = omml_slot(mchild(n, "sub"), ctx);
+            let sup = omml_slot(mchild(n, "sup"), ctx);
+            format!("{{{}}}_{{{}}}^{{{}}}", e, sub, sup)
+        }
+        "rad" => {
+            let hide = mchild(n, "radPr")
+                .and_then(|pr| mchild(pr, "degHide"))
+                .map(|d| !matches!(mattr(d, "val").unwrap_or("1"), "0" | "false"))
+                .unwrap_or(false);
+            let e = omml_slot(mchild(n, "e"), ctx);
+            if hide {
+                format!("\\sqrt{{{}}}", e)
+            } else {
+                let deg = omml_slot(mchild(n, "deg"), ctx);
+                format!("\\sqrt[{}]{{{}}}", deg, e)
+            }
+        }
+        "nary" => omml_nary_to_latex(n, ctx),
+        "d" => omml_delim_to_latex(n, ctx),
+        "acc" => {
+            let chr = mchild(n, "accPr")
+                .and_then(|pr| mchild(pr, "chr"))
+                .and_then(|c| mattr(c, "val").map(|s| s.to_string()))
+                .unwrap_or_else(|| "\u{302}".to_string());
+            let e = omml_slot(mchild(n, "e"), ctx);
+            match accent_cmd(&chr) {
+                Some(cmd) => format!("{}{{{}}}", cmd, e),
+                None => {
+                    ctx.warn("math", &format!("未知重音字符 {:?}，已原样前置", chr), "acc");
+                    format!("{}{}", chr, e)
+                }
+            }
+        }
+        "func" => {
+            let fname = omml_slot(mchild(n, "fName"), ctx);
+            let e = omml_slot(mchild(n, "e"), ctx);
+            format!("{} {}", omml_func_name(&fname), e)
+        }
+        "limLow" => {
+            let e = omml_slot(mchild(n, "e"), ctx);
+            let lim = omml_slot(mchild(n, "lim"), ctx);
+            if e.trim() == "lim" {
+                format!("\\lim_{{{}}}", lim)
+            } else {
+                format!("\\underset{{{}}}{{{}}}", lim, e)
+            }
+        }
+        "limUpp" => {
+            let e = omml_slot(mchild(n, "e"), ctx);
+            let lim = omml_slot(mchild(n, "lim"), ctx);
+            format!("\\overset{{{}}}{{{}}}", lim, e)
+        }
+        "m" => format!("\\begin{{matrix}}{}\\end{{matrix}}", omml_matrix_body(n, ctx)),
+        "eqArr" => format!("\\begin{{cases}}{}\\end{{cases}}", omml_eqarr_body(n, ctx)),
+        "bar" => {
+            let pos = mchild(n, "barPr")
+                .and_then(|pr| mchild(pr, "pos"))
+                .and_then(|p| mattr(p, "val").map(|s| s.to_string()))
+                .unwrap_or_else(|| "barOver".to_string());
+            let e = omml_slot(mchild(n, "e"), ctx);
+            if pos == "barUnder" {
+                format!("\\underline{{{}}}", e)
+            } else {
+                format!("\\overline{{{}}}", e)
+            }
+        }
+        "groupChr" => {
+            let chr = mchild(n, "groupChrPr")
+                .and_then(|pr| mchild(pr, "chr"))
+                .and_then(|c| mattr(c, "val").map(|s| s.to_string()))
+                .unwrap_or_default();
+            let e = omml_slot(mchild(n, "e"), ctx);
+            if chr.chars().next() == Some('\u{23DF}') {
+                format!("\\underbrace{{{}}}", e)
+            } else {
+                format!("\\overbrace{{{}}}", e)
+            }
+        }
+        "borderBox" | "box" => {
+            let e = omml_slot(mchild(n, "e"), ctx);
+            format!("\\boxed{{{}}}", e)
+        }
+        other => {
+            ctx.warn("math", &format!("OMML 构造 m:{} 未支持，已降级为内容拼接", other), other);
+            omml_contents(n, ctx)
+        }
+    }
+}
+
+/// m:r → LaTeX：取所有 m:t 文本拼接；依 rPr 的 nor/scr/sty 包基命令。
+fn omml_run_to_latex(n: roxmltree::Node) -> String {
+    let rpr = mchild(n, "rPr");
+    let nor = rpr.and_then(|x| mchild(x, "nor")).is_some();
+    let sty = rpr.and_then(|x| mchild(x, "sty")).and_then(|s| mattr(s, "val").map(|v| v.to_string()));
+    let scr = rpr.and_then(|x| mchild(x, "scr")).and_then(|s| mattr(s, "val").map(|v| v.to_string()));
+    let mut text = String::new();
+    for c in n.children() {
+        if is_mel(c, "t") {
+            text.push_str(c.text().unwrap_or(""));
+        }
+    }
+    let text = text.replace('$', "\\$");
+    if text.is_empty() {
+        return String::new();
+    }
+    if nor {
+        format!("\\mathrm{{{}}}", text)
+    } else if let Some(s) = scr {
+        match s.as_str() {
+            "doubleStruck" => format!("\\mathbb{{{}}}", text),
+            "script" => format!("\\mathcal{{{}}}", text),
+            "fraktur" => format!("\\mathfrak{{{}}}", text),
+            _ => text,
+        }
+    } else if sty.as_deref() == Some("b") {
+        format!("\\mathbf{{{}}}", text)
+    } else {
+        text
+    }
+}
+
+/// m:nary：大运算符（∑∫∏…）+ 可选上下限（hideSub/hideSup 省略）。
+fn omml_nary_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    let pr = mchild(n, "naryPr");
+    let chr = pr
+        .and_then(|p| mchild(p, "chr"))
+        .and_then(|c| mattr(c, "val").map(|s| s.to_string()))
+        .unwrap_or_else(|| "\u{222B}".to_string());
+    let hide = |nm: &str| {
+        pr.and_then(|p| mchild(p, nm))
+            .map(|d| !matches!(mattr(d, "val").unwrap_or("1"), "0" | "false"))
+            .unwrap_or(false)
+    };
+    let op = nary_cmd(&chr);
+    let sub = omml_slot(mchild(n, "sub"), ctx);
+    let sup = omml_slot(mchild(n, "sup"), ctx);
+    let e = omml_slot(mchild(n, "e"), ctx);
+    let mut s = op;
+    if !hide("hideSub") && !sub.is_empty() {
+        s.push_str(&format!("_{{{}}}", sub));
+    }
+    if !hide("hideSup") && !sup.is_empty() {
+        s.push_str(&format!("^{{{}}}", sup));
+    }
+    s.push(' ');
+    s.push_str(&e);
+    s
+}
+
+/// m:d：定界符；单 e 内恰一个 m:m → 按定界符选矩阵环境；否则 \left..\right。
+fn omml_delim_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    let pr = mchild(n, "dPr");
+    let chr_of = |nm: &str, def: &str| {
+        pr.and_then(|p| mchild(p, nm))
+            .and_then(|c| mattr(c, "val").map(|s| s.to_string()))
+            .unwrap_or_else(|| def.to_string())
+    };
+    let beg = chr_of("begChr", "(");
+    let end = chr_of("endChr", ")");
+    let sep = chr_of("sepChr", ",");
+    let es = mchildren(n, "e");
+    if es.len() == 1 {
+        let inner: Vec<_> = es[0].children().filter(|c| c.is_element()).collect();
+        if inner.len() == 1 && is_mel(inner[0], "m") {
+            let env = matrix_env(&beg, &end);
+            let body = omml_matrix_body(inner[0], ctx);
+            return format!("\\begin{{{}}}{}\\end{{{}}}", env, body, env);
+        }
+    }
+    let parts: Vec<String> = es.iter().map(|e| omml_contents(*e, ctx)).collect();
+    let inner = parts.join(&format!("{} ", sep));
+    format!("\\left{} {} \\right{}", delim_latex(&beg), inner, delim_latex(&end))
+}
+
+fn omml_matrix_body(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    let rows = mchildren(n, "mr");
+    let rl: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            let cells: Vec<String> = mchildren(*r, "e").iter().map(|c| omml_contents(*c, ctx)).collect();
+            cells.join(" & ")
+        })
+        .collect();
+    format!(" {} ", rl.join(" \\\\ "))
+}
+
+fn omml_eqarr_body(n: roxmltree::Node, ctx: &mut Ctx) -> String {
+    let rl: Vec<String> = mchildren(n, "e").iter().map(|e| omml_contents(*e, ctx)).collect();
+    format!(" {} ", rl.join(" \\\\ "))
+}
+
+// ---- 字符/名称映射 ----
+
+fn nary_cmd(chr: &str) -> String {
+    let s = match chr {
+        "\u{2211}" => "\\sum",
+        "\u{220F}" => "\\prod",
+        "\u{2210}" => "\\coprod",
+        "\u{222B}" => "\\int",
+        "\u{222C}" => "\\iint",
+        "\u{222D}" => "\\iiint",
+        "\u{222E}" => "\\oint",
+        "\u{22C0}" => "\\bigwedge",
+        "\u{22C1}" => "\\bigvee",
+        "\u{22C2}" => "\\bigcap",
+        "\u{22C3}" => "\\bigcup",
+        "\u{2A01}" => "\\bigoplus",
+        "\u{2A02}" => "\\bigotimes",
+        "\u{2A04}" => "\\biguplus",
+        _ => "",
+    };
+    if s.is_empty() {
+        chr.to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+fn accent_cmd(chr: &str) -> Option<&'static str> {
+    match chr {
+        "\u{302}" => Some("\\hat"),
+        "\u{303}" => Some("\\tilde"),
+        "\u{304}" | "\u{305}" | "\u{203E}" | "\u{FFE}" => Some("\\bar"),
+        "\u{2D9}" => Some("\\dot"),
+        "\u{A8}" | "\u{20DC}" => Some("\\ddot"),
+        "\u{20D7}" | "\u{2192}" => Some("\\vec"),
+        _ => None,
+    }
+}
+
+fn delim_latex(c: &str) -> String {
+    match c {
+        "" => ".".to_string(),
+        "(" | ")" | "[" | "]" | "|" => c.to_string(),
+        "{" => "\\{".to_string(),
+        "}" => "\\}".to_string(),
+        "\u{27E8}" => "\\langle".to_string(),
+        "\u{27E9}" => "\\rangle".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn matrix_env(beg: &str, end: &str) -> &'static str {
+    match (beg, end) {
+        ("(", ")") => "pmatrix",
+        ("[", "]") => "bmatrix",
+        ("{", "}") => "Bmatrix",
+        ("|", "|") => "vmatrix",
+        ("\u{27E8}", "\u{27E9}") => "Vmatrix",
+        _ => "matrix",
+    }
+}
+
+fn omml_func_name(raw: &str) -> String {
+    let t = raw.trim();
+    let cmd = match t {
+        "sin" => "\\sin", "cos" => "\\cos", "tan" => "\\tan", "cot" => "\\cot",
+        "sec" => "\\sec", "csc" => "\\csc", "arcsin" => "\\arcsin", "arccos" => "\\arccos",
+        "arctan" => "\\arctan", "sinh" => "\\sinh", "cosh" => "\\cosh", "tanh" => "\\tanh",
+        "log" => "\\log", "ln" => "\\ln", "lim" => "\\lim", "limsup" => "\\limsup",
+        "liminf" => "\\liminf", "max" => "\\max", "min" => "\\min", "sup" => "\\sup",
+        "inf" => "\\inf", "det" => "\\det", "dim" => "\\dim", "gcd" => "\\gcd", "Pr" => "\\Pr",
+        _ => "",
+    };
+    if cmd.is_empty() {
+        format!("\\mathrm{{{}}}", t)
+    } else {
+        cmd.to_string()
+    }
+}
+
 /// 段落内联映射：按文档序处理 runs / hyperlink / fldSimple / ins；返回 markdown 行内串
 fn map_inline(p: roxmltree::Node, ctx: &mut Ctx) -> String {
     let mut out = String::new();
@@ -642,6 +1051,21 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
             flush_pending(&mut pending, out);
             if let Some(c) = child(node, "sdtContent") {
                 map_inline_children(c, ctx, out);
+            }
+        } else if is_mel(node, "oMath") {
+            flush_pending(&mut pending, out);
+            out.push('$');
+            out.push_str(&omml_to_latex(node, ctx));
+            out.push('$');
+        } else if is_mel(node, "oMathPara") {
+            flush_pending(&mut pending, out);
+            // 罕见：显示式与正文混排（纯式已由 push_paragraph 拦为块级）→ 内联为 $..$。
+            let latex = omml_para_to_latex(node, ctx);
+            if !latex.trim().is_empty() {
+                out.push('$');
+                out.push_str(&collapse_ws(&latex));
+                out.push('$');
+                ctx.warn("math", "显示公式与正文混排，已内联为 $..$", "oMathPara");
             }
         } else if is_el(node, "del") {
             flush_pending(&mut pending, out);
@@ -1483,7 +1907,7 @@ mod tests {
     /// 把正文 body 片段包成完整 document.xml
     fn doc(body: &str) -> String {
         format!(
-            r#"<w:document xmlns:w="{WNS}" xmlns:r="{RNS}"><w:body>{body}</w:body></w:document>"#
+            r#"<w:document xmlns:w="{WNS}" xmlns:r="{RNS}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>{body}</w:body></w:document>"#
         )
     }
 
@@ -1782,5 +2206,134 @@ mod tests {
         std::fs::write(src.join("x.md"), b"x").unwrap();
         relocate_import(src.display().to_string(), dst.display().to_string()).unwrap();
         assert!(dst.join("x.md").exists());
+    }
+
+    // ==================== 子项目②：OMML → LaTeX 公式解析（黄金用例） ====================
+
+    fn mr(t: &str) -> String {
+        format!("<m:r><m:t>{}</m:t></m:r>", t)
+    }
+    // 操作数槽：<m:name>inner</m:name>（e/num/den/sub/sup/deg/lim/fName 等）
+    fn sl(name: &str, inner: &str) -> String {
+        format!("<m:{0}>{1}</m:{0}>", name, inner)
+    }
+    fn om(inner: &str) -> String {
+        format!("<m:oMath>{}</m:oMath>", inner)
+    }
+    fn mpara(inner: &str) -> String {
+        map(&format!("<w:p>{}</w:p>", inner)).0
+    }
+
+    #[test]
+    fn math_fraction_inline() {
+        let f = format!("<m:f>{}</m:f>", sl("num", &mr("1")) + &sl("den", &mr("2")));
+        assert!(mpara(&om(&f)).contains(r#"$\frac{1}{2}$"#));
+    }
+
+    #[test]
+    fn math_scripts() {
+        assert!(mpara(&om(&format!("<m:sSup>{}</m:sSup>", sl("e", &mr("x")) + &sl("sup", &mr("2"))))).contains(r#"{x}^{2}"#));
+        assert!(mpara(&om(&format!("<m:sSub>{}</m:sSub>", sl("e", &mr("x")) + &sl("sub", &mr("i"))))).contains(r#"{x}_{i}"#));
+        let ss = format!("<m:sSubSup>{}{}{}</m:sSubSup>", sl("e", &mr("x")), sl("sub", &mr("i")), sl("sup", &mr("2")));
+        assert!(mpara(&om(&ss)).contains(r#"{x}_{i}^{2}"#));
+    }
+
+    #[test]
+    fn math_radical_sqrt_and_nthroot() {
+        let sq = format!("<m:rad><m:radPr><m:degHide m:val=\"1\"/></m:radPr>{}{}</m:rad>", sl("deg", ""), sl("e", &mr("2")));
+        assert!(mpara(&om(&sq)).contains(r#"\sqrt{2}"#));
+        let nr = format!("<m:rad><m:radPr/>{}{}</m:rad>", sl("deg", &mr("3")), sl("e", &mr("x")));
+        assert!(mpara(&om(&nr)).contains(r#"\sqrt[3]{x}"#));
+    }
+
+    #[test]
+    fn math_nary_sum_with_limits() {
+        let n = format!("<m:nary><m:naryPr><m:chr m:val=\"\u{2211}\"/></m:naryPr>{}{}{}</m:nary>",
+            sl("sub", &mr("i=1")), sl("sup", &mr("n")), sl("e", &mr("i")));
+        assert!(mpara(&om(&n)).contains(r#"\sum_{i=1}^{n} i"#));
+    }
+
+    #[test]
+    fn math_nary_integral_hides_upper() {
+        let n = format!("<m:nary><m:naryPr><m:chr m:val=\"\u{222B}\"/><m:hideSup/></m:naryPr>{}{}{}</m:nary>",
+            sl("sub", &mr("0")), sl("sup", &mr("1")), sl("e", &mr("x")));
+        let md = mpara(&om(&n));
+        assert!(md.contains(r#"\int_{0} x"#), "got: {}", md);
+        assert!(!md.contains("^{"), "upper must be hidden: {}", md);
+    }
+
+    #[test]
+    fn math_delimiter_paren() {
+        let d = format!("<m:d><m:dPr><m:begChr m:val=\"(\"/><m:endChr m:val=\")\"/></m:dPr>{}</m:d>", sl("e", &mr("a+b")));
+        let md = mpara(&om(&d));
+        assert!(md.contains(r#"\left("#) && md.contains(r#"\right)"#) && md.contains("a+b"), "got: {}", md);
+    }
+
+    #[test]
+    fn math_matrix_via_delimiter_picks_pmatrix() {
+        let mrow = |cells: &[&str]| format!("<m:mr>{}</m:mr>", cells.iter().map(|c| sl("e", &mr(c))).collect::<Vec<_>>().join(""));
+        let m = format!("<m:m>{}{}</m:m>", mrow(&["a", "b"]), mrow(&["c", "d"]));
+        let d = format!("<m:d><m:dPr><m:begChr m:val=\"(\"/><m:endChr m:val=\")\"/></m:dPr>{}</m:d>", sl("e", &m));
+        let md = mpara(&om(&d));
+        assert!(md.contains("pmatrix") && md.contains("a & b") && md.contains("c & d"), "got: {}", md);
+    }
+
+    #[test]
+    fn math_accents_default_hat_and_vec() {
+        assert!(mpara(&om(&format!("<m:acc>{}</m:acc>", sl("e", &mr("a"))))).contains(r#"\hat{a}"#));
+        let v = format!("<m:acc><m:accPr><m:chr m:val=\"\u{20D7}\"/></m:accPr>{}</m:acc>", sl("e", &mr("b")));
+        assert!(mpara(&om(&v)).contains(r#"\vec{b}"#));
+    }
+
+    #[test]
+    fn math_func_name() {
+        let fu = format!("<m:func>{}{}</m:func>", sl("fName", &mr("sin")), sl("e", &mr("x")));
+        assert!(mpara(&om(&fu)).contains(r#"\sin x"#));
+    }
+
+    #[test]
+    fn math_limlow_becomes_lim() {
+        let l = format!("<m:limLow>{}{}</m:limLow>", sl("e", &mr("lim")), sl("lim", &mr("x")));
+        assert!(mpara(&om(&l)).contains(r#"\lim_{x}"#));
+    }
+
+    #[test]
+    fn math_eqarr_becomes_cases() {
+        let e = format!("<m:eqArr>{}{}</m:eqArr>", sl("e", &mr("a")), sl("e", &mr("b")));
+        let md = mpara(&om(&e));
+        assert!(md.contains(r#"\begin{cases}"#) && md.contains(r#"\end{cases}"#) && md.contains("a") && md.contains("b"), "got: {}", md);
+    }
+
+    #[test]
+    fn math_bar_groupchr_box_and_scr() {
+        let bar = format!("<m:bar><m:barPr><m:pos m:val=\"barOver\"/></m:barPr>{}</m:bar>", sl("e", &mr("x")));
+        assert!(mpara(&om(&bar)).contains(r#"\overline{x}"#));
+        let gc = format!("<m:groupChr><m:groupChrPr><m:chr m:val=\"\u{23DF}\"/></m:groupChrPr>{}</m:groupChr>", sl("e", &mr("y")));
+        assert!(mpara(&om(&gc)).contains(r#"\underbrace{y}"#));
+        assert!(mpara(&om(&format!("<m:borderBox>{}</m:borderBox>", sl("e", &mr("z"))))).contains(r#"\boxed{z}"#));
+        let sc = "<m:r><m:rPr><m:scr m:val=\"doubleStruck\"/></m:rPr><m:t>R</m:t></m:r>";
+        assert!(mpara(&om(sc)).contains(r#"\mathbb{R}"#));
+    }
+
+    #[test]
+    fn math_block_display_from_omathtext_para() {
+        let md = map(&format!("<w:p><m:oMathPara>{}</m:oMathPara></w:p>", om(&mr("E")))).0;
+        assert!(md.contains("$$\nE\n$$"), "got: {}", md);
+    }
+
+    #[test]
+    fn math_inline_among_text() {
+        let body = format!("<w:p><w:r><w:t>设 </w:t></w:r>{}<w:r><w:t> 则</w:t></w:r></w:p>",
+            om(&format!("<m:f>{}{}</m:f>", sl("num", &mr("a")), sl("den", &mr("b")))));
+        let md = map(&body).0;
+        assert!(md.contains(r#"$\frac{a}{b}$"#), "got: {}", md);
+    }
+
+    #[test]
+    fn math_stats_counted_and_unknown_degrades_with_warning() {
+        let (md, w, s) = map(&format!("<w:p>{}</w:p>", om(&format!("<m:dne>{}</m:dne>", mr("x")))));
+        assert_eq!(s.math, 1, "one oMath counted");
+        assert!(w.iter().any(|x| x.code == "math"), "unknown construct warns");
+        assert!(md.contains('x'), "content not dropped: {}", md);
     }
 }

@@ -7,6 +7,10 @@
 
 ## [Unreleased](https://gitee.com/hackerSnail/note-lume/compare/master...dev)
 
+### Added
+
+* **docx→md 导入支持公式解析（OMML→LaTeX，批次 F 子项目②）**：Word 文档里的数学公式（OMML）此前被静默丢弃；现 `src-tauri/src/docx_import.rs` 递归映射为 Markdown 的 LaTeX 数学（行内 `$..$`、块级 `$$..$$`，产物可被编辑器 math tokenizer 原样读回），覆盖分数/上下标/根号/大运算符(∑∫∏)/定界符/矩阵(按定界符选 pmatrix 等)/重音/函数名/极限/方程组(cases)/上划线/花括号标注/盒框/数字体(\mathbb 等)；未覆盖构造降级为内容拼接 + `math` warning，绝不静默丢。新增 `DocxStats.math` 计数。坚持纯 Rust、零新依赖、无前端改动；命名空间感知访问避开 `m:r/m:t` 与 `w:r/w:t` 撞名坑。`cargo test` 94 passed（含 15 条公式黄金用例）。
+
 ### Fixed
 
 * **窄栏里按钮文案逐字竖排、长路径撑破栏宽（一类问题一次收净，纯前端、无 Rust、刷新即生效）**：起于检查器「插件」头行（按钮与 `.notelume-plugins/<id>/manifest.json` 同行争宽，按钮被挤成一字一行、提示超出栏宽被裁），排查后确认根因是同一条：图标+文案的按钮/标签都是 flex 子项，默认 `min-width:auto` 可被压到 min-content（CJK 逐字断行），而同行的不可断长 token（路径 / URL / 命令名）反过来把行撑破栏宽。
