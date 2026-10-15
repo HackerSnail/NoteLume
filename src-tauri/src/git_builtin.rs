@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 /// - `ssh://[user@]host[:port]/path`
 /// - scp 式 `[user@]host:path`（无 scheme）
 /// 返回 None 表示 URL 空或不可解析。host 全小写化（SSH/HTTPS 域名大小写不敏感）。
+#[allow(dead_code)] // §4 纯逻辑 helper：生产 fetch/pull 走 git2 `certificate_check` 回调直取 hostname，本函数仅留作单测与后续复用
 pub fn parse_url_host(url: &str) -> Option<String> {
     let s = url.trim();
     if s.is_empty() {
