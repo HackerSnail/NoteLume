@@ -72,8 +72,6 @@ function buildHighlight(CM) {
     { tag: tags.link, color: '#98c379', textDecoration: 'underline' },
     { tag: tags.url, color: '#56b6c2' },
     { tag: tags.monospace, color: '#56b6c2' },
-    // 代码块内容（未接入子语言高亮时回退到此色）
-    { tag: tags.content, color: '#abb2bf' },
     // 引用：斜体蓝灰
     { tag: tags.quote, color: '#98c379', fontStyle: 'italic' },
     // 列表符号：Typora 风鲜亮黄
