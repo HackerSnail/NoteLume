@@ -82,6 +82,7 @@ const state = {
     backupTimer: null,
     lastBackupAt: 0,
   },
+  outlineMode: localStorage.getItem('nl-outline-mode') || '2', // 'all' | 'hide' | '1'..'6'（默认展开到 H2）
 }
 
 // 自动保存策略：停手 2s 触发写盘；每 120s 触发一次带时间戳的备份
@@ -1319,21 +1320,166 @@ async function onOpenWiki(name) {
 }
 
 // —— 大纲 / 标签面板 ——
+function getOutlineParents(outline) {
+  // 对每个标题回看前面最近的“严格小一级”的标题 = 父项索引（-1 = 顶级）
+  const parents = []
+  const stack = []
+  for (let i = 0; i < outline.length; i++) {
+    const lvl = outline[i].level
+    while (stack.length && outline[stack[stack.length - 1]].level >= lvl) stack.pop()
+    parents.push(stack.length ? stack[stack.length - 1] : -1)
+    stack.push(i)
+  }
+  return parents
+}
+
+function getOutlineChildren(outline) {
+  const parents = getOutlineParents(outline)
+  const children = outline.map(() => [])
+  for (let i = 0; i < outline.length; i++) {
+    if (parents[i] >= 0) children[parents[i]].push(i)
+  }
+  return { parents, children }
+}
+
+function isOutlineLevelInRange(level, mode) {
+  // 基座语义：'all' → 全量可见；'hide' → 仅 H1；'1'..'6' → H1..H-depth 可见
+  // 它仅控制“层级范围”，不处理“祖先开关”（后者由 isExpanded 手写叠加）
+  if (mode === 'all') return true
+  if (mode === 'hide') return level === 1
+  const depth = parseInt(mode, 10)
+  if (!Number.isFinite(depth)) return true
+  return level <= depth
+}
+
+// 手工折叠覆盖：按当前文件为键、内存 nodeId (level::text) 布尔。顶栏 mode = 基座，手工 toggle = 盖层；切文件自动沿用。同一 node 重复 → 取最后一次。
+// 新节点（本次 outline 里不存在于历史手工集）自动 fall back 到 mode。
+const outlineManualMap = new Map()
+
+function renderOutlineToolbar(ol, setMode) {
+  const bar = document.createElement('div')
+  bar.className = 'outline-toolbar'
+  const btns = [
+    { key: 'all', label: '全部展开', title: '保留全平铺（旧行为）' },
+    { key: 'hide', label: '全部折叠', title: '只看 H1' },
+    { key: '1', label: 'H1', title: '展开到 H1' },
+    { key: '2', label: 'H2', title: '展开到 H2' },
+    { key: '3', label: 'H3', title: '展开到 H3' },
+  ]
+  for (const b of btns) {
+    const el = document.createElement('button')
+    el.type = 'button'
+    el.textContent = b.label
+    el.title = b.title
+    el.dataset.mode = b.key
+    el.addEventListener('click', () => setMode(b.key))
+    bar.appendChild(el)
+  }
+  ol.appendChild(bar)
+  return bar
+}
+
 function onMetaChange({ outline, tags }) {
   const ol = els.outline
   ol.innerHTML = ''
-  outline.forEach((item) => {
-    const a = document.createElement('a')
-    a.className = 'outline-item level-' + item.level
-    a.textContent = item.text || '（空标题）'
-    a.href = '#'
-    a.addEventListener('click', (e) => {
-      e.preventDefault()
-      editor.jumpToPos(item.pos)
-    })
-    ol.appendChild(a)
-  })
-  if (!outline.length) ol.innerHTML = '<div class="muted">暂无标题</div>'
+
+  // -- 工具条（任何一条都写 localStorage，下一句重新进入 onMetaChange 使用新 mode）
+  // 顶栏 = 绝对控制：“全部展开/折叠/H1/H2/H3”重新拉平基座，同时清除当前文件的手工
+  // 折叠覆盖，避免“手工已收起”与“全部展开”意图打架。
+  const setMode = (m) => {
+    state.outlineMode = m
+    try { localStorage.setItem('nl-outline-mode', m) } catch (e) {}
+    outlineManualMap.delete(state.currentFile)
+    onMetaChange({ outline, tags })
+  }
+  const bar = renderOutlineToolbar(ol, setMode)
+
+  // -- 树化列表
+  const listEl = document.createElement('div')
+  listEl.className = 'outline-list'
+  ol.appendChild(listEl)
+
+  if (!outline.length) {
+    const empty = document.createElement('div')
+    empty.className = 'muted'
+    empty.textContent = '暂无标题'
+    listEl.appendChild(empty)
+  } else {
+    const { parents, children } = getOutlineChildren(outline)
+    // 基座：以 mode 为准初始化可见与展开；手工 toggle 作为覆盖层写入 outlineManualMap
+    const mode = state.outlineMode
+    const nodeKey = (idx) => outline[idx].level + '::' + (outline[idx].text || '')
+    const manual = outlineManualMap.get(state.currentFile)
+    const inDepthRange = (idx) => isOutlineLevelInRange(outline[idx].level, mode)
+    const isExpanded = (idx) => {
+      if (!children[idx].length) return false
+      const k = nodeKey(idx)
+      if (manual && manual.has(k)) return manual.get(k)
+      return inDepthRange(idx)
+    }
+    const rowEls = []
+    const toggleEls = []
+    const recomputeVisibility = () => {
+      for (let i = 0; i < outline.length; i++) {
+        // 自身可见 = 基座范围内 且 所有祖先都展开
+        let vis = inDepthRange(i)
+        if (vis) {
+          let p = parents[i]
+          while (p >= 0) {
+            if (!isExpanded(p)) { vis = false; break }
+            p = parents[p]
+          }
+        }
+        rowEls[i].classList.toggle('hidden', !vis)
+        const t = toggleEls[i]
+        if (t) t.textContent = isExpanded(i) ? '▾' : '▸'
+      }
+    }
+    for (let i = 0; i < outline.length; i++) {
+      const item = outline[i]
+      const row = document.createElement('div')
+      row.className = 'outline-row level-' + item.level
+      rowEls.push(row)
+      const hasKids = children[i].length > 0
+      if (hasKids) {
+        const t = document.createElement('span')
+        t.className = 'outline-toggle'
+        t.textContent = '▸'
+        t.title = '展开/折叠下级'
+        t.addEventListener('click', (e) => {
+          e.stopPropagation()
+          // 手工 toggle 仅写入当前文件的覆盖表，不改基座 mode（顶栏高亮不变）
+          const k = nodeKey(i)
+          if (!outlineManualMap.has(state.currentFile)) outlineManualMap.set(state.currentFile, new Map())
+          const m = outlineManualMap.get(state.currentFile)
+          m.set(k, !isExpanded(i))
+          recomputeVisibility()
+        })
+        toggleEls.push(t)
+        row.appendChild(t)
+      } else {
+        const s = document.createElement('span')
+        s.className = 'outline-toggle-spacer'
+        toggleEls.push(null)
+        row.appendChild(s)
+      }
+      const a = document.createElement('a')
+      a.className = 'outline-item level-' + item.level
+      a.textContent = item.text || '（空标题）'
+      a.href = '#'
+      a.addEventListener('click', (e) => {
+        e.preventDefault()
+        editor.jumpToPos(item.pos)
+      })
+      row.appendChild(a)
+      listEl.appendChild(row)
+    }
+    // 初始可见性 + 顶栏高亮
+    recomputeVisibility()
+    for (const b of bar.querySelectorAll('button')) {
+      b.classList.toggle('active', b.dataset.mode === state.outlineMode)
+    }
+  }
 
   const tw = els.tags
   tw.innerHTML = ''

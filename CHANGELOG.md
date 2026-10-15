@@ -53,6 +53,7 @@
 
 ### Changed
 
+- **大纲面板树化折叠（受 Typora 同侧栏反馈驱动）**：长文档里平铺的 H2 过多、看不到大标题。把右侧“大纲”面板改为可折叠树——有子标题的条目内挂 ▸/▾，顶栏提供「全部展开 / 全部折叠 / H1 / H2 / H3」五个基座按钮（默认 H2）。① 基座 `state.outlineMode`（`'all' | 'hide' | '1'..'6'`）存 `localStorage['nl-outline-mode']`，重启沿用。② 手工 toggle 不反推基座（避免“混合展开”基座下无法回中），而是写入内存 `outlineManualMap: Map<file, Map<level::text, boolean>>`——同一文件内持久，切文件自动沿用；顶栏任一键 → 当前文件的 `outlineManualMap` 清零（顶栏 = 绝对控制，避免“手工已收起”与“全部展开”意图打架）。③ 可见性 = 基座范围 (`isOutlineLevelInRange(level, mode)`) 且 所有祖先展开 (`isExpanded(p)`，手工优先 → 基座兵底)。④ 树化：行包含 `.outline-row` = `.outline-toggle` (▸/▾) 或 `.outline-toggle-spacer` + `.outline-item`（保留旧 `level-N` 缩进样式与 `editor.jumpToPos` 导航）；`.outline-toggle` 14px 固定宽与层级缩进无干扰。⑤ 无子项不挂 toggle，无开闭可验。不依赖 Rust、前端刷新即生效；`npm run build` 2329 modules 无错（同基线）
 - **工具条改单行 + 折叠「更多」菜单**：随批次 A/B/源码模式新增，工具条堆到 12 个带文字的按钮，窗口不够宽时 flex 把中文压成竖排换行、挤成一团。改为**常显高频**（打开文件 / 打开知识库 / 保存 / 今日 / 源码）+ 一个 `▾ 更多` 下拉（复用已有 `.cv-menu` 基建），把**低频**（导出 / 打印 / 知识图谱 / 新画布 / 模板与今日速记设置）与**视图模式开关**（专注 / 打字机，带 ✓ 当前态）收进菜单（模板项就地再弹模板子菜单）。`makeMenuItem` 加 `checked` 参（✓ 前缀）；`main.js` 新增 `openMoreMenu`、移除已折叠按钮的直接绑定与 `els` 项（`toggleFocusMode`/`toggleTypewriterMode` 不再依赖已移除的按钮节点）；CSS 给 `.toolbar button` 加 `white-space:nowrap`+`flex-shrink:0`、`.filename`/`.status` 超长时省略号截断（`text-overflow:ellipsis`）而非挤压按钮，`.autosave-toggle` 不换行。纯前端、无 Rust，刷新即生效；`build:web` 无错
 
 ### 计划中（P2 未完项）
