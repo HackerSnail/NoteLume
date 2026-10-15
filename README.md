@@ -242,11 +242,11 @@ src-tauri/target/release/bundle/
 
 打包完成后 macOS 会弹出权限请求，允许 VS Code 控制「访达」：
 
-![授权-访达权限](./img/%E6%8E%88%E6%9D%83-%E8%AE%BF%E8%BE%BE%E6%9D%83%E9%99%90.png =288x)
+![授权-访达权限](./img/%E6%8E%88%E6%9D%83-%E8%AE%BF%E8%BE%BE%E6%9D%83%E9%99%90.png)
 
 允许后系统自动弹出 Finder 窗口，把 NoteLume.app 拖进 Applications 即完成安装：
 
-![拖入-应用程序](./img/%E6%8B%96%E5%85%A5-%E5%BA%94%E7%94%A8%E7%A8%8B%E5%BA%8F.png =364x)
+![拖入-应用程序](./img/%E6%8B%96%E5%85%A5-%E5%BA%94%E7%94%A8%E7%A8%8B%E5%BA%8F.png)
 
 > 首次 release 编译会比 dev 更慢（需要 LTO 优化），大约 7 至 10 分钟；之后增量编译只重编改动文件。
 
