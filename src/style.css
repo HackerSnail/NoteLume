@@ -1770,6 +1770,54 @@ body {
   overflow-x: auto;
 }
 
+/* 功能项 J：脚注（Typora 式：正文上标角标 + 文末脚注区）*/
+.ProseMirror sup.nl-footnote-ref {
+  color: var(--accent);
+  font-size: 0.75em;
+  line-height: 0;
+  cursor: pointer;
+  padding: 0 1px;
+  user-select: none;
+  font-weight: 600;
+}
+.ProseMirror sup.nl-footnote-ref:hover {
+  text-decoration: underline;
+}
+.ProseMirror .nl-footnote-section {
+  margin-top: 1.6em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+  color: var(--muted);
+}
+.ProseMirror .nl-footnote-section::before {
+  content: '脚注';
+  display: block;
+  font-size: 0.85em;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.3em;
+}
+.ProseMirror .nl-footnote-item {
+  margin: 0.25em 0;
+  scroll-margin-block: 20%;
+}
+.ProseMirror .nl-footnote-item::before {
+  content: '[' attr(data-ordinal) '] ';
+  color: var(--accent);
+  font-weight: 600;
+}
+.ProseMirror .nl-footnote-item p {
+  display: inline;
+  margin: 0;
+}
+.ProseMirror .nl-footnote-item .ProseMirror-selectednode,
+.ProseMirror .nl-footnote-flash {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 3px;
+}
+
 /* 代码高亮配色（兼容 GitHub 风。自定义可替换为 hljs theme）*/
 .hljs-comment,
 .hljs-quote {

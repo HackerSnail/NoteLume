@@ -3,8 +3,9 @@
 // ② tableKeymap()：Tab / Shift-Tab 在单元格间跳转（仅在表内生效，否则交回默认键位）；
 // ③ attachTableContextMenu(view)：在单元格上右键弹出行列操作菜单（复用全局 .cv-menu 样式）。
 //
-// 边界：GFM 表格不支持合并单元格，故菜单只暴露能无损往返的操作（增删行列 / 切换表头 /
-// 单元格对齐 / 删除表格），不接 merge/split——那会写出 GFM 表达不了的 colspan/rowspan。
+// 边界：功能项 J 起，本编辑器可无损往返合并单元格——含合并的表序列化为真 <table> HTML、
+// 解析回节点由 editor-schema.js 两阶段预处理完成，故菜单开放「合并/拆分单元格」。
+// 注意单元格内容受 cellContent:'inline*' 约束：一个格内不放多段落/块级列表（合并为单段内联）。
 
 import { keymap } from 'prosemirror-keymap'
 import { TextSelection } from 'prosemirror-state'
@@ -22,6 +23,10 @@ import {
   toggleHeaderRow,
   setCellAttr,
   deleteTable,
+  mergeCells,
+  splitCell,
+  cellAround,
+  CellSelection,
 } from 'prosemirror-tables'
 
 // 装配进编辑器插件数组。tableEditing 放在数组靠后（它对鼠标/方向键处理较宽泛，
@@ -36,6 +41,28 @@ export function tableKeymap() {
     Tab: (state, dispatch, view) => (isInTable(state) ? goToNextCell(1)(state, dispatch, view) : false),
     'Shift-Tab': (state, dispatch, view) => (isInTable(state) ? goToNextCell(-1)(state, dispatch, view) : false),
   })
+}
+
+// —— 功能项 J：合并/拆分的选区判定 ——
+// 选区跨越 ≥2 个单元格（CellSelection）才可合并
+function isMultiCellSel(sel) {
+  if (!(sel instanceof CellSelection)) return false
+  let c = 0
+  sel.forEachCell(() => c++)
+  return c >= 2
+}
+// 从 $pos 上溯找到所在表格单元格节点
+function cellNodeUnder($pos) {
+  for (let d = $pos.depth; d > 0; d--) {
+    const n = $pos.node(d)
+    if (n.type.name === 'table_cell' || n.type.name === 'table_header') return n
+  }
+  return null
+}
+// 当前单元格是否处于合并态（colspan/rowspan>1）才可拆分
+function isMergedSel(sel) {
+  const n = cellNodeUnder(sel.$from)
+  return !!(n && (n.attrs.colspan > 1 || n.attrs.rowspan > 1))
 }
 
 // 在单元格上右键：弹出行列操作菜单。非表格区域不拦截（保留浏览器/应用默认行为）。
@@ -75,15 +102,26 @@ export function attachTableContextMenu(view) {
     e.preventDefault()
     close()
 
-    // 把光标落到右键命中的单元格，后续命令都基于该单元格选区
+    // 把光标落到右键命中的单元格，后续命令都基于该单元格选区。
+    // 但若已有跨格 CellSelection（多选准备合并），保留它不重置。
     const coords = view.posAtCoords({ left: e.clientX, top: e.clientY })
-    if (coords) {
+    if (coords && !(view.state.selection instanceof CellSelection)) {
       const $pos = view.state.doc.resolve(coords.pos)
       view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
     }
     // 绑定当前 view：命令读取此刻（选区已更新）的 state
     const run = (cmd) => () => {
       cmd(view.state, view.dispatch)
+      view.focus()
+    }
+    // 拆分需把光标格升级为单选 CellSelection 再交 splitCell
+    const runSplit = () => {
+      let s = view.state
+      if (!(s.selection instanceof CellSelection)) {
+        const cr = cellAround(s.selection.$from)
+        if (cr != null) s = s.apply(s.tr.setSelection(CellSelection.create(s.doc, cr.pos)))
+      }
+      splitCell(s, view.dispatch)
       view.focus()
     }
 
@@ -103,6 +141,15 @@ export function attachTableContextMenu(view) {
     menu.appendChild(item('清除对齐', run(setCellAttr('alignment', null))))
     menu.appendChild(sep())
     menu.appendChild(item('切换首行为表头', run(toggleHeaderRow)))
+    // 合并/拆分（仅在对应手势下出现）：多选≥ 2 格→合并；光标/选区落在合并态格→拆分
+    if (isMultiCellSel(view.state.selection)) {
+      menu.appendChild(sep())
+      menu.appendChild(item('合并单元格', run(mergeCells)))
+    }
+    if (isMergedSel(view.state.selection)) {
+      menu.appendChild(item('拆分单元格', runSplit))
+    }
+    menu.appendChild(sep())
     menu.appendChild(item('删除整个表格', run(deleteTable), true))
 
     document.body.appendChild(menu)

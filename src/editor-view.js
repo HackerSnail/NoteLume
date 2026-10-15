@@ -21,6 +21,7 @@ import { mermaidPlugin } from './mermaid-preview.js'
 import { attachCodeLangPicker } from './code-lang-picker.js'
 import { createSlashMenuPlugin } from './slash-menu.js'
 import { createModesPlugin } from './editor-modes.js'
+import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
@@ -35,6 +36,9 @@ export const EDITOR_COMMANDS = [
   { id: 'editor.strike', title: '删除线', defaultKey: 'Mod-Shift-x' },
   { id: 'editor.mathInline', title: '行内公式', defaultKey: 'Mod-m' },
   { id: 'editor.mathBlock', title: '块级公式', defaultKey: 'Mod-Shift-m' },
+  // 功能项 J：脚注（无默认键，命令面板可搜；Ctrl-Shift-F 已被「专注」占用）
+  { id: 'editor.footnote', title: '插入脚注', defaultKey: null },
+  { id: 'editor.footnoteDelete', title: '删除脚注', defaultKey: null },
 ]
 
 const PM_COMMANDS = {
@@ -46,6 +50,8 @@ const PM_COMMANDS = {
   'editor.strike': toggleMark(schema.marks.strike),
   'editor.mathInline': insertMath('math_inline'),
   'editor.mathBlock': insertMath('math_block'),
+  'editor.footnote': insertFootnote,
+  'editor.footnoteDelete': deleteFootnote,
 }
 
 // 硬换行命令（由固定结构键 Shift-Enter 触发）
@@ -192,6 +198,7 @@ export function createEditor(opts) {
       pasteImagesPlugin,
       highlightPlugin(),
       mermaidPlugin(),
+      footnotePlugin(),
       modes.plugin,
       ...tablePlugins(),
     ],
