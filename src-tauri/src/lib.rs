@@ -2816,9 +2816,10 @@ pub fn run() {
             git_r_commit_merge,
             git_r_trust_host,
             git_r_info,
-            // 功能项 I：Word(.docx) 离线导入（只转不写 preview + 去重落盘 commit）
+            // 功能项 I：Word(.docx) 离线导入（只转不写 preview + 去重落盘 commit + 独立模式临时目录）
             docx_import::docx_preview,
-            docx_import::docx_commit
+            docx_import::docx_commit,
+            docx_import::ensure_temp_import_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

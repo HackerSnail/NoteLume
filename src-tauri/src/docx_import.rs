@@ -1401,6 +1401,26 @@ pub fn docx_commit(args: DocxCommitArgs) -> Result<DocxCommitResult, String> {
     Ok(DocxCommitResult { doc_rel: final_rel, written_images: written, reused_images: reused, updated_index: updated })
 }
 
+// ==================== 命令：临时导入目录（独立解析模式） ====================
+
+/// 在系统临时目录下建一个本次导入专属子目录（`<temp>/NoteLume/docx-import/<毫秒时间戳>`），返回其绝对路径。
+/// 未开库的独立解析模式把转换结果先写到这里并立即在编辑器打开，是否长期保存（移走/另存）由用户自行决定。
+/// 目录当场创建，以便 `docx_commit` 对 `vault_root` 的 canonicalize 能通过（其要求路径已存在）。
+#[tauri::command]
+pub fn ensure_temp_import_dir() -> Result<String, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let dir = std::env::temp_dir()
+        .join("NoteLume")
+        .join("docx-import")
+        .join(ts.to_string());
+    fs_create_dir_all(&dir)?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 // ==================== fs 薄封装（集中错误串，便于跨平台） ====================
 
 fn fs_read(p: &str) -> Result<Vec<u8>, String> {

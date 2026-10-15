@@ -37,6 +37,7 @@ import {
   pickDocxFiles,
   docxPreview,
   docxCommit,
+  ensureTempImportDir,
   fileToBase64,
 } from './tauri-bridge.js'
 import { exportSite } from './site-export.js'
@@ -541,7 +542,7 @@ async function importWordViaDialog() {
     const destDir = state.currentFile ? parentOf(state.currentFile) : ''
     await importWordFlow(sources, destDir, { intoVault: true })
   } else {
-    // 未开库：不选目录、不拦截，直接 preview→校对；是否保存/存哪由用户在接受那步当场决定
+    // 未开库：不选目录、不拦截，直接 preview→校对；「接受」即落系统 temp 一次性目录并立即打开，是否保存用户自决
     await importWordFlow(sources, '', { intoVault: false })
   }
 }
@@ -550,9 +551,9 @@ async function importWordViaDialog() {
  * 导入编排的真实装配：把 bridge/Rust 与去重索引注入 runImport，校对回调开 docx-review 模态。
  * @param {Array<{srcPath?:string, srcB64?:string, displayName?:string}>} sources
  * @param {string} destDir  目标根内的相对目录（'' = 根）
- * @param {object} [target] { intoVault }——false = 独立解析模式：每篇「接受」时才弹目录选择器决定
- *   保存位置（取消即该篇不保存）；不读写库级去重索引（每篇自包含、避免跨目录误引用）、不刷树，
- *   完成后回显每篇完整落盘路径。
+ * @param {object} [target] { intoVault }——false = 独立解析模式：不选目录，「接受」即把转换结果写入
+ *   系统 temp 的一次性目录（每篇自包含、不读写库级去重索引），完成后立即在编辑器打开（回显），
+ *   是否长期保存（移走/另存）由用户自行决定。两种模式导入后都会自动打开首篇。
  */
 async function importWordFlow(sources, destDir = '', target = {}) {
   const intoVault = target.intoVault !== false
@@ -561,14 +562,15 @@ async function importWordFlow(sources, destDir = '', target = {}) {
     setStatus('请先打开知识库文件夹')
     return
   }
-  let saveFolder = '' // 独立模式：当前这篇「接受」时用户选定的保存目录
-  const savedPaths = []
+  let tempRoot = '' // 独立模式：首次落盘时在系统 temp 建的一次性目录
+  const committedRels = [] // 两种模式：已成功落盘的库内相对路径（供导入后立即打开回显）
   const io = {
     preview: (args) => docxPreview(args),
     commit: async (args) => {
       if (intoVault) return docxCommit(args)
-      // 独立保存：以用户所选目录为根；不传/不回共享索引，每篇自包含（图片必落盘、引用必对）
-      const r = await docxCommit({ ...args, vaultRoot: saveFolder, dedupIndex: {} })
+      // 独立保存：写进一次性 temp 目录；不传/不回共享索引，每篇自包含（图片必落盘、引用必对）
+      if (!tempRoot) tempRoot = await ensureTempImportDir()
+      const r = await docxCommit({ ...args, vaultRoot: tempRoot, dedupIndex: {} })
       return { ...r, updatedIndex: {} }
     },
     loadIndex: intoVault
@@ -577,32 +579,20 @@ async function importWordFlow(sources, destDir = '', target = {}) {
         }
       : async () => ({}),
     saveIndex: intoVault ? (i) => localStorage.setItem(IMG_INDEX_KEY, JSON.stringify(i)) : async () => {},
-    onCommitted: intoVault
-      ? async () => {
-          renderTree(await scanVault(state.vaultRoot))
-          startIndexPolling()
-        }
-      : async (res) => {
-          // 回显完整路径：所选目录 + commit 回来的最终 docRel（含改名/冲突后缀）
-          if (res && res.docRel && saveFolder) {
-            const sep = saveFolder.includes('\\') ? '\\' : '/'
-            savedPaths.push(saveFolder.replace(/[\\/]+$/, '') + sep + res.docRel.replace(/\//g, sep))
-          }
-        },
+    onCommitted: async (res) => {
+      if (res && res.docRel) committedRels.push(res.docRel)
+      if (intoVault) {
+        renderTree(await scanVault(state.vaultRoot))
+        startIndexPolling()
+      }
+    },
   }
-  const review = async (entry, ctx) => {
-    const d = await openDocxReview(entry, {
+  const review = (entry, ctx) =>
+    openDocxReview(entry, {
       ...ctx,
       theme: document.documentElement.getAttribute('data-theme') || 'light',
-      acceptLabel: intoVault ? '接受并落库' : '接受并保存…',
+      acceptLabel: intoVault ? '接受并落库' : '接受',
     })
-    if (intoVault || !d || d.action !== 'accept') return d
-    // 是否保存、存到哪：用户当场决定；取消目录选择 = 这篇不保存
-    const folder = await pickFolder()
-    if (!folder) return { action: 'skip' }
-    saveFolder = folder
-    return d
-  }
   try {
     const res = await runImport({
       sources,
@@ -612,12 +602,22 @@ async function importWordFlow(sources, destDir = '', target = {}) {
       opts: { vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
     })
     const { committed, skipped, failed, total } = res.stats
-    const parts = [`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '已保存')]
-    if (skipped) parts.push(`${skipped} 跳过/未保存`)
-    if (failed) parts.push(`${failed} 失败`)
-    let msg = parts.join('，')
-    if (!intoVault && savedPaths.length) msg += '\n\n已保存到：\n' + savedPaths.map((p) => '· ' + p).join('\n')
-    await messageDialog(msg, 'info')
+    const tail = (skipped ? `，${skipped} 跳过` : '') + (failed ? `，${failed} 失败` : '')
+    if (committedRels.length) {
+      // 立即回显：独立模式先把 temp 一次性目录作为工作根打开（侧栏树列出全部导入篇、可点），再打开首篇
+      if (!intoVault && tempRoot) {
+        state.vaultRoot = tempRoot
+        state.currentFile = null
+        renderTree(await scanVault(tempRoot))
+        startIndexPolling()
+        if (pluginManager) pluginManager.reload()
+        if (gitPanel) gitPanel.refresh()
+      }
+      await openFile(committedRels[0])
+      setStatus(`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '（临时目录，可自行保存）') + tail)
+    } else {
+      await messageDialog(`Word 导入：${committed}/${total} 篇` + (intoVault ? '入库' : '') + (skipped ? `，${skipped} 跳过/未接受` : '') + (failed ? `，${failed} 失败` : ''), 'info')
+    }
   } catch (e) {
     await messageDialog('Word 导入失败：' + errText(e))
     setStatus('Word 导入失败')

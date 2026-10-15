@@ -43,6 +43,11 @@ export function docxCommit(args) {
   return invoke('docx_commit', { args })
 }
 
+/** 在系统 temp 下建本次导入专属目录，返回绝对路径（独立解析模式：先落 temp、立即回显、用户自行决定保存） */
+export function ensureTempImportDir() {
+  return invoke('ensure_temp_import_dir')
+}
+
 /** 另存为对话框（导出用，P1） */
 export async function pickSaveAs(defaultPath) {
   return await save({ defaultPath, title: '保存文件' })
