@@ -10,6 +10,9 @@ use std::thread;
 // Phase 3 会在同文件补 fetch/upstream/ahead_behind/pull_ff 实现。
 mod git_builtin;
 
+// 功能项 I：Word(.docx) → Markdown 离线导入引擎（纯 Rust OOXML 解析 + 映射 + 图片去重落盘）。
+mod docx_import;
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
@@ -77,7 +80,7 @@ fn ensure_inside_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
 }
 
 /// 库内相对路径（`/` 分隔）-> 绝对路径；要求所在目录已存在
-fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
     let root = fs::canonicalize(vault_root).map_err(|e| e.to_string())?;
     let mut p = root.clone();
     for seg in rel.split('/').filter(|s| !s.is_empty()) {
@@ -91,7 +94,7 @@ fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
 
 /// 库内相对路径（`/` 分隔）-> 绝对路径，纯词法拼接（不要求已存在），拒绝 `..` 跳出。
 /// 用于新建文件/文件夹/重命名目标等「路径尚未存在」的场景；存在性/越界由调用方另行校验。
-fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let mut p = root.to_path_buf();
     for seg in rel.split('/').filter(|s| !s.is_empty()) {
         if seg == ".." {
@@ -320,7 +323,7 @@ fn rename_item(vault_root: String, from: String, to: String) -> Result<(), Strin
 }
 
 /// 基础64 解码（容忍空白，遇 `=` 截断）：用于外部拖入文件的字节回写
-fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
     const TBL: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let clean: String = input.chars().filter(|c| !c.is_whitespace()).collect();
     let mut out: Vec<u8> = Vec::with_capacity(clean.len() * 3 / 4);
@@ -484,7 +487,7 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
 }
 
 /// 手写 base64 编码（项目不引入 base64 crate；与 save_image_bytes 里的手写解码对称）
-fn b64_encode(data: &[u8]) -> String {
+pub(crate) fn b64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
     for chunk in data.chunks(3) {
@@ -2812,7 +2815,10 @@ pub fn run() {
             git_r_abort_merge,
             git_r_commit_merge,
             git_r_trust_host,
-            git_r_info
+            git_r_info,
+            // 功能项 I：Word(.docx) 离线导入（只转不写 preview + 去重落盘 commit）
+            docx_import::docx_preview,
+            docx_import::docx_commit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -21,6 +21,28 @@ export async function pickFile() {
   return typeof picked === 'string' ? picked : null
 }
 
+/** 打开 .docx 文件选择器（可多选），返回绝对路径数组（取消返回 []） */
+export async function pickDocxFiles() {
+  const picked = await open({
+    directory: false,
+    multiple: true,
+    title: '选择 Word (.docx) 文件',
+    filters: [{ name: 'Word', extensions: ['docx'] }],
+  })
+  if (!picked) return []
+  return Array.isArray(picked) ? picked : [picked]
+}
+
+/** .docx → Markdown 只转不写预览：回 { md, plannedDocRel, title, images[], warnings[], stats } */
+export function docxPreview(args) {
+  return invoke('docx_preview', { args })
+}
+
+/** 校对确认后落库：写 .md + 按 sha256 去重落图，回 { docRel, writtenImages[], reusedImages[], updatedIndex } */
+export function docxCommit(args) {
+  return invoke('docx_commit', { args })
+}
+
 /** 另存为对话框（导出用，P1） */
 export async function pickSaveAs(defaultPath) {
   return await save({ defaultPath, title: '保存文件' })
@@ -109,7 +131,7 @@ export async function saveImageFromFile(vaultRoot, mdRel, file) {
   return invoke('save_image_bytes', { vaultRoot, mdRel, args: { dataBase64, ext } })
 }
 
-function fileToBase64(file) {
+export function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {

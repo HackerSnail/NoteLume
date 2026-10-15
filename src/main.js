@@ -34,8 +34,14 @@ import {
   exportFile,
   buildSiteGraph,
   copyVaultAssets,
+  pickDocxFiles,
+  docxPreview,
+  docxCommit,
+  fileToBase64,
 } from './tauri-bridge.js'
 import { exportSite } from './site-export.js'
+import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
+import { openDocxReview } from './docx-review.js'
 import { createPalette } from './command-palette.js'
 import { createShortcutSettings } from './shortcut-settings.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -487,8 +493,21 @@ async function importDroppedFiles(files, destDir) {
     return
   }
   const list = Array.from(files || [])
+  const docxList = list.filter((f) => /\.docx$/i.test(f.name || ''))
   const ok = list.filter((f) => isImportableFileName(f.name))
-  const bad = list.filter((f) => !isImportableFileName(f.name))
+  const bad = list.filter((f) => !isImportableFileName(f.name) && !/\.docx$/i.test(f.name || ''))
+  if (docxList.length) {
+    // 拖入的 .docx：浏览器 File 无绝对路径 → 转 base64 走同一导入流
+    const sources = []
+    for (const f of docxList) {
+      try {
+        sources.push({ srcB64: await fileToBase64(f), displayName: f.name })
+      } catch (e) {
+        await messageDialog('读取失败 ' + f.name + '：' + errText(e))
+      }
+    }
+    if (sources.length) await importWordFlow(sources, destDir)
+  }
   if (!ok.length) {
     if (bad.length) await messageDialog('不支持导入的文件类型：' + bad.map((f) => f.name).join(', '))
     return
@@ -506,6 +525,64 @@ async function importDroppedFiles(files, destDir) {
     renderTree(await scanVault(state.vaultRoot))
     startIndexPolling()
     setStatus('已导入 ' + imported.length + ' 个文件')
+  }
+}
+
+// ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
+
+/** 「更多」菜单入口：文件选择器挑 .docx → 导入流（目标目录 = 当前文档所在夹，否则库根） */
+async function importWordViaDialog() {
+  if (!state.vaultRoot) {
+    setStatus('请先打开知识库文件夹')
+    return
+  }
+  const paths = await pickDocxFiles()
+  if (!paths || !paths.length) return
+  const destDir = state.currentFile ? parentOf(state.currentFile) : ''
+  await importWordFlow(paths.map((p) => ({ srcPath: p })), destDir)
+}
+
+/**
+ * 导入编排的真实装配：把 bridge/Rust 与 localStorage 去重索引注入 runImport，
+ * 校对回调开 docx-review 模态；每落库一篇即刷树、重扫索引。
+ * @param {Array<{srcPath?:string, srcB64?:string, displayName?:string}>} sources
+ * @param {string} destDir  库内相对目录（'' = 库根）
+ */
+async function importWordFlow(sources, destDir = '') {
+  if (!state.vaultRoot) {
+    setStatus('请先打开知识库文件夹')
+    return
+  }
+  const io = {
+    preview: (args) => docxPreview(args),
+    commit: (args) => docxCommit(args),
+    loadIndex: () => {
+      try { return JSON.parse(localStorage.getItem(IMG_INDEX_KEY) || '{}') } catch { return {} }
+    },
+    saveIndex: (i) => localStorage.setItem(IMG_INDEX_KEY, JSON.stringify(i)),
+    onCommitted: async () => {
+      renderTree(await scanVault(state.vaultRoot))
+      startIndexPolling()
+    },
+  }
+  const review = (entry, ctx) =>
+    openDocxReview(entry, { ...ctx, theme: document.documentElement.getAttribute('data-theme') || 'light' })
+  try {
+    const res = await runImport({
+      sources,
+      io,
+      review,
+      onProgress: setStatus,
+      opts: { vaultRoot: state.vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
+    })
+    const { committed, skipped, failed, total } = res.stats
+    const parts = [`Word 导入完成：${committed}/${total} 篇入库`]
+    if (skipped) parts.push(`${skipped} 跳过`)
+    if (failed) parts.push(`${failed} 失败`)
+    await messageDialog(parts.join('，'), 'info')
+  } catch (e) {
+    await messageDialog('Word 导入失败：' + errText(e))
+    setStatus('Word 导入失败')
   }
 }
 
@@ -802,6 +879,7 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem('🎛 快捷键设置…', () => keySettings && keySettings.open()))
   menu.appendChild(makeMenuItem('📤 导出为 HTML', () => exportHTML()))
   menu.appendChild(makeMenuItem('🌐 导出整站…', () => exportSiteFull()))
+  menu.appendChild(makeMenuItem('📥 导入 Word(.docx)…', () => importWordViaDialog()))
   menu.appendChild(makeMenuItem('🖨 打印 / 导出 PDF (Ctrl+P)', () => window.print()))
   menu.appendChild(makeMenuItem('🕸 知识图谱 (Ctrl+G)', () => openGraphModal()))
   menu.appendChild(makeMenuItem('🗺 新画布 / 白板', () => newCanvas()))

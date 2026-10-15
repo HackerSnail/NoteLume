@@ -2796,4 +2796,184 @@ body {
   font-size: 11px;
 }
 
+/* —— 功能项 I：Word(.docx) 校对导入模态（复用 .nl-prompt 观感 + 双栏）—— */
+.nl-docx-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.34);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.nl-docx {
+  width: min(1080px, 94vw);
+  height: min(760px, 92vh);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+.nl-docx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.nl-docx-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.nl-docx-namerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.nl-docx-name {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  width: 260px;
+  outline: none;
+}
+.nl-docx-name:focus {
+  border-color: var(--accent);
+}
+.nl-docx-warn {
+  max-height: 108px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nl-docx-warn-item {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.nl-docx-warn-item.dedup {
+  color: var(--accent);
+}
+.nl-docx-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+.nl-docx-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nl-docx-pane-h {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex: none;
+}
+.nl-docx-preview {
+  background: var(--bg);
+}
+.nl-docx-render {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.nl-docx-render img {
+  max-width: 100%;
+}
+.nl-docx-render table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  width: 100%;
+}
+.nl-docx-render th,
+.nl-docx-render td {
+  border: 1px solid var(--border);
+  padding: 5px 9px;
+}
+.nl-docx-render th {
+  background: var(--bg-panel);
+  font-weight: 600;
+}
+.nl-docx-render pre {
+  background: var(--code-bg);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.nl-docx-render code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.nl-docx-src {
+  background: var(--bg);
+}
+.nl-docx-cm {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.nl-docx-ta {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+.nl-docx-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+.nl-docx-btn {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nl-docx-btn:hover {
+  border-color: var(--accent);
+}
+.nl-docx-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 
