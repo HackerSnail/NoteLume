@@ -7,6 +7,7 @@
 // 传 mdRel='' 让 src 直接相对库根解析——文件树给的正是库内相对路径。
 
 import { readImageDataUri } from './tauri-bridge.js'
+import { setIcon, iconHTML } from './icons.js'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 16
@@ -23,11 +24,11 @@ function ensureOverlay() {
     '<div class="nl-imgv-bar">' +
     '<span class="nl-imgv-title"></span>' +
     '<span class="nl-imgv-spacer"></span>' +
-    '<button class="nl-imgv-btn" data-act="out" title="缩小">−</button>' +
+    '<button class="nl-imgv-btn" data-act="out" title="缩小">' + iconHTML('zoom-out') + '</button>' +
     '<button class="nl-imgv-btn nl-imgv-zoom" data-act="reset" title="适应窗口（点击重置）">100%</button>' +
-    '<button class="nl-imgv-btn" data-act="in" title="放大">＋</button>' +
+    '<button class="nl-imgv-btn" data-act="in" title="放大">' + iconHTML('zoom-in') + '</button>' +
     '<button class="nl-imgv-btn" data-act="actual" title="实际大小 (1:1)">1:1</button>' +
-    '<button class="nl-imgv-close" data-act="close" title="关闭 (Esc)">✕</button>' +
+    '<button class="nl-imgv-close" data-act="close" title="关闭 (Esc)">' + iconHTML('close') + '</button>' +
     '</div>' +
     '<div class="nl-imgv-stage">' +
     '<img class="nl-imgv-img" alt="" draggable="false" />' +
@@ -127,10 +128,10 @@ function zoomToActual() {
   setZoom((cur.natW || cur.fitW) / cur.fitW)
 }
 
-function setHint(text) {
+function setHint(text, icon) {
   const h = overlay.querySelector('.nl-imgv-hint')
   if (h) {
-    h.textContent = text || ''
+    setIcon(h, text ? icon : '', text || '')
     h.style.display = text ? 'block' : 'none'
   }
 }
@@ -166,7 +167,7 @@ export function openImage(rel, ctx) {
   }
   img.onerror = () => {
     if (my !== seq) return
-    setHint('⚠ 无法显示该图片')
+    setHint('无法显示该图片', 'warning')
   }
 
   readImageDataUri(vaultRoot, '', rel)
@@ -176,7 +177,7 @@ export function openImage(rel, ctx) {
     })
     .catch((e) => {
       if (my !== seq) return
-      setHint('⚠ 读取失败：' + ((e && e.message) || e))
+      setHint('读取失败：' + ((e && e.message) || e), 'warning')
     })
 }
 

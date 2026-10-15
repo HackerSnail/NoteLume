@@ -124,6 +124,21 @@ export function formatBinding(raw, isMac = false) {
   return isMac ? parts.join('') : parts.join('+')
 }
 
+// 系统原生菜单的 accelerator 串（muda/Tauri 文法：'Cmd+Shift+S'、'Cmd+/'，键名可给字符本身）。
+// 只服务 mac 原生菜单，故 Mod 一律展开为 Cmd；非法/无主修饰/已解绑 → null（调用方该项不挂键）。
+// 与 formatBinding 分开：那是给人看的符号（⌘⇧S），这是给系统解析的格式，两个消费者互不污染。
+export function toAccelerator(raw) {
+  const d = parseBinding(raw, true)
+  if (!d) return null
+  const mods = []
+  if (d.ctrl) mods.push('Control')
+  if (d.meta) mods.push('Cmd')
+  if (d.alt) mods.push('Option')
+  if (d.shift) mods.push('Shift')
+  const key = d.base.toUpperCase() // 字母/符号/F 键统一大写形（'/'、'`' 等符号 toUpperCase 为恒等）
+  return mods.concat(key).join('+')
+}
+
 /**
  * 合成有效绑定。
  * @param {Array<{id:string, defaultKey?:string}>} commands

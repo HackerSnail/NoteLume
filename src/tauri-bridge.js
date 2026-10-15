@@ -324,3 +324,10 @@ export function gitRAheadBehind(vaultRoot) {
 export function gitRPullFf(vaultRoot) {
   return invoke('git_r_pull_ff', { vaultRoot })
 }
+
+// ==================== macOS 系统菜单栏 ====================
+
+/** 把前端算好的菜单 spec 交给 Rust 落成原生菜单并挂上菜单栏；失败 reject 附原生错误原文 */
+export function setMacMenu(spec) {
+  return invoke('set_mac_menu', { spec })
+}

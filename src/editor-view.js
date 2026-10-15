@@ -19,8 +19,10 @@ import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
 import { mermaidPlugin } from './mermaid-preview.js'
 import { attachCodeLangPicker } from './code-lang-picker.js'
-import { createSlashMenuPlugin } from './slash-menu.js'
+import { createSlashMenuPlugin, SLASH_ITEMS } from './slash-menu.js'
+import { BLOCK_COMMANDS, activeBlockKey, headingStep } from './block-commands.js'
 import { createModesPlugin } from './editor-modes.js'
+import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plugin.js'
 import { normalizeBinding } from './keymap.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
@@ -35,6 +37,7 @@ export const EDITOR_COMMANDS = [
   { id: 'editor.strike', title: '删除线', defaultKey: 'Mod-Shift-x' },
   { id: 'editor.mathInline', title: '行内公式', defaultKey: 'Mod-m' },
   { id: 'editor.mathBlock', title: '块级公式', defaultKey: 'Mod-Shift-m' },
+  { id: 'editor.foldSection', title: '折叠 / 展开本节', defaultKey: 'Mod-Shift-h' },
 ]
 
 const PM_COMMANDS = {
@@ -46,6 +49,22 @@ const PM_COMMANDS = {
   'editor.strike': toggleMark(schema.marks.strike),
   'editor.mathInline': insertMath('math_inline'),
   'editor.mathBlock': insertMath('math_block'),
+  'editor.foldSection': foldSectionCommand,
+}
+
+// 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
+EDITOR_COMMANDS.push({ id: 'editor.headingUp', title: '段落：提升标题级别' })
+EDITOR_COMMANDS.push({ id: 'editor.headingDown', title: '段落：降低标题级别' })
+PM_COMMANDS['editor.headingUp'] = headingStep(-1)
+PM_COMMANDS['editor.headingDown'] = headingStep(1)
+
+// 段落命令入同一张表：项表复用斜杠菜单（一份定义），公式块不在这里（已有 editor.mathBlock）。
+// 无 defaultKey → 不占快捷键，只供面板与 mac 原生「段落」菜单调用。
+const BLOCK_CMD_IDS = ['para', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'quote', 'code', 'bullet', 'ordered', 'task', 'hr', 'table', 'callout', 'mermaid']
+for (const id of BLOCK_CMD_IDS) {
+  const item = SLASH_ITEMS.find((x) => x.id === id)
+  EDITOR_COMMANDS.push({ id: 'editor.block.' + id, title: '段落：' + item.label })
+  PM_COMMANDS['editor.block.' + id] = BLOCK_COMMANDS[id]
 }
 
 // 硬换行命令（由固定结构键 Shift-Enter 触发）
@@ -93,6 +112,8 @@ export function createEditor(opts) {
   let srcChangeTimer = null
   // 专注/打字机模式插件（初始态由 main.js 从 localStorage 传入）
   const modes = createModesPlugin({ focus: !!opts.initialFocus, typewriter: !!opts.initialTypewriter })
+  // 标题折叠（仅渲染层）：换文档时由 setMarkdown 清空，源码模式往返则保留
+  const fold = createFoldPlugin()
 
   // —— 行内输入规则：[[目标]] 与 #标签 触发即转成节点 ——
   const inputRulesPlugin = new Plugin({
@@ -193,6 +214,7 @@ export function createEditor(opts) {
       highlightPlugin(),
       mermaidPlugin(),
       modes.plugin,
+      fold.plugin,
       ...tablePlugins(),
     ],
   })
@@ -217,6 +239,8 @@ export function createEditor(opts) {
         emitMeta(view, opts)
         opts.onDocChange && opts.onDocChange(next.doc, prevDoc)
       }
+      // 光标换块也要上报：mac「段落」菜单的勾跟着选区走（去抖与签名比对在 main.js）
+      if (tr.selectionSet || tr.docChanged) opts.onSelectionChange && opts.onSelectionChange(next)
     },
   })
 
@@ -305,6 +329,7 @@ export function createEditor(opts) {
   return {
     view,
     setMarkdown(md) {
+      fold.api.reset() // 换文档：旧的折叠位置与新文档无关，一律清空
       rawSource = md
       modelDirty = false
       if (sourceMode && src) {
@@ -380,8 +405,12 @@ export function createEditor(opts) {
       else list.splice(list.length - 1, 0, next) // 兜底：插在 base 之前以保优先级
       view.updateState(view.state.reconfigure({ plugins: list }))
     },
-    // 面板/设置页「主动执行」一条编辑命令：聚焦后对当前 state 求值 PM 命令
+    // 面板/设置页/原生菜单「主动执行」一条编辑命令：聚焦后对当前 state 求值 PM 命令
     runEditorCommand(id) {
+      // 源码态下可见的是 CodeMirror：撤销/重做归它自己的历史，动 PM 等于改错对象
+      if (sourceMode && src && (id === 'editor.undo' || id === 'editor.redo')) {
+        return id === 'editor.undo' ? src.undo() : src.redo()
+      }
       const fn = PM_COMMANDS[id]
       if (!fn) return false
       view.focus()
@@ -399,6 +428,8 @@ export function createEditor(opts) {
     },
     // 源码模式：整篇切换 WYSIWYG <-> Markdown 原文（CodeMirror，懒加载）
     isSourceMode() { return sourceMode },
+    // 当前块类型（mac「段落」菜单的勾）；源码态可见的是 CodeMirror，无块可言
+    activeBlock() { return sourceMode ? null : activeBlockKey(view.state) },
     enterSource,
     exitSource,
     async toggleSource() { return sourceMode ? exitSource() : await enterSource() },
@@ -407,6 +438,8 @@ export function createEditor(opts) {
     setFocusMode(on) { modes.api.setFocus(on) },
     setTypewriterMode(on) { modes.api.setTypewriter(on) },
     jumpToPos(pos) {
+      const open = unfoldCovering(view.state, pos) // 目标被折在某节里时先展开，否则跳过去看不见
+      if (open) view.dispatch(open)
       const tr = view.state.tr.setSelection(
         TextSelection.create(view.state.doc, Math.min(pos + 1, view.state.doc.content.size))
       )
@@ -426,24 +459,74 @@ function isImage(file) {
 // 序列化仍用原始相对 src（attrs 不变），故写盘/往返无损。结果按绝对键缓存，切文件不重读。
 const imgDataCache = new Map() // key(vault|md|src) -> dataUri
 
+const IMG_W_MIN = 40
+
 function makeImageNodeView(getVault) {
-  return (node) => {
+  return (node, view, getPos) => {
     const img = document.createElement('img')
     // 包一层 host：加载失败时在原地显示「未找到图片：<路径>」提示（而非空白框）
     const host = document.createElement('span')
     host.className = 'nl-img-host'
+    // 右下角把手：按住直接拖宽，双击回原尺寸；宽度是节点属性，落进 Markdown 而非 DOM
+    const grip = document.createElement('span')
+    grip.className = 'nl-img-grip'
     host.appendChild(img)
+    host.appendChild(grip)
     const apply = (n) => {
       if (n.attrs.alt) img.setAttribute('alt', n.attrs.alt)
       else img.removeAttribute('alt')
       if (n.attrs.title) img.setAttribute('title', n.attrs.title)
       else img.removeAttribute('title')
+      img.style.width = n.attrs.width ? n.attrs.width + 'px' : ''
       loadImgSrc(img, host, n.attrs.src, getVault)
     }
+    const writeWidth = (w) => {
+      if (typeof getPos !== 'function') return
+      const pos = getPos()
+      if (pos == null) return
+      const cur = view.state.doc.nodeAt(pos)
+      if (!cur || cur.attrs.width === w) return
+      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, width: w }))
+    }
     apply(node)
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault()
+      grip.classList.add('dragging')
+      host.classList.add('is-resizing')
+      const base = img.getBoundingClientRect().width
+      const slot = host.parentElement ? host.parentElement.getBoundingClientRect().width : base
+      const startX = e.clientX
+      let w = Math.round(base)
+      const max = Math.max(IMG_W_MIN, Math.round(slot))
+      const move = (ev) => {
+        w = Math.max(IMG_W_MIN, Math.min(max, Math.round(base + (ev.clientX - startX))))
+        img.style.width = w + 'px'
+      }
+      const up = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
+        grip.classList.remove('dragging')
+        host.classList.remove('is-resizing')
+        writeWidth(w) // 松手才落一次事务：拖动过程只改样式，不进 undo 栈
+      }
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', up)
+    })
+    grip.addEventListener('dblclick', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      img.style.width = ''
+      writeWidth(null)
+    })
     return {
       dom: host,
       ignoreMutation: () => true,
+      // 把手上的指针事件不交给编辑器：否则按下即选中图片并起文本拖拽
+      stopEvent(e) {
+        return e.target === grip || grip.contains(e.target)
+      },
       update(next) {
         if (next.type.name !== 'image') return false
         apply(next)

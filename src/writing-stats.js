@@ -19,8 +19,8 @@ export function readingMinutes(words, wpm = 300) {
   return Math.max(1, Math.round(words / wpm))
 }
 
-// 统计结果的可读串（供工具条展示）
+// 统计结果的可读串（供工具条展示；前缀图标由调用方挂 .nl-ico）
 export function statsLabel(words) {
   const m = readingMinutes(words)
-  return '✍️ ' + words + ' 字 · 约 ' + m + ' 分钟'
+  return words + ' 字 · 约 ' + m + ' 分钟'
 }

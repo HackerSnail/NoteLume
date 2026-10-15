@@ -99,7 +99,9 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange })
       CM.commands.history(),
       CM.language.bracketMatching(),
       CM.langmd.markdown({ extensions: [CM.lezermd.GFM] }),
-      CM.view.keymap.of([...CM.commands.defaultKeymap, ...CM.commands.historyKeymap, CM.commands.indentWithTab]),
+      // Mod-/ 归应用级「切换源码模式」：留着它时 CM 的 toggleComment 会抢先执行，
+      // 把光标所在行包成 <!-- … -->（标题被就地改成注释），再由退出源码的读取写入模型。
+      CM.view.keymap.of([...CM.commands.defaultKeymap.filter((b) => b.key !== 'Mod-/'), ...CM.commands.historyKeymap, CM.commands.indentWithTab]),
       updateListener,
     ],
   })
@@ -125,6 +127,15 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange })
     focus() {
       view.focus()
       view.requestMeasure()
+    },
+    // 原生菜单「撤销 / 重做」在源码态的落点：此刻可见的是 CodeMirror 的历史，不是 PM
+    undo() {
+      view.focus()
+      return CM.commands.undo(view.state, (tr) => view.dispatch(tr), view)
+    },
+    redo() {
+      view.focus()
+      return CM.commands.redo(view.state, (tr) => view.dispatch(tr), view)
     },
     refresh() {
       view.requestMeasure()

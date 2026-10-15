@@ -9,6 +9,7 @@ import {
   eventToBinding,
   eventMatches,
   formatBinding,
+  toAccelerator,
   effectiveBindings,
   fuzzyMatch,
 } from '../keymap.js'
@@ -87,6 +88,39 @@ check('effectiveBindings 空串解绑 / 覆盖改键', () => {
 check('formatBinding win 文本 / mac 符号', () => {
   assert.strictEqual(formatBinding('Mod-Shift-p', false), 'Ctrl+Shift+P')
   assert.strictEqual(formatBinding('Mod-Shift-p', true), '⌘⇧P')
+})
+
+// —— toAccelerator（mac 原生菜单键串）——
+check('toAccelerator Mod 一律展开为 Cmd', () => {
+  assert.strictEqual(toAccelerator('Mod-s'), 'Cmd+S')
+  assert.strictEqual(toAccelerator('Mod-Shift-p'), 'Cmd+Shift+P')
+  assert.strictEqual(toAccelerator('mod-shift-x'), 'Cmd+Shift+X') // 大小写不敏感输入
+})
+
+check('toAccelerator 符号键原样给出', () => {
+  assert.strictEqual(toAccelerator('Mod-/'), 'Cmd+/')
+  assert.strictEqual(toAccelerator('Mod-`'), 'Cmd+`')
+})
+
+check('toAccelerator 非 Mod 修饰按 muda 名展开', () => {
+  assert.strictEqual(toAccelerator('Ctrl-s'), 'Control+S')
+  assert.strictEqual(toAccelerator('Alt-s'), 'Option+S')
+  assert.strictEqual(toAccelerator('Cmd-s'), 'Cmd+S')
+  assert.strictEqual(toAccelerator('Mod-F5'), 'Cmd+F5')
+})
+
+check('toAccelerator 非法/无主修饰/解绑 → null', () => {
+  assert.strictEqual(toAccelerator(''), null)
+  assert.strictEqual(toAccelerator(null), null)
+  assert.strictEqual(toAccelerator(undefined), null)
+  assert.strictEqual(toAccelerator('s'), null) // 无主修饰
+  assert.strictEqual(toAccelerator('Shift-s'), null) // Shift 单独不算主修饰
+  assert.strictEqual(toAccelerator('Mod-Shift'), null) // 缺基础键
+})
+
+check('toAccelerator 与 formatBinding 各走各的（符号只给人看）', () => {
+  assert.strictEqual(formatBinding('Mod-Shift-s', true), '⌘⇧S')
+  assert.strictEqual(toAccelerator('Mod-Shift-s'), 'Cmd+Shift+S')
 })
 
 // —— fuzzyMatch ——

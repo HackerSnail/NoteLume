@@ -2232,6 +2232,157 @@ async fn git_r_pull_ff(vault_root: String) -> Result<String, String> {
     Ok(combined)
 }
 
+// ==================== macOS 原生菜单（系统菜单栏）====================
+// 菜单内容只在前端算一处（src/app-menu.js 的 buildMacMenuSpec：文案 / 快捷键 / 可用性 / 勾选
+// 全取命令注册表），Rust 只把算好的 spec 落成原生菜单并挂上菜单栏。
+// 一次 invoke 换掉整棵菜单，而不是前端逐项走 plugin:menu|new——后者在真机上没生效过，
+// 且一次装配要几十次 IPC。点击经 `nl:menu-select` 事件回前端，由注册表执行。
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuGroup {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub items: Vec<MenuItemSpec>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuItemSpec {
+    /// "cmd" | "check" | "sep" | "role" | "submenu"
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    /// kind == "role" 时的系统项名（About / Services / Hide / Quit / CloseWindow …）
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub accelerator: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub checked: Option<bool>,
+    #[serde(default)]
+    pub items: Vec<MenuItemSpec>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuSpec {
+    pub groups: Vec<MenuGroup>,
+}
+
+/// mac 认 id 为 `window` 的组为系统「窗口」菜单（原生窗口列表挂上去）
+fn native_group_id(id: &str) -> &str {
+    if id == "window" {
+        tauri::menu::WINDOW_SUBMENU_ID
+    } else {
+        id
+    }
+}
+
+fn predefined_item(
+    app: &tauri::AppHandle,
+    role: &str,
+    text: Option<&str>,
+) -> Result<tauri::menu::MenuItemKind<tauri::Wry>, String> {
+    use tauri::menu::{IsMenuItem, PredefinedMenuItem};
+    let built = match role {
+        "About" => PredefinedMenuItem::about(app, text, None).map(|i| i.kind()),
+        "Separator" => PredefinedMenuItem::separator(app).map(|i| i.kind()),
+        "Services" => PredefinedMenuItem::services(app, text).map(|i| i.kind()),
+        "Hide" => PredefinedMenuItem::hide(app, text).map(|i| i.kind()),
+        "HideOthers" => PredefinedMenuItem::hide_others(app, text).map(|i| i.kind()),
+        "ShowAll" => PredefinedMenuItem::show_all(app, text).map(|i| i.kind()),
+        "Quit" => PredefinedMenuItem::quit(app, text).map(|i| i.kind()),
+        "CloseWindow" => PredefinedMenuItem::close_window(app, text).map(|i| i.kind()),
+        "Minimize" => PredefinedMenuItem::minimize(app, text).map(|i| i.kind()),
+        "Maximize" => PredefinedMenuItem::maximize(app, text).map(|i| i.kind()),
+        "Fullscreen" => PredefinedMenuItem::fullscreen(app, text).map(|i| i.kind()),
+        "Cut" => PredefinedMenuItem::cut(app, text).map(|i| i.kind()),
+        "Copy" => PredefinedMenuItem::copy(app, text).map(|i| i.kind()),
+        "Paste" => PredefinedMenuItem::paste(app, text).map(|i| i.kind()),
+        "SelectAll" => PredefinedMenuItem::select_all(app, text).map(|i| i.kind()),
+        "Undo" => PredefinedMenuItem::undo(app, text).map(|i| i.kind()),
+        "Redo" => PredefinedMenuItem::redo(app, text).map(|i| i.kind()),
+        other => return Err(format!("未知的系统菜单项：{}", other)),
+    };
+    built.map_err(|e| e.to_string())
+}
+
+fn build_menu_item(
+    app: &tauri::AppHandle,
+    it: &MenuItemSpec,
+) -> Result<tauri::menu::MenuItemKind<tauri::Wry>, String> {
+    use tauri::menu::{
+        CheckMenuItemBuilder, IsMenuItem, MenuItemBuilder, SubmenuBuilder,
+    };
+    let text = it.text.clone().unwrap_or_default();
+    let enabled = it.enabled.unwrap_or(true);
+    let built = match it.kind.as_str() {
+        "sep" => return predefined_item(app, "Separator", None),
+        "role" => return predefined_item(app, it.role.as_deref().unwrap_or(""), it.text.as_deref()),
+        "submenu" => {
+            let mut b = SubmenuBuilder::new(app, &text).id(it.id.as_deref().unwrap_or("nl.sub"));
+            for c in &it.items {
+                b = b.item(&build_menu_item(app, c)?);
+            }
+            b.build().map(|s| s.kind()).map_err(|e| e.to_string())?
+        }
+        "check" => {
+            let mut b = CheckMenuItemBuilder::with_id(it.id.clone().unwrap_or_default(), &text)
+                .enabled(enabled)
+                .checked(it.checked.unwrap_or(false));
+            if let Some(a) = &it.accelerator {
+                b = b.accelerator(a);
+            }
+            b.build(app).map(|c| c.kind()).map_err(|e| e.to_string())?
+        }
+        _ => {
+            let mut b =
+                MenuItemBuilder::with_id(it.id.clone().unwrap_or_default(), &text).enabled(enabled);
+            if let Some(a) = &it.accelerator {
+                b = b.accelerator(a);
+            }
+            b.build(app).map(|m| m.kind()).map_err(|e| e.to_string())?
+        }
+    };
+    Ok(built)
+}
+
+fn install_app_menu(app: &tauri::AppHandle, spec: MenuSpec) -> Result<(), String> {
+    use tauri::menu::{IsMenuItem, MenuBuilder, SubmenuBuilder};
+    let mut tops: Vec<tauri::menu::MenuItemKind<tauri::Wry>> = Vec::new();
+    for g in &spec.groups {
+        let mut b = SubmenuBuilder::new(app, &g.text).id(native_group_id(&g.id));
+        for it in &g.items {
+            b = b.item(&build_menu_item(app, it)?);
+        }
+        tops.push(b.build().map(|s| s.kind()).map_err(|e| e.to_string())?);
+    }
+    if tops.is_empty() {
+        return Err("菜单组为空".into());
+    }
+    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = tops.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
+    let menu = MenuBuilder::new(app)
+        .items(&refs)
+        .build()
+        .map_err(|e| e.to_string())?;
+    menu.set_as_app_menu()
+        .map_err(|e| e.to_string())
+        .map(|_| ())
+}
+
+/// 前端在 mac 启动与状态变化时调用；抛错由前端回显到状态栏（不再静默回退窗口内工具条）
+#[tauri::command]
+fn set_mac_menu(app: tauri::AppHandle, spec: MenuSpec) -> Result<(), String> {
+    install_app_menu(&app, spec)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2832,6 +2983,56 @@ mod tests {
         assert_eq!(j2["behind"], 3);
         assert_eq!(j2["upstream"], "origin/main");
     }
+
+    #[test]
+    fn menu_spec_accepts_frontend_shape() {
+        // 前端 buildMacMenuSpec 的真实形态：cmd / check / sep / role / 嵌套 submenu 五类条目
+        let spec: MenuSpec = serde_json::from_str(
+            r#"{"groups":[{"id":"file","text":"文件","items":[
+                {"type":"cmd","id":"app.save","text":"保存当前文件","accelerator":"Cmd+S","enabled":false},
+                {"type":"sep"},
+                {"type":"check","id":"app.autosave","text":"自动保存","checked":true},
+                {"type":"submenu","id":"recent","text":"打开最近","dynamic":"recents","items":[
+                    {"type":"cmd","id":"recent:0","text":"a.md"}]},
+                {"type":"role","role":"CloseWindow"}
+            ]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(spec.groups.len(), 1);
+        assert_eq!(spec.groups[0].text, "文件");
+        let items = &spec.groups[0].items;
+        assert_eq!(items.len(), 5);
+        assert_eq!(items[0].accelerator.as_deref(), Some("Cmd+S"));
+        assert_eq!(items[0].enabled, Some(false));
+        assert_eq!(items[1].kind, "sep");
+        assert_eq!(items[2].checked, Some(true));
+        assert_eq!(items[3].items.len(), 1);
+        assert_eq!(items[4].role.as_deref(), Some("CloseWindow"));
+    }
+
+    #[test]
+    fn menu_spec_rejects_missing_group_text_and_maps_window_id() {
+        // 组缺 text 是契约错误，要在装配前以 Err 形式回给前端而不是 panic
+        let bad: Result<MenuSpec, _> = serde_json::from_str(r#"{"groups":[{"id":"file"}]}"#);
+        assert!(bad.is_err());
+        assert_eq!(native_group_id("window"), tauri::menu::WINDOW_SUBMENU_ID);
+        assert_eq!(native_group_id("file"), "file");
+    }
+
+    #[test]
+    fn menu_spec_gives_roles_a_text() {
+        // 角色项带 text 时标题由前端给（mac 上「剪切/退出」是固定译法），不带则退回 muda 默认英文
+        let spec: MenuSpec = serde_json::from_str(
+            r#"{"groups":[{"id":"edit","text":"编辑","items":[
+                {"type":"role","role":"Cut","text":"剪切"},
+                {"type":"role","role":"Quit"}
+            ]}]}"#,
+        )
+        .unwrap();
+        let items = &spec.groups[0].items;
+        assert_eq!(items[0].text.as_deref(), Some("剪切"));
+        assert_eq!(items[1].text, None);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2891,8 +3092,14 @@ pub fn run() {
             git_r_fetch,
             git_r_upstream,
             git_r_ahead_behind,
-            git_r_pull_ff
+            git_r_pull_ff,
+            // macOS 原生菜单（前端算 spec，Rust 落原生对象）
+            set_mac_menu
         ])
+        .on_menu_event(|app, event| {
+            use tauri::Emitter;
+            let _ = app.emit("nl:menu-select", event.id().as_ref().to_string());
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

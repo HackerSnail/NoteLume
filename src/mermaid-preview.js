@@ -3,11 +3,16 @@
 // 策略（与 hl-decorations.js 同构：纯 Decoration，编辑体验无损）：
 //  · code_block 仍只保存纯文本 + attrs.params（语言 'mermaid'），
 //    parse/serialize 走原生 fence <-> code_block 路径，GFM 往返零风险。
-//  · 每个 mermaid 块“之后”挂一个 widget decoration 显示渲染图；源码仍可编辑、仍参与语法高亮。
+//  · Typora 式「只见图，点图就地出码」：源码块的可见性完全由**光标位置**决定——光标不在该块内
+//    → 挂 .nl-mm-source（display:none）并在块尾挂图 widget；光标在块内 → 换成 .nl-mm-editing 描边、
+//    摘掉图。于是「斜杠菜单刚建好块」「点图把光标送进块」两种进入方式天然成立，Esc / Shift-Enter /
+//    点击别处让光标离开即回到图态；同一时刻最多一块出码（选区只有一个）。
+//  · 图 widget 上的点击由元素自己的监听器处理（PM 对 widget 的 stopEvent 事件会先忽略，
+//    handleDOMEvents 收不到），监听器只做一件事：把光标放进该块。
 //  · mermaid 是重依赖，用 await import('mermaid') 动态加载：vite 自动分包，
 //    只有当文档里真的出现 mermaid 块、且首次要渲染时才拉取，不拖累主 bundle。
 
-import { Plugin, PluginKey } from 'prosemirror-state'
+import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 
 const mmKey = new PluginKey('nl-mermaid')
@@ -63,10 +68,22 @@ function hashStr(s) {
   return h.toString(36)
 }
 
-function makeWidget(source) {
+function makeWidget(source, view, getPos) {
   const wrap = document.createElement('div')
   wrap.className = 'nl-mermaid'
   wrap.setAttribute('contenteditable', 'false')
+  // 点图 = 把光标送进该块，源码可见性由光标位置决定（见文件头）
+  wrap.addEventListener('click', (e) => {
+    e.preventDefault()
+    const state = view.state
+    const $at = state.doc.resolve(getPos())
+    const block = $at.nodeBefore
+    if (!block || !isMermaid(block)) return
+    const tr = state.tr.setSelection(TextSelection.near(state.doc.resolve($at.pos - block.nodeSize + 1), 1))
+    tr.setMeta('addToHistory', false)
+    view.dispatch(tr.scrollIntoView())
+    view.focus()
+  })
   const theme = currentTheme()
   const cached = svgCache.get(theme + '\u0000' + source)
   if (cached) {
@@ -88,26 +105,35 @@ function makeWidget(source) {
   return wrap
 }
 
-function buildDecorations(doc) {
+function buildDecorations(doc, editing) {
   const decos = []
   doc.descendants((node, pos) => {
     if (!isMermaid(node)) return
     const source = node.textContent
     const after = pos + node.nodeSize
-    decos.push(
-      Decoration.widget(
-        after,
-        () => makeWidget(source),
-        {
-          side: 1,
-          // key 含主题+源码指纹：内容不变时 PM 复用 DOM，避免编辑别处时整块闪烁/重渲染
-          key: 'nlmermaid:' + currentTheme() + ':' + hashStr(source),
-          stopEvent: () => true,
-        }
-      )
-    )
+    if (pos === editing) {
+      // 出码态：源码可见可编辑，只描个边提示「正在编辑」，不挂图
+      decos.push(Decoration.node(pos, after, { class: 'nl-mm-editing' }))
+      return
+    }
+    decos.push(Decoration.node(pos, after, { class: 'nl-mm-source' }))
+    decos.push(Decoration.widget(after, (view, getPos) => makeWidget(source, view, getPos), {
+      side: 1,
+      // key 含主题+源码指纹：内容不变时 PM 复用 DOM，避免编辑别处时整块闪烁/重渲染
+      key: 'nlmermaid:' + currentTheme() + ':' + hashStr(source),
+      stopEvent: () => true,
+    }))
   })
   return DecorationSet.create(doc, decos)
+}
+
+// 光标落在哪个 mermaid 块内（返回该块位置，否则 null）——出码态的唯一判据
+function editingPosIn(doc, sel) {
+  const $h = sel.$head || doc.resolve(sel.head)
+  for (let d = $h.depth; d > 0; d--) {
+    if (isMermaid($h.node(d))) return $h.before(d)
+  }
+  return null
 }
 
 export function mermaidPlugin() {
@@ -115,16 +141,35 @@ export function mermaidPlugin() {
     key: mmKey,
     state: {
       init(_, { doc }) {
-        return buildDecorations(doc)
+        return { set: buildDecorations(doc, null), editing: null }
       },
-      apply(tr, old) {
-        if (!tr.docChanged && !tr.getMeta(mmKey)) return old.map(tr.mapping, tr.doc)
-        return buildDecorations(tr.doc)
+      apply(tr, prev, oldState, newState) {
+        const editing = newState ? editingPosIn(tr.doc, newState.selection) : prev.editing
+        if (!tr.docChanged && editing === prev.editing && tr.getMeta(mmKey) !== 'refresh') {
+          return { set: prev.set.map(tr.mapping, tr.doc), editing }
+        }
+        return { set: buildDecorations(tr.doc, editing), editing }
       },
     },
     props: {
       decorations(state) {
-        return mmKey.getState(state)
+        return mmKey.getState(state).set
+      },
+      handleKeyDown(view, ev) {
+        if (ev.key !== 'Escape') return false
+        const st = mmKey.getState(view.state)
+        if (!st || st.editing == null) return false
+        const pos = st.editing
+        const node = view.state.doc.nodeAt(pos)
+        const tr = view.state.tr
+        if (node) {
+          const sel = TextSelection.near(view.state.doc.resolve(pos), -1)
+          // 只有确实落到块外才搬（该块是文档首块时无处可去，宁可光标留在隐藏源码内）
+          if (sel.from < pos || sel.to > pos + node.nodeSize) tr.setSelection(sel)
+        }
+        tr.setMeta('addToHistory', false)
+        view.dispatch(tr)
+        return true
       },
     },
     view(view) {

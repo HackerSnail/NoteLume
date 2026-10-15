@@ -22,12 +22,53 @@ import {
   toggleHeaderRow,
   setCellAttr,
   deleteTable,
+  TableView,
 } from 'prosemirror-tables'
+
+// 没有拖过列宽的表按内容分宽（table-layout:auto，同 Typora）；一旦 colwidth 写进文档
+// （右键拖列 → updateColumnWidth）就回到 fixed，否则拖出来的宽度会被内容重新拉开。
+function hasColwidth(tableNode) {
+  const row = tableNode.firstChild
+  if (!row) return false
+  for (let i = 0; i < row.childCount; i++) {
+    const cw = row.child(i).attrs.colwidth
+    if (cw && cw.some((w) => w)) return true
+  }
+  return false
+}
+
+class AutoTableView extends TableView {
+  constructor(node, defaultCellMinWidth, view) {
+    super(node, defaultCellMinWidth, view)
+    this.fitLayout()
+  }
+
+  update(node) {
+    const ok = super.update(node)
+    if (ok) this.fitLayout()
+    return ok
+  }
+
+  // 放在 super.update 之后：基类刚铺好的 col 宽度/整表 min-width 在这里按模式清掉
+  fitLayout() {
+    if (hasColwidth(this.node)) {
+      this.table.style.tableLayout = 'fixed'
+      return
+    }
+    this.table.style.tableLayout = 'auto'
+    this.table.style.width = ''
+    this.table.style.minWidth = ''
+    for (const col of this.colgroup.children) {
+      col.style.width = ''
+      col.style.minWidth = ''
+    }
+  }
+}
 
 // 装配进编辑器插件数组。tableEditing 放在数组靠后（它对鼠标/方向键处理较宽泛，
 // 让 columnResizing 等更具体的插件先取得事件权）。
 export function tablePlugins() {
-  return [columnResizing(), tableEditing()]
+  return [columnResizing({ View: AutoTableView }), tableEditing()]
 }
 
 // Tab / Shift-Tab 跨格。放在普通 keymap 之前；不在表内时返回 false 交回后续键位。

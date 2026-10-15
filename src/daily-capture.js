@@ -9,6 +9,7 @@
 //  · 停止输入 ~0.8s 自动保存；关闭 / Ctrl+S 立即保存；Esc 关闭。
 import { readMdFile, writeMdFile, pickFolder, confirmDialog, messageDialog } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
+import { setIcon } from './icons.js'
 import { formatDate, builtinVars, applyTemplate } from './template.js'
 
 const LS_DIR = 'nl-daily-abs'
@@ -27,7 +28,7 @@ function dailyRel() {
   return (name || 'daily') + '.md'
 }
 
-function setStatus(msg) { if (statusEl) statusEl.textContent = msg }
+function setStatus(msg, icon) { if (statusEl) setIcon(statusEl, icon, msg) }
 
 function ensureDom() {
   if (overlay) return
@@ -40,17 +41,17 @@ function ensureDom() {
   head.className = 'nl-daily-head'
   const title = document.createElement('span')
   title.className = 'nl-daily-title'
-  title.textContent = '📅 今日速记'
+  setIcon(title, 'calendar', '今日速记')
   dirLabelEl = document.createElement('span')
   dirLabelEl.className = 'nl-daily-dir'
   const cfgBtn = document.createElement('button')
   cfgBtn.className = 'nl-daily-cfg'
   cfgBtn.title = '设置今日目录 / 文件命名'
-  cfgBtn.textContent = '⚙'
+  setIcon(cfgBtn, 'sliders')
   const closeBtn = document.createElement('button')
   closeBtn.className = 'nl-daily-close'
   closeBtn.title = '关闭并保存 (Esc)'
-  closeBtn.textContent = '✕'
+  setIcon(closeBtn, 'close')
   head.append(title, dirLabelEl, cfgBtn, closeBtn)
 
   ta = document.createElement('textarea')
@@ -106,7 +107,7 @@ async function flush() {
     dirty = false
     setStatus('已保存 · ' + new Date().toLocaleTimeString())
   } catch (e) {
-    setStatus('⚠ 保存失败：' + ((e && e.message) || e))
+    setStatus('保存失败：' + ((e && e.message) || e), 'warning')
   }
 }
 

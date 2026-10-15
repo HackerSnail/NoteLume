@@ -41,6 +41,19 @@ const nlTableNodes = tableNodes({
   },
 })
 
+// 尺寸字符串 → 正整数像素：'328' / '328px' 接受，其余（百分号、auto、小数）一律当未设尺寸
+function pxNum(v) {
+  if (v == null) return null
+  const m = /^(\d+)(?:px)?$/.exec(String(v).trim())
+  return m ? Number(m[1]) : null
+}
+
+// 目的地里的 `\(` `\)` 还原成真实括号：默认规则（parseLinkDestination）已解这一层转义，
+// 自定义尺寸规则要与之对齐，否则同一张图带不带尺寸会解析出两个不同的 src
+function unescDest(s) {
+  return s.replace(/\\([()])/g, '$1')
+}
+
 const extendedNodes = baseSchema.spec.nodes
   // 任务列表：list_item 增加 checked 属性（null=普通项，true/false=任务项）
   .update('list_item', {
@@ -239,7 +252,8 @@ const extendedNodes = baseSchema.spec.nodes
       ]
     },
   })
-  // 图片：在默认 image 基础上增加 embed 标记，无损承载 Obsidian 的 ![[图片.png]] 嵌入语法
+  // 图片：在默认 image 基础上增加 embed 标记，无损承载 Obsidian 的 ![[图片.png]] 嵌入语法；
+  // width 承载 Typora/Obsidian 的拖拽尺寸（![a](a.png =328x) / ![[a.png|328]]），高度随比例自适应
   .update('image', {
     inline: true,
     group: 'inline',
@@ -249,6 +263,7 @@ const extendedNodes = baseSchema.spec.nodes
       alt: { default: null },
       title: { default: null },
       embed: { default: false },
+      width: { default: null },
     },
     parseDOM: [
       {
@@ -259,14 +274,16 @@ const extendedNodes = baseSchema.spec.nodes
             title: dom.getAttribute('title'),
             alt: dom.getAttribute('alt'),
             embed: dom.getAttribute('data-embed') === '1',
+            width: pxNum(dom.style && dom.style.width),
           }
         },
       },
     ],
     toDOM(node) {
-      const { src, alt, title, embed } = node.attrs
+      const { src, alt, title, embed, width } = node.attrs
       const attrs = { src, alt: alt || null, title: title || null }
       if (embed) attrs['data-embed'] = '1'
+      if (width) attrs.style = 'width:' + width + 'px'
       return ['img', attrs]
     },
   })
@@ -285,6 +302,62 @@ export const schema = new Schema({ nodes: extendedNodes, marks: extendedMarks })
 // 导出该实例供整站导出复用：编辑器只用它 tokenize→ProseMirror（mdParser.parse），从不调 .render()，
 // 故导出侧在其上挂 HTML 渲染规则不会影响编辑器解析（见 site-export.js）。
 export const tokenizer = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
+
+// Typora 的拖拽尺寸语法 `![alt](src =328x)`：宽度夹在目的地与右括号之间。markdown-it 的 image
+// 规则只接受「目的地 + 引号 title」，遇到 `=328x` 会把整段判成纯文本，故在 image 规则之前截获；
+// 只认带尺寸的写法，其余一律 return false 交回默认规则（不重复实现链接解析）。
+// 范围边界：`=328x200`（宽高都写死）与 `=50%` 不接，仍按原样留给默认规则处理。
+const IMG_SIZE_TAIL = /\s*=(\d+)x\s*$/
+tokenizer.inline.ruler.before('image', 'image_size', (state, silent) => {
+  const src = state.src
+  const pos = state.pos
+  if (src.charCodeAt(pos) !== 0x21 /* ! */ || src.charCodeAt(pos + 1) !== 0x5b /* [ */) return false
+  let label = pos + 2
+  while (label < src.length) {
+    const c = src[label]
+    if (c === '\\') {
+      label += 2
+      continue
+    }
+    if (c === '[') return false // 嵌套方括号（含 ![[..]] 嵌入）：交回默认规则
+    if (c === ']') break
+    label++
+  }
+  if (label >= src.length || src.charCodeAt(label + 1) !== 0x28 /* ( */) return false
+  let end = label + 2
+  let depth = 1
+  while (end < src.length) {
+    const c = src[end]
+    if (c === '\\') {
+      end += 2
+      continue
+    }
+    if (c === '(') depth++
+    else if (c === ')' && --depth === 0) break
+    end++
+  }
+  if (end >= src.length) return false
+  const inner = src.slice(label + 2, end)
+  const m = IMG_SIZE_TAIL.exec(inner)
+  if (!m) return false
+  const rest = inner.slice(0, inner.length - m[0].length).trim()
+  if (rest.startsWith('<')) return false // 尖括号目的地（内可含空格）不接：按空格切会改写路径，形态交回默认规则
+  const sp = rest.search(/\s/)
+  const dest = unescDest(sp < 0 ? rest : rest.slice(0, sp))
+  const href = state.md.normalizeLink(dest)
+  if (!state.md.validateLink(href)) return false // 非法目的地：交回默认规则，与 image 规则同进退
+  if (!silent) {
+    const alt = src.slice(pos + 2, label).replace(/\\([\\[\]()])/g, '$1')
+    const token = state.push('image', 'img', 0)
+    token.content = alt
+    token.attrSet('src', href) // 与默认规则同一套目的地处理：先解 `\(` 转义，再 normalizeLink
+    token.attrSet('width', m[1])
+    const title = sp < 0 ? '' : rest.slice(sp + 1).trim()
+    if (title) token.attrSet('title', title.replace(/^["']|["']$/g, ''))
+  }
+  state.pos = end + 1
+  return true
+})
 
 // [[Target]] 或 [[Target|显示文字]]；![[图片]] 为 Obsidian 图片嵌入（仅当扩展名是图片时）
 const WIKI_IMG_RE = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i
@@ -311,7 +384,10 @@ tokenizer.inline.ruler.push('wikilink', (state, silent) => {
     if (isEmbed) {
       const token = state.push('wiki_img', 'img', 0)
       token.attrSet('src', target)
-      token.attrSet('alt', alias || target)
+      // Obsidian 的 ![[图.png|328]]：竖线段是纯数字时是宽度，不是别名
+      const w = pxNum(alias)
+      if (w) token.attrSet('width', String(w))
+      token.attrSet('alt', w ? target : alias || target)
     } else {
       const token = state.push('wiki_link', 'span', 0)
       token.attrSet('target', target)
@@ -463,12 +539,28 @@ const parserTokens = {
     node: 'wikiLink',
     getAttrs: (tok) => ({ target: tok.attrGet('target'), label: tok.attrGet('label') }),
   },
+  // 默认 image 处理只读 markdown-it 生成的 children；自定义尺寸规则产出的 token 没有 children，
+  // 故在此统一取 alt，并把 width 落到节点属性上
+  image: {
+    node: 'image',
+    getAttrs: (tok) => ({
+      src: tok.attrGet('src'),
+      title: tok.attrGet('title') || null,
+      alt: (tok.children && tok.children[0] && tok.children[0].content) || tok.content || null,
+      width: pxNum(tok.attrGet('width')),
+    }),
+  },
   wiki_img: {
     node: 'image',
-    getAttrs: (tok) => ({ src: tok.attrGet('src'), alt: tok.attrGet('alt'), title: null, embed: true }),
+    getAttrs: (tok) => ({
+      src: tok.attrGet('src'),
+      alt: tok.attrGet('alt'),
+      title: null,
+      embed: true,
+      width: pxNum(tok.attrGet('width')),
+    }),
   },
-  tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
-  math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
+  tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },  math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   math_block: { node: 'math_block', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   callout: {
     block: 'callout',
@@ -613,11 +705,19 @@ const serializerNodes = {
     state.renderContent(node)
   },
   table: serializeTable,
-  // 图片：embed（Obsidian ![[..]]）原样写回 `![[src|别名]]`；否则走默认 `![alt](src "title")`
+  // 图片：embed（Obsidian ![[..]]）原样写回 `![[src|别名]]`；带宽度时走 Typora/Obsidian 的尺寸形态；
+  // 否则走默认 `![alt](src "title")`
   image(state, node) {
+    const w = node.attrs.width
     if (node.attrs.embed) {
       const alt = node.attrs.alt && node.attrs.alt !== node.attrs.src ? '|' + node.attrs.alt : ''
-      state.write('![[' + node.attrs.src + alt + ']]')
+      state.write('![[' + node.attrs.src + alt + (w ? '|' + w : '') + ']]')
+      return
+    }
+    if (w) {
+      const src = String(node.attrs.src).replace(/[\(\)]/g, (c) => '\\' + c)
+      const title = node.attrs.title ? ' ' + state.quote(node.attrs.title) : ''
+      state.write('![' + state.esc(node.attrs.alt || '') + '](' + src + title + ' =' + w + 'x)')
       return
     }
     defaultMarkdownSerializer.nodes.image(state, node)

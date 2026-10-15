@@ -4,6 +4,7 @@
 // 编辑器在 boot 时已建好、而插件要到打开知识库后才可知，故 keymap/inputRule 用
 // state.reconfigure 运行时热注入；schema（node/mark spec）创建后不可变，v1 暂不支持。
 import { listPlugins, readPlugin } from './tauri-bridge.js'
+import { setIcon } from './icons.js'
 import { keymap } from 'prosemirror-keymap'
 import { Plugin } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
@@ -284,7 +285,7 @@ export function createPluginManager(deps) {
     head.className = 'plugin-head'
     const reloadBtn = document.createElement('button')
     reloadBtn.className = 'plugin-reload'
-    reloadBtn.textContent = '↻ 重新加载'
+    setIcon(reloadBtn, 'reload', '重新加载')
     reloadBtn.addEventListener('click', () => reload())
     head.appendChild(reloadBtn)
     const hint = document.createElement('span')
@@ -318,12 +319,15 @@ export function createPluginManager(deps) {
       nm.textContent = (rec.plugin && rec.plugin.name) || rec.name
       info.appendChild(nm)
       let statusText = ''
-      if (rec.error) statusText = '⚠ ' + rec.error
-      else if (!rec.enabled) statusText = '已禁用'
+      let statusIcon = ''
+      if (rec.error) {
+        statusText = rec.error
+        statusIcon = 'warning'
+      } else if (!rec.enabled) statusText = '已禁用'
       else statusText = '已启用'
       const st = document.createElement('div')
       st.className = 'plugin-status' + (rec.error ? ' err' : '')
-      st.textContent = statusText
+      setIcon(st, statusIcon, statusText)
       st.title = rec.file
       info.appendChild(st)
       row.appendChild(chk)

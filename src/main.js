@@ -34,11 +34,13 @@ import {
   exportFile,
   buildSiteGraph,
   copyVaultAssets,
+  setMacMenu,
 } from './tauri-bridge.js'
 import { exportSite } from './site-export.js'
 import { createPalette } from './command-palette.js'
 import { createShortcutSettings } from './shortcut-settings.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { listen } from '@tauri-apps/api/event'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
 import { createGitPanel } from './git-panel.js'
@@ -46,12 +48,15 @@ import { promptDialog } from './prompt-dialog.js'
 import { confirm3Dialog } from './confirm3-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createRegistry } from './commands.js'
-import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, formatBinding } from './keymap.js'
+import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, formatBinding, toAccelerator } from './keymap.js'
+import { buildMacMenuSpec } from './app-menu.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
 import { builtinVars, applyTemplate } from './template.js'
 import { toggleDailyCapture, configureDailyCapture } from './daily-capture.js'
 import { countWords, statsLabel } from './writing-stats.js'
+import { setIcon } from './icons.js'
+import { analyzeOutline, hiddenRows } from './outline-tree.js'
 import MarkdownIt from 'markdown-it'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
@@ -114,6 +119,8 @@ const els = {
   btnMore: $('btn-more'),
   sourceMount: $('source-mount'),
   docstats: $('docstats'),
+  sidebar: $('sidebar'),
+  inspector: $('inspector'),
 }
 
 let editor
@@ -132,6 +139,9 @@ function isCanvasPath(p) {
 
 function setStatus(msg) {
   els.status.textContent = msg
+  // mac 原生菜单的可用性/勾选随状态变（开库、开文档、模式、主题…），状态栏是所有这些路径的公共出口，
+  // 在这里挂一次重建即可覆盖全部；spec 内容没变时 syncMacChrome 自行跳过
+  scheduleMacChrome()
 }
 
 // 脏标记统一入口：编辑器与画布共用（驱动 dirty 样式 + 自动保存）
@@ -199,7 +209,8 @@ function updateDocStats() {
     const pct = Math.min(100, Math.round((words / goal) * 100))
     label += ' · 目标 ' + goal + '（' + pct + '%）'
   }
-  els.docstats.textContent = label
+  els.docstats.textContent = ''
+  setIcon(els.docstats, 'pen', label)
 }
 
 function toggleFocusMode() {
@@ -214,6 +225,241 @@ function toggleTypewriterMode() {
   localStorage.setItem('nl-typewriter', on ? '1' : '0')
   if (editor) editor.setTypewriterMode(on)
   setStatus(on ? '打字机模式：开启' : '打字机模式：关闭')
+}
+
+// 侧栏整栏收起/展开（编辑区随之铺满）；状态持久化
+function sidebarHidden() {
+  return localStorage.getItem('nl-sidebar') === 'hidden'
+}
+function currentSideTab() {
+  return localStorage.getItem('nl-side-tab') === 'outline' ? 'outline' : 'files'
+}
+function setSidebar(hidden) {
+  localStorage.setItem('nl-sidebar', hidden ? 'hidden' : 'shown')
+  if (els.sidebar) els.sidebar.classList.toggle('hidden', hidden)
+  syncSideCorner()
+}
+function toggleSidebar() {
+  const hidden = localStorage.getItem('nl-sidebar') !== 'hidden'
+  setSidebar(hidden)
+  setStatus(hidden ? '侧栏：已收起' : '侧栏：已展开')
+}
+
+// —— 侧栏「文件 / 大纲」共用一块区域：两 tab 互斥（Typora 式），tab 态持久化 ——
+// 栏内 tab 与栏外常驻图标对（.side-corner）共用同一套引擎，不各存一份状态
+let sideTabs = []
+let sideCorner = []
+function setSideTab(name) {
+  const tab = name === 'outline' ? 'outline' : 'files'
+  localStorage.setItem('nl-side-tab', tab)
+  for (const b of sideTabs) {
+    const on = b.getAttribute('data-tab') === tab
+    b.classList.toggle('active', on)
+    b.setAttribute('aria-selected', on ? 'true' : 'false')
+  }
+  if (els.tree) els.tree.classList.toggle('hidden', tab !== 'files')
+  if (els.outline) els.outline.classList.toggle('hidden', tab !== 'outline')
+  syncSideCorner()
+}
+function syncSideCorner() {
+  const tab = currentSideTab()
+  for (const b of sideCorner) b.classList.toggle('active', !sidebarHidden() && b.getAttribute('data-tab') === tab)
+}
+// 栏外图标的三种落点：收起 → 开栏到该 tab；开着但在另一 tab → 切过去；正停在该 tab → 收起整栏
+function openSidebarOn(name) {
+  const tab = name === 'outline' ? 'outline' : 'files'
+  if (!sidebarHidden() && currentSideTab() === tab) {
+    toggleSidebar()
+    return
+  }
+  if (sidebarHidden()) toggleSidebar()
+  setSideTab(tab)
+}
+function bindSideTabs() {
+  sideTabs = [...document.querySelectorAll('.side-tab')]
+  for (const b of sideTabs) b.addEventListener('click', () => setSideTab(b.getAttribute('data-tab')))
+  sideCorner = [...document.querySelectorAll('.side-corner-btn[data-tab]')]
+  for (const b of sideCorner) b.addEventListener('click', () => openSidebarOn(b.getAttribute('data-tab')))
+  const insp = document.getElementById('btn-inspector')
+  if (insp) insp.addEventListener('click', toggleInspector)
+  setSideTab(currentSideTab())
+  syncInspector()
+}
+// —— 检查器（右栏）：文档属性 / 标签 / 双向链接 / 历史 / Git / 插件；左栏只留文件与大纲 ——
+function inspectorHidden() {
+  return localStorage.getItem('nl-inspector') === 'hidden'
+}
+function syncInspector() {
+  const hidden = inspectorHidden()
+  if (els.inspector) els.inspector.classList.toggle('hidden', hidden)
+  const body = document.querySelector('.body')
+  if (body) body.classList.toggle('inspector-on', !hidden)
+  const btn = document.getElementById('btn-inspector')
+  if (btn) btn.classList.toggle('active', !hidden)
+}
+function setInspector(hidden) {
+  localStorage.setItem('nl-inspector', hidden ? 'hidden' : 'shown')
+  syncInspector()
+}
+function toggleInspector() {
+  const hidden = !inspectorHidden()
+  setInspector(hidden)
+  setStatus(hidden ? '检查器：已收起' : '检查器：已展开')
+}
+
+// —— 左右栏宽度：按住分隔条直接拖；拖到不足 COL_W_COLLAPSE 就整栏收起，反向再拖回来（Typora 式）。
+// 宽度写进 .body 的 CSS 变量并存 localStorage（收起不丢记忆宽），双击分隔条回默认宽 ——
+const COL_W_KEY = { sidebar: 'nl-w-sidebar', inspector: 'nl-w-inspector' }
+const COL_W_VAR = { sidebar: '--nl-side-w', inspector: '--nl-insp-w' }
+const COL_W_MIN = 180
+const COL_W_MAX = 520
+const COL_W_DEFAULT = 280
+const COL_W_COLLAPSE = 90
+const COL_W_LABEL = { sidebar: '侧栏', inspector: '检查器' }
+function clampColWidth(w) {
+  return Math.max(COL_W_MIN, Math.min(COL_W_MAX, Math.round(w)))
+}
+function colWidth(which) {
+  const n = Number(localStorage.getItem(COL_W_KEY[which]))
+  return n >= COL_W_MIN && n <= COL_W_MAX ? n : COL_W_DEFAULT
+}
+function applyColWidths() {
+  const body = document.querySelector('.body')
+  if (!body) return
+  body.style.setProperty(COL_W_VAR.sidebar, colWidth('sidebar') + 'px')
+  body.style.setProperty(COL_W_VAR.inspector, colWidth('inspector') + 'px')
+}
+// 显隐复用 setSidebar / setInspector 一条路：栏外图标态、localStorage 收起态都跟着走
+function setColShown(which, shown) {
+  if (which === 'sidebar') {
+    if (sidebarHidden() === shown) setSidebar(!shown)
+  } else if (inspectorHidden() === shown) setInspector(!shown)
+}
+function bodyWidthAt(which, clientX) {
+  const body = document.querySelector('.body')
+  if (!body) return COL_W_DEFAULT
+  const r = body.getBoundingClientRect()
+  // 用指针相对 .body 的绝对位置定宽：中途收起/展开改变不了基准，手不会跳
+  return Math.round(which === 'sidebar' ? clientX - r.left : r.right - clientX)
+}
+function bindColResizers() {
+  applyColWidths()
+  for (const which of ['sidebar', 'inspector']) {
+    const g = document.getElementById(which === 'sidebar' ? 'gutter-side' : 'gutter-insp')
+    const col = els[which]
+    if (!g || !col) continue
+    const label = COL_W_LABEL[which]
+    g.addEventListener('pointerdown', (e) => {
+      e.preventDefault()
+      g.classList.add('dragging')
+      col.classList.add('is-resizing')
+      let w = bodyWidthAt(which, e.clientX)
+      const move = (ev) => {
+        w = bodyWidthAt(which, ev.clientX)
+        if (w < COL_W_COLLAPSE) {
+          setColShown(which, false)
+          return
+        }
+        setColShown(which, true)
+        const body = document.querySelector('.body')
+        if (body) body.style.setProperty(COL_W_VAR[which], Math.min(COL_W_MAX, w) + 'px')
+      }
+      const up = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
+        g.classList.remove('dragging')
+        col.classList.remove('is-resizing')
+        if (w < COL_W_COLLAPSE) {
+          applyColWidths() // 拖没的这次不记账：变量回到记住的宽度，下次展开即恢复
+          setStatus(label + '：已收起')
+          return
+        }
+        const saved = clampColWidth(w)
+        localStorage.setItem(COL_W_KEY[which], String(saved))
+        applyColWidths()
+        setStatus(label + '宽度：' + saved + 'px')
+      }
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', up)
+    })
+    g.addEventListener('dblclick', () => {
+      localStorage.removeItem(COL_W_KEY[which])
+      applyColWidths()
+      setStatus(label + '宽度：默认')
+    })
+  }
+}
+// 无标题可列时「大纲」入口置灰（栏内 tab 与栏外图标同进退，不渲染空态文案）；正停在大纲上则回落到文件
+function syncOutlineTab(hasHeadings) {
+  for (const list of [sideTabs, sideCorner]) {
+    const btn = list.find((b) => b.getAttribute('data-tab') === 'outline')
+    if (btn) btn.disabled = !hasHeadings
+  }
+  if (!hasHeadings && currentSideTab() === 'outline') setSideTab('files')
+}
+
+// —— 大纲：层级树（大标题常显、其下子级整节可收，含多级后代）——
+// 收起态存内存（行号集合），换文档即清——与正文标题折叠同一约定，不持久化
+let outlineItems = []
+let outlineCollapsed = new Set()
+let outlineFoldDoc
+function renderOutline() {
+  const ol = els.outline
+  if (!ol) return
+  if (outlineFoldDoc !== state.currentFile) {
+    outlineFoldDoc = state.currentFile
+    outlineCollapsed = new Set()
+  }
+  const rows = analyzeOutline(outlineItems)
+  const hidden = hiddenRows(rows, outlineCollapsed)
+  ol.innerHTML = ''
+  outlineItems.forEach((item, i) => {
+    if (hidden.has(i)) return
+    const row = document.createElement('div')
+    row.className = 'outline-row level-' + rows[i].level
+    if (rows[i].hasKids) {
+      const folded = outlineCollapsed.has(i)
+      const caret = document.createElement('button')
+      caret.type = 'button'
+      caret.className = 'outline-caret' + (folded ? ' folded' : '')
+      caret.title = folded ? '展开' : '收起'
+      setIcon(caret, 'chevron-down', '')
+      caret.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (outlineCollapsed.has(i)) outlineCollapsed.delete(i)
+        else outlineCollapsed.add(i)
+        renderOutline()
+      })
+      row.appendChild(caret)
+    } else {
+      const sp = document.createElement('span')
+      sp.className = 'outline-caret outline-caret-sp'
+      row.appendChild(sp)
+    }
+    const a = document.createElement('a')
+    a.className = 'outline-item'
+    a.textContent = item.text || '（空标题）'
+    a.href = '#'
+    a.addEventListener('click', (e) => {
+      e.preventDefault()
+      editor.jumpToPos(item.pos)
+    })
+    row.appendChild(a)
+    ol.appendChild(row)
+  })
+  syncOutlineTab(outlineItems.length > 0)
+}
+
+// 自动保存开关的唯一入口：复选框与命令注册表（含 mac 菜单勾选项）都走这里
+function setAutosave(on) {
+  state.autosave.enabled = !!on
+  localStorage.setItem('nl-autosave', on ? '1' : '0')
+  if (els.chkAutosave) els.chkAutosave.checked = !!on
+  setStatus(on ? '自动保存已开启（2s 空闲）' : '自动保存已关闭')
+  if (on && state.dirty) scheduleAutosave()
 }
 
 async function setWordGoal() {
@@ -238,17 +484,18 @@ async function toggleSourceMode() {
 
 // —— 主题 ——（浅色 → 暗黑 → Dracula 三态循环；按钮显示当前主题名，与界面实际一致）
 const THEMES = ['light', 'dark', 'vampire']
-const THEME_LABEL = { light: '☀️ 浅色', dark: '🌙 暗黑', vampire: '🧛 Dracula' }
+const THEME_LABEL = { light: ['sun', '浅色'], dark: ['moon', '暗黑'], vampire: ['contrast', 'Dracula'] }
 function applyTheme(theme) {
   if (!THEMES.includes(theme)) theme = 'light'
   document.documentElement.setAttribute('data-theme', theme)
   // 深色族（暗黑 / 吸血鬼）共享一套派生样式，用 data-dark 统一命中
   document.documentElement.toggleAttribute('data-dark', theme === 'dark' || theme === 'vampire')
   localStorage.setItem('nl-theme', theme)
-  els.btnTheme.textContent = THEME_LABEL[theme]
+  setIcon(els.btnTheme, THEME_LABEL[theme][0], THEME_LABEL[theme][1])
   // 通知视图层按新主题重渲染依赖配色的部件（如 mermaid 图表）
   window.dispatchEvent(new Event('nl-theme-change'))
   if (editor) editor.setSourceTheme(theme)
+  scheduleMacChrome() // 主题勾选项跟着走（mac 菜单）
 }
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') || 'light'
@@ -599,16 +846,17 @@ function placeMenu(menu, clientX, clientY) {
   menu.style.top = y + 'px'
   treeMenuEl = menu
 }
-function makeMenuItem(label, fn, danger, checked) {
+function makeMenuItem(label, fn, danger, checked, icon) {
   const b = document.createElement('button')
   b.className = 'cv-menu-item' + (danger ? ' danger' : '')
   const chk = document.createElement('span')
   chk.className = 'cv-menu-check'
-  chk.textContent = checked ? '✓' : ''
+  if (checked) setIcon(chk, 'check')
   b.appendChild(chk)
   const lab = document.createElement('span')
   lab.className = 'cv-menu-label'
-  lab.textContent = label
+  if (icon) setIcon(lab, icon, label)
+  else lab.textContent = label
   b.appendChild(lab)
   b.addEventListener('click', () => {
     closeTreeMenu()
@@ -782,12 +1030,12 @@ function openTemplateMenu(anchorEl) {
     if (!tpls.length) {
       menu.appendChild(makeMenuItem('（' + TEMPLATE_DIR() + '/ 暂无模板）', () => {}))
     } else {
-      tpls.forEach((p) => menu.appendChild(makeMenuItem('📄 ' + baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p))))
+      tpls.forEach((p) => menu.appendChild(makeMenuItem(baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p), false, false, 'file')))
     }
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('📅 今日速记（全局浮层，独立于知识库）', () => toggleDailyCapture()))
-    menu.appendChild(makeMenuItem('➕ 新建空白模板…', () => newBlankTemplate()))
-    menu.appendChild(makeMenuItem('⚙ 今日速记设置…', () => configureDailyCapture()))
+    menu.appendChild(makeMenuItem('今日速记（全局浮层，独立于知识库）', () => toggleDailyCapture(), false, false, 'calendar'))
+    menu.appendChild(makeMenuItem('新建空白模板…', () => newBlankTemplate(), false, false, 'plus'))
+    menu.appendChild(makeMenuItem('今日速记设置…', () => configureDailyCapture(), false, false, 'sliders'))
     const r = anchorEl.getBoundingClientRect()
     placeMenu(menu, r.left, r.bottom + 4)
   })
@@ -798,18 +1046,22 @@ function openMoreMenu(anchorEl) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
-  menu.appendChild(makeMenuItem('⌘ 命令面板 (Ctrl+Shift+P)', () => palette && palette.open()))
-  menu.appendChild(makeMenuItem('🎛 快捷键设置…', () => keySettings && keySettings.open()))
-  menu.appendChild(makeMenuItem('📤 导出为 HTML', () => exportHTML()))
-  menu.appendChild(makeMenuItem('🌐 导出整站…', () => exportSiteFull()))
-  menu.appendChild(makeMenuItem('🖨 打印 / 导出 PDF (Ctrl+P)', () => window.print()))
-  menu.appendChild(makeMenuItem('🕸 知识图谱 (Ctrl+G)', () => openGraphModal()))
-  menu.appendChild(makeMenuItem('🗺 新画布 / 白板', () => newCanvas()))
-  menu.appendChild(makeMenuItem('🕘 最近打开', () => openRecentMenu(anchorEl)))
-  menu.appendChild(makeMenuItem('📋 模板 / 今日速记设置', () => openTemplateMenu(anchorEl)))
+  menu.appendChild(makeMenuItem('命令面板 (Ctrl+Shift+P)', () => palette && palette.open(), false, false, 'terminal'))
+  menu.appendChild(makeMenuItem('快捷键设置…', () => keySettings && keySettings.open(), false, false, 'sliders'))
+  menu.appendChild(makeMenuItem('导出为 HTML', () => exportHTML(), false, false, 'export'))
+  menu.appendChild(makeMenuItem('导出整站…', () => exportSiteFull(), false, false, 'globe'))
+  menu.appendChild(makeMenuItem('打印 / 导出 PDF (Ctrl+P)', () => window.print(), false, false, 'printer'))
+  menu.appendChild(makeMenuItem('知识图谱 (Ctrl+G)', () => openGraphModal(), false, false, 'graph'))
+  menu.appendChild(makeMenuItem('新画布 / 白板', () => newCanvas(), false, false, 'board'))
+  menu.appendChild(makeMenuItem('最近打开', () => openRecentMenu(anchorEl), false, false, 'clock'))
+  menu.appendChild(makeMenuItem('模板 / 今日速记设置', () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
   menu.appendChild(menuSep())
-  menu.appendChild(makeMenuItem('🎯 专注模式 (Ctrl+Shift+F)', () => toggleFocusMode(), false, localStorage.getItem('nl-focus') === '1'))
-  menu.appendChild(makeMenuItem('⌨ 打字机模式 (Ctrl+Shift+T)', () => toggleTypewriterMode(), false, localStorage.getItem('nl-typewriter') === '1'))
+  menu.appendChild(makeMenuItem('专注模式 (Ctrl+Shift+F)', () => toggleFocusMode(), false, localStorage.getItem('nl-focus') === '1', 'target'))
+  menu.appendChild(makeMenuItem('打字机模式 (Ctrl+Shift+T)', () => toggleTypewriterMode(), false, localStorage.getItem('nl-typewriter') === '1', 'keyboard'))
+  const sbKey = commandBindingFor('app.toggleSidebar')
+  menu.appendChild(makeMenuItem('侧栏' + (sbKey ? ' (' + sbKey + ')' : ''), () => toggleSidebar(), false, localStorage.getItem('nl-sidebar') !== 'hidden', 'sidebar'))
+  const inKey = commandBindingFor('app.toggleInspector')
+  menu.appendChild(makeMenuItem('检查器' + (inKey ? ' (' + inKey + ')' : ''), () => toggleInspector(), false, !inspectorHidden(), 'sliders'))
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
 }
@@ -848,12 +1100,12 @@ function openRecentMenu(anchorEl) {
     menu.appendChild(makeMenuItem('（暂无最近打开记录）', () => {}))
   } else {
     list.forEach((e) => {
-      const it = makeMenuItem('📄 ' + e.name, () => reopenRecent(e))
+      const it = makeMenuItem(e.name, () => reopenRecent(e), false, false, 'file')
       it.title = e.root + '/' + e.rel
       menu.appendChild(it)
     })
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('🧹 清空最近记录', () => saveRecents([])))
+    menu.appendChild(makeMenuItem('清空最近记录', () => saveRecents([]), false, false, 'eraser'))
   }
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
@@ -1157,20 +1409,8 @@ async function onOpenWiki(name) {
 
 // —— 大纲 / 标签面板 ——
 function onMetaChange({ outline, tags }) {
-  const ol = els.outline
-  ol.innerHTML = ''
-  outline.forEach((item) => {
-    const a = document.createElement('a')
-    a.className = 'outline-item level-' + item.level
-    a.textContent = item.text || '（空标题）'
-    a.href = '#'
-    a.addEventListener('click', (e) => {
-      e.preventDefault()
-      editor.jumpToPos(item.pos)
-    })
-    ol.appendChild(a)
-  })
-  if (!outline.length) ol.innerHTML = '<div class="muted">暂无标题</div>'
+  outlineItems = Array.isArray(outline) ? outline : []
+  renderOutline()
 
   const tw = els.tags
   tw.innerHTML = ''
@@ -1486,15 +1726,26 @@ function registerAppCommands() {
   app('app.save', '保存当前文件', 'Mod-s', () => saveCurrent(true))
   app('app.openFile', '打开单个文件', 'Mod-o', () => openSingleFile())
   app('app.openFolder', '打开知识库文件夹', 'Mod-Shift-o', () => openFolder())
-  app('app.search', '聚焦侧栏搜索', 'Mod-f', () => { els.searchInput.focus(); els.searchInput.select() })
+  app('app.search', '聚焦侧栏搜索', 'Mod-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
   // 打印收窄为纯 Ctrl+P：旧实现 key==='p' 未排除 shift，会吞掉 Ctrl+Shift+P（留给命令面板）
   app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
   app('app.graph', '打开知识图谱', 'Mod-g', () => openGraphModal())
   app('app.dailyCapture', '今日速记', 'Mod-Shift-d', () => toggleDailyCapture())
   app('app.focusMode', '专注模式', 'Mod-Shift-f', () => toggleFocusMode())
   app('app.typewriterMode', '打字机模式', 'Mod-Shift-t', () => toggleTypewriterMode())
+  app('app.toggleSidebar', '隐藏 / 显示侧栏', 'Mod-Shift-s', () => toggleSidebar())
+  app('app.toggleInspector', '隐藏 / 显示检查器', 'Mod-Shift-i', () => toggleInspector())
   app('app.sourceMode', 'Markdown 源码模式', 'Mod-/', () => toggleSourceMode())
   app('app.palette', '命令面板', 'Mod-Shift-p', () => { if (palette) palette.open() })
+  // 以下原先只挂在「更多」菜单里：入注册表后 mac 原生菜单可直接取用（一处定义，两处消费）
+  app('app.shortcuts', '快捷键设置…', null, () => { if (keySettings) keySettings.open() })
+  app('app.export', '导出为 HTML', null, () => exportHTML())
+  app('app.exportSite', '导出整站…', null, () => exportSiteFull())
+  app('app.newCanvas', '新画布 / 白板', null, () => newCanvas())
+  app('app.newTemplate', '新建空白模板…', null, () => newBlankTemplate())
+  app('app.dailySettings', '今日速记设置…', null, () => configureDailyCapture())
+  app('app.autosave', '自动保存', null, () => setAutosave(!state.autosave.enabled))
+  app('app.clearRecents', '清空最近记录', null, () => saveRecents([]))
   // 批次 E（L）：本地 Git（无默认键，避免抢占既有快捷键；可在快捷键设置里自行绑定）
   app('app.git.refresh', 'Git：刷新状态', null, () => { if (gitPanel) gitPanel.refresh() })
   app('app.git.commit', 'Git：提交全部…', null, () => { if (gitPanel) gitPanel.commitAll() })
@@ -1575,7 +1826,157 @@ function commandBindingFor(id) {
   return formatBinding(chosen, IS_MAC)
 }
 
-// 保存覆盖表到 localStorage 并令两层同时生效：重建全局分发器 + 热重配编辑器 keymap
+// —— macOS 原生菜单（系统菜单栏）——
+// 菜单不带第二份文案或快捷键：每次从命令注册表 + 覆盖表现算 spec，一次 IPC 交 Rust 整份重建。
+// 装配失败（纯 web 构建 / 缺能力授权 / 原生侧抛错）时 data-mac 不落地并回显状态栏，
+// 窗口内工具条与既有分发器原样保留——入口不能因为菜单挂不上而消失。
+let macMenuOn = false
+let macChromeTimer = null
+let macMenuSig = ''
+let macTitle = ''
+const lastRunAt = new Map()
+
+const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.print'])
+const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
+const MENU_CHECKED = {
+  'app.focusMode': () => localStorage.getItem('nl-focus') === '1',
+  'app.typewriterMode': () => localStorage.getItem('nl-typewriter') === '1',
+  'app.toggleSidebar': () => localStorage.getItem('nl-sidebar') !== 'hidden',
+  'app.toggleInspector': () => !inspectorHidden(),
+  'app.autosave': () => state.autosave.enabled,
+  'app.sourceMode': () => !!(editor && editor.isSourceMode()),
+}
+
+function menuEnabled(id) {
+  if (MENU_NEEDS_DOC.has(id) && !state.currentFile) return false
+  // PM 编辑命令只在所见即所得的文档上可用（画布 / 未打开文档时置灰）
+  if (id.startsWith('editor.') && !(state.currentFile && state.mode === 'md')) return false
+  if (MENU_NEEDS_VAULT.has(id) && !state.vaultRoot) return false
+  return true
+}
+
+function menuCommands() {
+  const ov = loadKeymapOverrides()
+  // 当前块类型：「段落」组的勾（单选语义，同 Typora）与标题升/降级的可用性都读它
+  const active = (editor && editor.activeBlock && editor.activeBlock()) || null
+  const isH = active && /^h[1-6]$/.test(active) ? Number(active.slice(1)) : 0
+  return commandRegistry.list().map((c) => {
+    const raw = Object.prototype.hasOwnProperty.call(ov, c.id) ? ov[c.id] : c.defaultKey
+    const out = { id: c.id, title: c.title, accelerator: toAccelerator(raw), enabled: menuEnabled(c.id) }
+    const check = MENU_CHECKED[c.id]
+    if (check) out.checked = check()
+    if (c.id.startsWith('editor.block.')) out.checked = c.id === 'editor.block.' + active
+    if (c.id === 'editor.headingUp') out.enabled = out.enabled && isH > 1
+    if (c.id === 'editor.headingDown') out.enabled = out.enabled && isH > 0 && isH < 6
+    return out
+  })
+}
+
+function menuSpecCtx() {
+  const theme = document.documentElement.getAttribute('data-theme') || 'light'
+  return {
+    commands: menuCommands(),
+    recents: loadRecents().map((e, i) => ({ id: 'recent:' + i, label: e.name })),
+    templates: listMdInDir(TEMPLATE_DIR()).map((p) => ({ id: 'tpl:' + p, label: baseName(p).replace(/\.md$/i, '') })),
+    themes: THEMES.map((name) => ({ id: 'theme:' + name, label: THEME_LABEL[name][1], checked: name === theme })),
+  }
+}
+
+function onMenuSelect(id) {
+  if (!id || id === 'nl.noop') return
+  if (id.startsWith('recent:')) {
+    const e = loadRecents()[Number(id.slice('recent:'.length))]
+    if (e) reopenRecent(e)
+    return
+  }
+  if (id.startsWith('tpl:')) {
+    newFromTemplate(id.slice('tpl:'.length))
+    return
+  }
+  if (id.startsWith('theme:')) {
+    applyTheme(id.slice('theme:'.length))
+    scheduleMacChrome()
+    return
+  }
+  runViaShortcut(id)
+}
+
+// 同一条绑定的两个入口：窗口内 keydown 分发器与 mac 菜单 accelerator。
+// macOS 通常由菜单吃掉按键，但装配结果不保证一致，故 200ms 内同一命令只执行一次。
+function runViaShortcut(id) {
+  // 系统预定义项（Cut/Copy/Quit…，id 形如 builtin:*）由原生侧自己处理，不进注册表
+  if (!commandRegistry.get(id)) return
+  const now = Date.now()
+  if (now - (lastRunAt.get(id) || 0) < 200) return
+  lastRunAt.set(id, now)
+  try {
+    commandRegistry.run(id, commandCtx())
+  } catch (err) {
+    setStatus('命令执行失败：' + ((err && err.message) || err))
+  }
+  scheduleMacChrome()
+}
+
+function scheduleMacChrome() {
+  if (!IS_MAC) return
+  clearTimeout(macChromeTimer)
+  macChromeTimer = setTimeout(syncMacChrome, 150)
+}
+
+async function syncMacChrome() {
+  syncWindowTitle()
+  if (!macMenuOn) return
+  try {
+    await pushMacMenu()
+  } catch (e) {
+    console.warn('原生菜单重建失败', e)
+  }
+}
+
+// 一次 IPC 换整棵菜单；spec 内容没变就跳过（setStatus 触发得很频繁）
+async function pushMacMenu() {
+  const spec = buildMacMenuSpec(menuSpecCtx())
+  const sig = JSON.stringify(spec)
+  if (sig === macMenuSig) return
+  macMenuSig = sig
+  try {
+    await setMacMenu(spec)
+  } catch (e) {
+    macMenuSig = '' // 没落地，签名作废，下次状态变化时重试
+    throw e
+  }
+}
+
+// mac 的标题属于系统标题栏：当前文档名写进窗口标题，工具条里的文件名不再重复
+function syncWindowTitle() {
+  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  const name = (els.filename.textContent || '').trim() || 'NoteLume'
+  if (name === macTitle) return
+  macTitle = name
+  getCurrentWindow()
+    .setTitle(name)
+    .catch(() => {
+      /* 缺 core:window:allow-set-title 时静默跳过 */
+    })
+}
+
+async function setupMacMenu() {
+  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  try {
+    await listen('nl:menu-select', (e) => onMenuSelect(e.payload))
+    await pushMacMenu()
+  } catch (e) {
+    setStatus('mac 原生菜单不可用，已保留窗口内工具条：' + ((e && e.message) || e))
+    return
+  }
+  macMenuOn = true
+  document.documentElement.toggleAttribute('data-mac', true)
+  syncWindowTitle()
+  // filename 由多处直接赋值，用观察器统一同步标题，避免逐个改调用点
+  new MutationObserver(syncWindowTitle).observe(els.filename, { childList: true, characterData: true, subtree: true })
+}
+
+// 保存覆盖表到 localStorage 并令两层同时生效：重建全局分发器 + 热重配编辑器 keymap + 重挂原生菜单键
 function saveKeymapOverrides(overrides) {
   const ov = overrides && typeof overrides === 'object' ? overrides : {}
   try {
@@ -1586,6 +1987,7 @@ function saveKeymapOverrides(overrides) {
   }
   rebuildKeymap()
   if (editor) editor.setKeymapOverrides(ov)
+  scheduleMacChrome()
 }
 
 function bindShortcuts() {
@@ -1600,11 +2002,7 @@ function bindShortcuts() {
     const id = effectiveKeymap.get(resolveBinding(logical, IS_MAC))
     if (!id) return
     e.preventDefault()
-    try {
-      commandRegistry.run(id, commandCtx())
-    } catch (err) {
-      setStatus('命令执行失败：' + (err?.message || err))
-    }
+    runViaShortcut(id)
   })
 }
 
@@ -1623,6 +2021,7 @@ async function boot() {
     sourceMountEl: els.sourceMount,
     onSourceTextChange: () => { updateDocStats(); if (frontmatterPanel) frontmatterPanel.refresh() },
     onDocChange: (doc, prev) => { updateDocStats(); if (pluginManager) pluginManager.fireDocChange(doc, prev) },
+    onSelectionChange: () => scheduleMacChrome(),
   })
 
   // 文档属性（frontmatter）面板：查看 / 编辑当前 md 文档的 YAML 头
@@ -1637,6 +2036,9 @@ async function boot() {
   refreshGlobalTags() // 未开库时先显占位；开库并索引就绪后由 startIndexPolling 刷新
 
   applyTheme(localStorage.getItem('nl-theme') || 'light')
+  setSidebar(localStorage.getItem('nl-sidebar') === 'hidden')
+  bindSideTabs()
+  bindColResizers()
 
   // P2 版本快照面板：列表 / 预览 / 回滚（依赖已装配的 editor 与导出用 markdown-it）
   snapshotPanel = createSnapshotPanel({
@@ -1686,12 +2088,7 @@ async function boot() {
   })
 
   els.chkAutosave.checked = state.autosave.enabled
-  els.chkAutosave.addEventListener('change', () => {
-    state.autosave.enabled = els.chkAutosave.checked
-    localStorage.setItem('nl-autosave', state.autosave.enabled ? '1' : '0')
-    setStatus(state.autosave.enabled ? '自动保存已开启（2s 空闲）' : '自动保存已关闭')
-    if (state.autosave.enabled && state.dirty) scheduleAutosave()
-  })
+  els.chkAutosave.addEventListener('change', () => setAutosave(els.chkAutosave.checked))
 
   els.btnOpen.addEventListener('click', openFolder)
   els.btnOpenFile.addEventListener('click', openSingleFile)
@@ -1731,6 +2128,7 @@ async function boot() {
   })
   bindShortcuts()
   setupCloseGuard()
+  setupMacMenu()
 
   // 文件树右键菜单：点击菜单外任意处即关闭
   document.addEventListener('pointerdown', (e) => {

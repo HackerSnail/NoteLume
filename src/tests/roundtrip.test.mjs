@@ -5,8 +5,9 @@
 // 若两次序列化结果一致（幂等），说明转换稳定、无损（不丢内容、不产生私有格式）。
 
 import assert from 'node:assert'
+import { load as yamlLoad } from 'js-yaml'
 import { parseMarkdown, serializeMarkdown } from '../editor-schema.js'
-import { splitFrontmatter, joinFrontmatter } from '../frontmatter.js'
+import { splitFrontmatter, joinFrontmatter, hasYamlDoc } from '../frontmatter.js'
 
 const SAMPLES = {
   headings: '# H1\n## H2\n### H3\n',
@@ -39,6 +40,12 @@ const SAMPLES = {
   wiki_img_alias: '看这张 ![[diagram.png|架构图]] 图\n',
   wiki_img_path: '![[./assets/x.png]]\n',
   wiki_note_embed: '参见 ![[另一篇笔记]] 结尾。\n',
+  // 拖拽缩放：Typora 的 `![..](src =宽x)` 与 Obsidian 的 `![[src|宽]]`，尺寸是节点属性、双向幂等
+  img_size: '![图注](./assets/pic.png =328x)\n',
+  img_size_title: '![图注](./assets/pic.png "标题" =420x)\n',
+  img_size_inline: '正文 ![a](x.png =100x) 尾部 ![b](y.png) 结尾\n',
+  wiki_img_size: '![[diagram.png|328]]\n',
+  wiki_img_size_mixed: '看这张 ![[a.png|架构图]] 和这张 ![[b.png|200]]\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }
@@ -140,6 +147,49 @@ assert.ok(foundMathBlk, '应解析出 math_block 节点')
   pass++
 }
 
+// 具体断言：图片尺寸的两种外来形态都落 width attr，且写回原形态；不认的形态整段退让为文本（不改写路径）
+{
+  const firstImage = (doc) => {
+    let img = null
+    doc.descendants((n) => { if (n.type.name === 'image' && !img) img = n })
+    return img
+  }
+  const a = parseMarkdown('![图注](./assets/pic.png =328x)\n')
+  const ia = firstImage(a)
+  assert.ok(ia && ia.attrs.width === 328, '=328x 应落 width')
+  assert.strictEqual(ia.attrs.alt, '图注', '带尺寸时 alt 仍取标签')
+  assert.strictEqual(serializeMarkdown(a), '![图注](./assets/pic.png =328x)', '写回须是 Typora 尺寸形态')
+
+  const b = parseMarkdown('![图注](./assets/pic.png "标题" =420x)\n')
+  const ib = firstImage(b)
+  assert.ok(ib && ib.attrs.width === 420 && ib.attrs.title === '标题', '尺寸与 title 共存时都要读到')
+
+  const c = parseMarkdown('![[diagram.png|328]]\n')
+  const ic = firstImage(c)
+  assert.ok(ic && ic.attrs.embed === true && ic.attrs.width === 328, '![[src|宽]] 应落 width')
+  assert.strictEqual(ic.attrs.alt, 'diagram.png', '纯数字段是宽度，不当别名')
+  assert.strictEqual(serializeMarkdown(c), '![[diagram.png|328]]', '写回须是 Obsidian 尺寸形态')
+
+  const d = parseMarkdown('![[diagram.png|300x200]]\n')
+  const id = firstImage(d)
+  assert.ok(id && id.attrs.width === null && id.attrs.alt === '300x200', '宽高同时写死不接，原样留作别名')
+  assert.strictEqual(serializeMarkdown(d), '![[diagram.png|300x200]]', '不接的形态不得改写')
+
+  for (const md of ['![a](pic.png =50%)\n', '![a](pic.png =328x200)\n']) {
+    const e = parseMarkdown(md)
+    assert.ok(!firstImage(e), md.trim() + ' 不该被当成图片')
+    const o1 = serializeMarkdown(e)
+    assert.strictEqual(o1, serializeMarkdown(parseMarkdown(o1)), '退让为文本后仍需幂等')
+  }
+
+  const f = parseMarkdown('![a](p\\(1.png =100x)\n')
+  const ifile = firstImage(f)
+  assert.ok(ifile && ifile.attrs.width === 100, '路径含转义括号时尺寸照常生效')
+  assert.strictEqual(serializeMarkdown(f), '![a](p\\(1.png =100x)', '转义不得被二次编码（与默认规则同一处理）')
+  console.log('✅ 图片尺寸 =宽x / |宽 解析与写回')
+  pass++
+}
+
 // 具体断言：表格对齐属性无损 + prosemirror-tables 结构 attrs 默认值齐备
 {
   const tDoc = parseMarkdown(SAMPLES.table)
@@ -203,6 +253,36 @@ for (const md of FM_CASES) {
   assert.strictEqual(yaml, '')
   assert.strictEqual(joinFrontmatter(yaml, body), '---\n---\nbody\n')
 }
+
+// —— hasYamlDoc：判定「有没有可解析的文档」（js-yaml 5.4 对空/纯注释输入抛错，面板据此免误报）——
+const YD_CASES = [
+  ['', false],
+  ['   \n\t\n', false],
+  ['# 只有注释\n# 两行\n', false],
+  ['   # 缩进的注释\n', false],
+  ['title: x\n', true],
+  ['# 注释\ntitle: x\n', true],
+  ['a: 1 # 行尾注释\n', true],
+  ['null\n', true],
+  ['- 1\n- 2\n', true],
+]
+for (const [text, want] of YD_CASES) {
+  assert.strictEqual(hasYamlDoc(text), want, `hasYamlDoc(${JSON.stringify(text)}) 应为 ${want}`)
+  // 与真实依赖对齐：判定为有文档的，js-yaml 必须能 load；判定为空的，js-yaml 正是抛错的那类
+  let throws = false
+  try { yamlLoad(text) } catch (_) { throws = true }
+  assert.strictEqual(throws, !want, `hasYamlDoc 与 js-yaml 行为不一致：${JSON.stringify(text)}`)
+  pass++
+}
+console.log('✅ hasYamlDoc 判定（含与 js-yaml 一致性）')
+
+// 未闭合围栏 / CRLF / BOM 等边界不误判
+assert.strictEqual(hasYamlDoc('title: "a\nb"\n'), true, '跨行引号值仍算有文档')
+assert.strictEqual(hasYamlDoc(null), false, 'null 输入视为空')
+assert.strictEqual(hasYamlDoc(undefined), false, 'undefined 输入视为空')
+assert.strictEqual(hasYamlDoc('\r\n  \r\n'), false, 'CRLF 全空白视为空')
+pass += 4
+console.log('✅ hasYamlDoc 边界')
 
 console.log(`\n结果：${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

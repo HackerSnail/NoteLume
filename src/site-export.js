@@ -233,7 +233,8 @@ function ensureRenderRules() {
       : null
     if (!rel) return `<span class="nl-wiki nl-wiki-missing">![[${esc(target)}]]</span>`
     env.assets.add(rel)
-    return `<img class="nl-embed" src="${escAttr(relpath(env.fromDir, rel))}" alt="${escAttr(alt)}">`
+    const w = t.attrGet('width')
+    return `<img class="nl-embed" src="${escAttr(relpath(env.fromDir, rel))}" alt="${escAttr(alt)}"${w ? ` style="width:${escAttr(w)}px"` : ''}>`
   }
 
   R.tag = (tokens, idx) => {
@@ -294,6 +295,8 @@ function ensureRenderRules() {
     }
     let out = `<img src="${escAttr(src)}" alt="${alt}"`
     if (titleAttr) out += ` title="${escAttr(titleAttr)}"`
+    const w = t.attrGet('width')
+    if (w) out += ` style="width:${escAttr(w)}px"`
     out += '>'
     return out
   }

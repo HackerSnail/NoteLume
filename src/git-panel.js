@@ -22,6 +22,7 @@ import {
   gitRPullFf,
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
+import { setIcon, iconHTML } from './icons.js'
 
 // kind → [徽标字符, 中文短名]（对齐 Rust classify_status 的取值域）
 const KIND_BADGE = {
@@ -92,7 +93,7 @@ export function createGitPanel(deps) {
     const left = document.createElement('span')
     left.className = 'nl-git-branch'
     const branch = info.branch || (info.hasHead ? '(分离 HEAD)' : '(无提交)')
-    left.textContent = '⑂ ' + branch
+    setIcon(left, 'branch', branch)
     left.title = curRepoPath || ''
 
     const count = document.createElement('span')
@@ -103,7 +104,7 @@ export function createGitPanel(deps) {
     actions.className = 'nl-git-actions'
     const refreshBtn = document.createElement('button')
     refreshBtn.className = 'nl-git-btn'
-    refreshBtn.textContent = '⟳'
+    setIcon(refreshBtn, 'reload')
     refreshBtn.title = '刷新状态'
     refreshBtn.addEventListener('click', () => refresh())
     const commitBtn = document.createElement('button')
@@ -204,7 +205,7 @@ export function createGitPanel(deps) {
     diffBox.innerHTML =
       '<div class="nl-git-diff-head"><span>' +
       escapeHtml(headText) +
-      '</span><button class="nl-git-diff-close" title="关闭">✕</button></div>' +
+      '</span><button class="nl-git-diff-close" title="关闭">' + iconHTML('close') + '</button></div>' +
       diffHtml
     const close = diffBox.querySelector('.nl-git-diff-close')
     close.addEventListener('click', () => diffBox.classList.add('hidden'))
@@ -301,7 +302,7 @@ export function createGitPanel(deps) {
         badge.textContent = '未设置上游'
         badge.className = 'nl-git-sync-badge nl-git-muted'
       } else {
-        badge.textContent = `↑ 领先 ${ab.ahead} · 落后 ${ab.behind}`
+        setIcon(badge, ab.behind > 0 ? 'arrow-down' : 'arrow-up', `领先 ${ab.ahead} · 落后 ${ab.behind}`)
         badge.className =
           'nl-git-sync-badge' + (ab.behind > 0 ? ' nl-git-sync-behind' : '')
         badge.title = '上游：' + ab.upstream
@@ -354,7 +355,7 @@ export function createGitPanel(deps) {
     if (origin) remoteLabel.title = origin.url
     const remoteBtn = document.createElement('button')
     remoteBtn.className = 'nl-git-btn nl-git-btn-sm'
-    remoteBtn.textContent = origin ? '改地址' : '＋ 添加远端'
+    setIcon(remoteBtn, origin ? '' : 'plus', origin ? '改地址' : '添加远端')
     remoteBtn.title = origin ? 'git remote set-url ' + origin.name : 'git remote add origin <url>'
     remoteRow.append(remoteLabel, remoteBtn)
 
@@ -363,11 +364,11 @@ export function createGitPanel(deps) {
     actRow.className = 'nl-git-sync-row nl-git-sync-actions'
     const fetchBtn = document.createElement('button')
     fetchBtn.className = 'nl-git-btn'
-    fetchBtn.textContent = '⟳ Fetch'
+    setIcon(fetchBtn, 'reload', 'Fetch')
     fetchBtn.title = 'git fetch --prune（非交互，凭据交系统 git）'
     const pullBtn = document.createElement('button')
     pullBtn.className = 'nl-git-btn nl-git-btn-primary'
-    pullBtn.textContent = '↓ Pull（快进）'
+    setIcon(pullBtn, 'arrow-down', 'Pull（快进）')
     pullBtn.title = 'git pull --ff-only（仅快进；分叉不自动合并）'
     const badge = document.createElement('span')
     badge.className = 'nl-git-sync-badge nl-git-muted'

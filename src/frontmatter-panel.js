@@ -7,13 +7,22 @@
 //  · 应用前用 js-yaml 校验，解析失败则提示且不落盘，避免写出坏 frontmatter。
 
 import * as yaml from 'js-yaml'
+import { hasYamlDoc } from './frontmatter.js'
 
 export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) {
   let error = ''
+  let note = ''
 
   function refresh() {
     error = ''
+    note = ''
     render()
+  }
+
+  // 重画会清掉 textarea，故调用方 render() 后用它回填用户的（尚未落盘的）文本
+  function keep(value) {
+    const t = container.querySelector('.fm-textarea')
+    if (t) t.value = value
   }
 
   function apply(text) {
@@ -23,10 +32,11 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
       return
     }
     try {
-      yaml.load(text) // 仅校验；不 dump，保留用户原文
+      if (hasYamlDoc(text)) yaml.load(text) // 仅校验；不 dump，保留用户原文
     } catch (e) {
       error = String((e && e.message) || e)
       render()
+      keep(text)
       return
     }
     setFm(text.endsWith('\n') ? text : text + '\n')
@@ -35,17 +45,24 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
   function reformat() {
     const ta = container.querySelector('.fm-textarea')
     if (!ta) return
+    const src = ta.value
+    if (!hasYamlDoc(src)) {
+      // 空 / 只有注释：没有可 dump 的文档，原文保留、不动用户输入
+      note = '没有可格式化的内容。'
+      render()
+      keep(src)
+      return
+    }
     try {
-      const data = yaml.load(ta.value || '')
+      const data = yaml.load(src)
       const dumped = data == null ? '' : yaml.dump(data, { lineWidth: 0, sortKeys: false })
-      ta.value = dumped
-      error = '已重排为规范 YAML（可能改动注释/顺序）；点「应用」生效。'
-      render() // 重画会丢 textarea 值，故下面立刻回填
-      const ta2 = container.querySelector('.fm-textarea')
-      if (ta2) ta2.value = dumped
+      note = '已重排为规范 YAML（可能改动注释/顺序）；点「应用」生效。'
+      render()
+      keep(dumped)
     } catch (e) {
       error = '无法解析，不能格式化：' + String((e && e.message) || e)
       render()
+      keep(src)
     }
   }
 
@@ -81,6 +98,7 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     container.appendChild(ta)
 
     if (error) container.appendChild(el('div', 'fm-error', error))
+    else if (note) container.appendChild(el('div', 'fm-note', note))
 
     // —— 动作按钮 ——
     const bar = el('div', 'fm-actions')

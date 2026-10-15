@@ -6,6 +6,7 @@
 // 文本卡片以 markdown-lite 渲染（.canvas 仍存原始 markdown，往返无损、与 Obsidian 卡片渲染对齐）。
 // 文件读写在本模块内完成（复用通用文本命令），脏标记经 onDirty 上报给 main.js 统一驱动保存/切换确认。
 import { readMdFile, writeMdFile } from './tauri-bridge.js'
+import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 
 // 卡片文本的 markdown-lite 渲染器（与导出/编辑器同用 markdown-it，零新依赖）：
@@ -202,7 +203,7 @@ export function createCanvasView(deps) {
     if (n.type === 'file') {
       box.classList.add('cv-node-file')
       const name = String(n.file || '').split(/[\\/]/).pop() || '（空文件）'
-      box.textContent = '📄 ' + name
+      setIcon(box, 'file', name)
       box.title = n.file || ''
     } else {
       // markdown-lite 渲染：按 text 缓存 HTML（存于下划线临时字段 _md/_mdSrc，save/snapshot 会剔除）
@@ -938,11 +939,12 @@ export function createCanvasView(deps) {
       b.className = 'cv-menu-item' + (it.danger ? ' danger' : '')
       const chk = document.createElement('span')
       chk.className = 'cv-menu-check'
-      chk.textContent = it.checked ? '✓' : ''
+      if (it.checked) setIcon(chk, 'check')
       b.appendChild(chk)
       const lab = document.createElement('span')
       lab.className = 'cv-menu-label'
-      lab.textContent = it.label
+      if (it.icon) setIcon(lab, it.icon, it.label)
+      else lab.textContent = it.label
       b.appendChild(lab)
       if (it.hint) {
         const h = document.createElement('span')
@@ -976,10 +978,10 @@ export function createCanvasView(deps) {
     for (const c of children) wrap.appendChild(c)
     return wrap
   }
-  function menuMini(txt, title, fn) {
+  function menuMini(icon, title, fn) {
     const b = document.createElement('button')
     b.className = 'cv-menu-mini'
-    b.textContent = txt
+    setIcon(b, icon)
     b.title = title
     b.addEventListener('click', () => {
       fn()
@@ -994,18 +996,18 @@ export function createCanvasView(deps) {
   }
   function makeAlignRow() {
     return menuRow('对齐', [
-      menuMini('⬅', '左对齐', () => alignSelection('left')),
-      menuMini('↔', '水平居中', () => alignSelection('hcenter')),
-      menuMini('➡', '右对齐', () => alignSelection('right')),
-      menuMini('⬆', '顶对齐', () => alignSelection('top')),
-      menuMini('↕', '垂直居中', () => alignSelection('vcenter')),
-      menuMini('⬇', '底对齐', () => alignSelection('bottom')),
+      menuMini('align-left', '左对齐', () => alignSelection('left')),
+      menuMini('align-center', '水平居中', () => alignSelection('hcenter')),
+      menuMini('align-right', '右对齐', () => alignSelection('right')),
+      menuMini('align-top', '顶对齐', () => alignSelection('top')),
+      menuMini('align-middle', '垂直居中', () => alignSelection('vcenter')),
+      menuMini('align-bottom', '底对齐', () => alignSelection('bottom')),
     ])
   }
   function makeDistributeRow() {
     return menuRow('分布', [
-      menuMini('⇄', '水平等距', () => distributeSelection('h')),
-      menuMini('⇅', '垂直等距', () => distributeSelection('v')),
+      menuMini('dist-h', '水平等距', () => distributeSelection('h')),
+      menuMini('dist-v', '垂直等距', () => distributeSelection('v')),
     ])
   }
 
@@ -1097,38 +1099,38 @@ export function createCanvasView(deps) {
 
   // —— 工具条 ——
   function buildToolbar() {
-    const mk = (label, title, fn) => {
+    const mk = (icon, label, title, fn) => {
       const b = document.createElement('button')
-      b.textContent = label
+      setIcon(b, icon, label)
       b.title = title
       b.addEventListener('click', fn)
       return b
     }
-    undoBtn = mk('↶', '撤销（Ctrl+Z）', undo)
-    redoBtn = mk('↷', '重做（Ctrl+Shift+Z / Ctrl+Y）', redo)
+    undoBtn = mk('undo', null, '撤销（Ctrl+Z）', undo)
+    redoBtn = mk('redo', null, '重做（Ctrl+Shift+Z / Ctrl+Y）', redo)
     toolbar.appendChild(undoBtn)
     toolbar.appendChild(redoBtn)
     const sepU = document.createElement('span'); sepU.className = 'cv-sep'; toolbar.appendChild(sepU)
-    toolbar.appendChild(mk('➕ 卡片', '新建文本卡片（或双击画布空白处）', () => {
+    toolbar.appendChild(mk('plus', '卡片', '新建文本卡片（或双击画布空白处）', () => {
       const c = centerWorld()
       addNode(c.x - DEFAULT_SIZE.width / 2, c.y - DEFAULT_SIZE.height / 2)
     }))
-    toolbar.appendChild(mk('🗑 删除', '删除选中（Delete）', deleteSelection))
-    toolbar.appendChild(mk('⤢ 适应', '缩放至显示全部卡片', fitView))
+    toolbar.appendChild(mk('trash', '删除', '删除选中（Delete）', deleteSelection))
+    toolbar.appendChild(mk('fit', '适应', '缩放至显示全部卡片', fitView))
 
     const sepA = document.createElement('span'); sepA.className = 'cv-sep'; toolbar.appendChild(sepA)
-    toolbar.appendChild(mk('⬅', '左对齐（选中≥２）', () => alignSelection('left')))
-    toolbar.appendChild(mk('↔', '水平居中对齐', () => alignSelection('hcenter')))
-    toolbar.appendChild(mk('➡', '右对齐', () => alignSelection('right')))
-    toolbar.appendChild(mk('⬆', '顶对齐', () => alignSelection('top')))
-    toolbar.appendChild(mk('↕', '垂直居中对齐', () => alignSelection('vcenter')))
-    toolbar.appendChild(mk('⬇', '底对齐', () => alignSelection('bottom')))
-    toolbar.appendChild(mk('⇄', '水平等距分布（选中≥３）', () => distributeSelection('h')))
-    toolbar.appendChild(mk('⇅', '垂直等距分布（选中≥３）', () => distributeSelection('v')))
+    toolbar.appendChild(mk('align-left', null, '左对齐（选中≥２）', () => alignSelection('left')))
+    toolbar.appendChild(mk('align-center', null, '水平居中对齐', () => alignSelection('hcenter')))
+    toolbar.appendChild(mk('align-right', null, '右对齐', () => alignSelection('right')))
+    toolbar.appendChild(mk('align-top', null, '顶对齐', () => alignSelection('top')))
+    toolbar.appendChild(mk('align-middle', null, '垂直居中对齐', () => alignSelection('vcenter')))
+    toolbar.appendChild(mk('align-bottom', null, '底对齐', () => alignSelection('bottom')))
+    toolbar.appendChild(mk('dist-h', null, '水平等距分布（选中≥３）', () => distributeSelection('h')))
+    toolbar.appendChild(mk('dist-v', null, '垂直等距分布（选中≥３）', () => distributeSelection('v')))
 
     const sepG = document.createElement('span'); sepG.className = 'cv-sep'; toolbar.appendChild(sepG)
-    toolbar.appendChild(mk('⬚ 编组', '把选中卡片收进一个分组框（拖框边可整体移动）', groupSelection))
-    toolbar.appendChild(mk('⬚ 解组', '删除选中的分组框（卡片保留）', ungroupSelection))
+    toolbar.appendChild(mk('group', '编组', '把选中卡片收进一个分组框（拖框边可整体移动）', groupSelection))
+    toolbar.appendChild(mk('ungroup', '解组', '删除选中的分组框（卡片保留）', ungroupSelection))
 
     const sep = document.createElement('span')
     sep.className = 'cv-sep'
@@ -1142,17 +1144,17 @@ export function createCanvasView(deps) {
     const sp = document.createElement('span')
     sp.className = 'spacer'
     toolbar.appendChild(sp)
-    toolbar.appendChild(mk('−', '缩小（Ctrl -）', () => zoomAt(1 / 1.2)))
+    toolbar.appendChild(mk('zoom-out', null, '缩小（Ctrl -）', () => zoomAt(1 / 1.2)))
     zoomLabel = document.createElement('span')
     zoomLabel.className = 'cv-zoom'
     zoomLabel.title = '点击重置为 100%（Ctrl+0）'
     zoomLabel.style.cursor = 'pointer'
     zoomLabel.addEventListener('click', resetZoom)
     toolbar.appendChild(zoomLabel)
-    toolbar.appendChild(mk('＋', '放大（Ctrl+）', () => zoomAt(1.2)))
+    toolbar.appendChild(mk('zoom-in', null, '放大（Ctrl+）', () => zoomAt(1.2)))
 
     const sepM = document.createElement('span'); sepM.className = 'cv-sep'; toolbar.appendChild(sepM)
-    toolbar.appendChild(mk('▦', '显示 / 隐藏缩略图', toggleMinimap))
+    toolbar.appendChild(mk('minimap', null, '显示 / 隐藏缩略图', toggleMinimap))
   }
   function colorSwatch(c, title, onPick) {
     const s = document.createElement('button')

@@ -5,6 +5,7 @@
 //   以 '>' 开头 = 搜命令（对注册表标题 fuzzy，回车/点击 runCommand(id)）。
 // 面板本身是一条 app 命令（在 main.js 注册），其绑定仍走全局分发器；本模块只负责 UI 与选择。
 import { fuzzyMatch } from './keymap.js'
+import { setIcon } from './icons.js'
 
 /**
  * @param {object} deps
@@ -84,7 +85,7 @@ export function createPalette(deps) {
       row.className = 'nl-palette-item' + (i === active ? ' active' : '')
       const kind = document.createElement('span')
       kind.className = 'nl-palette-kind'
-      kind.textContent = it.kind === 'cmd' ? '⌘' : '📄'
+      setIcon(kind, it.kind === 'cmd' ? 'terminal' : 'file')
       const label = document.createElement('span')
       label.className = 'nl-palette-label'
       label.textContent = it.label

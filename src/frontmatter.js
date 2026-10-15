@@ -29,6 +29,20 @@ export function splitFrontmatter(md) {
 }
 
 /**
+ * 判断 YAML 文本里是否**有可解析的文档**（js-yaml 5.4 对「全空白 / 只有注释」直接抛
+ * `expected a document, but the input is empty`，而这类输入在语义上就是空文档，
+ * 不该被当成解析失败拦下「应用」或「重新格式化」）。
+ */
+export function hasYamlDoc(text) {
+  return String(text == null ? '' : text)
+    .split('\n')
+    .some((line) => {
+      const t = line.trim()
+      return t !== '' && !t.startsWith('#')
+    })
+}
+
+/**
  * 把 frontmatter 原样补回正文之前。yaml=null 时直接返回 body（不加任何围栏）。
  * yaml 约定：其内容已是「围栏之间的原始文本」，末尾可能带一个换行（split 的产物）。
  */
