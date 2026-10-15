@@ -14,6 +14,7 @@
 ### Fixed
 
 * **docx→md 导入：中文论文正文被整段误转成围栏代码**（`src-tauri/src/docx_import.rs`，需重启 `tauri dev`）：「等宽字体→代码块」启发式对中文学位论文正文误判——含公式的段落因 `m:r`（非等宽）意外逃过，但纯散文段落若正文用等宽字体就被整段转成代码。修：加护栏，段落只要含 CJK 正文（`w:t` 里有中日韩字符）就绝不判为代码块（中文散文不是代码）；英文代码块的等宽检测不受影响。新增回归测试 `monospace_cjk_paragraph_is_not_code`；`cargo test` 97 passed。
+* **docx→md 导入：上标降级从 `<sup>[22]</sup>` 改为 `^[22]`**（`src-tauri/src/docx_import.rs`，需重启 `tauri dev`）：学位论文满篇参考文献编号为上标，原降级为 `<sup>…</sup>` 在编辑器里露出尖括号、很碍眼；GFM 无原生上标语法，改以 `^` 前缀降级（如 `^[22]`），仍记 `unknown_style` warning。下标暂保留 `<sub>`（正文罕见，未提）。测试 `superscript_degrades_to_caret_with_warning`。
 * **窄栏里按钮文案逐字竖排、长路径撑破栏宽（一类问题一次收净，纯前端、无 Rust、刷新即生效）**：起于检查器「插件」头行（按钮与 `.notelume-plugins/<id>/manifest.json` 同行争宽，按钮被挤成一字一行、提示超出栏宽被裁），排查后确认根因是同一条：图标+文案的按钮/标签都是 flex 子项，默认 `min-width:auto` 可被压到 min-content（CJK 逐字断行），而同行的不可断长 token（路径 / URL / 命令名）反过来把行撑破栏宽。
   * ① **一处收敛**（`src/style.css`）：既有的「图标+文案」共用组（`.cv-toolbar button` / `.graph-close` / `.snapshot-close` / `.nl-imgv-btn` / `.nl-imgv-close` / `.plugin-reload` / `.nl-git-btn` / `.nl-git-diff-close` / `.nl-git-sync-badge` / `.nl-daily-title` / `.nl-daily-cfg` / `.nl-daily-close` / `.nl-palette-kind`）统一加 `white-space: nowrap` + `flex: none`，并把 `.nl-git-engine-badge` 并入该组；`.docstats`、`.nl-git-mini` 各补 `flex: none`。
   * ② **装不下就换行，不是溢出**：新增一组 `flex-wrap: wrap`（`.toolbar` / `.nl-git-actions` / `.nl-git-sync-actions` / `.nl-git-sync-row` / `.nl-git-sync-engine` / `.nl-git-conflict-tools` / `.nl-git-merge-bar` / `.nl-git-item`）；`.nl-git-conflict-tools` 去掉 `flex-shrink: 0`（正是它把「用本地 / 用远端 / 编辑」三枚小按钮顶出栏右缘）。
