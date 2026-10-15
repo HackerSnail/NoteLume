@@ -52,23 +52,35 @@ function buildTheme(CM, isDark, extra) {
   )
 }
 
-// Markdown token 高亮：标题 / 粗斜 / 删除线 / 链接·URL / 行内码·代码 / 引用 / 列表标记 / 元信息
+// Markdown token 高亮（Typora 风彩色）：标题/粗体/斜体/删除线/链接/内码/围栏代码/引用/列表/元信息/分隔线
+// 调色取 One Dark 系——在 light/dark/vampire 三主题下都可读（背景对比度足够），且保留
+// 与 --fg 正文不同的色相以确保“一眼分得清”。若需主题化可拆到 CSS 变量。
 function buildHighlight(CM) {
   const tags = CM.hl.tags
   return CM.language.HighlightStyle.define([
-    { tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: 'var(--fg)', fontWeight: '700' },
+    // 标题：统一鲜亮蓝，1–3 级字号逐层缩（与 Typora 一致）
+    { tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: '#61afef', fontWeight: '700' },
     { tag: tags.heading1, fontSize: '1.45em' },
     { tag: tags.heading2, fontSize: '1.25em' },
     { tag: tags.heading3, fontSize: '1.12em' },
-    { tag: tags.strong, fontWeight: '700', color: 'var(--fg)' },
-    { tag: tags.emphasis, fontStyle: 'italic' },
-    { tag: tags.strikethrough, textDecoration: 'line-through', color: 'var(--muted)' },
-    { tag: [tags.link, tags.url], color: 'var(--accent)', textDecoration: 'underline' },
-    { tag: tags.monospace, color: 'var(--accent)' },
-    { tag: tags.quote, color: 'var(--muted)', fontStyle: 'italic' },
-    { tag: tags.list, color: 'var(--accent)' },
-    { tag: tags.meta, color: 'var(--muted)' },
-    { tag: tags.contentSeparator, color: 'var(--border)' },
+    // 强调：粗体橙、斜体紫、删除线灰带中划线
+    { tag: tags.strong, fontWeight: '700', color: '#d19a66' },
+    { tag: tags.emphasis, fontStyle: 'italic', color: '#c678dd' },
+    { tag: tags.strikethrough, textDecoration: 'line-through', color: '#7f848e' },
+    // 链接与 URL 分开着色（Typora 风格），内码/围栏代码青蓝呼应
+    { tag: tags.link, color: '#98c379', textDecoration: 'underline' },
+    { tag: tags.url, color: '#56b6c2' },
+    { tag: tags.monospace, color: '#56b6c2' },
+    // 代码块内容（未接入子语言高亮时回退到此色）
+    { tag: tags.content, color: '#abb2bf' },
+    // 引用：斜体蓝灰
+    { tag: tags.quote, color: '#98c379', fontStyle: 'italic' },
+    // 列表符号：Typora 风鲜亮黄
+    { tag: tags.list, color: '#e5c07b' },
+    // 元信息：frontmatter / HTML 注释 / 脚注定义等
+    { tag: tags.meta, color: '#7f848e', fontStyle: 'italic' },
+    // 分隔线 ---
+    { tag: tags.contentSeparator, color: '#5c6370' },
   ])
 }
 
