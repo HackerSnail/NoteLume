@@ -58,12 +58,16 @@ function buildTheme(CM, isDark, extra) {
 // 与 --fg 正文不同的色相以确保“一眼分得清”。若需主题化可拆到 CSS 变量。
 function buildHighlight(CM) {
   const tags = CM.hl.tags
+  const HEAD = '#61afef'
   return CM.language.HighlightStyle.define([
     // 标题：统一鲜亮蓝，1–3 级字号逐层缩（与 Typora 一致）
-    { tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], color: '#61afef', fontWeight: '700' },
-    { tag: tags.heading1, fontSize: '1.45em' },
-    { tag: tags.heading2, fontSize: '1.25em' },
-    { tag: tags.heading3, fontSize: '1.12em' },
+    // 关键：每个级别必须是“单条规则”（颜色+字重+字号合并）。CM6 HighlightStyle 对
+    // 同一 tag 的多条规则不是合并样式、而是“后规则 class 整个覆盖前规则”——若把字号
+    // 拆成单独一条，标题文字会只剩字号 class、丢掉颜色 class（表现为“标题没颜色”）。
+    { tag: tags.heading1, color: HEAD, fontWeight: '700', fontSize: '1.45em' },
+    { tag: tags.heading2, color: HEAD, fontWeight: '700', fontSize: '1.25em' },
+    { tag: tags.heading3, color: HEAD, fontWeight: '700', fontSize: '1.12em' },
+    { tag: [tags.heading4, tags.heading5, tags.heading6], color: HEAD, fontWeight: '700' },
     // 强调：粗体橙、斜体紫、删除线灰带中划线
     { tag: tags.strong, fontWeight: '700', color: '#d19a66' },
     { tag: tags.emphasis, fontStyle: 'italic', color: '#c678dd' },
@@ -97,7 +101,15 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
   let applying = false // 程序化写入标志：期间不回调 onChange（避免进入/切文件被误判为“编辑”）
   const themeComp = new CM.state.Compartment()
 
-  const buildExt = (isDark) => [buildTheme(CM, isDark, themeExtra), CM.language.syntaxHighlighting(buildHighlight(CM))]
+  const buildExt = (isDark) => [
+    buildTheme(CM, isDark, themeExtra),
+    // 两层高亮：buildHighlight（Typora 风 Markdown 配色）用 Prec.highest 抢优先，
+    // defaultHighlightStyle（普通注册）专门兜底围栏代码块的子语言 token
+    // （keyword/type/varName/number…）。实测：若用 {fallback:true} 反而会让子语言
+    // 不包 span（代码块单色）；必须 buildHL 高优先 + default 普通注册，两者才能共存。
+    CM.state.Prec.highest(CM.language.syntaxHighlighting(buildHighlight(CM))),
+    CM.language.syntaxHighlighting(CM.language.defaultHighlightStyle),
+  ]
   const isDark = theme !== 'light'
 
   const updateListener = CM.view.EditorView.updateListener.of((u) => {

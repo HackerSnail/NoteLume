@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **源码模式彩色高亮两处失效（标题丢色 + 代码块子语言不生效）**：继上两条“Typora 风彩色 / 围栏子语言”后，验收时发现标题与代码块仍单色。用浏览器探针逐层隔离定位到两个独立根因（均纯前端、无 Rust、刷新即生效）。① **标题丢色**：CM6 `HighlightStyle` 对**同一 tag 拆多条规则时不是合并样式、而是“后规则 class 整个覆盖前规则”**——旧 `buildHighlight` 把“颜色”与“字号”拆成两条 heading 规则，heading1 只剩字号 class、丢了颜色 class（表现为“标题没颜色”）。修：每个标题级别合并为**单条规则**（颜色+字重+字号）。② **代码块子语言不生效**：`codeLanguages` 确实触发了 `parseCode` 并动态加载了 `@codemirror/lang-cpp` 等，但子语言 token（keyword/type/varName/number）在 `buildHighlight` 无对应规则→不包 span（代码块保持单色）；且实测 `syntaxHighlighting(default, {fallback:true})` 叠加在自定义样式上**反而使子语言完全不渲染**。修：`buildExt` 改为 `Prec.highest(syntaxHighlighting(buildHighlight))`（Markdown 配色优先）+ `syntaxHighlighting(defaultHighlightStyle)`（普通注册、专兜底子语言 token）两层共存。浏览器实测：标题蓝 `#61afef`、粗体橙、斜体紫、cpp `int`/`bool` 关键字均正常上色；`npm run build` 2452 modules 无错
+
 ### Added
 
 - **源码模式围栏子语言高亮（100+ 种、完全懒加载）**：接上条 Typora 风彩色后补上“代码块内部分层”（关键字/字符串/注释/数字各自色）。新依赖 `@codemirror/language-data`（官方维护、包含 100+ 语言的元数据与动态 import 包装），在 `source-editor.js` 的 `markdown()` 中传 `codeLanguages: langdata.languages`——根据 ` ```js ` / ` ```java ` 等信息串自动匹配、首次使用时动态 import 对应 `@codemirror/lang-*` 解析器（未用到的语言不进初 chunk）。实测主 bundle 仅 +3 KB（1032.51→1035.55 KB）、source-editor chunk +0.34 KB（3.47→3.81 KB），javascript/java/python/json/css 等均拆为独立小 chunk 按需拉取。无 Rust，刷新即生效；`npm run build` 2452 modules 无错（+123 新 lang 模块）
