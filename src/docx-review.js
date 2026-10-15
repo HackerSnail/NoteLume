@@ -177,10 +177,16 @@ export function openDocxReview(entry, ctx = {}) {
     // 先画一次预览（用原 md），再异步挂 CodeMirror（编辑后同步回预览）
     render()
     // 动态加载源码编辑器（沿用 editor-view 的懒加载，避免把 CodeMirror 拉进主 chunk）
+    // 注意：CM6 的 .cm-editor 默认 height:auto（随内容撑高），而挂载点 .nl-docx-cm 是 overflow:hidden，
+    // 不显式声明填充高度+自滚就会“超出被裁切、无法滚动”（主编辑区源码模式靠外层 pane 滚，这里需自滚）。
     import('./source-editor.js').then((m) => m.createSourceEditor({
       mountEl: cmMount,
       theme: ctx.theme || 'light',
       onChange: (text) => { curMd = text; render() },
+      themeExtra: {
+        '&': { height: '100%' },
+        '.cm-scroller': { overflow: 'auto' },
+      },
     })).then((ed) => {
       srcEd = ed
       ed.setDoc(curMd)

@@ -24,7 +24,8 @@ async function loadCM() {
 }
 
 // 用 var() 书写的 chrome 主题（前景/背景/行号槽/当前行/选区/光标）
-function buildTheme(CM, isDark) {
+// extra：调用方可追加/覆盖 theme 选择器条目（如嵌在固定高度容器里时需声明 '&':{height:'100%'} 自滚）
+function buildTheme(CM, isDark, extra) {
   return CM.view.EditorView.theme(
     {
       '&': { color: 'var(--fg)', backgroundColor: 'transparent', fontSize: '14px' },
@@ -45,6 +46,7 @@ function buildTheme(CM, isDark) {
       },
       '.cm-activeLine': { backgroundColor: 'transparent' },
       '.cm-activeLineGutter': { backgroundColor: 'var(--hover)', color: 'var(--fg)' },
+      ...extra,
     },
     { dark: isDark }
   )
@@ -76,14 +78,15 @@ function buildHighlight(CM) {
  * @param {HTMLElement} cfg.mountEl  挂载容器（已存在、通常此刻刚从 hidden 显示）
  * @param {string} cfg.theme         'light' | 'dark' | 'vampire'
  * @param {(text:string)=>void} cfg.onChange  仅用户编辑触发（程序化 setDoc 不触发）
+ * @param {object} [cfg.themeExtra]  追加/覆盖 CM theme 条目（填充高度/自滚等容器级样式）
  * @returns {Promise<{setDoc, getDoc, setTheme, focus, refresh, destroy}>}
  */
-export async function createSourceEditor({ mountEl, theme = 'light', onChange }) {
+export async function createSourceEditor({ mountEl, theme = 'light', onChange, themeExtra }) {
   const CM = await loadCM()
-  let applying = false // 程序化写入标志：期间不回调 onChange（避免进入/切文件被误判为"编辑"）
+  let applying = false // 程序化写入标志：期间不回调 onChange（避免进入/切文件被误判为“编辑”）
   const themeComp = new CM.state.Compartment()
 
-  const buildExt = (isDark) => [buildTheme(CM, isDark), CM.language.syntaxHighlighting(buildHighlight(CM))]
+  const buildExt = (isDark) => [buildTheme(CM, isDark, themeExtra), CM.language.syntaxHighlighting(buildHighlight(CM))]
   const isDark = theme !== 'light'
 
   const updateListener = CM.view.EditorView.updateListener.of((u) => {
