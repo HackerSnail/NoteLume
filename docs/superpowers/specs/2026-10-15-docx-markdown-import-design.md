@@ -13,10 +13,11 @@
 - **引擎**：**纯 Rust 自研 OOXML→Markdown 映射**（非 mammoth、非 pandoc）。唯一能兑现"离线+零配置+高保真"的路线，且落点契合"Rust 干文件活"。
 - **工作流**：**每一次转换都经逐个可视化校对才落盘**（批量 = 队列，逐个弹校对，确认→落盘→下一个）。
 - **图片**：**按文档分目录 + 内容哈希（sha256）去重**；库级 `hash→已落路径` 索引使"专属目录"与"同库只存一份"统一（命中即跨目录引用同一文件）。
-- **产物契约**：**原样保真 Markdown**（真脚注 `[^n]`、合并表原样 `<table>` HTML）。**已知代价**：这些构造超出 NoteLume 编辑器无损子集——含此构造的 `.md` 宜用**源码模式（CodeMirror）**编辑，WYSIWYG 打开会丢脚注/合并表（见 §11 诚实边界）。
+- **产物契约**：**原样保真 Markdown**（真脚注 `[^n]`、合并表原样 `<table>` HTML）。**依赖前置功能项 J**（[编辑器无损扩展 spec](2026-10-15-editor-footnote-merged-table-design.md)）：J 落地后脚注/合并表可在 NoteLume 编辑器 **WYSIWYG 无损往返编辑**；J 未就绪前降级为仅源码态（见 §11）。
 - **保真范围**：高保真（含合并单元格/脚注尾注/代码块/TOC/分栏文本框），超出 GFM 者降级为原样 HTML 并**逐条产 warning 交校对**。
 
 ## 3. 目标 / 非目标
+> **前置依赖：功能项 J**（编辑器无损扩展·脚注+合并表）。本功能项 **应在 J 之后实现**（或至少在其回退方案下保证 WYSIWYG 不坏），否则导入产物中的脚注/合并表在编辑器里会被破坏。
 **目标**：`.docx`→保真 Markdown；图片提取+去重落库；校对视图（预览/源码/警告）；批量队列编排；命名/frontmatter/冲突处理。
 **非目标（Out of scope）**：`.doc/.rtf/.odt`；PDF；表格之外的复杂排版像素级还原；写入时自动渲染 footnotes/HTML 表进编辑器（属渲染侧、另议）；富文本样式编辑器（校对只改 Markdown 源）。
 
@@ -122,10 +123,10 @@ struct DocxCommitResult { doc_rel: String, written_images: Vec<String>, reused_i
 | 写库越界（commit 路径解析到库外） | `abs_in_vault` 拒、回错误、整篇不部分写 |
 | IPC 过大（整册巨型图文） | 建议逐文件导入；preview 已按单文件切 |
 
-## 11. 诚实边界（无损子集，务必向用户交代）
-- NoteLume 编辑器 tokenizer = `commonmark` + `table` + `strikethrough`，`html:false`，**无 footnote**（见 `src/editor-schema.js`）。
-- 故本功能选定的"原样保真"产物里，**脚注 `[^n]` 与合并表 `<table>` HTML 在 WYSIWYG 打开会被破坏**；应：① 校对即在**源码态**完成；② 落库后这类文件在 NoteLume 用**源码模式**编辑，或用 pandoc/Obsidian/支持 GFM-footnote 的外部渲染消费。**校对模态左预览用独立渲染器**（html+footnote）故能"看得见"，但那不代表主编辑器能无损承载——UI 需明示。
-- 这是"保真"与"编辑器无损"不可兼得下的**有意取舍**（用户已确认取保真）。
+## 11. 诚实边界（无损子集，已向功能项 J 收敛）
+- **本取舍已由前置功能项 J 解决**：J 落地后，NoteLume 主编辑器已能无损往返脚注 `[^n]` 与合并表（存为 `<table>` HTML），导入产物打开即可 WYSIWYG 编辑。
+- **若 J 未就绪的情形（过渡）**：NoteLume 编辑器 tokenizer = `commonmark` + `table` + `strikethrough`、`html:false`、无 footnote（见 `src/editor-schema.js`）——此时脚注/合并表仅宜源码态编辑或给 pandoc/Obsidian 消费。**校对模态左预览用独立渲染器**（html+footnote）总能“看得见”，但那不代表主编辑器能无损承载。
+- 结论：功能项 I **建在 J 之上**；两者合起才既保真又 WYSIWYG 可编。
 
 ## 12. 测试策略
 - **Rust `#[cfg(test)]`**：喂内联 OOXML 片段断言映射——标题层级/嵌套列表/删除线/超链接/普通表→GFM/**合并表→HTML+warning**/脚注→`[^n]`/文本框/TOC/代码块/图片引用；`docx_commit` 用临时库验写盘 + 去重命中不重存 + `abs_in_vault` 拒穿越；slug/冲突 `-2`。
