@@ -10,7 +10,7 @@ let CM = null // 缓存已加载的模块集合
 
 async function loadCM() {
   if (CM) return CM
-  const [state, view, commands, language, langmd, lezermd, hl] = await Promise.all([
+  const [state, view, commands, language, langmd, lezermd, hl, langdata] = await Promise.all([
     import('@codemirror/state'),
     import('@codemirror/view'),
     import('@codemirror/commands'),
@@ -18,8 +18,9 @@ async function loadCM() {
     import('@codemirror/lang-markdown'),
     import('@lezer/markdown'),
     import('@lezer/highlight'),
+    import('@codemirror/language-data'),
   ])
-  CM = { state, view, commands, language, langmd, lezermd, hl }
+  CM = { state, view, commands, language, langmd, lezermd, hl, langdata }
   return CM
 }
 
@@ -113,7 +114,13 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
       CM.view.EditorView.lineWrapping,
       CM.commands.history(),
       CM.language.bracketMatching(),
-      CM.langmd.markdown({ extensions: [CM.lezermd.GFM] }),
+      CM.langmd.markdown({
+        // 围栏代码块子语言高亮：根据 ```lang 信息串自动匹配、动态 import 对应
+        // 解析器（未用到的语言不会进初 chunk）。支持 js/ts/java/py/json/yaml/go/rust/c/cpp
+        // /html/css/sql/md/sh/docker/php/ruby/xml/yaml/… 等 100+ 种。
+        extensions: [CM.lezermd.GFM],
+        codeLanguages: CM.langdata.languages,
+      }),
       CM.view.keymap.of([
         // 过滤掉 CodeMirror 默认 keymap 里的 `Mod-s`（内置 `save` 命令会吞掉事件且什么都不做），
         // 否则源码模式下 Ctrl+S 无法冒泡到应用级分发器（app.save 监听在 document），表现为“没反应”。
