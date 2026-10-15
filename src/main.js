@@ -530,40 +530,53 @@ async function importDroppedFiles(files, destDir) {
 
 // ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
 
-/** 「更多」菜单入口：文件选择器挑 .docx → 导入流（目标目录 = 当前文档所在夹，否则库根） */
+/** 「更多」菜单入口：先选 .docx（不强制先开库）→ 已开库落当前夹/库根；未开库则选一个目标文件夹直接写入 */
 async function importWordViaDialog() {
-  if (!state.vaultRoot) {
-    setStatus('请先打开知识库文件夹')
-    return
-  }
   const paths = await pickDocxFiles()
   if (!paths || !paths.length) return
-  const destDir = state.currentFile ? parentOf(state.currentFile) : ''
-  await importWordFlow(paths.map((p) => ({ srcPath: p })), destDir)
+  const sources = paths.map((p) => ({ srcPath: p }))
+
+  if (state.vaultRoot) {
+    // 已开库：落到当前文档所在夹，否则库根（走去重索引 + 刷树）
+    const destDir = state.currentFile ? parentOf(state.currentFile) : ''
+    await importWordFlow(sources, destDir, { vaultRoot: state.vaultRoot, intoVault: true })
+  } else {
+    // 未开库：不再拦截，让用户选一个目标文件夹作为落盘根
+    const folder = await pickFolder()
+    if (!folder) return
+    await importWordFlow(sources, '', { vaultRoot: folder, intoVault: false })
+  }
 }
 
 /**
- * 导入编排的真实装配：把 bridge/Rust 与 localStorage 去重索引注入 runImport，
- * 校对回调开 docx-review 模态；每落库一篇即刷树、重扫索引。
+ * 导入编排的真实装配：把 bridge/Rust 与去重索引注入 runImport，校对回调开 docx-review 模态。
  * @param {Array<{srcPath?:string, srcB64?:string, displayName?:string}>} sources
- * @param {string} destDir  库内相对目录（'' = 库根）
+ * @param {string} destDir  目标根内的相对目录（'' = 根）
+ * @param {object} [target] { vaultRoot, intoVault }——intoVault=false 时为外部落盘：
+ *   不碰库级去重索引（避免跨根误引用）、不刷树，完成后提示输出目录。
  */
-async function importWordFlow(sources, destDir = '') {
-  if (!state.vaultRoot) {
-    setStatus('请先打开知识库文件夹')
+async function importWordFlow(sources, destDir = '', target = {}) {
+  const vaultRoot = target.vaultRoot || state.vaultRoot
+  const intoVault = target.intoVault !== false
+  if (!vaultRoot) {
+    setStatus('请先选择目标文件夹')
     return
   }
   const io = {
     preview: (args) => docxPreview(args),
     commit: (args) => docxCommit(args),
-    loadIndex: () => {
-      try { return JSON.parse(localStorage.getItem(IMG_INDEX_KEY) || '{}') } catch { return {} }
-    },
-    saveIndex: (i) => localStorage.setItem(IMG_INDEX_KEY, JSON.stringify(i)),
-    onCommitted: async () => {
-      renderTree(await scanVault(state.vaultRoot))
-      startIndexPolling()
-    },
+    loadIndex: intoVault
+      ? () => {
+          try { return JSON.parse(localStorage.getItem(IMG_INDEX_KEY) || '{}') } catch { return {} }
+        }
+      : async () => ({}),
+    saveIndex: intoVault ? (i) => localStorage.setItem(IMG_INDEX_KEY, JSON.stringify(i)) : async () => {},
+    onCommitted: intoVault
+      ? async () => {
+          renderTree(await scanVault(state.vaultRoot))
+          startIndexPolling()
+        }
+      : async () => {},
   }
   const review = (entry, ctx) =>
     openDocxReview(entry, { ...ctx, theme: document.documentElement.getAttribute('data-theme') || 'light' })
@@ -573,12 +586,13 @@ async function importWordFlow(sources, destDir = '') {
       io,
       review,
       onProgress: setStatus,
-      opts: { vaultRoot: state.vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
+      opts: { vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
     })
     const { committed, skipped, failed, total } = res.stats
-    const parts = [`Word 导入完成：${committed}/${total} 篇入库`]
+    const parts = [`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '已写入')]
     if (skipped) parts.push(`${skipped} 跳过`)
     if (failed) parts.push(`${failed} 失败`)
+    if (!intoVault) parts.push(`输出目录：${vaultRoot}（可“打开知识库”选它纳入库内编辑）`)
     await messageDialog(parts.join('，'), 'info')
   } catch (e) {
     await messageDialog('Word 导入失败：' + errText(e))
