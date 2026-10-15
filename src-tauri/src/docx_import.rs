@@ -411,27 +411,27 @@ fn map_body(doc: &roxmltree::Document, ctx: &mut Ctx) -> Vec<Block> {
         Some(b) => b,
         None => return blocks,
     };
-    for node in body.children() {
+    push_children_blocks(body, ctx, &mut blocks);
+    blocks
+}
+
+/// 依次把 parent 的块级子节点映射为块：p→段落、tbl→表格、sdt→透明展开其 sdtContent（递归，
+/// 使被内容控件包裹的段落/表格不丢失，如简历模板里的分节标题）。其余（sectPr 等）忽略。
+fn push_children_blocks(parent: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
+    for node in parent.children() {
         if is_el(node, "p") {
-            push_paragraph(node, ctx, &mut blocks);
+            push_paragraph(node, ctx, blocks);
         } else if is_el(node, "tbl") {
-            push_table(node, ctx, &mut blocks);
+            push_table(node, ctx, blocks);
         } else if is_el(node, "sdt") {
-            // 内容控件：TOC 判定后按普通段落输出
             if is_toc_sdt(node) {
                 ctx.warn("toc", "目录域已按可见文本降级（域码不执行）", "sdt");
             }
-            let content = child(node, "sdtContent");
-            if let Some(c) = content {
-                for p in c.children().filter(|n| is_el(*n, "p")) {
-                    push_paragraph(p, ctx, &mut blocks);
-                }
+            if let Some(c) = child(node, "sdtContent") {
+                push_children_blocks(c, ctx, blocks);
             }
-        } else if is_el(node, "sectPr") {
-            // 分节/分栏：版式丢失，按顺序输出后续段落即可，不产块
         }
     }
-    blocks
 }
 
 fn is_toc_sdt(sdt: roxmltree::Node) -> bool {
@@ -523,12 +523,31 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
         return;
     }
 
-    // 普通段落
+    // 普通段落（或以字面项目符号起始 → 规整为无序列表项）
     ctx.ordered.clear();
     let text = map_inline(p, ctx);
-    if !text.trim().is_empty() {
-        blocks.push(Block::Para(text.trim().to_string()));
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return;
     }
+    if let Some(rest) = strip_bullet_marker(trimmed) {
+        let rest = rest.trim();
+        if !rest.is_empty() {
+            blocks.push(Block::ListItem { indent: 0, marker: "-".to_string(), text: rest.to_string() });
+            return;
+        }
+    }
+    blocks.push(Block::Para(trimmed.to_string()));
+}
+
+/// 去掉行首的字面项目符号（Word 里很多“伪列表”其实是手打的 • · ‣ 等字符，非真 numPr 列表）。
+fn strip_bullet_marker(s: &str) -> Option<&str> {
+    for b in ['\u{2022}', '\u{00B7}', '\u{2023}', '\u{25E6}', '\u{25AA}', '\u{25B8}', '\u{25CF}', '\u{25CB}'] {
+        if let Some(rest) = s.strip_prefix(b) {
+            return Some(rest.trim_start());
+        }
+    }
+    None
 }
 
 fn para_all_runs_mono(p: roxmltree::Node, ctx: &Ctx) -> bool {
@@ -563,16 +582,37 @@ fn strip_markdown_for_code(s: &str) -> String {
 /// 段落内联映射：按文档序处理 runs / hyperlink / fldSimple / ins；返回 markdown 行内串
 fn map_inline(p: roxmltree::Node, ctx: &mut Ctx) -> String {
     let mut out = String::new();
-    for node in p.children() {
+    map_inline_children(p, ctx, &mut out);
+    out
+}
+
+/// 行内映射：按文档序处理 parent 的行内子节点，追加到 out。对 hyperlink / fldSimple / ins /
+/// smartTag / sdt 递归展开，使被内联内容控件（w:sdt）包裹的 run 不丢失（如模板里的分节标题）。
+/// 相邻且强调格式完全一致的纯文本 run 会被合并（Word 常按 rsid 把一句加粗切成多段 run，
+/// 逐段包裹会得到 **a****b** 这种碎片）。
+fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String) {
+    let mut pending: Option<(u32, String)> = None; // (强调签名, 累积原文)
+    for node in parent.children() {
         if is_el(node, "pPr") {
             continue;
         } else if is_el(node, "r") {
-            out.push_str(&map_run(node, ctx));
-        } else if is_el(node, "hyperlink") {
-            let mut inner = String::new();
-            for r in node.children().filter(|n| is_el(*n, "r")) {
-                inner.push_str(&map_run(r, ctx));
+            match mergeable_run(node, ctx) {
+                Some((sig, text)) => match &mut pending {
+                    Some((psig, ptext)) if *psig == sig => ptext.push_str(&text),
+                    _ => {
+                        flush_pending(&mut pending, out);
+                        pending = Some((sig, text));
+                    }
+                },
+                None => {
+                    flush_pending(&mut pending, out);
+                    out.push_str(&map_run(node, ctx));
+                }
             }
+        } else if is_el(node, "hyperlink") {
+            flush_pending(&mut pending, out);
+            let mut inner = String::new();
+            map_inline_children(node, ctx, &mut inner);
             let rid = rattr(node, "id").unwrap_or("").to_string();
             if let Some(rel) = ctx.rels.get(&rid) {
                 let url = resolve_link_target(&rel.target);
@@ -589,26 +629,90 @@ fn map_inline(p: roxmltree::Node, ctx: &mut Ctx) -> String {
                 out.push_str(&inner);
             }
         } else if is_el(node, "fldSimple") {
+            flush_pending(&mut pending, out);
             let instr = wattr(node, "instr").unwrap_or("");
             if instr.to_ascii_uppercase().contains("TOC") {
                 ctx.warn("toc", "目录域已按可见文本降级", "fldSimple");
             }
-            for r in node.children().filter(|n| is_el(*n, "r")) {
-                out.push_str(&map_run(r, ctx));
-            }
-        } else if is_el(node, "ins") {
-            for r in node.children().filter(|n| is_el(*n, "r")) {
-                out.push_str(&map_run(r, ctx));
+            map_inline_children(node, ctx, out);
+        } else if is_el(node, "ins") || is_el(node, "smartTag") {
+            flush_pending(&mut pending, out);
+            map_inline_children(node, ctx, out);
+        } else if is_el(node, "sdt") {
+            flush_pending(&mut pending, out);
+            if let Some(c) = child(node, "sdtContent") {
+                map_inline_children(c, ctx, out);
             }
         } else if is_el(node, "del") {
+            flush_pending(&mut pending, out);
             ctx.warn("unknown_style", "已忽略删除痕迹（tracked deletion）内的文本", "del");
-        } else if is_el(node, "smartTag") {
-            for r in node.children().filter(|n| is_el(*n, "r")) {
-                out.push_str(&map_run(r, ctx));
-            }
         }
     }
-    out
+    flush_pending(&mut pending, out);
+}
+
+/// 把待合并的 run 组按签名包裹后写入 out。
+fn flush_pending(pending: &mut Option<(u32, String)>, out: &mut String) {
+    if let Some((sig, text)) = pending.take() {
+        out.push_str(&wrap_emphasis(sig, &text));
+    }
+}
+
+/// 按强调签名包裹文本（包裹顺序与 map_run 一致：strike→u→i→b）。
+fn wrap_emphasis(sig: u32, text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let mut s = text.to_string();
+    if sig & 8 != 0 {
+        s = format!("~~{}~~", s);
+    }
+    if sig & 4 != 0 {
+        s = format!("_{}_", s);
+    }
+    if sig & 2 != 0 {
+        s = format!("*{}*", s);
+    }
+    if sig & 1 != 0 {
+        s = format!("**{}**", s);
+    }
+    s
+}
+
+/// 若 run 仅由「一个 rPr + 若干 w:t」构成（无图片/脚注/换行/制表/sym/上下标等副作用），
+/// 返回其 (强调签名, 文本) 以便与相邻同格式 run 合并；否则返回 None（走 map_run 原逻辑）。
+fn mergeable_run(r: roxmltree::Node, ctx: &mut Ctx) -> Option<(u32, String)> {
+    let rpr = child(r, "rPr");
+    let is = |name: &str| rpr.and_then(|x| child(x, name)).is_some();
+    if rpr.and_then(|x| child(x, "vertAlign")).is_some() {
+        return None;
+    }
+    let mut sig: u32 = 0;
+    if is("b") {
+        sig |= 1;
+    }
+    if is("i") {
+        sig |= 2;
+    }
+    if is("u") {
+        sig |= 4;
+    }
+    if is("strike") {
+        sig |= 8;
+    }
+    let mut text = String::new();
+    for node in r.children() {
+        if is_el(node, "rPr") {
+            continue;
+        } else if is_el(node, "t") {
+            let t = node.text().unwrap_or("");
+            ctx.stats.words += count_words(t);
+            text.push_str(&escape_text(t));
+        } else {
+            return None; // br/cr/tab/footnoteReference/drawing/pict/sym 等 → 不合并
+        }
+    }
+    Some((sig, text))
 }
 
 /// 单个 run：先算纯文本与图片，再按 rPr 记号包裹
@@ -762,7 +866,47 @@ fn relpath_from(doc_dir: &str, target: &str) -> String {
 
 // ==================== 表格映射 ====================
 
+/// 判断“版式表格”：任一单元格含 ≥2 个非空段落，或含嵌套表 → 视为用表格做的排版（非真数据表）。
+/// 这类表（典型如整页简历用 1~3 格表格排版）若按数据表拍平，会把格子里几十段拼成一行、并丢弃
+/// 格子内段落的标题/列表结构，故改为「线性化」：逐格把其中的 w:p 走完整 push_paragraph。
+fn is_layout_table(tbl: roxmltree::Node) -> bool {
+    for tr in tbl.children().filter(|n| is_el(*n, "tr")) {
+        for tc in tr.children().filter(|n| is_el(*n, "tc")) {
+            if tc.children().any(|n| is_el(n, "tbl")) {
+                return true;
+            }
+            let nonempty = tc
+                .children()
+                .filter(|n| is_el(*n, "p"))
+                .filter(|p| {
+                    p.descendants()
+                        .filter(|n| is_el(*n, "t"))
+                        .any(|t| !t.text().unwrap_or("").trim().is_empty())
+                })
+                .count();
+            if nonempty >= 2 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn push_table(tbl: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
+    // 版式表格：按文档顺序线性化为普通块（保留格子内标题/列表/段落），不当作数据表拍平。
+    if is_layout_table(tbl) {
+        ctx.warn(
+            "layout_table",
+            "检测到版式表格（单元格含多段/嵌套表），已按文档顺序展开为普通块（标题/列表/段落保留）",
+            "tbl",
+        );
+        for tr in tbl.children().filter(|n| is_el(*n, "tr")) {
+            for tc in tr.children().filter(|n| is_el(*n, "tc")) {
+                push_children_blocks(tc, ctx, blocks);
+            }
+        }
+        return;
+    }
     let mut rows: Vec<Vec<(String, u32, u32, bool)>> = Vec::new(); // (text, colspan, rowspan, is_header)
     let mut merged = false;
     for tr in tbl.children().filter(|n| is_el(*n, "tr")) {
@@ -1326,6 +1470,81 @@ mod tests {
             "", "", &styles, "", &empty_media(),
         );
         assert!(md.starts_with("# Title"), "got: {md}");
+    }
+
+    #[test]
+    fn layout_table_linearized_keeps_cell_headings_and_lists() {
+        let styles = format!(
+            r#"<w:styles xmlns:w="{WNS}"><w:style w:type="paragraph" w:styleId="H2"><w:name w:val="heading 2"/><w:pPr><w:outlineLvl w:val="1"/></w:pPr></w:style></w:styles>"#
+        );
+        // 一个“版式表”：单格内含 标题段 + 两个 bullet 段（≥2 段 → 触发线性化）
+        let body = r#"<w:tbl><w:tr><w:tc>
+<w:p><w:pPr><w:pStyle w:val="H2"/></w:pPr><w:r><w:t>教育背景</w:t></w:r></w:p>
+<w:p><w:r><w:t>• 奖项一</w:t></w:r></w:p>
+<w:p><w:r><w:t>• 奖项二</w:t></w:r></w:p>
+</w:tc></w:tr></w:tbl>"#;
+        let (md, w, _) = map_parts(&doc(body), "", "", &styles, "", &empty_media());
+        assert!(md.contains("## 教育背景"), "cell heading lost: {md}");
+        assert!(md.contains("- 奖项一\n- 奖项二"), "literal bullets not listified: {md}");
+        assert!(!md.contains("<table>") && !md.contains("| 教育"), "should not render as table: {md}");
+        assert!(w.iter().any(|x| x.code == "layout_table"), "missing layout_table warning: {md}");
+    }
+
+    #[test]
+    fn literal_bullet_paragraph_becomes_list() {
+        let (md, _, _) = map(r#"<w:p><w:r><w:t>• 通过 comfyui 剪辑</w:t></w:r></w:p>"#);
+        assert!(md.starts_with("- 通过 comfyui 剪辑"), "got: {md}");
+    }
+
+    #[test]
+    fn single_paragraph_cell_stays_real_table() {
+        // 回归护栏：每格仅 1 段的数据表不应被线性化（仍走 GFM）
+        let (md, w, _) = map(r#"<w:tbl>
+<w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr>
+<w:tr><w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>d</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"#);
+        assert!(md.contains("| a | b |"), "got: {md}");
+        assert!(!w.iter().any(|x| x.code == "layout_table"), "should not be treated as layout: {md}");
+    }
+
+    #[test]
+    fn block_sdt_inside_cell_is_linearized() {
+        let styles = format!(
+            r#"<w:styles xmlns:w="{WNS}"><w:style w:type="paragraph" w:styleId="H2"><w:name w:val="heading 2"/><w:pPr><w:outlineLvl w:val="1"/></w:pPr></w:style></w:styles>"#
+        );
+        // 版式表：单元格内两段普通段（≥2 触发线性化）+ 中间夹一段被 sdt 包裹的标题段（需透明展开）
+        let body = r#"<w:tbl><w:tr><w:tc>
+<w:p><w:r><w:t>第一行</w:t></w:r></w:p>
+<w:sdt><w:sdtContent><w:p><w:pPr><w:pStyle w:val="H2"/></w:pPr><w:r><w:t>教育背景</w:t></w:r></w:p></w:sdtContent></w:sdt>
+<w:p><w:r><w:t>第二行</w:t></w:r></w:p>
+</w:tc></w:tr></w:tbl>"#;
+        let (md, _, _) = map_parts(&doc(body), "", "", &styles, "", &empty_media());
+        assert!(md.contains("## 教育背景"), "sdt heading dropped: {md}");
+        assert!(md.contains("第一行") && md.contains("第二行"), "got: {md}");
+    }
+
+    #[test]
+    fn inline_sdt_run_not_dropped() {
+        // 「技能」式：段落可见文本整段在 inline sdt 里
+        let body = r#"<w:p><w:sdt><w:sdtContent><w:r><w:t>技能</w:t></w:r></w:sdtContent></w:sdt></w:p>"#;
+        let (md, _, _) = map(body);
+        assert!(md.contains("技能"), "inline sdt run dropped: {md}");
+    }
+
+    #[test]
+    fn adjacent_same_bold_runs_merge() {
+        // Word 按 rsid 把一句加粗切成多段：应合并为 **AI视频工程师**，而非 **AI****视频工程师**
+        let body = r#"<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>AI</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>视频工程师</w:t></w:r></w:p>"#;
+        let (md, _, _) = map(body);
+        assert!(md.contains("**AI视频工程师**"), "bold runs not merged: {md}");
+        assert!(!md.contains("****"), "fragmented emphasis remains: {md}");
+    }
+
+    #[test]
+    fn bold_then_plain_runs_stay_separate() {
+        // 相邻但格式不同的 run 不应被误合并
+        let body = r#"<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>角色</w:t></w:r><w:r><w:t>：医疗顾问</w:t></w:r></w:p>"#;
+        let (md, _, _) = map(body);
+        assert_eq!(md.trim(), "**角色**：医疗顾问", "got: {md}");
     }
 
     #[test]
