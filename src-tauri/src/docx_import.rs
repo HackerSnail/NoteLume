@@ -1226,8 +1226,9 @@ fn map_run(r: roxmltree::Node, ctx: &mut Ctx) -> String {
             s = format!("^{}", s);
             ctx.warn("unknown_style", "上标 GFM 无对应语法，已降级为 ^ 前缀", "vertAlign");
         } else if val("vertAlign").as_deref() == Some("subscript") {
-            s = format!("<sub>{}</sub>", s);
-            ctx.warn("unknown_style", "下标 GFM 无对应语法，已原样 <sub> 输出", "vertAlign");
+            // 下标：与上标对称，GFM 无对应语法，用 `~` 前缀降级（如 `~i`）。
+            s = format!("~{}", s);
+            ctx.warn("unknown_style", "下标 GFM 无对应语法，已降级为 ~ 前缀", "vertAlign");
         }
         if is("strike") {
             s = format!("~~{}~~", s);
@@ -1972,6 +1973,14 @@ mod tests {
         let (md, w, _) = map(r#"<w:p><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:t>[22]</w:t></w:r></w:p>"#);
         assert!(md.contains("^[22]"), "got: {md}");
         assert!(!md.contains("<sup>"), "must not emit <sup>, got: {md}");
+        assert!(w.iter().any(|x| x.code == "unknown_style"));
+    }
+
+    #[test]
+    fn subscript_degrades_to_tilde_with_warning() {
+        let (md, w, _) = map(r#"<w:p><w:r><w:rPr><w:vertAlign w:val="subscript"/></w:rPr><w:t>i</w:t></w:r></w:p>"#);
+        assert!(md.contains("~i"), "got: {md}");
+        assert!(!md.contains("<sub>"), "must not emit <sub>, got: {md}");
         assert!(w.iter().any(|x| x.code == "unknown_style"));
     }
 
