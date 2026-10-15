@@ -47,7 +47,7 @@ function mimeSub(ext) {
 /**
  * 打开校对模态。
  * @param {object} entry  队列项：{ preview:{ md, title, images, warnings, stats } }
- * @param {object} ctx    { index, total, theme }
+ * @param {object} ctx    { index, total, theme, acceptLabel? }
  */
 export function openDocxReview(entry, ctx = {}) {
   const preview = entry.preview || {}
@@ -135,7 +135,7 @@ export function openDocxReview(entry, ctx = {}) {
     skipBtn.textContent = '跳过此文档'
     const okBtn = document.createElement('button')
     okBtn.className = 'nl-docx-btn primary'
-    okBtn.textContent = '接受并落库'
+    okBtn.textContent = ctx.acceptLabel || '接受并落库'
     row.append(skipBtn, okBtn)
     box.appendChild(row)
 

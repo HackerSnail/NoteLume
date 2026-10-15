@@ -530,21 +530,19 @@ async function importDroppedFiles(files, destDir) {
 
 // ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
 
-/** 「更多」菜单入口：先选 .docx（不强制先开库）→ 已开库落当前夹/库根；未开库则选一个目标文件夹直接写入 */
+/** 「更多」菜单入口：选 .docx → 直接解析校对；已开库接受即落库，未开库接受时才问存到哪（取消=不保存） */
 async function importWordViaDialog() {
   const paths = await pickDocxFiles()
   if (!paths || !paths.length) return
   const sources = paths.map((p) => ({ srcPath: p }))
 
   if (state.vaultRoot) {
-    // 已开库：落到当前文档所在夹，否则库根（走去重索引 + 刷树）
+    // 已开库：接受即落到当前文档所在夹（否则库根），走去重索引 + 刷树
     const destDir = state.currentFile ? parentOf(state.currentFile) : ''
-    await importWordFlow(sources, destDir, { vaultRoot: state.vaultRoot, intoVault: true })
+    await importWordFlow(sources, destDir, { intoVault: true })
   } else {
-    // 未开库：不再拦截，让用户选一个目标文件夹作为落盘根
-    const folder = await pickFolder()
-    if (!folder) return
-    await importWordFlow(sources, '', { vaultRoot: folder, intoVault: false })
+    // 未开库：不选目录、不拦截，直接 preview→校对；是否保存/存哪由用户在接受那步当场决定
+    await importWordFlow(sources, '', { intoVault: false })
   }
 }
 
@@ -552,19 +550,27 @@ async function importWordViaDialog() {
  * 导入编排的真实装配：把 bridge/Rust 与去重索引注入 runImport，校对回调开 docx-review 模态。
  * @param {Array<{srcPath?:string, srcB64?:string, displayName?:string}>} sources
  * @param {string} destDir  目标根内的相对目录（'' = 根）
- * @param {object} [target] { vaultRoot, intoVault }——intoVault=false 时为外部落盘：
- *   不碰库级去重索引（避免跨根误引用）、不刷树，完成后提示输出目录。
+ * @param {object} [target] { intoVault }——false = 独立解析模式：每篇「接受」时才弹目录选择器决定
+ *   保存位置（取消即该篇不保存）；不读写库级去重索引（每篇自包含、避免跨目录误引用）、不刷树，
+ *   完成后回显每篇完整落盘路径。
  */
 async function importWordFlow(sources, destDir = '', target = {}) {
-  const vaultRoot = target.vaultRoot || state.vaultRoot
   const intoVault = target.intoVault !== false
-  if (!vaultRoot) {
-    setStatus('请先选择目标文件夹')
+  const vaultRoot = intoVault ? state.vaultRoot : ''
+  if (intoVault && !vaultRoot) {
+    setStatus('请先打开知识库文件夹')
     return
   }
+  let saveFolder = '' // 独立模式：当前这篇「接受」时用户选定的保存目录
+  const savedPaths = []
   const io = {
     preview: (args) => docxPreview(args),
-    commit: (args) => docxCommit(args),
+    commit: async (args) => {
+      if (intoVault) return docxCommit(args)
+      // 独立保存：以用户所选目录为根；不传/不回共享索引，每篇自包含（图片必落盘、引用必对）
+      const r = await docxCommit({ ...args, vaultRoot: saveFolder, dedupIndex: {} })
+      return { ...r, updatedIndex: {} }
+    },
     loadIndex: intoVault
       ? () => {
           try { return JSON.parse(localStorage.getItem(IMG_INDEX_KEY) || '{}') } catch { return {} }
@@ -576,10 +582,27 @@ async function importWordFlow(sources, destDir = '', target = {}) {
           renderTree(await scanVault(state.vaultRoot))
           startIndexPolling()
         }
-      : async () => {},
+      : async (res) => {
+          // 回显完整路径：所选目录 + commit 回来的最终 docRel（含改名/冲突后缀）
+          if (res && res.docRel && saveFolder) {
+            const sep = saveFolder.includes('\\') ? '\\' : '/'
+            savedPaths.push(saveFolder.replace(/[\\/]+$/, '') + sep + res.docRel.replace(/\//g, sep))
+          }
+        },
   }
-  const review = (entry, ctx) =>
-    openDocxReview(entry, { ...ctx, theme: document.documentElement.getAttribute('data-theme') || 'light' })
+  const review = async (entry, ctx) => {
+    const d = await openDocxReview(entry, {
+      ...ctx,
+      theme: document.documentElement.getAttribute('data-theme') || 'light',
+      acceptLabel: intoVault ? '接受并落库' : '接受并保存…',
+    })
+    if (intoVault || !d || d.action !== 'accept') return d
+    // 是否保存、存到哪：用户当场决定；取消目录选择 = 这篇不保存
+    const folder = await pickFolder()
+    if (!folder) return { action: 'skip' }
+    saveFolder = folder
+    return d
+  }
   try {
     const res = await runImport({
       sources,
@@ -589,11 +612,12 @@ async function importWordFlow(sources, destDir = '', target = {}) {
       opts: { vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
     })
     const { committed, skipped, failed, total } = res.stats
-    const parts = [`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '已写入')]
-    if (skipped) parts.push(`${skipped} 跳过`)
+    const parts = [`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '已保存')]
+    if (skipped) parts.push(`${skipped} 跳过/未保存`)
     if (failed) parts.push(`${failed} 失败`)
-    if (!intoVault) parts.push(`输出目录：${vaultRoot}（可“打开知识库”选它纳入库内编辑）`)
-    await messageDialog(parts.join('，'), 'info')
+    let msg = parts.join('，')
+    if (!intoVault && savedPaths.length) msg += '\n\n已保存到：\n' + savedPaths.map((p) => '· ' + p).join('\n')
+    await messageDialog(msg, 'info')
   } catch (e) {
     await messageDialog('Word 导入失败：' + errText(e))
     setStatus('Word 导入失败')
