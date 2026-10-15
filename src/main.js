@@ -824,6 +824,9 @@ async function importWordFlow(sources, destDir = '', target = {}) {
   }
   let tempRoot = '' // 独立模式：首次落盘时在系统 temp 建的一次性目录
   const committedRels = [] // 两种模式：已成功落盘的库内相对路径（供导入后立即打开回显）
+  // 图片去重索引按知识库隔离：索引存的是「库内相对路径」，跨库复用会引用到别的库的路径而断图，
+  // 故 key 带上 vaultRoot，每个库各一份（新库首次导入 = 空索引 → 图片正常复制到文档旁）。
+  const indexKey = `${IMG_INDEX_KEY}:${vaultRoot}`
   const io = {
     preview: (args) => docxPreview(args),
     commit: async (args) => {
@@ -835,10 +838,10 @@ async function importWordFlow(sources, destDir = '', target = {}) {
     },
     loadIndex: intoVault
       ? () => {
-          try { return JSON.parse(localStorage.getItem(IMG_INDEX_KEY) || '{}') } catch { return {} }
+          try { return JSON.parse(localStorage.getItem(indexKey) || '{}') } catch { return {} }
         }
       : async () => ({}),
-    saveIndex: intoVault ? (i) => localStorage.setItem(IMG_INDEX_KEY, JSON.stringify(i)) : async () => {},
+    saveIndex: intoVault ? (i) => localStorage.setItem(indexKey, JSON.stringify(i)) : async () => {},
     onCommitted: async (res) => {
       if (res && res.docRel) committedRels.push(res.docRel)
       if (intoVault) {

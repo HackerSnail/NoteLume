@@ -1858,8 +1858,24 @@ pub fn docx_commit(args: DocxCommitArgs) -> Result<DocxCommitResult, String> {
             continue;
         }
         if let Some(existing) = updated.get(&img.sha256).cloned() {
-            reused.push(existing);
-            continue;
+            // 加固：索引命中 ≠ 文件真在当前库（跨库污染 / 手删 / 移动都会让索引指向已不存在的库内路径）。
+            // 校验目标存在：在则复用；缺失则按索引路径补写自愈，绝不留下断图引用。
+            if let Ok(target) = vault_join(&root, &existing) {
+                if target.starts_with(&root) {
+                    if target.exists() {
+                        reused.push(existing);
+                        continue;
+                    }
+                    if let Some(parent) = target.parent() {
+                        fs_create_dir_all(parent)?;
+                    }
+                    let bytes = b64_decode(&img.data_b64)?;
+                    fs_write(&target, &bytes)?;
+                    written.push(existing);
+                    continue;
+                }
+            }
+            // existing 越界/异常 → 不 continue，落到下面按 planned_rel 正常写并更新索引
         }
         let irel = if img.planned_rel.trim().is_empty() {
             // 无计划路径 → 按 <sha前12>.<ext> 落在文档同目录（用 ext 重建文件名）
@@ -2258,6 +2274,24 @@ mod tests {
         let r2 = docx_commit(commit_args(&v, "Doc2/Doc2.md", "# hi2", vec![CommitImage { sha256: sha.clone(), ext: "png".into(), data_b64: b64.clone(), planned_rel: "Doc2/img.png".into() }], r.updated_index.clone())).unwrap();
         assert_eq!(r2.written_images.len(), 0);
         assert_eq!(r2.reused_images.len(), 1);
+    }
+
+    #[test]
+    fn commit_self_heals_missing_reused_image() {
+        let v = temp_vault("selfheal");
+        let png = b"\x89PNGDATA".to_vec();
+        let sha = sha256_hex(&png);
+        let b64 = b64_encode(&png);
+        // 索引声称图在 "Old/loc/x.png"，但当前库里根本没有（模拟跨库污染 / 手删）
+        let mut stale = HashMap::new();
+        stale.insert(sha.clone(), "Old/loc/x.png".to_string());
+        let imgs = vec![CommitImage { sha256: sha.clone(), ext: "png".into(), data_b64: b64, planned_rel: "Doc/x.png".into() }];
+        let r = docx_commit(commit_args(&v, "Doc/Doc.md", "![](../Old/loc/x.png)", imgs, stale)).unwrap();
+        // 应自愈：按索引路径补写，而非静默复用
+        assert_eq!(r.written_images, vec!["Old/loc/x.png".to_string()], "缺失的 reused 目标应被补写自愈");
+        assert_eq!(r.reused_images.len(), 0);
+        assert!(v.join("Old").join("loc").join("x.png").exists(), "自愈应把图写到索引指向的库内路径");
+        assert_eq!(std::fs::read(v.join("Old").join("loc").join("x.png")).unwrap(), png);
     }
 
     #[test]
