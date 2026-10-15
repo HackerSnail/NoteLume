@@ -535,8 +535,14 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
         }
     }
 
-    // 等宽样式段落 -> 代码行（启发式；与上一块 Code 合并）
-    let monospace = style.map(|st| st.monospace).unwrap_or(false) || para_all_runs_mono(p, ctx);
+    // 等宽样式段落 -> 代码行（启发式；与上一块 Code 合并）。
+    // 护栏：含中文正文的段落绝不判为代码块——等宽字体启发式对中文论文正文会整段误判
+    //（真实回归：一篇学位论文的纯散文段落因正文用等宽字体被误转成围栏代码）。
+    let has_cjk_text = p
+        .descendants()
+        .any(|d| ns_is(d, W, "t") && has_cjk(d.text().unwrap_or("")));
+    let monospace = !has_cjk_text
+        && (style.map(|st| st.monospace).unwrap_or(false) || para_all_runs_mono(p, ctx));
     if monospace {
         let text = map_inline(p, ctx);
         if let Some(Block::Code(prev)) = blocks.last_mut() {
@@ -2126,6 +2132,14 @@ mod tests {
     fn monospace_paragraph_becomes_code_fence() {
         let (md, _, _) = map(r#"<w:p><w:r><w:rPr><w:rFonts w:ascii="Consolas"/></w:rPr><w:t>x = 1</w:t></w:r></w:p>"#);
         assert!(md.contains("```\nx = 1\n```"), "got: {md}");
+    }
+
+    #[test]
+    fn monospace_cjk_paragraph_is_not_code() {
+        // 含中文正文的等宽段落不得判为代码块（等宽字体启发式对中文论文正文的回归护栏）
+        let (md, _, _) = map(r#"<w:p><w:r><w:rPr><w:rFonts w:ascii="Consolas"/></w:rPr><w:t>随着计算机图形学的发展</w:t></w:r></w:p>"#);
+        assert!(!md.contains("```"), "CJK prose must not become code fence, got: {md}");
+        assert!(md.contains("随着计算机图形学的发展"), "content preserved, got: {md}");
     }
 
     #[test]
