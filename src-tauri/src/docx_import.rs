@@ -316,6 +316,8 @@ struct Ctx<'a> {
     referenced: Vec<String>,
     // 有序列表编号计数器
     ordered: HashMap<String, u32>,
+    // 连续列表的最小 ilvl 基准（None 表示当前不在列表中），用于归一化层级
+    list_base: Option<u32>,
 }
 
 impl<'a> Ctx<'a> {
@@ -343,6 +345,7 @@ impl<'a> Ctx<'a> {
             footnote_text: HashMap::new(),
             referenced: Vec::new(),
             ordered: HashMap::new(),
+            list_base: None,
         }
     }
 
@@ -513,7 +516,7 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
     if let Some(lv) = heading {
         let text = map_inline(p, ctx);
         if !text.trim().is_empty() {
-            ctx.ordered.clear();
+            ctx.ordered.clear(); ctx.list_base = None;
             blocks.push(Block::Heading(lv, text.trim().to_string()));
             return;
         }
@@ -528,7 +531,7 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
         if !has_text {
             let latex = omml_para_to_latex(omp, ctx);
             if !latex.trim().is_empty() {
-                ctx.ordered.clear();
+                ctx.ordered.clear(); ctx.list_base = None;
                 blocks.push(Block::Math(latex));
                 return;
             }
@@ -577,12 +580,17 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
             *n += 1;
             format!("{}.", n)
         };
-        blocks.push(Block::ListItem { indent: ilvl, marker, text: text.trim().to_string() });
+        // 归一化列表层级：以连续列表的最小 ilvl 为基准，避免 Word 大 ilvl 直接变成 ≥4
+        // 前导空格被 Markdown 当成缩进代码块（真实回归：整节正文被渲染成代码）；深度封顶 1。
+        let base = match ctx.list_base { Some(b) => b.min(ilvl), None => ilvl };
+        ctx.list_base = Some(base);
+        let depth = ilvl.saturating_sub(base).min(1);
+        blocks.push(Block::ListItem { indent: depth, marker, text: text.trim().to_string() });
         return;
     }
 
     // 普通段落（或以字面项目符号起始 → 规整为无序列表项）
-    ctx.ordered.clear();
+    ctx.ordered.clear(); ctx.list_base = None;
     let text = map_inline(p, ctx);
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -2089,6 +2097,18 @@ mod tests {
         );
         assert!(md.contains("- b1\n- b2"), "got: {md}");
         assert!(md.contains("1. o1\n2. o2"), "got: {md}");
+    }
+
+    #[test]
+    fn deep_ilvl_list_is_not_indented_code() {
+        // Word 的 ilvl 偏大（如 2/3）不得变成 ≥4 前导空格（会被 Markdown 当缩进代码块）。
+        // 归一化后：首项 depth=0（无缩进），次项 depth=1（2 空格），均 <4。
+        let (md, _, _) = map(r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="2"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>基于纯几何模型的仿真</w:t></w:r></w:p>
+<w:p><w:pPr><w:numPr><w:ilvl w:val="3"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>在计算机图形学领域中</w:t></w:r></w:p>"#);
+        assert!(!md.contains("    "), "must not indent by 4+ spaces, got: {md}");
+        assert!(!md.contains("```"), "must not become code fence, got: {md}");
+        assert!(md.starts_with("- 基于纯几何模型的仿真"), "first item flush-left, got: {md}");
+        assert!(md.contains("\n  - 在计算机图形学领域中"), "second item nested at 2 spaces, got: {md}");
     }
 
     #[test]
