@@ -21,6 +21,38 @@ export async function pickFile() {
   return typeof picked === 'string' ? picked : null
 }
 
+/** 打开 .docx 文件选择器（可多选），返回绝对路径数组（取消返回 []） */
+export async function pickDocxFiles() {
+  const picked = await open({
+    directory: false,
+    multiple: true,
+    title: '选择 Word (.docx) 文件',
+    filters: [{ name: 'Word', extensions: ['docx'] }],
+  })
+  if (!picked) return []
+  return Array.isArray(picked) ? picked : [picked]
+}
+
+/** .docx → Markdown 只转不写预览：回 { md, plannedDocRel, title, images[], warnings[], stats } */
+export function docxPreview(args) {
+  return invoke('docx_preview', { args })
+}
+
+/** 校对确认后落库：写 .md + 按 sha256 去重落图，回 { docRel, writtenImages[], reusedImages[], updatedIndex } */
+export function docxCommit(args) {
+  return invoke('docx_commit', { args })
+}
+
+/** 在系统 temp 下建本次导入专属目录，返回绝对路径（独立解析模式：先落 temp、立即回显、用户自行决定保存） */
+export function ensureTempImportDir() {
+  return invoke('ensure_temp_import_dir')
+}
+
+/** 把 temp 导入目录整树递归拷贝到目标目录（保留相对路径、覆写同名，不删源）——独立模式下 Ctrl+S「另存为」时使用 */
+export function relocateImport(fromRoot, toRoot) {
+  return invoke('relocate_import', { fromRoot, toRoot })
+}
+
 /** 另存为对话框（导出用，P1） */
 export async function pickSaveAs(defaultPath) {
   return await save({ defaultPath, title: '保存文件' })
@@ -109,7 +141,7 @@ export async function saveImageFromFile(vaultRoot, mdRel, file) {
   return invoke('save_image_bytes', { vaultRoot, mdRel, args: { dataBase64, ext } })
 }
 
-function fileToBase64(file) {
+export function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -285,9 +317,17 @@ export function gitCommitAll(vaultRoot, message, name, email) {
 // 应用绝不接触/存储任何凭据——认证全交系统 git（凭据助手 / ssh-agent / GCM）。
 // 仅 --ff-only 快进 pull，非快进/分叉由前端按 stderr 关键字识别并引导（冲突解决属 R3）。
 
-/** 探测系统 git：返回版本串（如 "git version 2.45.0"）或 null（未安装 → 前端隐藏同步区） */
+/** 探测系统 git：返回版本串（如 "git version 2.45.0"）或 null（未安装 → 前端隐藏同步区）
+ *  Phase 4 后推荐改用 gitRInfo()，本函数仅保留向后兼容。*/
 export function gitRHave() {
   return invoke('git_r_have', {})
+}
+
+/** Phase 4 新增：上报当前引擎与系统 git 版本。返回：
+ *  { engine: "system"|"builtin", gitVersion: string|null, builtinReady: boolean }
+ *  前端徽标与错误引导分派需。*/
+export function gitRInfo() {
+  return invoke('git_r_info', {})
 }
 
 /** 列现有远端：[{ name, url }]（每个 remote 取 fetch URL） */
@@ -330,4 +370,48 @@ export function gitRPullFf(vaultRoot) {
 /** 把前端算好的菜单 spec 交给 Rust 落成原生菜单并挂上菜单栏；失败 reject 附原生错误原文 */
 export function setMacMenu(spec) {
   return invoke('set_mac_menu', { spec })
+}
+
+/** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。
+ *  失败 reject，附 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
+ *  hostkey_mismatch / host_unknown / git_error），同 handleRemoteErr 分派表。*/
+export function gitRPush(vaultRoot) {
+  return invoke('git_r_push', { vaultRoot })
+}
+
+/** R3 新增：合并拉取（不带 --ff-only）。resolve 为 `MERGED\n…` 或 `CONFLICTS\n…`；
+ *  其他失败 reject 附 `[code]msg` 前串。 */
+export function gitRPullMerge(vaultRoot) {
+  return invoke('git_r_pull_merge', { vaultRoot })
+}
+
+/** R3 新增：列当前冲突文件（相对路径数组）。 */
+export function gitRConflictFiles(vaultRoot) {
+  return invoke('git_r_conflict_files', { vaultRoot })
+}
+
+/** R3 新增：解决单个冲突文件。args = { path, side }，side 为 'ours' | 'theirs'。 */
+export function gitRResolve(vaultRoot, args) {
+  return invoke('git_r_resolve', { vaultRoot, args })
+}
+
+/** R3 新增：是否处于 merge-in-progress（resolve 为 bool）。 */
+export function gitRMergeState(vaultRoot) {
+  return invoke('git_r_merge_state', { vaultRoot })
+}
+
+/** R3 新增：中止合并，回到 pull 前状态。 */
+export function gitRAbortMerge(vaultRoot) {
+  return invoke('git_r_abort_merge', { vaultRoot })
+}
+
+/** R3 新增：提交合并（冲突全解后生成 merge commit）。args = { message }。 */
+export function gitRCommitMerge(vaultRoot, args) {
+  return invoke('git_r_commit_merge', { vaultRoot, args })
+}
+
+/** Phase 4 新增：一次性信任陌生 SSH 主机。args = { host, keyType, keyB64 }（同错误里 payload 的三段）。
+ *  成功后下一拨 fetch/pull 会命中 known_hosts 直接放行。*/
+export function gitRTrustHost(args) {
+  return invoke('git_r_trust_host', { args })
 }

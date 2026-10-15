@@ -35,8 +35,16 @@ import {
   buildSiteGraph,
   copyVaultAssets,
   setMacMenu,
+  pickDocxFiles,
+  docxPreview,
+  docxCommit,
+  ensureTempImportDir,
+  relocateImport,
+  fileToBase64,
 } from './tauri-bridge.js'
 import { exportSite } from './site-export.js'
+import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
+import { openDocxReview } from './docx-review.js'
 import { createPalette } from './command-palette.js'
 import { createShortcutSettings } from './shortcut-settings.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -66,6 +74,7 @@ const exportMd = MarkdownIt('commonmark', { html: false }).enable(['table', 'str
 const state = {
   vaultRoot: null, // 知识库根（绝对路径）
   currentFile: null, // 当前文档库内相对路径
+  tempImportRoot: '', // 非空 = 当前 vaultRoot 来自 Word 导入的系统 temp 一次性目录（手动保存会升级为“另存为”）
   mode: 'md', // 'md' 编辑器 | 'canvas' 画布
   dirty: false,
   indexReady: false,
@@ -78,6 +87,7 @@ const state = {
     backupTimer: null,
     lastBackupAt: 0,
   },
+  outlineMode: localStorage.getItem('nl-outline-mode') || 'all', // 'all' | '1'..'6'（默认全层级可见，与逐行收起正交）
 }
 
 // 自动保存策略：停手 2s 触发写盘；每 120s 触发一次带时间戳的备份
@@ -408,13 +418,21 @@ let outlineFoldDoc
 function renderOutline() {
   const ol = els.outline
   if (!ol) return
+  const rows = analyzeOutline(outlineItems)
   if (outlineFoldDoc !== state.currentFile) {
     outlineFoldDoc = state.currentFile
-    outlineCollapsed = new Set()
+    outlineCollapsed = collapsedRowsForMode(rows, state.outlineMode)
   }
-  const rows = analyzeOutline(outlineItems)
-  const hidden = hiddenRows(rows, outlineCollapsed)
+  // 档位工具条：档位只给「默认收起哪些行」，之后逐行三角仍可自由开合
+  const setMode = (m) => {
+    state.outlineMode = m
+    try { localStorage.setItem('nl-outline-mode', m) } catch (e) {}
+    outlineCollapsed = collapsedRowsForMode(rows, m)
+    renderOutline()
+  }
   ol.innerHTML = ''
+  ol.appendChild(renderOutlineToolbar(setMode))
+  const hidden = hiddenRows(rows, outlineCollapsed)
   outlineItems.forEach((item, i) => {
     if (hidden.has(i)) return
     const row = document.createElement('div')
@@ -509,6 +527,7 @@ async function openFolder() {
     const root = await pickFolder()
     if (!root) return
     state.vaultRoot = root
+    state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
     const tree = await scanVault(root)
     renderTree(tree)
     setStatus('知识库已加载：' + root + '（索引构建中…）')
@@ -568,6 +587,7 @@ async function openSingleFile() {
     if (!abs) return
     const { dir, name } = splitAbs(abs)
     state.vaultRoot = dir
+    state.tempImportRoot = ''
     if (isCanvasPath(name)) {
       renderSingleFileTree(name)
       await openCanvas(name)
@@ -734,8 +754,21 @@ async function importDroppedFiles(files, destDir) {
     return
   }
   const list = Array.from(files || [])
+  const docxList = list.filter((f) => /\.docx$/i.test(f.name || ''))
   const ok = list.filter((f) => isImportableFileName(f.name))
-  const bad = list.filter((f) => !isImportableFileName(f.name))
+  const bad = list.filter((f) => !isImportableFileName(f.name) && !/\.docx$/i.test(f.name || ''))
+  if (docxList.length) {
+    // 拖入的 .docx：浏览器 File 无绝对路径 → 转 base64 走同一导入流
+    const sources = []
+    for (const f of docxList) {
+      try {
+        sources.push({ srcB64: await fileToBase64(f), displayName: f.name })
+      } catch (e) {
+        await messageDialog('读取失败 ' + f.name + '：' + errText(e))
+      }
+    }
+    if (sources.length) await importWordFlow(sources, destDir)
+  }
   if (!ok.length) {
     if (bad.length) await messageDialog('不支持导入的文件类型：' + bad.map((f) => f.name).join(', '))
     return
@@ -753,6 +786,102 @@ async function importDroppedFiles(files, destDir) {
     renderTree(await scanVault(state.vaultRoot))
     startIndexPolling()
     setStatus('已导入 ' + imported.length + ' 个文件')
+  }
+}
+
+// ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
+
+/** 「更多」菜单入口：选 .docx → 直接解析校对；已开库接受即落库，未开库接受时才问存到哪（取消=不保存） */
+async function importWordViaDialog() {
+  const paths = await pickDocxFiles()
+  if (!paths || !paths.length) return
+  const sources = paths.map((p) => ({ srcPath: p }))
+
+  if (state.vaultRoot) {
+    // 已开库：接受即落到当前文档所在夹（否则库根），走去重索引 + 刷树
+    const destDir = state.currentFile ? parentOf(state.currentFile) : ''
+    await importWordFlow(sources, destDir, { intoVault: true })
+  } else {
+    // 未开库：不选目录、不拦截，直接 preview→校对；「接受」即落系统 temp 一次性目录并立即打开，是否保存用户自决
+    await importWordFlow(sources, '', { intoVault: false })
+  }
+}
+
+/**
+ * 导入编排的真实装配：把 bridge/Rust 与去重索引注入 runImport，校对回调开 docx-review 模态。
+ * @param {Array<{srcPath?:string, srcB64?:string, displayName?:string}>} sources
+ * @param {string} destDir  目标根内的相对目录（'' = 根）
+ * @param {object} [target] { intoVault }——false = 独立解析模式：不选目录，「接受」即把转换结果写入
+ *   系统 temp 的一次性目录（每篇自包含、不读写库级去重索引），完成后立即在编辑器打开（回显），
+ *   是否长期保存（移走/另存）由用户自行决定。两种模式导入后都会自动打开首篇。
+ */
+async function importWordFlow(sources, destDir = '', target = {}) {
+  const intoVault = target.intoVault !== false
+  const vaultRoot = intoVault ? state.vaultRoot : ''
+  if (intoVault && !vaultRoot) {
+    setStatus('请先打开知识库文件夹')
+    return
+  }
+  let tempRoot = '' // 独立模式：首次落盘时在系统 temp 建的一次性目录
+  const committedRels = [] // 两种模式：已成功落盘的库内相对路径（供导入后立即打开回显）
+  const io = {
+    preview: (args) => docxPreview(args),
+    commit: async (args) => {
+      if (intoVault) return docxCommit(args)
+      // 独立保存：写进一次性 temp 目录；不传/不回共享索引，每篇自包含（图片必落盘、引用必对）
+      if (!tempRoot) tempRoot = await ensureTempImportDir()
+      const r = await docxCommit({ ...args, vaultRoot: tempRoot, dedupIndex: {} })
+      return { ...r, updatedIndex: {} }
+    },
+    loadIndex: intoVault
+      ? () => {
+          try { return JSON.parse(localStorage.getItem(IMG_INDEX_KEY) || '{}') } catch { return {} }
+        }
+      : async () => ({}),
+    saveIndex: intoVault ? (i) => localStorage.setItem(IMG_INDEX_KEY, JSON.stringify(i)) : async () => {},
+    onCommitted: async (res) => {
+      if (res && res.docRel) committedRels.push(res.docRel)
+      if (intoVault) {
+        renderTree(await scanVault(state.vaultRoot))
+        startIndexPolling()
+      }
+    },
+  }
+  const review = (entry, ctx) =>
+    openDocxReview(entry, {
+      ...ctx,
+      theme: document.documentElement.getAttribute('data-theme') || 'light',
+      acceptLabel: intoVault ? '接受并落库' : '接受',
+    })
+  try {
+    const res = await runImport({
+      sources,
+      io,
+      review,
+      onProgress: setStatus,
+      opts: { vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
+    })
+    const { committed, skipped, failed, total } = res.stats
+    const tail = (skipped ? `，${skipped} 跳过` : '') + (failed ? `，${failed} 失败` : '')
+    if (committedRels.length) {
+      // 立即回显：独立模式先把 temp 一次性目录作为工作根打开（侧栏树列出全部导入篇、可点），再打开首篇
+      if (!intoVault && tempRoot) {
+        state.vaultRoot = tempRoot
+        state.tempImportRoot = tempRoot
+        state.currentFile = null
+        renderTree(await scanVault(tempRoot))
+        startIndexPolling()
+        if (pluginManager) pluginManager.reload()
+        if (gitPanel) gitPanel.refresh()
+      }
+      await openFile(committedRels[0])
+      setStatus(`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '（临时目录，可自行保存）') + tail)
+    } else {
+      await messageDialog(`Word 导入：${committed}/${total} 篇` + (intoVault ? '入库' : '') + (skipped ? `，${skipped} 跳过/未接受` : '') + (failed ? `，${failed} 失败` : ''), 'info')
+    }
+  } catch (e) {
+    await messageDialog('Word 导入失败：' + errText(e))
+    setStatus('Word 导入失败')
   }
 }
 
@@ -1050,6 +1179,7 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem('快捷键设置…', () => keySettings && keySettings.open(), false, false, 'sliders'))
   menu.appendChild(makeMenuItem('导出为 HTML', () => exportHTML(), false, false, 'export'))
   menu.appendChild(makeMenuItem('导出整站…', () => exportSiteFull(), false, false, 'globe'))
+  menu.appendChild(makeMenuItem('导入 Word(.docx)…', () => importWordViaDialog(), false, false, 'file'))
   menu.appendChild(makeMenuItem('打印 / 导出 PDF (Ctrl+P)', () => window.print(), false, false, 'printer'))
   menu.appendChild(makeMenuItem('知识图谱 (Ctrl+G)', () => openGraphModal(), false, false, 'graph'))
   menu.appendChild(makeMenuItem('新画布 / 白板', () => newCanvas(), false, false, 'board'))
@@ -1114,6 +1244,7 @@ async function reopenRecent(entry) {
   if (!(await ensureSavedBeforeLeave())) return
   try {
     state.vaultRoot = entry.root
+    state.tempImportRoot = ''
     state.currentFile = null // 避免 openFile 的“同一相对路径”早退（跨库可能同名）
     const tree = await scanVault(entry.root)
     renderTree(tree)
@@ -1322,6 +1453,10 @@ async function saveCurrent(manual = true) {
     if (manual) setStatus('没有可保存的文档')
     return
   }
+  // 独立解析模式（temp 一次性目录）下的手动保存 → 升级为“另存为”，避免默认行为就是默默覆写 temp
+  if (manual && state.tempImportRoot && normVaultPath(state.vaultRoot) === normVaultPath(state.tempImportRoot)) {
+    return saveTempAsFormal()
+  }
   try {
     if (state.mode === 'canvas') {
       await canvasView.save()
@@ -1347,6 +1482,43 @@ async function saveCurrent(manual = true) {
   } catch (e) {
     if (manual) await messageDialog('保存失败：' + e)
     else console.warn('自动保存失败', e)
+  }
+}
+
+/**
+ * 独立解析模式下手动保存的“另存为”升级：先写一次 temp（保证即使取消弹框也不丢改动），
+ * 然后让用户选一个正式目录，把 temp 目录整棵树递归拷过去（包含同次导入的其它篇与图），
+ * 成功后把工作根切到新目录（退出“临时”态）。取消选目录 = 不丢数据，仅提示已存回临时。
+ */
+async function saveTempAsFormal() {
+  const tempRoot = state.tempImportRoot
+  try {
+    // 1) 先把当前编辑器内容回写到 temp，确保取消弹框时不丢修改
+    if (state.mode === 'canvas') {
+      await canvasView.save()
+    } else {
+      await writeMdFile(tempRoot, state.currentFile, editor.getMarkdown())
+      editor.markSaved()
+    }
+    // 2) 选目标目录
+    const target = await pickFolder()
+    if (!target) {
+      setStatus('已保存到临时目录（未选择保存位置）')
+      return
+    }
+    // 3) 递归拷贝整棵 temp → target（覆写同名，保留相对路径）
+    await relocateImport(tempRoot, target)
+    // 4) 切换工作根到新目录：同 rel 内容已存在，无需重开文件，只换 vaultRoot 标识
+    state.vaultRoot = target
+    state.tempImportRoot = ''
+    renderTree(await scanVault(target))
+    startIndexPolling()
+    if (pluginManager) pluginManager.reload()
+    if (gitPanel) gitPanel.refresh()
+    setStatus('已另存为：' + target)
+  } catch (e) {
+    await messageDialog('另存为失败：' + ((e && e.message) || e))
+    setStatus('另存为失败')
   }
 }
 
@@ -1408,6 +1580,40 @@ async function onOpenWiki(name) {
 }
 
 // —— 大纲 / 标签面板 ——
+// 档位 → 默认收起集合：层级 ≥ 档位且真有子级的行先收起，效果等同「只展开到 H 档」。
+// 写成收起集合而不是硬过滤，选完档位后逐行三角照样能开合。
+function collapsedRowsForMode(rows, mode) {
+  const s = new Set()
+  const depth = parseInt(mode, 10) // 'all'、非法值、历史 'hide' → NaN → 不收起任何行
+  if (!Number.isFinite(depth)) return s
+  rows.forEach((r, i) => {
+    if (r.hasKids && r.level >= depth) s.add(i)
+  })
+  return s
+}
+
+function renderOutlineToolbar(setMode) {
+  const bar = document.createElement('div')
+  bar.className = 'outline-toolbar'
+  const btns = [
+    { key: '1', label: 'H1', title: '展开到 H1' },
+    { key: '2', label: 'H2', title: '展开到 H2' },
+    { key: '3', label: 'H3', title: '展开到 H3' },
+  ]
+  for (const b of btns) {
+    const el = document.createElement('button')
+    el.type = 'button'
+    el.textContent = b.label
+    el.title = b.title
+    el.dataset.mode = b.key
+    el.classList.toggle('active', b.key === state.outlineMode)
+    // 再点已选中的档位 = 回到全展开（原「全部展开」按钮的去处，不占位）
+    el.addEventListener('click', () => setMode(b.key === state.outlineMode ? 'all' : b.key))
+    bar.appendChild(el)
+  }
+  return bar
+}
+
 function onMetaChange({ outline, tags }) {
   outlineItems = Array.isArray(outline) ? outline : []
   renderOutline()
@@ -1753,6 +1959,10 @@ function registerAppCommands() {
   // 批次 E（R1）：Git 远程（认证 + 快进 pull）——run 委托给面板暴露的方法；面板未就绪则无操作
   app('app.git.fetch', 'Git：抓取远端', null, () => { if (gitPanel) gitPanel.fetch() })
   app('app.git.pull', 'Git：拉取（仅快进）', null, () => { if (gitPanel) gitPanel.pull() })
+  // 批次 E（R2）：Git push（当前分支 → upstream）
+  app('app.git.push', 'Git：推送到远端', null, () => { if (gitPanel) gitPanel.push() })
+    // 批次 E（R3）：合并拉取（非 ff-only，冲突交面板解决）
+    app('app.git.pullMerge', 'Git：拉取（合并）…', null, () => { if (gitPanel) gitPanel.merge() })
   app('app.git.remote', 'Git：设置远端 origin…', null, () => { if (gitPanel) gitPanel.setupRemote() })
 }
 
@@ -1971,6 +2181,9 @@ async function setupMacMenu() {
   }
   macMenuOn = true
   document.documentElement.toggleAttribute('data-mac', true)
+  // 词数统计上移到标题条右侧，与三个栏切换图标同组；底部状态条只留状态与主题
+  const corner = document.querySelector('.side-corner')
+  if (corner && els.docstats) corner.insertBefore(els.docstats, corner.firstChild)
   syncWindowTitle()
   // filename 由多处直接赋值，用观察器统一同步标题，避免逐个改调用点
   new MutationObserver(syncWindowTitle).observe(els.filename, { childList: true, characterData: true, subtree: true })
@@ -2066,6 +2279,7 @@ async function boot() {
     escapeHtml,
     setStatus,
     onPullDone: () => afterRemotePull(),
+    openFile: (rel) => openFile(rel),
   })
   gitPanel.refresh()
 

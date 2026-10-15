@@ -10,6 +10,15 @@ use std::thread;
 // Phase 3 会在同文件补 fetch/upstream/ahead_behind/pull_ff 实现。
 mod git_builtin;
 
+// 功能项 I：Word(.docx) → Markdown 离线导入引擎（纯 Rust OOXML 解析 + 映射 + 图片去重落盘）。
+mod docx_import;
+
+// Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
+// 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
+pub use git_builtin::{
+    AheadBehind, CommitMergeArgs, GitSyncInfo, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
+};
+
 // ==================== P0 已有类型 ====================
 
 /// 目录树节点：文件夹或 .md 文件
@@ -71,7 +80,7 @@ fn ensure_inside_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
 }
 
 /// 库内相对路径（`/` 分隔）-> 绝对路径；要求所在目录已存在
-fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
     let root = fs::canonicalize(vault_root).map_err(|e| e.to_string())?;
     let mut p = root.clone();
     for seg in rel.split('/').filter(|s| !s.is_empty()) {
@@ -85,7 +94,7 @@ fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, String> {
 
 /// 库内相对路径（`/` 分隔）-> 绝对路径，纯词法拼接（不要求已存在），拒绝 `..` 跳出。
 /// 用于新建文件/文件夹/重命名目标等「路径尚未存在」的场景；存在性/越界由调用方另行校验。
-fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let mut p = root.to_path_buf();
     for seg in rel.split('/').filter(|s| !s.is_empty()) {
         if seg == ".." {
@@ -314,7 +323,7 @@ fn rename_item(vault_root: String, from: String, to: String) -> Result<(), Strin
 }
 
 /// 基础64 解码（容忍空白，遇 `=` 截断）：用于外部拖入文件的字节回写
-fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
     const TBL: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let clean: String = input.chars().filter(|c| !c.is_whitespace()).collect();
     let mut out: Vec<u8> = Vec::with_capacity(clean.len() * 3 / 4);
@@ -478,7 +487,7 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
 }
 
 /// 手写 base64 编码（项目不引入 base64 crate；与 save_image_bytes 里的手写解码对称）
-fn b64_encode(data: &[u8]) -> String {
+pub(crate) fn b64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
     for chunk in data.chunks(3) {
@@ -1332,41 +1341,66 @@ fn read_backup(vault_root: String, backup_rel: String) -> Result<String, String>
     fs::read_to_string(&abs).map_err(|e| format!("读取备份失败：{}", e))
 }
 
-/// 插件文件条目：name = 文件名，path = 库内相对路径
+/// 插件包条目（批次 F1：文件夹化安装包）
+/// dir_name = 一级目录名（=== manifest.id，由前端校验）；manifest_raw = manifest.json 原文
+/// （Rust 不解析 JSON、不校验 id/scope——那是前端 plugin-manifest.js 的职责）；
+/// main_exists = 默认 main.js/main.mjs 是否存在的探测。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginEntry {
-    pub name: String,
-    pub path: String,
+pub struct PluginPackage {
+    pub dir_name: String,
+    pub manifest_path: String,
+    pub manifest_raw: String,
+    pub main_exists: bool,
 }
 
-/// 列出 <vault>/.notelume-plugins/ 下的 *.js / *.mjs 插件文件（P2 插件钩子系统）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginList {
+    pub packages: Vec<PluginPackage>,
+    pub legacy_flat: Vec<String>,
+}
+
+/// 枚举 <vault>/.notelume-plugins/ 下的一级子目录（每个是一个插件包），只读
+/// manifest.json 原文交前端校验。顶层游离 *.js/*.mjs 收集进 legacyFlat（旧版
+/// 平铺插件，前端提示需文件夹化迁移）。
 #[tauri::command]
-fn list_plugins(vault_root: String) -> Result<Vec<PluginEntry>, String> {
+fn list_plugins(vault_root: String) -> Result<PluginList, String> {
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
     let base = root.join(".notelume-plugins");
-    if !base.exists() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for e in fs::read_dir(&base).map_err(|e| e.to_string())?.flatten() {
-        let p = e.path();
-        if !p.is_file() {
-            continue;
-        }
-        let name = e.file_name().to_string_lossy().to_string();
-        if !(name.ends_with(".js") || name.ends_with(".mjs")) {
-            continue;
-        }
-        if let Ok(rel) = p.strip_prefix(&root) {
-            out.push(PluginEntry {
-                name,
-                path: rel.to_string_lossy().replace('\\', "/"),
+    let mut packages = Vec::new();
+    let mut legacy_flat = Vec::new();
+    if base.exists() {
+        for e in fs::read_dir(&base).map_err(|e| e.to_string())?.flatten() {
+            let p = e.path();
+            let file_name = e.file_name().to_string_lossy().to_string();
+            if p.is_file() {
+                if file_name.ends_with(".js") || file_name.ends_with(".mjs") {
+                    legacy_flat.push(file_name);
+                }
+                continue;
+            }
+            if !p.is_dir() {
+                continue;
+            }
+            let manifest = p.join("manifest.json");
+            let manifest_raw = fs::read_to_string(&manifest).unwrap_or_default();
+            let main_exists = p.join("main.js").exists() || p.join("main.mjs").exists();
+            let manifest_path = manifest
+                .strip_prefix(&root)
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| file_name.clone());
+            packages.push(PluginPackage {
+                dir_name: file_name,
+                manifest_path,
+                manifest_raw,
+                main_exists,
             });
         }
     }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(out)
+    packages.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
+    legacy_flat.sort();
+    Ok(PluginList { packages, legacy_flat })
 }
 
 /// 读取一个插件源码（前端用 Blob URL + 动态 import 加载）。
@@ -1978,258 +2012,172 @@ fn git_commit_all(vault_root: String, args: CommitArgs) -> Result<GitCommitResul
     })
 }
 
-// ==================== 批次 E（子项目 R1）：Git 远程 · 认证 + 快进 Pull ====================
-// 与子项目 L（本地 git2）并存的第三层：远程这层 shell out 系统 `git` 二进制。
-// 理由见 spec：认证复用用户已配好的凭据助手 / ssh-agent，零凭据存储、免 openssl/libssh2 编译。
-// 硬约束：① 只调用固定名为 `git` 的二进制、参数全走 argv 数组（无 shell 字符串拼接 = 无注入面）；
-//        ② 全程不接触/存储任何凭据；③ 仅 `--ff-only` 快进 pull，绝不自动 merge/rebase。
-// 本地读写仍走 L 的 git2，二者作用于同一 `.git`，前端面板 busy 串行化避免 index.lock 竞争。
+// ==================== 批次 E（子项目 R1）：Git 远程命令壳 ====================
+// 与子项目 L（本地 git2）并行的第三层：远程。
+// 硬约束同 R1 spec：① argv 数组无拼接注入面；② 不接触/存储凭据；③ `--ff-only`，绝不自动 merge/rebase。
+//
+// Phase 2 (R1-B) 后本段只留 `#[tauri::command]` 壳与引擎分派；具体实现：
+//   • System 后端（shell-out）→ `git_builtin::system::*`
+//   • Builtin 后端（内置 git2，Phase 3 实装）→ `git_builtin::builtin::*`
+// 进程启动后首次调用时 `cached_engine()` 开一次 `git --version` 探测，命中→System、否则→Builtin。
 
-/// `git remote -v` 解析出的单个远端
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Remote {
-    pub name: String,
-    pub url: String,
-}
-
-/// 上游领先/落后计数
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AheadBehind {
-    /// 本地独有提交数（ahead）
-    pub ahead: usize,
-    /// 上游独有提交数（behind）
-    pub behind: usize,
-    /// 上游名（如 origin/main）
-    pub upstream: String,
-}
-
-/// 远端增/改入参
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteArgs {
-    pub name: String,
-    pub url: String,
-}
-
-/// 一次 git 进程调用的收敛结果
-struct GitRun {
-    code: i32,
-    stdout: String,
-    stderr: String,
-}
-
-/// 非零退出时的回显文本：优先 stderr，其次 stdout，都空则报退出码
-fn git_err_msg(run: &GitRun) -> String {
-    let se = run.stderr.trim();
-    if !se.is_empty() {
-        return se.to_string();
-    }
-    let so = run.stdout.trim();
-    if !so.is_empty() {
-        return so.to_string();
-    }
-    format!("git 退出码 {}", run.code)
-}
-
-/// 统一的 git 进程调用：current_dir=vault_root、非交互 env（禁终端提示 / SSH BatchMode）。
-/// 阻塞的 `output()` 放到 spawn_blocking 里跑，避免卡住异步运行时线程。
-async fn git_run(vault_root: String, args: Vec<String>) -> Result<GitRun, String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<GitRun, String> {
-        let ref_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        let out = std::process::Command::new("git")
-            .args(&ref_args)
-            .current_dir(&vault_root)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
-            .output()
-            .map_err(|e| format!("调用系统 git 失败：{}（请确认已安装并在 PATH 中）", e))?;
-        Ok(GitRun {
-            code: out.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
-        })
-    })
-    .await
-    .map_err(|e| format!("git 任务调度失败：{}", e))?
-}
-
-/// 纯函数：解析 `git remote -v` 输出，每个 remote 只留 fetch 行（去 (push) 重复行）。
-/// 行格式：`<name>\t<url> (fetch)` / `... (push)`。
-fn parse_remote_v(text: &str) -> Vec<Remote> {
-    let mut out = Vec::new();
-    for line in text.lines() {
-        let line = line.trim_end();
-        if line.is_empty() {
-            continue;
-        }
-        let (name, rest) = match line.split_once('\t') {
-            Some(kv) => kv,
-            None => continue,
-        };
-        let rest = rest.trim();
-        if rest.ends_with("(push)") {
-            continue;
-        }
-        let url = match rest.strip_suffix("(fetch)") {
-            Some(u) => u.trim().to_string(),
-            None => rest.to_string(), // 无 (fetch) 标记时整段当 URL
-        };
-        out.push(Remote {
-            name: name.trim().to_string(),
-            url,
-        });
-    }
-    out
-}
-
-/// 纯函数：解析 `git rev-list --left-right --count <upstream>...HEAD` 的 `"<左>\t<右>"`。
-/// 左 = 上游独有 = behind，右 = 本地独有 = ahead。异常行降级为 None。
-fn parse_left_right_count(text: &str) -> Option<(usize, usize)> {
-    let line = text.lines().next()?.trim();
-    let mut it = line.split_whitespace();
-    let left: usize = it.next()?.parse().ok()?;
-    let right: usize = it.next()?.parse().ok()?;
-    Some((left, right))
-}
-
-/// 纯函数：解析 `git rev-parse --abbrev-ref @{u}` 的输出。空/含未解析哨兵 `@{u}` → None。
-fn parse_upstream(text: &str) -> Option<String> {
-    let s = text.trim();
-    if s.is_empty() || s.contains("@{u}") {
-        return None;
-    }
-    Some(s.to_string())
-}
-
-/// 探测系统 git 是否可用：`git --version` 成功回版本串，否则 None。前端据此显隐同步区。
+/// 探测系统 git 是否可用：`git --version` 成功回版本串，否则 None。前端据此可提示“内置 vs 系统”。
+/// Phase 2 后 Builtin 引擎下本命令仍返 None（内置不依赖系统 git），引擎详情见 Phase 4 的 `git_r_info`。
 #[tauri::command]
 async fn git_r_have() -> Option<String> {
-    let joined = tauri::async_runtime::spawn_blocking(|| -> Option<String> {
-        std::process::Command::new("git")
-            .arg("--version")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-    })
-    .await
-    .ok()?;
-    joined
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::have().await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::have().await,
+    }
 }
 
-/// 列出现有远端（`git remote -v`）
+/// 列出现有远端
 #[tauri::command]
 async fn git_r_remote_list(vault_root: String) -> Result<Vec<Remote>, String> {
-    let run = git_run(vault_root, vec!["remote".into(), "-v".into()]).await?;
-    if run.code != 0 {
-        return Err(git_err_msg(&run));
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::remote_list(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::remote_list(vault_root).await,
     }
-    Ok(parse_remote_v(&run.stdout))
 }
 
-/// 添加远端：`git remote add <name> <url>`
+/// 添加远端
 #[tauri::command]
 async fn git_r_remote_add(vault_root: String, args: RemoteArgs) -> Result<(), String> {
-    let run = git_run(
-        vault_root,
-        vec!["remote".into(), "add".into(), args.name, args.url],
-    )
-    .await?;
-    if run.code != 0 {
-        return Err(git_err_msg(&run));
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::remote_add(vault_root, args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::remote_add(vault_root, args).await,
     }
-    Ok(())
 }
 
-/// 改远端地址：`git remote set-url <name> <url>`
+/// 改远端地址
 #[tauri::command]
 async fn git_r_remote_set_url(vault_root: String, args: RemoteArgs) -> Result<(), String> {
-    let run = git_run(
-        vault_root,
-        vec!["remote".into(), "set-url".into(), args.name, args.url],
-    )
-    .await?;
-    if run.code != 0 {
-        return Err(git_err_msg(&run));
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::remote_set_url(vault_root, args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::remote_set_url(vault_root, args).await,
     }
-    Ok(())
 }
 
-/// `git fetch --prune [remote|--all]`（非交互）。成功回 stderr（进度/警告）供展示；非零退出 Err(stderr)。
+/// `fetch --prune`（非交互）
 #[tauri::command]
 async fn git_r_fetch(vault_root: String, remote: Option<String>) -> Result<String, String> {
-    let mut args = vec!["fetch".into(), "--prune".into()];
-    match remote {
-        Some(r) if !r.trim().is_empty() => args.push(r),
-        _ => args.push("--all".into()),
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::fetch(vault_root, remote).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::fetch(vault_root, remote).await,
     }
-    let run = git_run(vault_root, args).await?;
-    if run.code != 0 {
-        return Err(git_err_msg(&run));
-    }
-    Ok(run.stderr)
 }
 
-/// 上游名（`git rev-parse --abbrev-ref @{u}`）；无上游 → Ok(None)。
+/// 上游名（`rev-parse --abbrev-ref @{u}`）；无上游 → Ok(None)。
 #[tauri::command]
 async fn git_r_upstream(vault_root: String) -> Result<Option<String>, String> {
-    let run = git_run(
-        vault_root,
-        vec!["rev-parse".into(), "--abbrev-ref".into(), "@{u}".into()],
-    )
-    .await?;
-    if run.code != 0 {
-        return Ok(None);
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::upstream(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::upstream(vault_root).await,
     }
-    Ok(parse_upstream(&run.stdout))
 }
 
-/// 领先/落后计数：先取上游（无则 None），再 `git rev-list --left-right --count <up>...HEAD`。
+/// 领先/落后计数
 #[tauri::command]
 async fn git_r_ahead_behind(vault_root: String) -> Result<Option<AheadBehind>, String> {
-    let up = git_run(
-        vault_root.clone(),
-        vec!["rev-parse".into(), "--abbrev-ref".into(), "@{u}".into()],
-    )
-    .await?;
-    if up.code != 0 {
-        return Ok(None);
-    }
-    let upstream = match parse_upstream(&up.stdout) {
-        Some(u) => u,
-        None => return Ok(None),
-    };
-    let spec = format!("{}...HEAD", upstream);
-    let run = git_run(
-        vault_root,
-        vec!["rev-list".into(), "--left-right".into(), "--count".into(), spec],
-    )
-    .await?;
-    if run.code != 0 {
-        return Err(git_err_msg(&run));
-    }
-    match parse_left_right_count(&run.stdout) {
-        Some((behind, ahead)) => Ok(Some(AheadBehind {
-            ahead,
-            behind,
-            upstream,
-        })),
-        None => Ok(None),
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::ahead_behind(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::ahead_behind(vault_root).await,
     }
 }
 
-/// 快进 pull：`git pull --ff-only`。退出码 0 → Ok(stdout+stderr 摘要)；
-/// 非零（分叉/需合并/工作树阻挡/凭据失败等）→ Err(stderr+stdout)，是否「非快进」由前端按关键字判定。
+/// 快进 pull：退出码 0 → Ok(stdout+stderr)；非零 → Err(stderr+stdout)，前端 NONFF_RE 归类。
 #[tauri::command]
 async fn git_r_pull_ff(vault_root: String) -> Result<String, String> {
-    let run = git_run(vault_root, vec!["pull".into(), "--ff-only".into()]).await?;
-    let combined = format!("{}{}", run.stdout, run.stderr);
-    if run.code != 0 {
-        return Err(combined);
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::pull_ff(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::pull_ff(vault_root).await,
     }
-    Ok(combined)
+}
+
+/// R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 `Remote::push`。
+/// 失败时回 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
+/// hostkey_mismatch / host_unknown / git_error），前端 `handleRemoteErr` 同一张表分派。
+#[tauri::command]
+async fn git_r_push(vault_root: String) -> Result<String, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::push(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::push(vault_root).await,
+    }
+}
+
+/// R3 新增：合并拉取（不带 --ff-only）。System 走 `git pull`；Builtin 走 git2 merge API。
+/// 无冲突回 `MERGED\n…`；有冲突回 `CONFLICTS\n…`；其他失败回 `[code]msg`。
+#[tauri::command]
+async fn git_r_pull_merge(vault_root: String) -> Result<String, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::pull_merge(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::pull_merge(vault_root).await,
+    }
+}
+
+/// R3 新增：列当前冲突文件（相对路径）。System 走 `git diff --diff-filter=U`；Builtin 扫 index stage>0。
+#[tauri::command]
+async fn git_r_conflict_files(vault_root: String) -> Result<Vec<String>, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::conflict_files(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::conflict_files(vault_root).await,
+    }
+}
+
+/// R3 新增：解决单个冲突文件——选 ours/theirs 边 + stage。args.path 相对路径、args.side "ours"|"theirs"。
+#[tauri::command]
+async fn git_r_resolve(vault_root: String, args: ResolveArgs) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::resolve(vault_root, args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::resolve(vault_root, args).await,
+    }
+}
+
+/// R3 新增：是否处于 merge-in-progress（MERGE_HEAD 存在）。前端刷新时用它决定是否显冲突工具条。
+#[tauri::command]
+async fn git_r_merge_state(vault_root: String) -> Result<bool, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::merge_state(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::merge_state(vault_root).await,
+    }
+}
+
+/// R3 新增：中止合并，回到 pull 前状态。
+#[tauri::command]
+async fn git_r_abort_merge(vault_root: String) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::abort_merge(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::abort_merge(vault_root).await,
+    }
+}
+
+/// R3 新增：提交合并（冲突全部解决后，生成带两父的 merge commit）。
+#[tauri::command]
+async fn git_r_commit_merge(vault_root: String, args: CommitMergeArgs) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::commit_merge(vault_root, args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::commit_merge(vault_root, args).await,
+    }
+}
+
+/// Phase 4 新增：一次性信任陌生 SSH host。前端从 `[host_unknown]<json>` 错误里解出 payload，
+/// 展示 key 指纹后递回本命令；System 引擎写 `~/.ssh/known_hosts`，Builtin 引擎写应用私库。
+#[tauri::command]
+async fn git_r_trust_host(args: TrustHostArgs) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::trust_host(args).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::trust_host(args).await,
+    }
+}
+
+/// Phase 4 新增：上报当前引擎与系统 git 版本，前端徽标 + 错误引导需要。进程内 OnceLock 缓存，无额外开销。
+#[tauri::command]
+async fn git_r_info() -> GitSyncInfo {
+    let (engine, ver) = git_builtin::cached_engine_and_version();
+    match engine {
+        git_builtin::Engine::System => git_builtin::system::info(ver).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::info(ver).await,
+    }
 }
 
 // ==================== macOS 原生菜单（系统菜单栏）====================
@@ -2773,26 +2721,41 @@ mod tests {
     }
 
     #[test]
-    fn list_and_read_plugins_only_inside_dir() {
+    fn list_and_read_plugins_folder_packages() {
         let tmp = std::env::temp_dir().join(format!("notelume-plugin-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         let dir = tmp.join(".notelume-plugins");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("hello.js"), "export default { id: 'hello' }").unwrap();
-        fs::write(dir.join("notes.txt"), "ignored").unwrap(); // 非 js 不列
+        let hello = dir.join("hello");
+        fs::create_dir_all(&hello).unwrap();
+        fs::write(hello.join("manifest.json"), "{\"id\":\"hello\",\"name\":\"Hello\"}").unwrap();
+        fs::write(hello.join("main.js"), "export default { id: 'hello' }").unwrap();
+        // 顶层游离 .js → legacyFlat；非 js 忽略
+        fs::write(dir.join("stale.js"), "// old").unwrap();
+        fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let root_str = tmp.to_string_lossy().to_string();
 
         let list = list_plugins(root_str.clone()).unwrap();
-        assert_eq!(list.len(), 1, "只应列出 .js/.mjs");
-        assert_eq!(list[0].name, "hello.js");
-        assert_eq!(list[0].path, ".notelume-plugins/hello.js");
+        assert_eq!(list.packages.len(), 1, "只列一级子目录");
+        assert_eq!(list.packages[0].dir_name, "hello");
+        assert!(list.packages[0].manifest_raw.contains("hello"));
+        assert_eq!(
+            list.packages[0].manifest_path,
+            ".notelume-plugins/hello/manifest.json"
+        );
+        assert!(list.packages[0].main_exists);
+        assert_eq!(list.legacy_flat, vec!["stale.js".to_string()]);
 
-        // 目录内可读
-        let src = read_plugin(root_str.clone(), ".notelume-plugins/hello.js".to_string()).unwrap();
+        // <id>/<相对> 内可读
+        let src =
+            read_plugin(root_str.clone(), ".notelume-plugins/hello/main.js".to_string()).unwrap();
         assert!(src.contains("hello"));
-        // 目录外被白名单拒绝
+        // 库外 / 穿越被拒
         assert!(read_plugin(root_str.clone(), "secret.js".to_string()).is_err());
-        assert!(read_plugin(root_str.clone(), ".notelume-plugins/../../escape.js".to_string()).is_err());
+        assert!(read_plugin(
+            root_str.clone(),
+            ".notelume-plugins/../../escape.js".to_string()
+        )
+        .is_err());
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -2933,56 +2896,7 @@ mod tests {
         let _ = fs::remove_dir_all(&out);
     }
 
-    // ===== 批次 E（子项目 R1）远程骨架：纯函数离线单测（不依赖真实 git/网络） =====
-
-    #[test]
-    fn parse_remote_v_keeps_fetch_and_multiple_remotes() {
-        let s = "origin\thttps://gitee.com/x/note-lume.git (fetch)\norigin\thttps://gitee.com/x/note-lume.git (push)\nup\tgit@github.com:y/z.git (fetch)\nup\tgit@github.com:y/z.git (push)\n";
-        let r = parse_remote_v(s);
-        assert_eq!(r.len(), 2);
-        assert_eq!(r[0].name, "origin");
-        assert_eq!(r[0].url, "https://gitee.com/x/note-lume.git");
-        assert_eq!(r[1].name, "up");
-        assert_eq!(r[1].url, "git@github.com:y/z.git");
-    }
-
-    #[test]
-    fn parse_remote_v_empty_is_empty_vec() {
-        assert!(parse_remote_v("").is_empty());
-        assert!(parse_remote_v("\n  \n").is_empty());
-    }
-
-    #[test]
-    fn parse_left_right_count_maps_left_behind_right_ahead() {
-        // "3\t1"：左=上游独有=behind=3，右=本地独有=ahead=1
-        assert_eq!(parse_left_right_count("3\t1\n"), Some((3, 1)));
-        assert_eq!(parse_left_right_count("0\t0"), Some((0, 0)));
-        // 异常行降级
-        assert_eq!(parse_left_right_count("garbage"), None);
-        assert_eq!(parse_left_right_count(""), None);
-    }
-
-    #[test]
-    fn parse_upstream_handles_real_and_sentinel() {
-        assert_eq!(parse_upstream("origin/main\n").as_deref(), Some("origin/main"));
-        assert_eq!(parse_upstream("main\n").as_deref(), Some("main"));
-        // 未解析哨兵 / 空 → None
-        assert_eq!(parse_upstream("@{u}\n"), None);
-        assert_eq!(parse_upstream("  \n"), None);
-    }
-
-    #[test]
-    fn remote_and_aheadbehind_serialize_camel_case() {
-        let r = Remote { name: "origin".into(), url: "u".into() };
-        let j = serde_json::to_string(&r).unwrap();
-        assert!(j.contains("\"name\""));
-        assert!(j.contains("\"url\""));
-        let ab = AheadBehind { ahead: 1, behind: 3, upstream: "origin/main".into() };
-        let j2 = serde_json::to_value(&ab).unwrap();
-        assert_eq!(j2["ahead"], 1);
-        assert_eq!(j2["behind"], 3);
-        assert_eq!(j2["upstream"], "origin/main");
-    }
+    // ===== 批次 E（子项目 R1）远程骨架单测已重搬到 git_builtin::system::tests（Phase 2） =====
 
     #[test]
     fn menu_spec_accepts_frontend_shape() {
@@ -3093,6 +3007,21 @@ pub fn run() {
             git_r_upstream,
             git_r_ahead_behind,
             git_r_pull_ff,
+            git_r_push,
+            // 合并拉取 + 冲突暴露与解决
+            git_r_pull_merge,
+            git_r_conflict_files,
+            git_r_resolve,
+            git_r_merge_state,
+            git_r_abort_merge,
+            git_r_commit_merge,
+            git_r_trust_host,
+            git_r_info,
+            // Word(.docx) 离线导入（只转不写 preview + 去重落盘 commit + 独立模式临时目录 + 另存为整树拷贝）
+            docx_import::docx_preview,
+            docx_import::docx_commit,
+            docx_import::ensure_temp_import_dir,
+            docx_import::relocate_import,
             // macOS 原生菜单（前端算 spec，Rust 落原生对象）
             set_mac_menu
         ])

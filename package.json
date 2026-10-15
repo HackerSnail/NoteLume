@@ -9,6 +9,8 @@
     "build": "node src/node_modules/@tauri-apps/cli/tauri.js build",
     "build:web": "npm --prefix ./src run build",
     "tauri": "node src/node_modules/@tauri-apps/cli/tauri.js",
-    "test:roundtrip": "npm --prefix ./src run test:roundtrip"
+    "test:roundtrip": "npm --prefix ./src run test:roundtrip",
+    "test:footnote": "npm --prefix ./src run test:footnote",
+    "test:merged-table": "npm --prefix ./src run test:merged-table"
   }
 }

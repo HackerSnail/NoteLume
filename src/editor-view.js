@@ -23,6 +23,7 @@ import { createSlashMenuPlugin, SLASH_ITEMS } from './slash-menu.js'
 import { BLOCK_COMMANDS, activeBlockKey, headingStep } from './block-commands.js'
 import { createModesPlugin } from './editor-modes.js'
 import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plugin.js'
+import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
@@ -38,6 +39,9 @@ export const EDITOR_COMMANDS = [
   { id: 'editor.mathInline', title: '行内公式', defaultKey: 'Mod-m' },
   { id: 'editor.mathBlock', title: '块级公式', defaultKey: 'Mod-Shift-m' },
   { id: 'editor.foldSection', title: '折叠 / 展开本节', defaultKey: 'Mod-Shift-h' },
+  // 脚注（无默认键，命令面板可搜；Ctrl-Shift-F 已被「专注」占用）
+  { id: 'editor.footnote', title: '插入脚注', defaultKey: null },
+  { id: 'editor.footnoteDelete', title: '删除脚注', defaultKey: null },
 ]
 
 const PM_COMMANDS = {
@@ -50,6 +54,8 @@ const PM_COMMANDS = {
   'editor.mathInline': insertMath('math_inline'),
   'editor.mathBlock': insertMath('math_block'),
   'editor.foldSection': foldSectionCommand,
+  'editor.footnote': insertFootnote,
+  'editor.footnoteDelete': deleteFootnote,
 }
 
 // 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
@@ -213,6 +219,7 @@ export function createEditor(opts) {
       pasteImagesPlugin,
       highlightPlugin(),
       mermaidPlugin(),
+      footnotePlugin(),
       modes.plugin,
       fold.plugin,
       ...tablePlugins(),

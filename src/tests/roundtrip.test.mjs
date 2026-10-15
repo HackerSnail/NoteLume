@@ -46,6 +46,10 @@ const SAMPLES = {
   img_size_inline: '正文 ![a](x.png =100x) 尾部 ![b](y.png) 结尾\n',
   wiki_img_size: '![[diagram.png|328]]\n',
   wiki_img_size_mixed: '看这张 ![[a.png|架构图]] 和这张 ![[b.png|200]]\n',
+  // 功能项 J（脚注）：正文 [^id] 角标 + 文末 [^id]: 定义；往返须幂等（id 稳定、序号不落 md）
+  footnote_basic: '正文[^1]结束。\n\n[^1]: 脚注内容。\n',
+  footnote_multi: 'A[^a]B[^b]C\n\n[^a]: 甲\n\n[^b]: 乙\n',
+  footnote_inline: '带引用[^1]的正文。\n\n[^1]: 注里有 **粗** 和 `code` 与 [[页]]。\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }

@@ -2,7 +2,7 @@
 
 日期：2026-10-14 · 范围：远程 fetch/pull 的**内置 libgit2 后端**，作为 R1 shell-out 系统 git 的兜底 · 落点：`src-tauri/src/lib.rs`（新增引擎抽象 + Builtin impl）、`src/git-panel.js`（引擎徽标 + 一次性信任 UI + 错误分类）、`src/tauri-bridge.js`（一条新命令）· **零新依赖 crate**（走 git2 现有 vendored-libgit2 + 新启用 `ssh` feature，Windows 走 Schannel TLS）
 
-状态：✅ 设计已与用户分节确认，待用户评审本文 → 进实现计划
+状态：✅ **已全量交付**（Phase 0→5，master 6 个 commit：fd07a2c Phase0 / 36427c5 Phase1 / fb8e95a Phase2 / 92afc11 Phase3 / 6698fde Phase4 / 0c37307 Phase5；`cargo test --lib` 51 passed / 0 warning；`npm run build` 2332 modules）
 
 ---
 
@@ -220,6 +220,45 @@ Rust 一处集中把 `git2::Error` + 我方主动 Err → `{ code, msg }` 映射
 | ssh-agent 检测跨平台差异 | 只读 `SSH_AUTH_SOCK` env；Windows OpenSSH 默认已设命名管，git2/libssh2 内部会尝试 agent，失败自然回枚举私钥 |
 | 「不弹框」策略与产品后续冲突 | 决策 §1 明写，如改红线需另立 spec 重议 |
 | libssh2 vendored 构建在特定 toolchain 挂（缺 cmake/nasm）| 与现有 vendored-libgit2 同工具链、Phase 0 若编译挂立即暴露；不引入新工具 |
+
+## 13. 交付记录 / 实施差异
+
+实施中与本 spec 预定有 2 处需记的差异（均不影响对外契约）：
+
+1. **git2 0.19 不提供 `RemoteCallbacks::known_hosts` setter**（只暴露 `certificate_check`）—— Phase 4 将“自管 known_hosts 回调 + 侧信道”从 `known_hosts` 改挂到 `certificate_check(&Cert, &str) -> Result<CertificateCheckStatus, Error>` 上实现：
+   - `cert.as_hostkey()` 命中 SSH 主机密钥分支（同 spec §4 语义）；X509 分支 → `CertificatePassthrough` 交 Schannel 默认链验，同 spec 预定一致
+   - 拒绝时回 `Err(GError::from_str(...))`（同 spec 预期“拒绝放行”，只是 API 层面无 `Ok(false)`，改而用 `Err` 传递）
+   - blob → 算法名优先取 `SshHostKeyType::name()`；无 → 手写 `key_type_from_blob` 解 wire-format 头（与 OpenSSH 同）
+   - base64 手写 `b64()`（避为一函数引入 base64 crate），与 libgit2 wire blob 无交集、只用来存 与 展示 payload
+2. **Phase 0 假设 A/B 均成立**（Windows MSVC + `vendored-libgit2` + `ssh`+`https`）：cargo tree 无 openssl-sys、libgit2 走 Schannel、libssh2 走 win32-crypto。未触发降级预案。
+
+Phase 6 预期中的文档回填与本行均在同一个 commit，CHANGELOG/README/ROADMAP 同步更新。
+
+## 14. R2 补记（内置 push）
+
+R2 作为本基础设施的自然延伸，不另开 spec（同属 R1-B 双后端架构，无新决策），不改动本 spec 既定契约。要点：
+
+- 新命令 `git_r_push(vault_root)`，dispatcher 同 fetch/pull 一样 `match cached_engine()` 委派。
+- `system::push`：`git push`，非零退出时按 stderr 关键字前置 `[code]`（no_upstream / non_fast_forward / auth / network / hostkey_mismatch），无匹配保留原文，兼容旧 NONFF_RE。
+- `builtin::push`：git2 `Remote::push`，固定 `refs/heads/<br>:refs/heads/<br>` refspec（不靠 push.default，不自动 force）；挂 `push_update_reference` 将拒因写入 `Arc<Mutex<Option<String>>>` 拒因槽，外层优先级：拒因→`[code]`、侧信道→`[host_unknown]`、默认→`map_err`。
+- 无 upstream 回 `[no_upstream]`，内置不自动设（避免默默创远程新分支）。
+- 前端 `handleRemoteErr` 补 `[no_upstream]` 弹框；`[non_fast_forward]` 文案从「拉取被拒」改 `opName + '被拒…'`（拉/推共用）。新增 `↑ Push` 按钮与 `app.git.push` 命令。不自动先 pull——与 R1 插不自动 merge/rebase 一脉相承。
+
+实现 commit：`6ee0d9b`（feat R2 Phase 0-1）+ 本行所在 commit（docs）。
+
+## 15. R3 补记（合并拉取 + 冲突暴露与解决）
+
+R3 仍是本双后端架构的延伸（新增命令 × 2 引擎，复用 `[code]` 分派表），不另开 spec。它是 R1/R2 一直把非快进往外推的那个后续——现在把「合并 + 逐个解决冲突」落地。要点：
+
+- **触发**（D1）：同步区新增 `Pull（合并）` 按钮（独立入口，不走 ff-only）；ff-pull 被拒时 `handleRemoteErr` 的 `[non_fast_forward]` 文案从「冲突解决尚未支持（R3）」改为引导点该按钮 / 命令面板「Git：拉取（合并）」（不在错误回调里自动发起合并，避免与 `busy` 串行化重入冲突）。
+- **新命令 6 个 × 2 引擎**：`git_r_pull_merge` / `git_r_conflict_files` / `git_r_resolve` / `git_r_merge_state` / `git_r_abort_merge` / `git_r_commit_merge`。入参新增 `ResolveArgs{path,side}`、`CommitMergeArgs{message}`。
+- **pull_merge 契约**：无论引擎，成功回 `"MERGED\n…"`、有冲突回 `"CONFLICTS\n…"`，其他失败仍回 `[code]msg`。System 走 `git pull`（非零退出按 stderr 判 conflict / automatic merge failed）；Builtin 走 git2 `reference_to_annotated_commit` → `merge_analysis`（UP_TO_DATE 直接回 MERGED；NORMAL|FASTFORWARD 才 merge）→ `repo.merge` → `index.has_conflicts()` 判冲突。
+- **冲突列举**（D2）：复用变更区——`gitStatus`（git2）本就把 `Status::CONFLICTED` 标为 kind `conflicted`，故合并后冲突自动出现在变更列表，无需新命令即可渲染；`git_r_conflict_files` 供需要权威列表时调用（System 走 `git diff --diff-filter=U`，Builtin 走 `index.conflicts()` 迭代去重）。`merge_state` 用 `repo.state()==Merge` 判定是否显示顶部合并工具条。
+- **单文件解决**（D3）：每行给「用本地 / 用远端 / 编辑」三个小按钮。`resolve`：System 走 `git checkout --ours/--theirs` + `git add`；Builtin 从 `index.conflicts()` 取该 path 指定边的 `IndexEntry.id` → `find_blob` 写工作区 → `index.add_path`（stage 0 顺带清冲突阶段）+ `index.write`。「编辑」经注入的 `openFile` dep 打开带冲突标记的文件，手改保存后回来提交。
+- **提交 / 中止**：`commit_merge` System 走 `git commit`；Builtin 读 `MERGE_HEAD` 作第二父、`write_tree`+`commit(two parents)` 后清状态文件。`abort_merge` System 走 `git merge --abort`；Builtin 走 `reset(Hard, HEAD)` + 清 `MERGE_HEAD/MSG/MODE`。
+- **不变量**：仍「不代持凭据 / 不自动 force」；非快进不再被简单拒绝，而是给出可控的合并解决路径，但合并拉取前置仍会就「有未提交改动」弹确认。
+
+实现要点（git2 0.19 API 校正，均不影响对外契约）：`AnnotatedCommit` 无 `from_ref` → 用 `repo.reference_to_annotated_commit`；`merge_analysis` 只 1 参；`MergeAnalysis::is_up_to_date/is_fast_forward`；`Index` 无 `get_conflict/resolve` → 用 `conflicts()` 迭代 + `add_path`+`write` 解决；`IndexEntry` 的 `path` 是字段（`Vec<u8>`）非方法、无 `stage()` → 改 `has_conflicts()`；`Reference` 无 `peel_to_object` → `peel(ObjectType::Commit)`。
 
 ---
 

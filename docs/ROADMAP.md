@@ -50,12 +50,13 @@
 - 前置：先有一处**集中命令注册表**（命令面板、插件 `registerCommand`、快捷键设置三者共用），建议这一步把命令注册收敛统一。
 
 ### 5. Git 集成（同步首选，单独立项）
-- ✅ **已完成（子项目 L：本地基础）**：以 `git2`（libgit2，`vendored-libgit2`、无 openssl）内置接入，**不依赖用户装 git**。新 Rust 命令面 `git_open`/`git_status`/`git_log`/`git_diff_file`（只读）+ `git_config_identity`/`git_init`（含 `.gitignore` seeding 排除 `.notelume-backup/`）/`git_commit_all`（等价 `add -A` + 带身份 commit）；新前端 `src/git-panel.js`（侧栏 🌿 面板：Changes/History/diff 预览/提交/初始化）；`app.git.*` 并入批次 D 命令注册表。⚠️ 有意以「本地 vs 远程」而非下述 E1/E2 的「读 vs 写」为切分轴（本地 commit 无认证成本，认证是远程阶段才需啃的硬骨头）：见 [`docs/superpowers/specs/2026-10-14-local-git-integration-design.md`](superpowers/specs/2026-10-14-local-git-integration-design.md)。**含 Rust，须重启 `tauri dev` 重编生效**。
+- ✅ **已完成（子项目 L：本地基础）**：以 `git2`（libgit2，`vendored-libgit2`、无 openssl）内置接入，**不依赖用户装 git**。新 Rust 命令面 `git_open`/`git_status`/`git_log`/`git_diff_file`（只读）+ `git_config_identity`/`git_init`（含 `.gitignore` seeding 排除 `.notelume-backup/`）/`git_commit_all`（等价 `add -A` + 带身份 commit）；新前端 `src/git-panel.js`（侧栏 Git 面板：Changes/History/diff 预览/提交/初始化）；`app.git.*` 并入批次 D 命令注册表。有意以「本地 vs 远程」而非下述 E1/E2 的「读 vs 写」为切分轴（本地 commit 无认证成本，认证是远程阶段才需啃的硬骨头）：见 [`docs/superpowers/specs/2026-10-14-local-git-integration-design.md`](superpowers/specs/2026-10-14-local-git-integration-design.md)。**含 Rust，须重启 `tauri dev` 重编生效**。
 - ⏳ **待做（子项目 R：远程与认证）**：已拆为 R1~R4（成本轴：认证最难、push 依赖 fetch/pull 先行、冲突独立）。
   - ✅ **R1（已完成）**：远程**只读 + 快进 pull**——shell out 系统 `git`（复用凭据助手/ssh-agent/GCM、零凭据存储、检测到才启用），新 `git_r_*`（have/remote list·add·set-url/fetch/upstream/ahead-behind/pull --ff-only）+ `git-panel.js`「同步」区 + `app.git.*` 并入命令注册表 + `afterRemotePull` 编辑器集成。**有意回避合并**（非快进即停、不自动 merge/rebase）。见 [`docs/superpowers/specs/2026-10-14-git-remote-pull-design.md`](superpowers/specs/2026-10-14-git-remote-pull-design.md)。
-  - ⏳ **R2（后续）**：`push`（含拒非快进先 pull）。
-  - ⏳ **R3（后续）**：冲突暴露与解决 UX（列冲突文件、ours/theirs 对比、选边/手动编辑）。
-  - ⏳ **R4（视需要）**：大附件 / `.gitattributes` / LFS 性能。
+  - ✅ **R1-B（已完成）**：**内置远程传输（免装系统 git）**——Rust 侧 `RemoteEngine{System, Builtin}` 双后端：装了 git 继续走 R1 shell-out（凭据 UX 最佳），没装自动切内置 git2（`git2` 新开 `ssh`+`https` feature；Windows MSVC 下 libgit2 走 Schannel、libssh2 走 win32-crypto，**仍无 openssl**）。凭据“不存不弹”：SSH 先试 ssh-agent → 无口令私钥；HTTPS 先试 env token（`NOTE_LUME_GIT_TOKEN`/`GITHUB_TOKEN`/`GITLAB_TOKEN`）；皆无 → `[auth]` 引导。SSH 首次连陌生 host 走“一次性信任”（写应用私库，验时与 `~/.ssh/known_hosts` 合并）；新命令 `git_r_trust_host`/`git_r_info`。前端同步区顶部加引擎徽标（terminal 图标「系统 git」/ box 图标「内置引擎」），fetch/pull 错误按 `[host_unknown]`/`[non_fast_forward]`/`[local_changes]`/`[hostkey_mismatch]`/`[network]`/`[auth]` 前串分类引导，陌生 host 弹一次性信任后原地重试。ff-pull 四步原子（fetch → 同 oid 判 → ff_decision → checkout_tree(safe) + reset Soft → 失败回滚）。**R1 当时“依赖系统 git”的妥协至此收扰——ROADMAP 原则 5“纯自包含”并回到闭环**。见 [`docs/superpowers/specs/2026-10-14-git-builtin-remote-design.md`](superpowers/specs/2026-10-14-git-builtin-remote-design.md)。
+  - ✅ **R2（已完成）**：**内置 push**——新 `git_r_push` 双后端。System 走 `git push`（同 R1 shell-out 非交互 env，凭据交系统）；Builtin 走 git2 `Remote::push`，固定 `refs/heads/<br>:refs/heads/<br>` refspec（不靠 push.default）、不自动 force。无 upstream 明确回 `[no_upstream]` 引导（不代推设、避免默默创远程新分支）；远端拒非快进 / 权限不足 / 网络 / host key 变化 …统一以 `[code]` 前串回前端，复用 R1-B `handleRemoteErr` 同一张分派表（`push_update_reference` 回调捕 reason 写 `Arc<Mutex<Option<…>>>` 拒因槽）。前端同步区 actRow 新增 `↑ Push` 按钮 + 失败弹框 + `app.git.push` 入命令注册表。**非快进不自动先 pull**（与 R1 一致插不自动 merge/rebase），仅引导人工先拉。见下一行 R2 实现注与 R1-B spec §14。
+  - ✅ **R3（已完成）**：**合并拉取 + 冲突暴露与解决**——新 6 命令 × 2 引擎（`git_r_pull_merge`/`conflict_files`/`resolve`/`merge_state`/`abort_merge`/`commit_merge`）。同步区新增 `Pull（合并）` 按钮（非 ff-only）；ff-pull 被拒时引导改走合并拉取（不在错误回调里自动发起，避与 `busy` 串行化重入冲突）。`pull_merge` 统一契约：无冲突回 `MERGED\n…`、有冲突回 `CONFLICTS\n…`、其他失败仍回 `[code]msg`（Builtin 走 git2 `reference_to_annotated_commit`→`merge_analysis`→`repo.merge`→`index.has_conflicts()`）。冲突复用「变更」区——`gitStatus` 已将 `CONFLICTED` 标为 `conflicted`，冲突文件逐行出现并给「用本地 / 用远端 / 编辑」三小按钮（`resolve`：Builtin 从 `index.conflicts()` 取指定边 blob 写工作区 + `add_path`/`write` stage 0；「编辑」经注入的 `openFile` dep 打开带冲突标记文件）；顶部合并工具条 `merge_state`（`repo.state()==Merge`）控制「提交合并」（读 `MERGE_HEAD` 作第二父）/「中止合并」（reset Hard HEAD + 清状态文件）。仍不代持凭据 / 不自动 force。见 R1-B spec §15。
+  - 🚫 **R4（经评估：不做 LFS）**：LFS 依赖外部 `git-lfs` 可执行（**libgit2 不实现 LFS**），与 R1-B 立身之本“零外部二进制、纯自包含”直接冲突；且“本地 markdown 库的大附件 + 开了 git 同步”交集很小，gitee/GitHub 的 LFS 又各有配额/成本墙。故 **放弃完整 LFS**，降级为一条轻量护栏（可选、未做）：`commit_all` 对超约 25MB 的文件弹一次性提示（不阻断），提醒大文件会永久留在 git 历史、真需大附件请自配 `.gitattributes` 或换存储——纯前端、零新依赖。**批次 E 视为已闭环。**
 - **原分阶段设想（读/写轴，已由 L/R 轴取代）**：
   - **E1 只读**：检测/初始化 `.git`、`status`（改动列表）、`log`（历史）、`diff` 预览。（已随 L 完成）
   - **E2 写**：一键 commit（已随 L 完成）；pull、push（属 R）。
@@ -67,11 +68,11 @@
 
 ### 6. 插件系统 v2
 - 现状（P2 v1）：钩子与主线程**同权、无沙箱**；schema 创建后不可变，故不支持运行时扩展节点。
-- 下一步：
-  - **权限声明**：插件 manifest 声明所需能力（fs/network/…），加载时征求同意。
-  - **隔离**：Worker / iframe 沙箱执行不可信插件。
-  - **`registerNodeSpec` 支持**：这是扩展语法能力的**唯一入口**，但受"schema 不可变"限制——需设计"装配前收集插件的 spec、统一构建 schema"的加载时机（热加载需重建 state/视图）。
-  - 三者齐备后才谈得上**插件市场**。体量大、架构性强，排在功能快赢之后。
+- 按依赖链拆为 **F1~F4**，逐块独立立项（每块各自 spec → plan → 实现）：
+  - ✅ **F1（已完成）**：**文件夹化插件包 + 声明式清单 + 权限同意软闸门**——`.notelume-plugins/<id>/{manifest.json,main.js}`（目录名===`manifest.id`，**破坏性**：不再识别平铺 `.js`、仅面板提示迁移）；Rust `list_plugins` 只当文件系统枚举器（读 `manifestRaw`+探 `mainExists`、**不解析 JSON/不校 id·scope**，唯一真源移到前端 `src/plugin-manifest.js`）；首载**一律弹**同意（含空权限），consent 存 localStorage `nl-plugin-consent`，权限变更重弹；面板显权限 chip/版本·作者/旧版提示 + 授予/重设。**纯声明+知情同意，不改 ctx、不做技术拦截**。见 [`docs/superpowers/specs/2026-10-15-plugin-manifest-permission-design.md`](superpowers/specs/2026-10-15-plugin-manifest-permission-design.md)。**含 Rust，须重启 `tauri dev` 重编生效**。
+  - ⏳ **F2（待做）**：**`registerNodeSpec` 支持**（消费 F1 预留的 `schema` scope）——受 ProseMirror「schema 不可变」约束，需设计「装配前收集插件 spec、统一构建 schema」的加载时机（热加载需重建 state/视图），是扩展语法的唯一入口。
+  - ⏳ **F3（待做）**：**权限技术拦截 + 可选隔离**——把 F1 的 scope 契约落成 ctx 能力包装 / `fetch`·fs·git 运行时拦截；混合隔离路线（默认 Obsidian 式信任 + 非编辑器类插件可选 Worker）。深度 PM 集成与硬沙箱互斥，故隔离只对放弃编辑器钩子的插件开放。
+  - ⏳ **F4（待做）**：**插件市场**——在线发现/安装/更新/策展，依赖 F1 文件夹包作分发单元。四块齐备才谈得上生态。
 
 ### 7. 移动端
 - Tauri v2 原生支持 iOS/Android，但真正成本在**触屏交互重排**（侧栏/工具条/右键菜单/拖拽/悬浮预览都要改造）。已在 CHANGELOG 标"计划中"，**建议单独立项**，不占功能迭代节奏。
@@ -80,11 +81,12 @@
 
 - **批次 A**：模板 + 每日笔记（最小、最高留存价值、零风险）— ✅ 已完成（新 `src/template.js` 从模板新建 + `src/daily-capture.js` 全局「今日速记」浮层（按反馈与知识库解绑：不占主编辑区/不切根/未开库可用，存固定绝对目录）+ 工具条 📅/📋 + `Ctrl+Shift+D`）
 - **批次 B**：编辑器手感包——斜杠 `/` + 写作统计 + 专注/打字机（源码双模式暂不并入）— ✅ 已完成（新 `src/slash-menu.js` 空行 `/` 弹块菜单（复用 `.nl-suggest` 观感、仅空块触发）+ `src/writing-stats.js` 工具条字数/阅读时长/目标（`getText()`+`onDocChange`）+ `src/editor-modes.js` 专注(`Ctrl+Shift+F`)/打字机(`Ctrl+Shift+T`)，开关存 localStorage；均无 Rust）
-- **批次 C**：整库导出 HTML 静态站（pandoc 作为检测到才启用的可选项）— ✅ 已完成（新 Rust `build_site_graph`/`copy_vault_assets`（附单测，需重启 tauri dev）+ 新前端 `src/site-export.js`（全保真渲染/链接重写/导航/反链/首页/搜索，Tauri I/O 依赖注入）+ `src/tauri-bridge.js` 封装 + ▾ 更多「🌐 导出整站…」；Node 单测 `src/tests/site-export.test.mjs`）
+- **批次 C**：整库导出 HTML 静态站（pandoc 作为检测到才启用的可选项）— ✅ 已完成（新 Rust `build_site_graph`/`copy_vault_assets`（附单测，需重启 tauri dev）+ 新前端 `src/site-export.js`（全保真渲染/链接重写/导航/反链/首页/搜索，Tauri I/O 依赖注入）+ `src/tauri-bridge.js` 封装 + 「更多」→「导出整站…」；Node 单测 `src/tests/site-export.test.mjs`）
 - **批次 D**：命令面板 + 快捷键自定义（顺带收敛统一命令注册表）— ✅ 已完成（新 `src/commands.js` 统一注册表 + `src/keymap.js` 快捷键纯逻辑 + `src/command-palette.js` `Ctrl+Shift+P` 命令/文档面板 + `src/shortcut-settings.js` 可重绑/冲突硬阻止；`main.js` `bindShortcuts` 改注册表驱动全局分发器、打印收窄纯 Ctrl+P；`editor-view.js` 方案 B 动态 keymap 热重配 + `plugin-loader.js` 插件命令并入；均无 Rust，刷新即生效；`keymap.test` 14、`roundtrip` 35、`build:web` 全绿）
-- **批次 E**：Git 集成——子项目 L（本地基础）✅ 已完成 + 子项目 R1（远程认证 + 快进 pull）✅ 已完成；R2 push / R3 冲突解决 待做
-- **批次 F**：插件系统 v2（权限 → 隔离 → registerNodeSpec → 市场）
+- **批次 E**：Git 集成——子项目 L（本地基础）✅ + 子项目 R1（远程 shell-out 认证 + 快进 pull）✅ + 子项目 R1-B（内置 libgit2 远程，免装 git）✅ + 子项目 R2（内置 push，双后端 + `[code]` 前串同张分派表）✅ + 子项目 R3（合并拉取 + 冲突暴露与解决，6 命令 × 2 引擎）✅ 均已完成；R4 经评估放弃 LFS（与内置自包含冲突），仅余可选大文件提交提示
+- **批次 F**：插件系统 v2（按依赖链拆 F1 清单+权限同意 → F2 registerNodeSpec → F3 拦截+隔离 → F4 市场）— **F1 ✅ 已完成**（文件夹化包 + 声明式清单 + 首载一律弹权限同意软闸门；破坏性：不再识别平铺 `.js`；不改 ctx、不做技术拦截属 F3）；F2/F3/F4 待做
 - **批次 G**：移动端（单独立项）
+- **功能项 I（Word/.docx → Markdown 离线保真导入）+ 前置功能项 J（编辑器无损扩展）**：不在上表候选内、由“迁移 Obsidian/Word 用户”诉求单独立项。**先 J 后 I**：J 让编辑器能无损往返脚注/合并表，I 的保真产物才不会一打开就坏。✅ **J（已完成）**：脚注（Typora 式、`markdown-it-footnote` 入主 tokenizer）+ 合并单元格表（含 colspan/rowspan 存真 `<table>` HTML 往返 + 接 `mergeCells`/`splitCell`），纯前端无 Rust（见 [`docs/superpowers/specs/2026-10-15-editor-footnote-merged-table-design.md`](superpowers/specs/2026-10-15-editor-footnote-merged-table-design.md)）。✅ **I（已完成）**：`.docx` 离线零配置→保真 Markdown 逐个校对导入 + 图片去重（Rust `docx_import.rs` zip+roxmltree 映射 OOXML、**无 openssl**；`docx_preview` 只转不写 → 前端校对模态（独立 markdown-it 预览 + CodeMirror 源码）→ `docx_commit` 落库+sha256 去重；批量队列状态机失败不阻断；含 Rust 须重启 `tauri dev`；见 [`docs/superpowers/specs/2026-10-15-docx-markdown-import-design.md`](superpowers/specs/2026-10-15-docx-markdown-import-design.md)）
 
 ## 五、暂缓 / 存疑（避免踩坑）
 
@@ -94,4 +96,4 @@
 - **知识图谱大图 / 复杂 3D**：维持"可选附加、不默认渲染"的既定取舍。
 
 ---
-_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E 子项目 L（本地）+ R1（远程认证 + 快进 pull）已完成，R2 push / R3 冲突解决 待做；批次 F（插件 v2）/ G（移动端）未开始。_
+_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E（Git 集成 L + R1 + R1-B + R2 + R3，R4 经评估不做 LFS）已闭环；批次 F（插件 v2）已拆 F1~F4，**F1（文件夹化清单 + 权限同意软闸门）已完成**、F2/F3/F4 待做；批次 G（移动端）未开始；功能项 I（docx 导入）及其前置 **功能项 J（编辑器无损扩展：脚注 + 合并表）均已完成**。_

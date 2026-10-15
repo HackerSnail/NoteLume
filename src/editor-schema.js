@@ -8,7 +8,8 @@
 //  · 任务列表用 markdown-it 原生产出的 `[ ]` / `[x]` 文本，在解析后做一次模型转换落到
 //    list_item.checked 属性上，序列化时再写回，保证无损。
 
-import { Schema, Fragment } from 'prosemirror-model'
+import { Schema, Fragment, DOMParser } from 'prosemirror-model'
+import { Transform } from 'prosemirror-transform'
 import {
   schema as baseSchema,
   MarkdownParser,
@@ -17,6 +18,7 @@ import {
   defaultMarkdownSerializer,
 } from 'prosemirror-markdown'
 import MarkdownIt from 'markdown-it'
+import footnote from 'markdown-it-footnote'
 import { tableNodes } from 'prosemirror-tables'
 
 // —— 1. 扩展 schema ————————————————————————————————————————————————
@@ -287,6 +289,52 @@ const extendedNodes = baseSchema.spec.nodes
       return ['img', attrs]
     },
   })
+  // —— 功能项 J：脚注（Typora 式：正文上标角标 + 文末脚注区）——
+  // footnote_ref：正文内的行内原子引用节点（存稳定 id；显示序号由 nodeView 按文档序现算）
+  .addToEnd('footnote_ref', {
+    inline: true,
+    group: 'inline',
+    atom: true,
+    attrs: { id: { default: '' } },
+    toDOM(node) {
+      return ['sup', { class: 'nl-footnote-ref', 'data-id': node.attrs.id, contenteditable: 'false' }, '[' + node.attrs.id + ']']
+    },
+    parseDOM: [
+      {
+        tag: 'sup.nl-footnote-ref',
+        getAttrs(dom) {
+          return { id: dom.getAttribute('data-id') || '' }
+        },
+      },
+    ],
+  })
+  // footnote_section：文末脚注容器（全文至多一个、置末尾；标题由 CSS ::before 画，content hole 须唯一子节点）
+  .addToEnd('footnote_section', {
+    content: 'footnote_item+',
+    group: 'block',
+    defining: true,
+    toDOM() {
+      return ['div', { class: 'nl-footnote-section' }, 0]
+    },
+    parseDOM: [{ tag: 'div.nl-footnote-section' }],
+  })
+  // footnote_item：单条脚注正文（按 inline* 承载于一个段落；存与 ref 对应的稳定 id）
+  .addToEnd('footnote_item', {
+    content: 'paragraph',
+    defining: true,
+    attrs: { id: { default: '' } },
+    toDOM(node) {
+      return ['div', { class: 'nl-footnote-item', 'data-id': node.attrs.id }, 0]
+    },
+    parseDOM: [
+      {
+        tag: 'div.nl-footnote-item',
+        getAttrs(dom) {
+          return { id: dom.getAttribute('data-id') || '' }
+        },
+      },
+    ],
+  })
 
 const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
   parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
@@ -302,6 +350,8 @@ export const schema = new Schema({ nodes: extendedNodes, marks: extendedMarks })
 // 导出该实例供整站导出复用：编辑器只用它 tokenize→ProseMirror（mdParser.parse），从不调 .render()，
 // 故导出侧在其上挂 HTML 渲染规则不会影响编辑器解析（见 site-export.js）。
 export const tokenizer = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
+// 功能项 J：并入脚注（[^n] 引用 + 文末定义）；无脚注时对本管线惰性，不改既有 commonmark 行为
+tokenizer.use(footnote)
 
 // Typora 的拖拽尺寸语法 `![alt](src =328x)`：宽度夹在目的地与右括号之间。markdown-it 的 image
 // 规则只接受「目的地 + 引号 title」，遇到 `=328x` 会把整段判成纯文本，故在 image 规则之前截获；
@@ -570,6 +620,17 @@ const parserTokens = {
       title: tok.calloutTitle || null,
     }),
   },
+  // —— 功能项 J：脚注 token 映射（markdown-it-footnote）——
+  footnote_ref: {
+    node: 'footnote_ref',
+    getAttrs: (tok) => ({ id: String((tok.meta && (tok.meta.label != null ? tok.meta.label : tok.meta.id)) || '') }),
+  },
+  footnote_block: { block: 'footnote_section' },
+  footnote: {
+    block: 'footnote_item',
+    getAttrs: (tok) => ({ id: String((tok.meta && (tok.meta.label != null ? tok.meta.label : tok.meta.id)) || '') }),
+  },
+  footnote_anchor: { ignore: true, noCloseToken: true },
 }
 
 function alignFromStyle(style) {
@@ -615,10 +676,77 @@ function tryAsTask(item) {
   return item.type.create({ checked }, Fragment.from(itemKids))
 }
 
+// —— 功能项 J：合并表格的两阶段解析（最脆一环，见 spec §8）——
+// 主 tokenizer 是 html:false，裸 <table> 会被当转义文本。故在 markdown 解析前：
+//  ① 预处理器把「独占一行、顶层」的 <table>…</table>（跳过围栏代码块）换成占位段落行；
+//  ② 照常走 mdParser 得到含占位段落的 doc；
+//  ③ 用 DOMParser.parseSlice 把原始 HTML 还原为 table 节点，原位替换占位段落。
+// 我们自身序列化的合并表是单行 HTML，故按「整行即一张表」识别；外部多行 HTML 表不在保真范围。
+const TABLE_LINE_RE = /^<table\b[\s\S]*<\/table>$/i
+const PLACEHOLDER_RE = /^\{\{nl-table-(\d+)\}\}$/
+
+function extractTableHTML(md) {
+  const lines = md.split('\n')
+  const tables = []
+  const out = []
+  let inFence = false
+  let fenceChar = ''
+  for (const line of lines) {
+    const t = line.trim()
+    const fm = /^(`{3,}|~{3,})/.exec(t)
+    if (fm) {
+      const ch = fm[1][0]
+      if (!inFence) {
+        inFence = true
+        fenceChar = ch
+      } else if (ch === fenceChar) {
+        inFence = false
+        fenceChar = ''
+      }
+      out.push(line)
+      continue
+    }
+    if (!inFence && TABLE_LINE_RE.test(t)) {
+      const idx = tables.length
+      tables.push(t)
+      // 用空行夹住占位，确保它独占成一个段落
+      out.push('', '{{nl-table-' + idx + '}}', '')
+    } else {
+      out.push(line)
+    }
+  }
+  return { text: out.join('\n'), tables }
+}
+
+function parseTableSlice(html) {
+  const box = document.createElement('div')
+  box.innerHTML = html
+  return DOMParser.fromSchema(schema).parseSlice(box).content
+}
+
+function restoreTables(doc, tables) {
+  const hits = []
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'paragraph') {
+      const m = PLACEHOLDER_RE.exec(node.textContent.trim())
+      if (m && tables[Number(m[1])] != null) hits.push({ pos, size: node.nodeSize, idx: Number(m[1]) })
+    }
+  })
+  if (!hits.length) return doc
+  const tr = new Transform(doc)
+  // 由后往前替换，低位位置不受高位替换影响
+  for (const h of hits.sort((a, b) => b.pos - a.pos)) {
+    tr.replaceWith(h.pos, h.pos + h.size, parseTableSlice(tables[h.idx]))
+  }
+  return tr.doc
+}
+
 /** Markdown 字符串 -> ProseMirror doc */
 export function parseMarkdown(mdText) {
-  const doc = mdParser.parse(mdText || '')
-  return convertTasks(doc) || schema.topNodeType.createAndFill()
+  const { text, tables } = extractTableHTML(mdText || '')
+  const doc = mdParser.parse(text)
+  const filled = convertTasks(doc) || schema.topNodeType.createAndFill()
+  return tables.length ? restoreTables(filled, tables) : filled
 }
 
 // —— 4. serializer（ProseMirror -> Markdown）——————————————————————————
@@ -640,7 +768,82 @@ function alignColMarker(align) {
   return '---'
 }
 
+// —— 功能项 J：合并表的 HTML 序列化（与两阶段解析对倒）——
+// prosemirror-tables 把合并单元格表达为“被盖 cell 直接删除 + 跨格 cell 带 colspan/rowspan”，
+// 因此逐行遍历现有 cell 直接输出正好符合 HTML 表格语义（无需补占位）。
+function escapeText(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+function escapeAttr(s) {
+  return escapeText(s).replace(/"/g, '&quot;')
+}
+function wrapMarkHTML(m, inner) {
+  switch (m.type.name) {
+    case 'strong': return '<strong>' + inner + '</strong>'
+    case 'em': return '<em>' + inner + '</em>'
+    case 'code': return '<code>' + inner + '</code>'
+    case 'strike': return '<s>' + inner + '</s>'
+    case 'link': {
+      const href = escapeAttr(m.attrs.href || '')
+      const title = m.attrs.title ? ' title="' + escapeAttr(m.attrs.title) + '"' : ''
+      return '<a href="' + href + '"' + title + '>' + inner + '</a>'
+    }
+    default: return inner
+  }
+}
+function inlineNodeToHTML(node) {
+  let html
+  if (node.isText) html = escapeText(node.text)
+  else if (node.type.name === 'hard_break') html = '<br>'
+  else if (node.type.name === 'image')
+    html =
+      '<img src="' + escapeAttr(node.attrs.src) + '"' +
+      (node.attrs.alt ? ' alt="' + escapeAttr(node.attrs.alt) + '"' : '') + '>'
+  else html = escapeText(node.textContent || '') // 其他行内原子：退化为纯文本
+  const marks = node.marks.slice().sort((a, b) => a.type.name.localeCompare(b.type.name))
+  for (let i = marks.length - 1; i >= 0; i--) html = wrapMarkHTML(marks[i], html)
+  return html
+}
+function cellInlineToHTML(cell) {
+  let out = ''
+  cell.forEach((k) => {
+    out += inlineNodeToHTML(k)
+  })
+  return out
+}
+function tableHasMerge(node) {
+  let m = false
+  node.descendants((n) => {
+    if ((n.type.name === 'table_cell' || n.type.name === 'table_header') && (n.attrs.colspan > 1 || n.attrs.rowspan > 1)) m = true
+  })
+  return m
+}
+function serializeTableHTML(node) {
+  const parts = ['<table>']
+  node.forEach((row) => {
+    parts.push('<tr>')
+    row.forEach((cell) => {
+      const tag = cell.type.name === 'table_header' ? 'th' : 'td'
+      let attrs = ''
+      if (cell.attrs.colspan > 1) attrs += ' colspan="' + cell.attrs.colspan + '"'
+      if (cell.attrs.rowspan > 1) attrs += ' rowspan="' + cell.attrs.rowspan + '"'
+      if (cell.attrs.alignment) attrs += ' style="text-align:' + cell.attrs.alignment + '"'
+      parts.push('<' + tag + attrs + '>' + cellInlineToHTML(cell) + '</' + tag + '>')
+    })
+    parts.push('</tr>')
+  })
+  parts.push('</table>')
+  return parts.join('') // 单行，供预处理器按行识别
+}
+
 function serializeTable(state, node) {
+  // 含合并单元格 → 输出真 <table> HTML（GitHub/Obsidian 原生渲染、保互操作）
+  if (tableHasMerge(node)) {
+    state.ensureNewLine()
+    state.write(serializeTableHTML(node))
+    state.closeBlock(node)
+    return
+  }
   const rows = []
   node.forEach((row) => {
     const cells = []
@@ -738,6 +941,23 @@ const serializerNodes = {
     state.write(node.attrs.latex)
     state.ensureNewLine()
     state.write('$$')
+    state.closeBlock(node)
+  },
+  // —— 功能项 J：脚注序列化 ——
+  // 正文角标：原样写回 [^id]（序号不落入 md，仅存稳定 id）
+  footnote_ref(state, node) {
+    state.write('[^' + node.attrs.id + ']')
+  },
+  // 文末脚注区：每条 [^id]: <内联内容>，项间空行
+  footnote_section(state, node) {
+    let first = true
+    node.forEach((item) => {
+      if (!first) state.write('\n\n')
+      first = false
+      state.write('[^' + item.attrs.id + ']: ')
+      const para = item.firstChild
+      if (para) state.renderInline(para)
+    })
     state.closeBlock(node)
   },
 }

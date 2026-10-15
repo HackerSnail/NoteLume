@@ -147,7 +147,8 @@ body {
 .cv-menu-label .nl-ico {
   margin-right: 7px;
 }
-/* 图标 + 文案的按钮/标签统一走 flex，避免基线错位 */
+/* 图标 + 文案的按钮/标签统一走 flex，避免基线错位；
+   窄栏里文案不得逐字断行、盒体不得被压缩（flex 子项默认可收缩到 min-content） */
 .cv-toolbar button,
 .graph-close,
 .snapshot-close,
@@ -157,6 +158,7 @@ body {
 .nl-git-btn,
 .nl-git-diff-close,
 .nl-git-sync-badge,
+.nl-git-engine-badge,
 .nl-daily-title,
 .nl-daily-cfg,
 .nl-daily-close,
@@ -164,6 +166,19 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  flex: none;
+}
+/* 承载上述按钮/徽标的行：装不下就换到下一行，而不是溢出栏宽 */
+.toolbar,
+.nl-git-actions,
+.nl-git-sync-actions,
+.nl-git-sync-row,
+.nl-git-sync-engine,
+.nl-git-conflict-tools,
+.nl-git-merge-bar,
+.nl-git-item {
+  flex-wrap: wrap;
 }
 /* 小槽位里的图标按槽宽定尺寸（1em 会撑破） */
 .cv-menu-check .nl-ico,
@@ -182,6 +197,7 @@ body {
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  flex: none;
   user-select: none;
   padding: 3px 8px;
   border-radius: 6px;
@@ -242,6 +258,20 @@ body {
 [data-mac] .toolbar .status {
   margin-left: auto;
   max-width: 60vw;
+}
+/* mac：窗口用 Overlay 标题栏（原生标题仍居中绘制），顶部留出标题条高度，
+   栏切换图标与词数统计定位在这一条里，与红绿灯同一行。
+   第二条选择器压过 .body.inspector-on .side-corner：标题条贴的是窗口右边，不随检查器让位 */
+[data-mac] #app {
+  padding-top: 28px;
+}
+[data-mac] .side-corner,
+[data-mac] .body.inspector-on .side-corner {
+  position: fixed;
+  top: 3px;
+  right: 10px;
+  z-index: 20;
+  align-items: center;
 }
 
 /* 主体分栏 */
@@ -378,6 +408,39 @@ body {
   cursor: default;
 }
 
+/* 侧栏顶部 Tab 栏（文件 / 大纲） */
+.sidebar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 4px 8px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.sidebar-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 2px 8px 2px;
+  margin-bottom: -1px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.sidebar-tab:hover {
+  color: var(--fg);
+}
+.sidebar-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+  font-weight: 600;
+}
+.tab-pane {
+  margin-bottom: 18px;
+}
+
 /* 文件树 */
 .filetree ul {
   list-style: none;
@@ -443,6 +506,33 @@ body {
   display: flex;
   flex-direction: column;
 }
+.outline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 2px 6px 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.outline-toolbar button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1.3;
+}
+.outline-toolbar button:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.outline-toolbar button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
 .outline-row {
   display: flex;
   align-items: center;
@@ -494,6 +584,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 .outline-item:hover {
   background: var(--hover);
@@ -2048,11 +2140,13 @@ body {
   border-color: var(--border);
 }
 .search-hit-title {
+  overflow-wrap: anywhere;
   font-weight: 600;
   font-size: 13px;
   margin-bottom: 2px;
 }
 .search-hit-path {
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 11px;
   margin-bottom: 3px;
@@ -2162,6 +2256,54 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow-x: auto;
+}
+
+/* 功能项 J：脚注（Typora 式：正文上标角标 + 文末脚注区）*/
+.ProseMirror sup.nl-footnote-ref {
+  color: var(--accent);
+  font-size: 0.75em;
+  line-height: 0;
+  cursor: pointer;
+  padding: 0 1px;
+  user-select: none;
+  font-weight: 600;
+}
+.ProseMirror sup.nl-footnote-ref:hover {
+  text-decoration: underline;
+}
+.ProseMirror .nl-footnote-section {
+  margin-top: 1.6em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+  color: var(--muted);
+}
+.ProseMirror .nl-footnote-section::before {
+  content: '脚注';
+  display: block;
+  font-size: 0.85em;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.3em;
+}
+.ProseMirror .nl-footnote-item {
+  margin: 0.25em 0;
+  scroll-margin-block: 20%;
+}
+.ProseMirror .nl-footnote-item::before {
+  content: '[' attr(data-ordinal) '] ';
+  color: var(--accent);
+  font-weight: 600;
+}
+.ProseMirror .nl-footnote-item p {
+  display: inline;
+  margin: 0;
+}
+.ProseMirror .nl-footnote-item .ProseMirror-selectednode,
+.ProseMirror .nl-footnote-flash {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 3px;
 }
 
 /* 代码高亮配色（兼容 GitHub 风。自定义可替换为 hljs theme）*/
@@ -2472,14 +2614,19 @@ body {
 }
 .plugin-head {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   margin-bottom: 2px;
 }
 .plugin-head .muted {
   font-size: 11px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .plugin-reload {
+  flex: none;
+  white-space: nowrap;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--fg);
@@ -2533,6 +2680,10 @@ body {
   padding-left: 22px;
 }
 .plugin-cmd {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border: 1px solid var(--accent);
   background: transparent;
   color: var(--accent);
@@ -2544,6 +2695,107 @@ body {
 .plugin-cmd:hover {
   background: var(--accent);
   color: #fff;
+}
+/* —— 批次 F1：插件权限 chip / 旧版平铺提示 —— */
+.nl-plugin-sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.nl-plugin-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+.nl-plugin-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.nl-plugin-chip.danger {
+  color: #e2574c;
+  border-color: rgba(226, 87, 76, 0.5);
+  background: rgba(226, 87, 76, 0.1);
+}
+.nl-plugin-chip.added {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.nl-plugin-legacy {
+  font-size: 12px;
+  color: #d9822b;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border: 1px dashed rgba(217, 130, 43, 0.55);
+  border-radius: 8px;
+  background: rgba(217, 130, 43, 0.08);
+}
+/* —— 批次 F1：插件权限同意模态（复用 .nl-prompt-btn 按钮样式） —— */
+.nl-consent-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.nl-consent {
+  width: min(460px, 88vw);
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nl-consent-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nl-consent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nl-consent-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.nl-consent-name {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+.nl-consent-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.nl-consent-note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.nl-consent-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* ==================== 图片附件查看器（文件树点开单独放大） ==================== */
@@ -2817,7 +3069,59 @@ body {
 .nl-git-badge-deleted { background: #e53e3e; }
 .nl-git-badge-renamed { background: #3182ce; }
 .nl-git-badge-conflicted { background: #d53f8c; }
+/* 批次 E（R3）：冲突行 + 行内小按钮 + 合并工具条 */
+.nl-git-conflict {
+  background: rgba(213, 63, 140, 0.08);
+  border-color: rgba(213, 63, 140, 0.35);
+}
+.nl-git-conflict:hover {
+  background: rgba(213, 63, 140, 0.14);
+}
+.nl-git-conflict .nl-git-path {
+  color: #d53f8c;
+}
+.nl-git-conflict-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.nl-git-mini {
+  flex: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nl-git-mini:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+.nl-git-merge-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(213, 63, 140, 0.35);
+  border-radius: 6px;
+  background: rgba(213, 63, 140, 0.08);
+}
+.nl-git-merge-bar .nl-git-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.nl-git-merge-msg {
+  font-size: 12px;
+  color: var(--fg);
+}
 .nl-git-path {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2893,6 +3197,32 @@ body {
 .nl-git-sync-behind {
   color: var(--accent);
   font-weight: 600;
+}
+/* 批次 E（R1-B Phase 4）：引擎徽标（系统 git vs 内置 libgit2） */
+.nl-git-sync-engine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.nl-git-engine-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--muted);
+  line-height: 1.6;
+}
+.nl-git-engine-system {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.nl-git-engine-builtin {
+  border-color: var(--border);
+  color: var(--fg);
 }
 /* diff / 提交详情预览区 */
 .nl-git-diff {
@@ -2971,6 +3301,191 @@ body {
 .nl-git-detail-v.mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
+}
+
+/* —— 功能项 I：Word(.docx) 校对导入模态（复用 .nl-prompt 观感 + 双栏）—— */
+.nl-docx-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.34);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.nl-docx {
+  width: min(1080px, 94vw);
+  height: min(760px, 92vh);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+.nl-docx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.nl-docx-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.nl-docx-namerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.nl-docx-name {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  width: 260px;
+  outline: none;
+}
+.nl-docx-name:focus {
+  border-color: var(--accent);
+}
+.nl-docx-warn {
+  max-height: 108px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nl-docx-warn-item {
+  display: flex;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.nl-docx-warn-item .nl-ico {
+  margin-top: 3px;
+}
+.nl-docx-warn-item.dedup {
+  color: var(--accent);
+}
+.nl-docx-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+.nl-docx-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nl-docx-pane-h {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex: none;
+}
+.nl-docx-preview {
+  background: var(--bg);
+}
+.nl-docx-render {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.nl-docx-render img {
+  max-width: 100%;
+}
+.nl-docx-render table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  width: 100%;
+}
+.nl-docx-render th,
+.nl-docx-render td {
+  border: 1px solid var(--border);
+  padding: 5px 9px;
+}
+.nl-docx-render th {
+  background: var(--bg-panel);
+  font-weight: 600;
+}
+.nl-docx-render pre {
+  background: var(--code-bg);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.nl-docx-render code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.nl-docx-src {
+  background: var(--bg);
+}
+.nl-docx-cm {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.nl-docx-ta {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+.nl-docx-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+.nl-docx-btn {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nl-docx-btn:hover {
+  border-color: var(--accent);
+}
+.nl-docx-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 
