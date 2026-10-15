@@ -124,6 +124,9 @@ const els = {
   btnMore: $('btn-more'),
   sourceMount: $('source-mount'),
   docstats: $('docstats'),
+  sidebarTabs: $('sidebar-tabs'),
+  tabFiles: $('tab-files'),
+  tabOutline: $('tab-outline'),
 }
 
 let editor
@@ -2023,6 +2026,29 @@ async function boot() {
       els.searchResults.innerHTML = ''
     }
   })
+  // 侧栏顶部 Tab（文件 / 大纲）切换：一次只显一个 pane，选择持久化到 localStorage
+  const applySidebarTab = (key) => {
+    if (!els.sidebarTabs) return
+    for (const b of els.sidebarTabs.querySelectorAll('.sidebar-tab')) {
+      const on = b.dataset.tab === key
+      b.classList.toggle('active', on)
+      b.setAttribute('aria-selected', on ? 'true' : 'false')
+    }
+    els.tabFiles && els.tabFiles.classList.toggle('hidden', key !== 'files')
+    els.tabOutline && els.tabOutline.classList.toggle('hidden', key !== 'outline')
+  }
+  if (els.sidebarTabs) {
+    els.sidebarTabs.addEventListener('click', (e) => {
+      const b = e.target.closest('.sidebar-tab')
+      if (!b) return
+      const key = b.dataset.tab
+      applySidebarTab(key)
+      try { localStorage.setItem('nl-sidebar-tab', key) } catch (err) {}
+    })
+    let initTab = 'files'
+    try { initTab = localStorage.getItem('nl-sidebar-tab') || 'files' } catch (e) {}
+    applySidebarTab(initTab)
+  }
   palette = createPalette({
     getCommands: () => commandRegistry.list(),
     getDocs: () => collectDocPaths(state.tree),

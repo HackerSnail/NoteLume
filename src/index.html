@@ -27,17 +27,16 @@
 
       <div class="body">
         <aside class="sidebar">
-          <section class="panel">
-            <h2>搜索</h2>
+          <div id="sidebar-tabs" class="sidebar-tabs" role="tablist">
+            <button class="sidebar-tab active" data-tab="files" role="tab" aria-selected="true">文件</button>
+            <button class="sidebar-tab" data-tab="outline" role="tab" aria-selected="false">大纲</button>
+          </div>
+          <section class="panel tab-pane" id="tab-files">
             <input id="search-input" class="search-input" type="search" placeholder="标题 / 正文 / #标签" autocomplete="off" />
             <div id="search-results" class="search-results"></div>
-          </section>
-          <section class="panel">
-            <h2>文件</h2>
             <div id="filetree" class="filetree"></div>
           </section>
-          <section class="panel">
-            <h2>大纲</h2>
+          <section class="panel tab-pane hidden" id="tab-outline">
             <nav id="outline" class="outline"></nav>
           </section>
           <section class="panel">
