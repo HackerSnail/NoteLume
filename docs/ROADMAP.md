@@ -86,7 +86,7 @@
 - **批次 E**：Git 集成——子项目 L（本地基础）✅ + 子项目 R1（远程 shell-out 认证 + 快进 pull）✅ + 子项目 R1-B（内置 libgit2 远程，免装 git）✅ + 子项目 R2（内置 push，双后端 + `[code]` 前串同张分派表）✅ + 子项目 R3（合并拉取 + 冲突暴露与解决，6 命令 × 2 引擎）✅ 均已完成；R4 经评估放弃 LFS（与内置自包含冲突），仅余可选大文件提交提示
 - **批次 F**：插件系统 v2（按依赖链拆 F1 清单+权限同意 → F2 registerNodeSpec → F3 拦截+隔离 → F4 市场）— **F1 ✅ 已完成**（文件夹化包 + 声明式清单 + 首载一律弹权限同意软闸门；破坏性：不再识别平铺 `.js`；不改 ctx、不做技术拦截属 F3）；F2/F3/F4 待做
 - **批次 G**：移动端（单独立项）
-- **功能项 I（Word/.docx → Markdown 离线保真导入）+ 前置功能项 J（编辑器无损扩展）**：不在上表候选内、由“迁移 Obsidian/Word 用户”诉求单独立项。**先 J 后 I**：J 让编辑器能无损往返脚注/合并表，I 的保真产物才不会一打开就坏。✅ **J（已完成）**：脚注（Typora 式、`markdown-it-footnote` 入主 tokenizer）+ 合并单元格表（含 colspan/rowspan 存真 `<table>` HTML 往返 + 接 `mergeCells`/`splitCell`），纯前端无 Rust（见 [`docs/superpowers/specs/2026-10-15-editor-footnote-merged-table-design.md`](superpowers/specs/2026-10-15-editor-footnote-merged-table-design.md)）。⏳ **I（待做）**：`.docx` 离线零配置→保真 Markdown 逐个校对导入 + 图片去重（Rust `docx_import.rs` zip+roxmltree 映射 OOXML、**无 openssl**；前端校对模态 + 批量队列；含 Rust 须重启 `tauri dev`；见 [`docs/superpowers/specs/2026-10-15-docx-markdown-import-design.md`](superpowers/specs/2026-10-15-docx-markdown-import-design.md)）
+- **功能项 I（Word/.docx → Markdown 离线保真导入）+ 前置功能项 J（编辑器无损扩展）**：不在上表候选内、由“迁移 Obsidian/Word 用户”诉求单独立项。**先 J 后 I**：J 让编辑器能无损往返脚注/合并表，I 的保真产物才不会一打开就坏。✅ **J（已完成）**：脚注（Typora 式、`markdown-it-footnote` 入主 tokenizer）+ 合并单元格表（含 colspan/rowspan 存真 `<table>` HTML 往返 + 接 `mergeCells`/`splitCell`），纯前端无 Rust（见 [`docs/superpowers/specs/2026-10-15-editor-footnote-merged-table-design.md`](superpowers/specs/2026-10-15-editor-footnote-merged-table-design.md)）。✅ **I（已完成）**：`.docx` 离线零配置→保真 Markdown 逐个校对导入 + 图片去重（Rust `docx_import.rs` zip+roxmltree 映射 OOXML、**无 openssl**；`docx_preview` 只转不写 → 前端校对模态（独立 markdown-it 预览 + CodeMirror 源码）→ `docx_commit` 落库+sha256 去重；批量队列状态机失败不阻断；含 Rust 须重启 `tauri dev`；见 [`docs/superpowers/specs/2026-10-15-docx-markdown-import-design.md`](superpowers/specs/2026-10-15-docx-markdown-import-design.md)）
 
 ## 五、暂缓 / 存疑（避免踩坑）
 
@@ -96,4 +96,4 @@
 - **知识图谱大图 / 复杂 3D**：维持"可选附加、不默认渲染"的既定取舍。
 
 ---
-_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E（Git 集成 L + R1 + R1-B + R2 + R3，R4 经评估不做 LFS）已闭环；批次 F（插件 v2）已拆 F1~F4，**F1（文件夹化清单 + 权限同意软闸门）已完成**、F2/F3/F4 待做；批次 G（移动端）未开始；功能项 I（docx 导入）的前置 **功能项 J（编辑器无损扩展：脚注 + 合并表）已完成**、I 本体待做。_
+_本文档为规划草案，随每批次落地后回填状态（未开始 / 进行中 / 已完成）。当前：批次 A/B/C/D 已完成；批次 E（Git 集成 L + R1 + R1-B + R2 + R3，R4 经评估不做 LFS）已闭环；批次 F（插件 v2）已拆 F1~F4，**F1（文件夹化清单 + 权限同意软闸门）已完成**、F2/F3/F4 待做；批次 G（移动端）未开始；功能项 I（docx 导入）及其前置 **功能项 J（编辑器无损扩展：脚注 + 合并表）均已完成**。_

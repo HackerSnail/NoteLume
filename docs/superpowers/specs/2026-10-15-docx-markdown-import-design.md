@@ -146,3 +146,12 @@ struct DocxCommitResult { doc_rel: String, written_images: Vec<String>, reused_i
 - **`markdown-it-footnote`**：校对预览渲染器需在前端 bundle 加此插件（纯前端、离线）——**已核实 `src/package.json` 未含，P1 新增**（不进主编辑器 tokenizer，仅供 `docx-review.js` 预览）。
 - **对话框多选**：`@tauri-apps/plugin-dialog` 的 `open({ multiple:true, filters:[{extensions:['docx']}] })` 直接可用（现有 `pickFolder/pickFile` 同 API），无新依赖。
 - **已锁定默认值**（实现期不再决策）：① **输出目录** = 当前选中文件夹，无选中则库根（`dest_dir` 用户可在入口改选）；② **frontmatter 默认开**（`source`+`imported`，可关）；③ **拖拽入口** = 仅侧栏文件树拖 `.docx`（编辑区拖拽现仅图片，不动）。
+
+## 15. 落地补记（实现与 spec 的差异，P0-P2 完成后回填）
+- **未引 `base64` crate**：§14 列的四个新依赖中，实际只新加了 `zip`/`roxmltree`/`sha2`——base64 编解码**复用 `lib.rs` 已有的手写 `b64_encode`/`b64_decode`**（改 `pub(crate)` 供 `docx_import` 消费），尊重项目既有约定、少一个依赖。`cargo tree` 验证 `zip`（`default-features=false`+`deflate`）走纯 Rust `flate2`→`miniz_oxide`，**无 `openssl-sys`**，P0 编译闸口通过。
+- **`markdown-it-footnote` 无需新增**：§14 预计“P1 新增”，但前置功能项 J 已把它加入 `src/package.json` 生产依赖（主 tokenizer 用），故 I 直接复用；`docx-review.js` 用**独立实例** `MarkdownIt({html:true}).use(footnote)`，不碰主 tokenizer。为保持 CodeMirror 懒加载，校对模态对 `source-editor.js` 用**动态 `import()`**（否则 `vite build` 会把 CM 拉进主 chunk）。
+- **拖拽字节入口（超原契约）**：Tauri v2 webview 下浏览器 `File` 无绝对路径，故 `DocxPreviewArgs` 增可选 `src_b64` + `src_display_name`（给了 `src_b64` 则忽略 `src_path`）；`docx_preview` 顶部优先取回传字节。侧栏文件树拖 `.docx` 由 `main.js` 先 `fileToBase64` 再走同一流。
+- **“当前选中夹”落地为当前文档所在夹**：应用无持久的“选中文件夹”态，`importWordViaDialog` 取 `parentOf(state.currentFile)` 作 `dest_dir`（无当前文档则库根 `''`）；暂不提供入口改选（与§14 ①精一，接受后续补）。
+- **reused 图片仍带 `data_b64`**：`push_image` 无论命中与否都回字节，便于预览内联；commit 侧以 `dedup_index` 为权威判命中（命中不重写、仅引用）。去重文件名固定 `<sha前12>.<ext>`，预览按此 basename 回映 data URL。
+- **单文档内同图收敛**：`img_seen` 按 sha 去重，同一 `.docx` 多处引同一图仅产一条 `ImportedImage`。
+- **测试覆盖**：`cargo test --lib` 67 passed（基线 51 + 新增 16 docx 用例，含 commit 临时库验去重/冲突/穿越）；新 `src/tests/docx-import.test.mjs` 11 passed（队列/索引/映射/失败不阻断）；其余 Node 套件全绿、`npm run build` 无错。真 `.docx` 整机冒烟需重启 `tauri dev`（含 Rust）。
