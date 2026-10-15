@@ -919,8 +919,8 @@ fn omml_delim_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
             .and_then(|c| mattr(c, "val").map(|s| s.to_string()))
             .unwrap_or_else(|| def.to_string())
     };
-    let beg = chr_of("begChr", "(");
-    let end = chr_of("endChr", ")");
+    let beg = norm_delim(&chr_of("begChr", "("));
+    let end = norm_delim(&chr_of("endChr", ")"));
     let sep = chr_of("sepChr", ",");
     let es = mchildren(n, "e");
     if es.len() == 1 {
@@ -990,6 +990,26 @@ fn accent_cmd(chr: &str) -> Option<&'static str> {
         "\u{20D7}" | "\u{2192}" => Some("\\vec"),
         _ => None,
     }
+}
+
+/// 全角/CJK 定界符归一化为 KaTeX 可识别的半角/标准形式。
+/// Word 里中文输入法常打出全角括号（），若不归一化 \left／\right 会拿到非法定界符而报错。
+fn norm_delim(c: &str) -> String {
+    let s = match c {
+        "\u{FF08}" => "(",           // （
+        "\u{FF09}" => ")",           // ）
+        "\u{FF3B}" => "[",           // ［
+        "\u{FF3D}" => "]",           // ］
+        "\u{FF5B}" => "{",           // ｛
+        "\u{FF5D}" => "}",           // ｝
+        "\u{3010}" | "\u{3014}" => "[", // 【 〔
+        "\u{3011}" | "\u{3015}" => "]", // 】 〕
+        "\u{3008}" => "\u{27E8}",    // 〈 → ⟨
+        "\u{3009}" => "\u{27E9}",    // 〉 → ⟩
+        "\u{FF5C}" => "|",           // ｜
+        other => return other.to_string(),
+    };
+    s.to_string()
 }
 
 fn delim_latex(c: &str) -> String {
@@ -2343,6 +2363,15 @@ mod tests {
         let d = format!("<m:d><m:dPr><m:begChr m:val=\"(\"/><m:endChr m:val=\")\"/></m:dPr>{}</m:d>", sl("e", &mr("a+b")));
         let md = mpara(&om(&d));
         assert!(md.contains(r#"\left("#) && md.contains(r#"\right)"#) && md.contains("a+b"), "got: {}", md);
+    }
+
+    #[test]
+fn math_delimiter_fullwidth_normalized() {
+        // Word 中文输入法打出的全角括号（U+FF08/FF09）须归一化为半角，否则 \left 拿到非法定界符 KaTeX 报错
+        let d = format!("<m:d><m:dPr><m:begChr m:val=\"\u{FF08}\"/><m:endChr m:val=\"\u{FF09}\"/></m:dPr>{}</m:d>", sl("e", &mr("a+b")));
+        let md = mpara(&om(&d));
+        assert!(md.contains(r#"\left("#) && md.contains(r#"\right)"#), "got: {}", md);
+        assert!(!md.contains('\u{FF08}') && !md.contains('\u{FF09}'), "fullwidth leaked: {}", md);
     }
 
     #[test]
