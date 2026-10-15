@@ -80,5 +80,17 @@
 - **P2 合并表**：`serializeTable` 分支 + 预处理解析 + merge/split 挂载 + roundtrip 用例。
 - **P3 文档**：README/CHANGELOG/ROADMAP 记功能项 J、本 spec 落地补记；并回填功能项 I 对 J 的依赖（软化其 §11 取舍）。
 
-## 11. Spike 结论（P0 后回填，占位）
-- 待 P0：两阶段 HTML 表解析是否稳（代码块规避、切片插入位）；footnote 插件对既有 commonmark 行为零影响确认；merge/split 与 columnResizing 事件优先级。若不稳 → 启用 §8 回退方案。
+## 11. Spike 结论（P0，已验证 → **无需回退**）
+- **footnote 并入主 tokenizer 零回归**：`tokenizer.use(markdown-it-footnote)` 后既有 commonmark/表格/删除线/`roundtrip` 老用例全过。token 形态：inline 为 `footnote_ref`（`meta.label` 存原始 id）、块 `footnote_block_open/close` > `footnote_open/close`（`meta.label`）+ 内层 paragraph + `footnote_anchor`。
+- **两阶段 HTML 表解析稳**：jsdom headless 下 `DOMParser.fromSchema(schema).parseSlice(box)` 完整还原 `colspan/rowspan/text-align` 及内联 marks。合并模型：prosemirror-tables **删除被盖 cell**、跨格 cell 带 colspan/rowspan（**无 0 尺寸占位**）→ 逐行遍历现有 cell 直出即符合 HTML 语义。
+- **merge/split 可用**：prosemirror-tables 提供 `mergeCells/splitCell/cellAround/CellSelection`（`selectedCells` 此版**未导出**，改用 `CellSelection`；单选格用 `CellSelection.create(doc, cellPos)`，`headCell` 默认取 `anchorCell`）。§8 回退方案**未触发**。
+
+## 12. 落地补记（P1/P2 与 spec 的实现差异）
+- **id 需默认值**：`footnote_ref.attrs.id` 与 `footnote_item.attrs.id` 定为 `{ default: '' }`——否则 `footnote_item` 在 `footnote_item+` 必填位「不可生成」，`new Schema` 直接抛 `non-generatable`。
+- **footnote_item 内容 = `paragraph`**（把 `inline*` 收在一个段落内），比 spec 直写 `inline*` 更稳于 DOM 往返与编辑；`footnote_section` `content:'footnote_item+'`、`defining:true`、置末尾。
+- **序号现算改插件遍历 DOM**：`footnotePlugin` 在 view `update` 后按文档序给 `sup.nl-footnote-ref` 写 `[n]`、给 `div.nl-footnote-item` 写 `data-ordinal`（标题/角标由 CSS `::before` 画，content hole 须唯一子节点）。未做 per-node nodeView（列表级跨节点重排协调复杂）；atom + `contenteditable=false` 已足够。md **只存稳定 id、绝不落序号**。
+- **命令命名 `editor.footnote` / `editor.footnoteDelete`**（非 spec 草拟的 `app.insertFootnote`）：插入脚注需活动编辑器 view，归 `editor.*` 复用既有 `EDITOR_COMMANDS→PM_COMMANDS→runEditorCommand` 分派链更契合；**无默认键**（`Ctrl+Shift-F` 已被专注占用），命令面板可搜。
+- **合并表预处理占位符 `{{nl-table-<k>}}`**：预处理器按「**整行即一张 `<table>…**</table>`」（自产序列化保证单行）识别、跳过围栏代码块，占位段落经 `Transform` 由后往前原位替换为 `parseSlice` 还原的表节点。`DOMParser` 运行时用浏览器原生 DOM、测试用 jsdom（**仅 devDependency、不进产物 bundle**）。
+- **site-export 连带效应**：共用 `tokenizer` 加 footnote 后导出站顺带渲染脚注（净增益）；合并表 `<table>` 在静态站仍被 `html:false` 转义（现状、非本次回归，功能项 I 落地补记再议）。
+- **验收数据**：`roundtrip` 38（含 +3 脚注用例）、`footnote` 6（命令事务级）、`merged-table` 7（横/纵复合合并往返、代码块护栏、无合并仍 GFM、merge 往返、split 回落 GFM）全绿；其余 node 套件不回归；`vite build` 2327 modules 无错。**无 Rust、刷新即生效**。
+- **待手测**：编辑器手打脚注/拖选多格合并/拆分、存盘重开不坏；点击角标跳转文末脚注区。

@@ -53,6 +53,7 @@
 | **增强** | Git 远程 push（R2：`git_r_push` 双后端——System 走 `git push`、Builtin 走 git2 `Remote::push`；当前分支 → upstream 同名分支，固定 refspec、不自动 force；无 upstream 明确引导、不自动先 pull（同 R1 插不自动 merge/rebase）；同 `[code]` 前串分派表复用 R1-B `handleRemoteErr`） | ✅ 已完成 |
 | **增强** | Git 合并拉取 + 冲突解决（R3：`⇅ Pull（合并）` 双后端——pull_merge 统回 `MERGED`/`CONFLICTS`/`[code]msg`；冲突文件在「变更」列表逐行列出，每个可选「用本地 / 用远端 / 编辑」；顶部合并工具条一键提交 merge commit / 中止回退；不代持凭据、不自动 force） | ✅ 已完成 |
 | **增强** | 插件系统 v2·F1（文件夹化插件包 `.notelume-plugins/<id>/{manifest.json,main.js}` + 声明式清单校验 + 首载「一律弹」权限同意软闸门；基线能力（命令/快捷键/输入规则/生命周期）不算权限，只管额外可达面 network/fs-vault/fs-outside/git/schema/persistent-store；**破坏性**：不再识别平铺 `.js`，仅面板提示迁移。不改 ctx、不做技术拦截——那是 F3） | ✅ 已完成 |
+| **增强** | 编辑器无损扩展（功能项 J）：**脚注 `[^n]`**（Typora 式上标角标、点角标定位、正文自动收集到文末脚注区可编辑，`markdown-it-footnote` 并入主 tokenizer）+ **合并单元格表格**（含 `colspan/rowspan` 的表存真正的 `<table>` HTML 往返、右键菜单接 `mergeCells`/`splitCell`，无合并仍出 GFM）；纯前端、无 Rust、刷新即生效，为功能项 I（docx 保真导入）铺路 | ✅ 已完成 |
 | **P2** | 移动端 | ⏳ 规划中 |
 
 ---
