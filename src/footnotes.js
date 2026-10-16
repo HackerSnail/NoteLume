@@ -11,6 +11,7 @@
 // id 存的是稳定标识（数字字符串），序号只是显示层按 ref 文档序现算，绝不写回 md。
 
 import { Plugin, PluginKey, NodeSelection } from 'prosemirror-state'
+import { Decoration, DecorationSet } from 'prosemirror-view'
 
 /** 当前文档未使用的最小正整数 id（ref 与 item 共用命名空间） */
 export function nextFootnoteId(doc) {
@@ -98,48 +99,49 @@ function findRefPos(state) {
   return null
 }
 
-/** 序号现算 + 点击定位插件 */
+/** 按文档序为正文角标与文末条目生成 data-ordinal 节点装饰（纯显示层，不改模型/md） */
+function buildOrdinalDecorations(doc) {
+  const decos = []
+  const ordinalById = {}
+  let n = 0
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'footnote_ref') {
+      n++
+      const id = String(node.attrs.id)
+      if (ordinalById[id] == null) ordinalById[id] = n
+      decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-ordinal': String(n) }))
+    }
+  })
+  let m = 0
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'footnote_item') {
+      m++
+      const id = String(node.attrs.id)
+      const ord = ordinalById[id] != null ? ordinalById[id] : m
+      decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-ordinal': String(ord) }))
+    }
+  })
+  return DecorationSet.create(doc, decos)
+}
+
+/** 序号现算（装饰）+ 点击定位插件 */
 export function footnotePlugin() {
+  // 缓存：仅在文档内容变化时重算装饰；纯选区变化（单击）命中缓存 → 零 DOM 改动
+  let lastDoc = null
+  let lastSet = DecorationSet.empty
   return new Plugin({
     key: new PluginKey('nlFootnote'),
-    view(editorView) {
-      // 正文角标按文档序现算 [1][2]…；文末条目按同 id 取对应序号，写入 data-ordinal 交 CSS ::before 画
-      function renumber() {
-        const dom = editorView.dom
-        const refs = dom.querySelectorAll('sup.nl-footnote-ref')
-        const ordinalById = {}
-        refs.forEach((el, i) => {
-          const n = i + 1
-          el.textContent = '[' + n + ']'
-          const id = el.getAttribute('data-id')
-          if (id != null && ordinalById[id] == null) ordinalById[id] = n
-        })
-        const items = dom.querySelectorAll('div.nl-footnote-item')
-        items.forEach((el, i) => {
-          const id = el.getAttribute('data-id')
-          const ord = ordinalById[id] != null ? ordinalById[id] : i + 1
-          el.setAttribute('data-ordinal', String(ord))
-        })
-      }
-      renumber()
-      let raf = 0
-      const schedule = () => {
-        if (raf) return
-        raf = requestAnimationFrame(() => {
-          raf = 0
-          renumber()
-        })
-      }
-      return {
-        update() {
-          schedule()
-        },
-        destroy() {
-          if (raf) cancelAnimationFrame(raf)
-        },
-      }
-    },
     props: {
+      // 序号现算改用 ProseMirror 装饰给节点加 data-ordinal（CSS ::before 画号），
+      // 不再在 view().renumber 里直接改编辑器 DOM——旧法每次 update（含单击）都会触碰
+      // 有内容洞的 footnote_item，被 PM 当外部变更重新解析、冲掉原生光标（脚注文档点不动）。
+      decorations(state) {
+        if (state.doc !== lastDoc) {
+          lastDoc = state.doc
+          lastSet = buildOrdinalDecorations(state.doc)
+        }
+        return lastSet
+      },
       // 点击正文角标 → 滚动定位到文末对应条目
       handleClickOn(view, pos, node) {
         if (node.type.name !== 'footnote_ref') return false

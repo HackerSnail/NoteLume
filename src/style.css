@@ -1118,6 +1118,12 @@ body {
 .editor .ProseMirror {
   outline: none;
   min-height: 100%;
+  /* ProseMirror 官方要求：编辑区必须设 white-space: pre-wrap（自带 prosemirror.css 即如此）。
+     缺省时浏览器会折叠连续空格，使 DOM 文本 ≠ 模型文本，PM 无法把浏览器原生光标位置
+     映射回模型 → 空格密集文档（如 docx 导入的论文封面表单）出现「单击光标不定位、
+     但能打字/能拖动」；pre-wrap + 断词既修正映射又不撑破版心。 */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 /* —— 文档内查找（find-in-doc.js）：命中高亮为视图层装饰，不改文档内容 —— */
 .nl-find-match {
@@ -2353,6 +2359,11 @@ body {
   padding: 0 1px;
   user-select: none;
   font-weight: 600;
+}
+/* 正文角标序号：由 renumber 写 data-ordinal、此处 ::before 画号（与文末条目同构）。
+   绝不用 textContent 写进 DOM——替换文本节点会冲掉原生光标，致脚注文档单击不定位。 */
+.ProseMirror sup.nl-footnote-ref::before {
+  content: '[' attr(data-ordinal) ']';
 }
 .ProseMirror sup.nl-footnote-ref:hover {
   text-decoration: underline;

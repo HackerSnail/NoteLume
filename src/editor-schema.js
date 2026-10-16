@@ -305,14 +305,17 @@ const extendedNodes = baseSchema.spec.nodes
     },
   })
   // —— 功能项 J：脚注（Typora 式：正文上标角标 + 文末脚注区）——
-  // footnote_ref：正文内的行内原子引用节点（存稳定 id；显示序号由 nodeView 按文档序现算）
+  // footnote_ref：正文内的行内原子引用节点（存稳定 id；显示序号由 footnotePlugin.renumber 按文档序现算）。
+  // 序号只走 data-ordinal 属性 + CSS ::before 画，绝不在 toDOM 里塞文本子节点——否则 renumber 每次
+  // 改写 textContent 会替换 PM 所属文本节点，在 WebView 里冲掉原生光标，导致「脚注文档点不动光标」。
   .addToEnd('footnote_ref', {
     inline: true,
     group: 'inline',
     atom: true,
     attrs: { id: { default: '' } },
     toDOM(node) {
-      return ['sup', { class: 'nl-footnote-ref', 'data-id': node.attrs.id, contenteditable: 'false' }, '[' + node.attrs.id + ']']
+      // data-ordinal 初值给 id（renumber 会校正为文档序）；无文本子节点，序号交 CSS ::before
+      return ['sup', { class: 'nl-footnote-ref', 'data-id': node.attrs.id, 'data-ordinal': node.attrs.id, contenteditable: 'false' }]
     },
     parseDOM: [
       {
