@@ -752,10 +752,65 @@ function extractTableHTML(md) {
   return { text: out.join('\n'), tables }
 }
 
+// 把列数不齐的畸形表格补成矩形：docx 导入的合并表常出现「表头行 colspan 加总 ≠ 数据行」，
+// 还原出的 ProseMirror 表格非矩形会让 prosemirror-tables 的 TableMap 在选区/点击计算时崩，
+// 表现为「光标点哪都不动、但能打字」。这里按真实占位（含 colspan/rowspan）求列宽，行末补空单元格。
+export function normalizeTableRect(table, sc) {
+  const rows = []
+  table.forEach((r) => { const cells = []; r.forEach((c) => cells.push(c)); rows.push(cells) })
+  const H = rows.length
+  if (!H) return table
+  const occFor = () => Array.from({ length: H }, () => new Set())
+  // ① 模拟逐格占位（colspan 占多列、rowspan 顺延覆盖后续行），求出真实列宽 width
+  let occ = occFor()
+  let width = 0
+  for (let r = 0; r < H; r++) {
+    let col = 0
+    for (const c of rows[r]) {
+      while (occ[r].has(col)) col++
+      const cs = c.attrs.colspan || 1
+      const rs = c.attrs.rowspan || 1
+      for (let i = 0; i < rs; i++) { const rr = r + i; if (rr < H) for (let j = 0; j < cs; j++) occ[rr].add(col + j) }
+      col += cs
+    }
+    let used = 0
+    occ[r].forEach((x) => { if (x + 1 > used) used = x + 1 })
+    if (used > width) width = used
+  }
+  // ② 同规则重摆，行末不足 width 处补一个空单元格（colspan = 缺口）；已矩形则原样返回
+  occ = occFor()
+  const newRows = []
+  let dirty = false
+  for (let r = 0; r < H; r++) {
+    const rowCells = []
+    let col = 0
+    for (const c of rows[r]) {
+      while (occ[r].has(col)) col++
+      const cs = c.attrs.colspan || 1
+      const rs = c.attrs.rowspan || 1
+      for (let i = 0; i < rs; i++) { const rr = r + i; if (rr < H) for (let j = 0; j < cs; j++) occ[rr].add(col + j) }
+      col += cs
+      rowCells.push(c)
+    }
+    while (occ[r].has(col)) col++
+    if (col < width) { dirty = true; rowCells.push(sc.nodes.table_cell.create({ colspan: width - col })) }
+    newRows.push(sc.nodes.table_row.create(null, rowCells))
+  }
+  return dirty ? sc.nodes.table.create(table.attrs, newRows) : table
+}
+
 function parseTableSlice(html) {
   const box = document.createElement('div')
   box.innerHTML = html
-  return DOMParser.fromSchema(schema).parseSlice(box).content
+  const frag = DOMParser.fromSchema(schema).parseSlice(box).content
+  // 还原出的 HTML 表若列数不齐，补成矩形再交回，避免畸形表拖垮选区交互
+  const fixed = []
+  let changed = false
+  frag.forEach((n) => {
+    if (n.type.name === 'table') { const t = normalizeTableRect(n, schema); if (t !== n) changed = true; fixed.push(t) }
+    else fixed.push(n)
+  })
+  return changed ? Fragment.from(fixed) : frag
 }
 
 function restoreTables(doc, tables) {
