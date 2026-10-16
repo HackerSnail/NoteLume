@@ -117,7 +117,7 @@ export function collectImages(tree) {
 
 // —— 图片解析：普通 ![]() 与嵌入 ![[ ]] 统一落到库内真实 rel ——
 // 候选顺序：① 相对当前页解析 ② 视作库根相对 ③ basename 全库回退。命中 imageSet 才算数。
-function resolveImageRel(fromDir, rawSrc, imageSet, byBase) {
+export function resolveImageRel(fromDir, rawSrc, imageSet, byBase) {
   const clean = normRel(rawSrc.split('#')[0].split('?')[0])
   if (!clean || isExternal(rawSrc)) return null
   const cands = [resolveRel(fromDir, clean), clean]

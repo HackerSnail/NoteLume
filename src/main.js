@@ -40,9 +40,11 @@ import {
   docxCommit,
   ensureTempImportDir,
   relocateImport,
+  exportDocx,
   fileToBase64,
 } from './tauri-bridge.js'
-import { exportSite } from './site-export.js'
+import { exportSite, resolveImageRel, collectImages } from './site-export.js'
+import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
 import { createPalette } from './command-palette.js'
@@ -1182,7 +1184,8 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem('快捷键设置…', () => keySettings && keySettings.open(), false, false, 'sliders'))
   menu.appendChild(makeMenuItem('导出为 HTML', () => exportHTML(), false, false, 'export'))
   menu.appendChild(makeMenuItem('导出整站…', () => exportSiteFull(), false, false, 'globe'))
-  menu.appendChild(makeMenuItem('导入 Word(.docx)…', () => importWordViaDialog(), false, false, 'file'))
+    menu.appendChild(makeMenuItem('导入 Word(.docx)…', () => importWordViaDialog(), false, false, 'file'))
+    menu.appendChild(makeMenuItem('导出 Word(.docx)…', () => exportWordViaDialog(), false, false, 'export'))
   menu.appendChild(makeMenuItem('打印 / 导出 PDF (Ctrl+P)', () => window.print(), false, false, 'printer'))
   menu.appendChild(makeMenuItem('知识图谱 (Ctrl+G)', () => openGraphModal(), false, false, 'graph'))
   menu.appendChild(makeMenuItem('新画布 / 白板', () => newCanvas(), false, false, 'board'))
@@ -1818,6 +1821,62 @@ async function exportHTML() {
     if (!abs) return
     await exportFile(abs, html)
     setStatus('已导出 HTML：' + abs)
+  } catch (e) {
+    await messageDialog('导出失败：' + ((e && e.message) || e))
+  }
+}
+
+// —— 批次 F ①：当前文档 → Word(.docx)（前端产 Docx-IR，Rust export_docx 落盘）——
+
+// 把 IR 内所有图片 src 解析为库根相对 rel（Rust 按 vaultRoot + rel 读字节）。
+function irResolveImageRels(ir, fromDir, imageSet, byBase) {
+  const fix = (arr) => {
+    if (!Array.isArray(arr)) return
+    for (const run of arr) {
+      if (run && run.image && run.image.rel) {
+        const resolved = resolveImageRel(fromDir, run.image.rel, imageSet, byBase)
+        if (resolved) run.image.rel = resolved
+      }
+    }
+  }
+  for (const b of (ir && ir.blocks) || []) {
+    if (b.inline) fix(b.inline)
+    if (b.items) for (const it of b.items) fix(it.inline)
+    if (b.type === 'table') {
+      for (const cell of b.header || []) fix(cell)
+      for (const row of b.rows || []) for (const cell of row) fix(cell)
+    }
+  }
+}
+
+async function exportWordViaDialog() {
+  if (!editor) return
+  if (state.mode === 'canvas') {
+    setStatus('画布不支持导出 Word')
+    return
+  }
+  try {
+    const ir = docToIR(editor.view.state.doc)
+    if (state.vaultRoot) {
+      let imageSet = new Set()
+      let byBase = new Map()
+      try {
+        const ci = collectImages(await scanVault(state.vaultRoot))
+        imageSet = new Set(ci.images)
+        byBase = ci.byBase
+      } catch { /* 无树则图片按原样交给 Rust（缺失会记警告） */ }
+      const file = String(state.currentFile || '').replace(/\\/g, '/')
+      const fromDir = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''
+      irResolveImageRels(ir, fromDir, imageSet, byBase)
+    }
+    const base = state.currentFile ? String(state.currentFile).replace(/\.(md|markdown)$/i, '') : 'document'
+    const abs = await pickSaveAs(base + '.docx')
+    if (!abs) return
+    const r = await exportDocx({ ir, vaultRoot: state.vaultRoot || '', outPath: String(abs) })
+    setStatus('已导出 Word：' + abs)
+    if (r && r.warnings && r.warnings.length) {
+      await messageDialog('导出完成（含提示）：\n' + r.warnings.map((w) => '· ' + w.message).join('\n'), 'info')
+    }
   } catch (e) {
     await messageDialog('导出失败：' + ((e && e.message) || e))
   }

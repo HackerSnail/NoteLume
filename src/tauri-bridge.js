@@ -43,6 +43,11 @@ export function docxCommit(args) {
   return invoke('docx_commit', { args })
 }
 
+/** 批次 F ①：当前文档 Docx-IR → .docx（Rust 落盘到 outPath），回 { outPath, warnings, stats } */
+export function exportDocx(args) {
+  return invoke('export_docx', { args })
+}
+
 /** 在系统 temp 下建本次导入专属目录，返回绝对路径（独立解析模式：先落 temp、立即回显、用户自行决定保存） */
 export function ensureTempImportDir() {
   return invoke('ensure_temp_import_dir')
