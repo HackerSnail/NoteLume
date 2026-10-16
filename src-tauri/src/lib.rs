@@ -721,7 +721,7 @@ fn is_tag_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
 }
 
-/// 从 md 提取所有 #tag（跳过标题行、代码块、行内代码）
+/// 从 md 提取所有 #tag（跳过标题行、代码块、行内代码、**链接/图片目标里的锚点**）
 fn extract_tags(md: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -751,6 +751,15 @@ fn extract_tags(md: &str) -> Vec<String> {
                 continue;
             }
             if c == '#' && k + 1 < cs.len() && is_tag_start(cs[k + 1]) {
+                // 链接/图片目标位置上的 `#` 是锚点 href（`](#anchor)` 或 `](<#anchor>)`），不是标签：
+                // 内部锚点链接（如交叉引用导入产生的 `(#_Ref…)`、`(#标题slug)`）会被左边界白名单里的
+                // `(` 误判成标签，把每个锚点灌成一个幽灵标签进标签面板，故先排除。
+                let is_link_dest = (k >= 2 && cs[k - 1] == '(' && cs[k - 2] == ']')
+                    || (k >= 3 && cs[k - 1] == '<' && cs[k - 2] == '(' && cs[k - 3] == ']');
+                if is_link_dest {
+                    k += 1;
+                    continue;
+                }
                 // 左边界：`#` 前必须是空白或标点，否则视为词中（例如 C#）
                 let left_ok = k == 0 || {
                     let p = cs[k - 1];
@@ -2510,6 +2519,18 @@ mod tests {
         let mut v = extract_tags(s);
         v.sort();
         assert_eq!(v, vec!["hello", "世界"]);
+    }
+
+    /// 回归：链接/图片目标里的 `#锚点` 不得被当成标签（交叉引用导入会大量产生 `(#_Ref…)`/`(#slug)`，
+    /// 否则每个内部锚点都会往标签面板灌一个幽灵标签）；而止于链接外的真标签仍须计入。
+    #[test]
+    fn extract_tags_skips_anchor_in_link_destination() {
+        let s = "见 [52](#_Ref206499018) 与 [标题](#第-1-章) 及 ![](media/a.png#_Toc1) \n\
+                 带角尖括号 [x](<#_Toc2>) 也不算\n\
+                 但正文里的 #work 和 [#tag文本](https://a.b) 仍是标签";
+        let mut v = extract_tags(s);
+        v.sort();
+        assert_eq!(v, vec!["tag文本", "work"], "锚点 href 不应入标签，真标签应保留");
     }
 
     #[test]
