@@ -9,6 +9,8 @@
 
 ### Added
 
+* **md→docx 结构导出（批次 F 子项目①）**：新增「更多 ▾ → 导出 Word(.docx)…」，把当前笔记导出为可在真实 Word 打开的 `.docx`。严守既定分工——**前端只理解语义**（`src/docx-export.js` 遍历 ProseMirror `doc` 产出 `Docx-IR` JSON，方言判定只此一次：frontmatter 由调用方剥离、wikilink→可见文字、tag→`#文字`、callout→引用+粗标题、数学降级为纯文本），**Rust 只组装 OOXML**（`src-tauri/src/docx_export.rs` 用 `docx-rs` 映射标题/段落/粗斜删/行内码/外链/有序无序任务列表/引用/围栏代码/GFM 表/脚注，图片按库内 rel 读字节由 `Pic::new` 转 PNG，`build().pack()` zip 落盘）。关键修复：显式写入带 `outlineLvl` 的标题样式（`docx-rs` 默认 `Heading1` 缺 `outlineLvl`，Phase 0 spike 实测会导致导出的标题被读回成普通段落）。新增唯一依赖 `docx-rs`（MIT、纯 Rust、无 openssl）；保留其默认 `image` feature 以正确导出任意格式图片。验收：回环测试 `ir_roundtrips_through_docx_preview`（IR→docx→现有 `docx_preview` 读回→断言标题层级/粗斜删/列表/代码/表/脚注结构等价）+ `cargo test` 104 passed；前端 `docx-export.test.mjs`（`npm run test:docx-export`）全通过；`build` 2459 modules 无错。**已知简化（① 骨架期，后续可补）**：合并单元格按网格展平、软换行降级为空格、任务项以 `☐/☑` 前缀、引用因导入侧无对应概念仅按缩进保真 Word。含 Rust → 需重启 `tauri dev`。
+
 * **docx→md 导入支持公式解析（OMML→LaTeX，批次 F 子项目②）**：Word 文档里的数学公式（OMML）此前被静默丢弃；现 `src-tauri/src/docx_import.rs` 递归映射为 Markdown 的 LaTeX 数学（行内 `$..$`、块级 `$$..$$`，产物可被编辑器 math tokenizer 原样读回），覆盖分数/上下标/根号/大运算符(∑∫∏)/定界符/矩阵(按定界符选 pmatrix 等)/重音/函数名/极限/方程组(cases)/上划线/花括号标注/盒框/数字体(\mathbb 等)；未覆盖构造降级为内容拼接 + `math` warning，绝不静默丢。新增 `DocxStats.math` 计数。坚持纯 Rust、零新依赖、无前端改动；命名空间感知访问避开 `m:r/m:t` 与 `w:r/w:t` 撞名坑。`m:t` 字面文本中的 LaTeX 特殊字符（`# % & _ { } $`）转义、含中文的 run 包 `\text{}`（修：用真实论文回归时发现 `#式(3.16)` 等公式编号标签导致 KaTeX 报错、公式不渲染）。`cargo test` 96 passed（含 17 条公式黄金用例）。
 
 ### Fixed
