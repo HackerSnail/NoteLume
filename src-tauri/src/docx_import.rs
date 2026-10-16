@@ -1156,14 +1156,18 @@ fn map_inline(p: roxmltree::Node, ctx: &mut Ctx) -> String {
 }
 
 /// 复杂域状态：一个已打开的 Word 域（`fldChar begin` … `end`）。`collecting=false` 表示正处于
-/// begin..separate 的**域码区**（收集 instr，不产出可见文本）；`true` 表示已过 separate、正处于**结果区**。
+/// begin..separate 的**域码区**（收集 instr）；`true` 表示已过 separate、正处于**结果区**。
+/// `pre` 暂存域码区里出现的普通文本 run：若该域**有** separate，pre 属域码丢弃；若**无** separate
+/// （Word 自动编号 SEQ / 部分交叉引用域的常见写法），则这些普通 run 就是缓存结果，收口时取用。
 struct OpenField {
     instr: String,
     result: String,
+    pre: String,
     collecting: bool,
 }
 
-/// 把一段产物路由到输出：若当前仍在某外层域的结果区（嵌套域），并入该域 result；否则追加到 out。
+/// 把一段产物路由到输出：若当前仍在某外层域内（嵌套域），并入该域的结果区（有 separate）或 pre 暂存区
+/// （无 separate）；否则追加到 out。
 fn push_inline(fields: &mut Vec<OpenField>, out: &mut String, s: String) {
     if s.is_empty() {
         return;
@@ -1171,8 +1175,10 @@ fn push_inline(fields: &mut Vec<OpenField>, out: &mut String, s: String) {
     if let Some(f) = fields.last_mut() {
         if f.collecting {
             f.result.push_str(&s);
-            return;
+        } else {
+            f.pre.push_str(&s);
         }
+        return;
     }
     out.push_str(&s);
 }
@@ -1216,7 +1222,7 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
             if let Some(kind) = fc {
                 flush_pending(&mut pending, out);
                 match kind.as_str() {
-                    "begin" => fields.push(OpenField { instr: String::new(), result: String::new(), collecting: false }),
+                    "begin" => fields.push(OpenField { instr: String::new(), result: String::new(), pre: String::new(), collecting: false }),
                     "separate" => {
                         if let Some(f) = fields.last_mut() {
                             f.collecting = true;
@@ -1224,7 +1230,9 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
                     }
                     "end" => {
                         if let Some(f) = fields.pop() {
-                            let s = finalize_xref(&f.instr, &f.result, ctx);
+                            // 有 separate → 取结果区 result；无 separate → pre 暂存的普通 run 即缓存结果。
+                            let body = if f.collecting { &f.result } else { &f.pre };
+                            let s = finalize_xref(&f.instr, body, ctx);
                             push_inline(&mut fields, out, s);
                         }
                     }
@@ -1245,14 +1253,16 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
                 }
                 continue;
             }
-            // 正处于某域的结果区 → 该 run 文本并入域结果（域结果多为单 run，不做合并）
+            // 正处于某域内：结果区（已过 separate）并入 result；域码区并入 pre 暂存
+            // （域码只由 instrText 承载，普通 w:t run 要么是缓存结果、要么为空，均不应丢弃）。
             if let Some(f) = fields.last_mut() {
+                flush_pending(&mut pending, out);
+                let t = map_run(node, ctx);
                 if f.collecting {
-                    flush_pending(&mut pending, out);
-                    f.result.push_str(&map_run(node, ctx));
-                    continue;
+                    f.result.push_str(&t);
+                } else {
+                    f.pre.push_str(&t);
                 }
-                // 域码区的普通正文 run 属域码，丢弃不产出
                 continue;
             }
             match mergeable_run(node, ctx) {
@@ -2598,6 +2608,40 @@ mod tests {
         );
         assert!(md.contains("[结论](#结论)"), "got: {md}");
         assert_eq!(stats.xref_resolved, 1);
+    }
+
+    #[test]
+    fn complex_field_without_separate_keeps_result() {
+        // 回归（用户真实论文）：REF 域无 `separate` 时，begin..end 间的普通 run 就是缓存结果，
+        // 不得当域码丢弃（否则 `[52]` 变空括号 `[]`）。目标非标题→降级为纯文本。
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:r><w:t>[</w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF _Ref52 \h </w:instrText></w:r><w:r><w:t>52</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t>]</w:t></w:r></w:p>"#),
+            "", "", "", "", &empty_media(),
+        );
+        assert!(md.contains("[52]"), "result must not be dropped, got: {md}");
+        assert!(!md.contains("REF") && !md.contains("_Ref52"), "field code must not leak, got: {md}");
+        assert_eq!(stats.xref_degraded, 1);
+    }
+
+    #[test]
+    fn seq_field_without_separate_keeps_number() {
+        // 回归：参考文献自动编号 SEQ 域常无 separate，编号不得丢失。
+        let (md, _, _) = map_parts(
+            &doc(r#"<w:p><w:r><w:t>[</w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> SEQ ref \* ARABIC </w:instrText></w:r><w:r><w:t>52</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t>]</w:t></w:r></w:p>"#),
+            "", "", "", "", &empty_media(),
+        );
+        assert!(md.contains("[52]"), "seq number must survive, got: {md}");
+        assert!(!md.contains("SEQ") && !md.contains("ARABIC"), "field code must not leak, got: {md}");
+    }
+
+    #[test]
+    fn field_with_separate_ignores_pre_separate_runs() {
+        // 有 separate 时，separate 前的普通 run 属域码区→丢弃，只取 separate 后的结果（不重复）。
+        let (md, _, _) = map_parts(
+            &doc(r#"<w:p><w:r><w:t>文献</w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF _Ref52 </w:instrText></w:r><w:r><w:t>52</w:t></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>52</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>"#),
+            "", "", "", "", &empty_media(),
+        );
+        assert_eq!(md.trim(), "文献52", "must not double the number, got: {md}");
     }
 
     #[test]
