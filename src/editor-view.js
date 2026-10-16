@@ -335,12 +335,32 @@ export function createEditor(opts) {
     if (srcChangeTimer) clearTimeout(srcChangeTimer)
     srcChangeTimer = setTimeout(() => { opts.onSourceTextChange && opts.onSourceTextChange(text) }, 200)
   }
+  // 当前 WYSIWYG 选区：以 DOM 选区为准。PM 的 state 选区靠 selectionchange 异步回同步，
+  // 快速连按（方向键后立刻 Ctrl+/）时可能还没跟上，用户看见的光标才是要映射的位置；
+  // DOM 选区不在编辑器内（焦点在别处）时才回退 state。
+  function currentSel() {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount) {
+      const r = sel.getRangeAt(0)
+      if (view.dom.contains(r.startContainer) && view.dom.contains(r.endContainer)) {
+        try {
+          const a = view.posAtDOM(r.startContainer, r.startOffset)
+          const b = view.posAtDOM(r.endContainer, r.endOffset)
+          if (a >= 0 && b >= 0) return { from: Math.min(a, b), to: Math.max(a, b) }
+        } catch (_) {
+          /* 落到回退 */
+        }
+      }
+    }
+    const s = view.state.selection
+    return { from: s.from, to: s.to }
+  }
   // 光标对齐辅助：映射失败（异常节点 / 极端文本）不阻断模式切换，退回旧行为
   // （光标落文档开头）——编辑器可用性优先。
   function mapSelToSource(text) {
     try {
       const mapper = createPosMapper({ doc: view.state.doc, serialize: serializeMarkdownMapped, source: text, base: bodyOffset(text) })
-      const sel = view.state.selection
+      const sel = currentSel()
       return [mapper.pmToSrc(sel.from), mapper.pmToSrc(sel.to)]
     } catch (_) {
       return null
@@ -356,6 +376,54 @@ export function createEditor(opts) {
       return null
     }
   }
+  // 两个编辑器共用的外层滚动容器（.editor-pane）：CM/PM 自身的 scrollIntoView 一个被
+  // .cm-scroller{overflow:visible} 吃掉、一个依赖 DOM 选区已在编辑器内，长文档下都不牢靠
+  function sourcePane() {
+    return opts.sourceMountEl && opts.sourceMountEl.closest ? opts.sourceMountEl.closest('.editor-pane') : null
+  }
+  function editorPane() {
+    return opts.mountEl && opts.mountEl.closest ? opts.mountEl.closest('.editor-pane') : null
+  }
+  // 把滚动容器滚到「el 可见」：上下各留 margin，已可见则不动（夹紧到合法滚动范围）
+  function scrollElementIntoPane(el, pane, margin = 48) {
+    if (!el || !pane) return
+    scrollRectIntoPane(el.getBoundingClientRect(), pane, margin)
+  }
+  function scrollRectIntoPane(r, pane, margin = 48) {
+    if (!r || (!r.height && !r.width)) return // 隐藏 / 未布局
+    const pr = pane.getBoundingClientRect()
+    let top = pane.scrollTop
+    if (r.top < pr.top + margin) top -= pr.top + margin - r.top
+    else if (r.bottom > pr.bottom - margin) top += r.bottom - (pr.bottom - margin)
+    const max = Math.max(0, pane.scrollHeight - pane.clientHeight)
+    pane.scrollTop = Math.max(0, Math.min(top, max))
+  }
+  // 按 host 容器内当前 DOM 选区（= 光标）的位置滚 pane：CM 的光标行要等一帧才渲染出来，
+  // 拿到元素后直接量它
+  function scrollDomSelectionIntoPane(host, pane, margin = 48) {
+    if (!host || !pane) return
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount) return
+    const r = sel.getRangeAt(0)
+    if (!host.contains(r.startContainer)) return
+    const el = r.startContainer.nodeType === 3 ? r.startContainer.parentElement : r.startContainer
+    scrollElementIntoPane(el, pane, margin)
+  }
+  function nextFrame() {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  }
+  // PM 光标所在 DOM 元素（docView.domAtPos 拿到的可能是文本节点，取它的父元素才有盒子）
+  function caretElementOf(v, pos) {
+    let node = null
+    try {
+      node = v.docView && v.docView.domAtPos ? v.docView.domAtPos(pos) : null
+    } catch (_) {
+      return null
+    }
+    if (!node) return null
+    if (node.nodeType === 3) node = node.parentNode
+    return node && node.nodeType === 1 ? node : null
+  }
   async function enterSource() {
     const text = resolveSourceText({ modelDirty, rawSource, serialized: serializedFull() })
     rawSource = text
@@ -369,6 +437,14 @@ export function createEditor(opts) {
     const range = mapSelToSource(text)
     if (range) src.setSelection(range[0], range[1])
     src.focus()
+    // CM 只渲染视口内的行，且它的 scrollIntoView 只作用于 .cm-scroller——而本应用把纵向滚动
+    // 交给了外层 .editor-pane（.nl-source .cm-scroller{overflow:visible}），CM 自己滚不动。
+    // 故等一帧让 CM 把光标所在行渲染出来，再按 DOM 选区的实际位置把外层容器滚到可见，
+    // 否则切过去只看见文件头、光标在屏幕外
+    if (range) {
+      await nextFrame()
+      scrollDomSelectionIntoPane(opts.sourceMountEl, sourcePane(), 48)
+    }
     opts.onFrontmatterChange && opts.onFrontmatterChange()
     return true
   }
@@ -388,8 +464,17 @@ export function createEditor(opts) {
     if (opts.mountEl) opts.mountEl.classList.remove('hidden')
     emitMeta(view, opts)
     opts.onFrontmatterChange && opts.onFrontmatterChange()
-    if (sel) view.dispatch(view.state.tr.setSelection(sel).scrollIntoView())
-    view.focus()
+    if (sel) {
+      // 先把焦点交回 PM：PM 的 scrollToSelection 只在「DOM 选区已在编辑器内」时才滚动，
+      // 而此刻 DOM 选区还在 CodeMirror 里——先 focus 再 setSelection+scrollIntoView 才有效
+      // （顺序反了会整个跳过滚动，表现为退回来光标虽对、视图却停在文档开头）
+      view.focus()
+      view.dispatch(view.state.tr.setSelection(sel).scrollIntoView())
+      // 兜底：PM 内部那条路仍可能因布局时序没滚成，按 caret 的 DOM 节点再补一次
+      scrollElementIntoPane(caretElementOf(view, sel.head), editorPane(), 48)
+    } else {
+      view.focus()
+    }
     return false
   }
   function setSourceTheme(name) { if (src) src.setTheme(name) }
