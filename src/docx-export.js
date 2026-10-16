@@ -107,6 +107,9 @@ function blockToIR(node, ctx, blocks) {
       // 定义已在 ctx.fnMap 收集；每个 item 作为 FootnoteDef 块输出。
       node.forEach((item) => {
         const id = ctx.fnNumber(String(item.attrs.id || ''))
+        // 空 id 的孤立定义（无对应正文引用）：fnNumber 返回 null，若照发会让 Rust
+        // FootnoteDef.id(usize) 反序列化失败（invalid type: null）。与 footnote_ref 同样跳过。
+        if (id == null) return
         const para = item.firstChild
         blocks.push({ type: 'footnoteDef', id, inline: para ? collectInline(para, ctx) : [] })
       })

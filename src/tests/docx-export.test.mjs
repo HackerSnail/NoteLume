@@ -5,7 +5,8 @@
 // （type 判别、camelCase、方言降级：wikilink→文字、tag→#文字、math→纯文本、footnote→数字 id）。
 
 import assert from 'node:assert'
-import { mdToIR } from '../docx-export.js'
+import { mdToIR, docToIR } from '../docx-export.js'
+import { schema } from '../editor-schema.js'
 
 const SAMPLE = [
   '# 一级标题',
@@ -114,5 +115,23 @@ assert.ok(fndef.inline.some((i) => /脚注正文/.test(i.text)), 'footnoteDef te
 // 引用与定义序号一致
 const refId = allInlines.find((i) => typeof i.footnote === 'number').footnote
 assert.strictEqual(refId, fndef.id, 'footnote ref/def id mismatch')
+
+// 回归：活文档里的空 id 孤立 footnote_item 不得让 footnoteDef.id 变成 null
+// （否则 Rust FootnoteDef.id(usize) 反序列化报「invalid type: null, expected usize」，整个导出崩）。
+const orphanDoc = schema.nodeFromJSON({
+  type: 'doc',
+  content: [
+    {
+      type: 'footnote_section',
+      content: [
+        { type: 'footnote_item', attrs: { id: '' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '孤立定义' }] }] },
+        { type: 'footnote_item', attrs: { id: '1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正常定义' }] }] },
+      ],
+    },
+  ],
+})
+const orphanDefs = docToIR(orphanDoc).blocks.filter((b) => b.type === 'footnoteDef')
+assert.ok(orphanDefs.every((d) => typeof d.id === 'number'), 'footnoteDef.id 必须是数字（空 id 应被跳过）')
+assert.strictEqual(orphanDefs.length, 1, '空 id 的孤立定义应被跳过，只保留正常那条')
 
 console.log('docx-export.test.mjs: 全部通过（block 数=' + blocks.length + '）')
