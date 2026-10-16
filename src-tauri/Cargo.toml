@@ -26,3 +26,8 @@ git2 = { version = "0.19", default-features = false, features = ["vendored-libgi
 zip = { version = "2", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
 sha2 = "0.10"
+# 批次 F 子项目①：md→docx 结构导出（写侧）。docx-rs 为唯一新增依赖（MIT、纯 Rust、无 openssl）。
+# 保留默认 image feature：Pic::new 能把库内任意格式（jpg/gif/webp…）统一转 PNG 并算尺寸；
+# 若关掉 image，docx-rs 仅能正确写 PNG（new_with_dimensions 不转码），而 ① 要导出的图格式不定→正确性优先。
+# Docx::build()→XMLDocx 暴露 document/media 等原始部件，供③ OMML 注入。
+docx-rs = "0.4"

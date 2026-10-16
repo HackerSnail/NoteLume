@@ -13,6 +13,9 @@ mod git_builtin;
 // 功能项 I：Word(.docx) → Markdown 离线导入引擎（纯 Rust OOXML 解析 + 映射 + 图片去重落盘）。
 mod docx_import;
 
+// 批次 F ①：Markdown → Word(.docx) 结构导出（前端产 Docx-IR，本模块用 docx-rs 组装 OOXML 落盘）。
+mod docx_export;
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
@@ -3022,6 +3025,8 @@ pub fn run() {
             docx_import::docx_commit,
             docx_import::ensure_temp_import_dir,
             docx_import::relocate_import,
+            // 批次 F ①：Markdown → Word(.docx) 结构导出
+            docx_export::export_docx,
             // macOS 原生菜单（前端算 spec，Rust 落原生对象）
             set_mac_menu
         ])
