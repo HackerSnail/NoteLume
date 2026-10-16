@@ -4,8 +4,17 @@
 // 只覆盖可离线验证的纯逻辑 findMatches（高亮/跳转是 DOM+PM 视图层，靠人工/QA 验）。
 
 import assert from 'node:assert'
-import { parseMarkdown } from '../editor-schema.js'
-import { findMatches } from '../find-in-doc.js'
+import { EditorState } from 'prosemirror-state'
+import { parseMarkdown, serializeMarkdown, schema } from '../editor-schema.js'
+import { findMatches, buildReplaceTr } from '../find-in-doc.js'
+
+// 由 md 构造一个 EditorState（供 buildReplaceTr 用）
+function stateOf(md) {
+  return EditorState.create({ schema, doc: parseMarkdown(md) })
+}
+function plainText(state) {
+  return state.doc.textBetween(0, state.doc.content.size, '\n', '\n')
+}
 
 let pass = 0, fail = 0
 function check(name, fn) {
@@ -68,6 +77,49 @@ check('CJK 子串匹配', () => {
   const doc = parseMarkdown('本章介绍交叉引用，交叉引用可跳转')
   const ms = findMatches(doc, '交叉引用', false)
   assert.strictEqual(ms.length, 2)
+})
+
+// —— 替换（buildReplaceTr） ——
+check('全部替换：多命中合并为一个事务，一步改完', () => {
+  const s = stateOf('a b a b a')
+  const ms = findMatches(s.doc, 'a', false)
+  const tr = buildReplaceTr(s, ms, 'x')
+  assert.strictEqual(tr.steps.length, 3, '3 个命中→3 步，但同属一个事务')
+  assert.strictEqual(plainText(s.apply(tr)), 'x b x b x')
+})
+
+check('空替换 = 删除命中', () => {
+  const s = stateOf('foobar')
+  const ms = findMatches(s.doc, 'foo', false)
+  assert.strictEqual(plainText(s.apply(buildReplaceTr(s, ms, ''))), 'bar')
+})
+
+check('大小写不敏感命中一并替换', () => {
+  const s = stateOf('a A b')
+  const ms = findMatches(s.doc, 'a', false)
+  assert.strictEqual(ms.length, 2)
+  assert.strictEqual(plainText(s.apply(buildReplaceTr(s, ms, 'Z'))), 'Z Z b')
+})
+
+check('标记内替换保留原内联标记（粗体里换词仍是粗体）', () => {
+  const s = stateOf('see **bold** end')
+  const ms = findMatches(s.doc, 'bold', false)
+  assert.strictEqual(ms.length, 1)
+  const out = serializeMarkdown(s.apply(buildReplaceTr(s, ms, 'strong')).doc).trim()
+  assert.strictEqual(out, 'see **strong** end', '替换后 markdown 应为 ' + JSON.stringify(out))
+})
+
+check('命中落在标记节点中部（非节点开头）仍保留粗体', () => {
+  const s = stateOf('xx**bold**')
+  const ms = findMatches(s.doc, 'ol', false) // 'ol' 在 bold 中间，from 不是文本节点开头
+  assert.strictEqual(ms.length, 1)
+  const out = serializeMarkdown(s.apply(buildReplaceTr(s, ms, 'XX')).doc).trim()
+  assert.strictEqual(out, 'xx**bXXd**', '替换后 markdown 应为 ' + JSON.stringify(out))
+})
+
+check('无可替换目标：buildReplaceTr 返回 null', () => {
+  const s = stateOf('nothing here')
+  assert.strictEqual(buildReplaceTr(s, [], 'x'), null)
 })
 
 console.log(`\nfind-in-doc: ${pass} passed, ${fail} failed`)

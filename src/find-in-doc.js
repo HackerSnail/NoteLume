@@ -1,9 +1,11 @@
-// find-in-doc.js —— 当前文档内查找（Ctrl+F）：视图层高亮 + 上下跳转
+// find-in-doc.js —— 当前文档内查找 / 替换（Ctrl+F 查找，Ctrl+H 查找+替换）
 //
-// 设计：纯渲染层，不改文档模型、不产生任何私有 markdown 语法（符合 GFM 约束）。
+// 设计：查找高亮是纯渲染层装饰；替换走 ProseMirror 事务（撤销/重做、markdown 序列化均无损），
+// 不产生任何私有 markdown 语法（符合 GFM 约束）。
 //  · findMatches：在 doc 的每个文本节点内做子串匹配，命中不跨块（与 Typora/Obsidian 一致）。
+//  · buildReplaceTr：把命中替换成给定文本，保留该处内联标记；多个命中合并为一个事务（一步可撤销）。
 //  · findPlugin：把命中区间叠成 inline Decoration（全部命中一种色、当前命中另一种色）。
-//  · createFindBar：悬浮查找栏 UI（输入框 / 计数 / 上下 / 大小写 / 关闭），命令式驱动插件。
+//  · createFindBar：悬浮查找栏 UI（查找 + 替换，命令式驱动插件）。
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
@@ -34,6 +36,42 @@ export function findMatches(doc, query, caseSensitive = false) {
     }
   })
   return matches
+}
+
+/**
+ * 纯逻辑：在 state 上构造一个「把给定命中替换成 replacement」的事务（可离线测）。
+ * - 多个命中合并到同一个事务 = 一步撤销即可全撤回；从后往前替换避免位置串动。
+ * - replacement 为空串时等价于删除该命中。
+ * - 命中落在加粗/斜体/行内代码等标记内时，替换文本沿用该处 marks（不把粗体里的词替成正文字）。
+ * @param {import('prosemirror-state').EditorState} state
+ * @param {Array<{from:number,to:number}>} targets 命中区间（原文档坐标）
+ * @param {string} replacement 替换文本
+ * @returns {import('prosemirror-state').Transaction|null} 无可替换返回 null
+ */
+export function buildReplaceTr(state, targets, replacement) {
+  if (!targets || !targets.length) return null
+  const tr = state.tr
+  // 降序处理：先替换靠后的，靠前命中的原始坐标不受后方改动影响（前面文本长度未变）
+  const sorted = targets.slice().sort((a, b) => b.from - a.from)
+  for (const m of sorted) {
+    if (replacement === '') {
+      tr.delete(m.from, m.to)
+    } else {
+      const marks = marksOfTextAt(state.doc, m.from)
+      tr.replaceWith(m.from, m.to, state.schema.text(replacement, marks))
+    }
+  }
+  return tr
+}
+
+// 取命中起点所在文本节点的 marks：起点恰好是节点开头时 nodeAfter 即该文本节点；
+// 落在节点中间（nodeAfter 为空）则回退到起点右侧一格取内部 marks。
+// （resolve(pos).marks() 在节点起始边界会返回空集，不能用它）
+function marksOfTextAt(doc, pos) {
+  const $pos = doc.resolve(pos)
+  const after = $pos.nodeAfter
+  if (after && after.isText) return after.marks
+  return doc.resolve(Math.min(pos + 1, doc.content.size)).marks()
 }
 
 export function findPlugin() {
@@ -80,7 +118,7 @@ export function findPlugin() {
  *   paneEl：查找栏挂载容器（.editor-pane，position:relative 且为滚动容器）
  */
 export function createFindBar({ view, paneEl }) {
-  let bar, input, countEl, caseBtn
+  let bar, input, replaceInput, countEl, caseBtn
   let caseSensitive = false
   let visible = false
   let lastMatches = []
@@ -88,6 +126,10 @@ export function createFindBar({ view, paneEl }) {
   function build() {
     bar = document.createElement('div')
     bar.className = 'nl-find-bar'
+
+    // —— 第一行：查找输入 + 计数 + 大小写 + 上下 + 关闭 ——
+    const row1 = document.createElement('div')
+    row1.className = 'nl-find-row'
 
     input = document.createElement('input')
     input.type = 'text'
@@ -108,30 +150,59 @@ export function createFindBar({ view, paneEl }) {
       caseSensitive = !caseSensitive
       caseBtn.classList.toggle('on', caseSensitive)
       runFind(true)
+      input.focus()
     })
 
-    const mk = (label, title, fn) => {
+    const mk = (label, title, fn, cls) => {
       const b = document.createElement('button')
-      b.className = 'nl-find-btn'
+      b.className = 'nl-find-btn' + (cls ? ' ' + cls : '')
       b.type = 'button'
       b.textContent = label
       b.title = title
       b.addEventListener('click', fn)
       return b
     }
-    const prev = mk('↑', '上一个（Shift+Enter）', () => step(-1))
-    const next = mk('↓', '下一个（Enter）', () => step(1))
+    const prev = mk('↑', '上一个（Shift+Enter）', () => { step(-1); input.focus() })
+    const next = mk('↓', '下一个（Enter）', () => { step(1); input.focus() })
     const closeBtn = mk('×', '关闭（Esc）', () => closeBar())
 
-    bar.append(input, countEl, caseBtn, prev, next, closeBtn)
+    row1.append(input, countEl, caseBtn, prev, next, closeBtn)
+
+    // —— 第二行：替换输入 + 替换 / 全部替换（常显） ——
+    const row2 = document.createElement('div')
+    row2.className = 'nl-find-row nl-find-row-replace'
+
+    replaceInput = document.createElement('input')
+    replaceInput.type = 'text'
+    replaceInput.className = 'nl-find-input nl-find-replace-input'
+    replaceInput.placeholder = '替换为…'
+    replaceInput.setAttribute('aria-label', '替换文本')
+
+    const replaceOneBtn = mk('替换', '替换当前项（Enter）', () => { doReplaceOne(); replaceInput.focus() }, 'nl-find-replace-btn')
+    const replaceAllBtn = mk('全部替换', '替换全部命中', () => { doReplaceAll(); replaceInput.focus() }, 'nl-find-replace-btn')
+
+    row2.append(replaceInput, replaceOneBtn, replaceAllBtn)
+    bar.append(row1, row2)
     paneEl.appendChild(bar)
 
-    // 输入实时刷新；Enter 下一个、Shift+Enter 上一个、Esc 关闭
+    // 查找框：输入实时刷新；Enter 下一个、Shift+Enter 上一个、Esc 关闭
     input.addEventListener('input', () => runFind(true))
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault()
         step(e.shiftKey ? -1 : 1)
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        closeBar()
+      }
+    })
+    // 替换框：Enter 替换当前项、Shift+Enter 上一个、Esc 关闭
+    replaceInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (e.shiftKey) step(-1)
+        else doReplaceOne()
       } else if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
@@ -181,16 +252,33 @@ export function createFindBar({ view, paneEl }) {
     reveal(idx)
   }
 
-  // 滚动到第 idx 个命中并选中（选区让 PM 原生把它滚入视野），随后把焦点还给输入框以便继续打字
+  // 滚动到第 idx 个命中并选中（选区让 PM 原生把它滚入视野）；不动 DOM 焦点（由调用方决定焦点落哪）
   function reveal(idx) {
     const m = lastMatches[idx]
     if (!m) return
     const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to))
     view.dispatch(tr.scrollIntoView())
-    input.focus()
   }
 
-  function openBar() {
+  // 替换当前高亮项，随后重算命中（被替换项消失后 activeIndex 自然落到下一个）
+  function doReplaceOne() {
+    const idx = activeIndex()
+    if (idx < 0 || !lastMatches[idx]) return
+    const tr = buildReplaceTr(view.state, [lastMatches[idx]], replaceInput.value)
+    if (tr) view.dispatch(tr)
+    runFind(false)
+  }
+
+  // 全部替换：一个事务改完全部命中（一步撤销即可全撤回）
+  function doReplaceAll() {
+    if (!lastMatches.length) return
+    const tr = buildReplaceTr(view.state, lastMatches, replaceInput.value)
+    if (tr) view.dispatch(tr)
+    runFind(true)
+  }
+
+  // focus：'find'（Ctrl+F）或 'replace'（Ctrl+H）；决定打开后光标落在哪个输入框
+  function openBar(focus = 'find') {
     if (!bar) build()
     visible = true
     bar.classList.add('show')
@@ -200,9 +288,12 @@ export function createFindBar({ view, paneEl }) {
     const sel = view.state.selection
     const selText = sel && !sel.empty ? view.state.doc.textBetween(sel.from, sel.to, '\n', '\n') : ''
     if (selText && !/[\n\r]/.test(selText)) input.value = selText
-    input.focus()
-    input.select()
     runFind(true)
+    if (focus === 'replace') replaceInput.focus()
+    else {
+      input.focus()
+      input.select()
+    }
   }
 
   function closeBar() {
@@ -215,13 +306,14 @@ export function createFindBar({ view, paneEl }) {
     view.focus()
   }
 
-  function toggle() {
+  function toggle(focus) {
     if (visible) closeBar()
-    else openBar()
+    else openBar(focus)
   }
 
   return {
-    open: openBar,
+    open: openBar, // open('find' | 'replace')
+    openReplace: () => openBar('replace'),
     close: closeBar,
     toggle,
     isOpen: () => visible,

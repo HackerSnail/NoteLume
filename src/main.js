@@ -2000,6 +2000,10 @@ function registerAppCommands() {
   app('app.findInDoc', '在本篇文档中查找', 'Mod-f', () => {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open()
   })
+  // Ctrl+H：打开同一查找栏，但焦点落在替换框（替换行常显）
+  app('app.replace', '在本篇文档中查找并替换', 'Mod-h', () => {
+    if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open('replace')
+  })
   app('app.search', '聚焦侧栏搜索', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
   // 打印收窄为纯 Ctrl+P：旧实现 key==='p' 未排除 shift，会吞掉 Ctrl+Shift+P（留给命令面板）
   app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
