@@ -1361,6 +1361,15 @@ fn relpath_from(doc_dir: &str, target: &str) -> String {
 /// 这类表（典型如整页简历用 1~3 格表格排版）若按数据表拍平，会把格子里几十段拼成一行、并丢弃
 /// 格子内段落的标题/列表结构，故改为「线性化」：逐格把其中的 w:p 走完整 push_paragraph。
 fn is_layout_table(tbl: roxmltree::Node) -> bool {
+    // 宽度闸：版式排版表按定义是窄的（整页简历那种 1~3 格）；任一行 ≥4 格一律视为真数据表，
+    // 绝不线性化——否则宽表里一个普通的格内换行（如两行表头）就会误伤，把整表拍成段落丢掉列结构。
+    let wide = tbl
+        .children()
+        .filter(|n| is_el(*n, "tr"))
+        .any(|tr| tr.children().filter(|n| is_el(*n, "tc")).count() >= 4);
+    if wide {
+        return false;
+    }
     for tr in tbl.children().filter(|n| is_el(*n, "tr")) {
         for tc in tr.children().filter(|n| is_el(*n, "tc")) {
             if tc.children().any(|n| is_el(n, "tbl")) {
@@ -2072,6 +2081,31 @@ mod tests {
 <w:tr><w:tc><w:p><w:r><w:t>c</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>d</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"#);
         assert!(md.contains("| a | b |"), "got: {md}");
         assert!(!w.iter().any(|x| x.code == "layout_table"), "should not be treated as layout: {md}");
+    }
+
+    #[test]
+    fn wide_table_with_multiline_cell_stays_real_table() {
+        // 回归（真实学位论文表4-2）：7~8 列数据表里一个格内换行（两行表头 身体/碰撞）
+        // 不应把整表误判为版式表拍成段落——宽度闸应直接判为数据表，两段并入同格。
+        let mut row0 = String::from("<w:tr>");
+        for label in ["应变", "弯曲", "惯性"] {
+            row0.push_str(&format!("<w:tc><w:p><w:r><w:t>{label}</w:t></w:r></w:p></w:tc>"));
+        }
+        row0.push_str("<w:tc><w:p><w:r><w:t>身体</w:t></w:r></w:p><w:p><w:r><w:t>碰撞</w:t></w:r></w:p></w:tc>");
+        for label in ["摩擦", "重力", "总计"] {
+            row0.push_str(&format!("<w:tc><w:p><w:r><w:t>{label}</w:t></w:r></w:p></w:tc>"));
+        }
+        row0.push_str("</w:tr>");
+        let mut row1 = String::from("<w:tr>");
+        for _ in 0..7 {
+            row1.push_str("<w:tc><w:p><w:r><w:t>1.0E-01</w:t></w:r></w:p></w:tc>");
+        }
+        row1.push_str("</w:tr>");
+        let body = format!("<w:tbl>{row0}{row1}</w:tbl>");
+        let (md, w, _) = map(&body);
+        assert!(!w.iter().any(|x| x.code == "layout_table"), "wide table wrongly linearized: {md}");
+        assert!(md.contains("| 应变 | 弯曲 | 惯性 |"), "columns lost: {md}");
+        assert!(md.contains("身体 碰撞"), "multiline cell not joined into one cell: {md}");
     }
 
     #[test]
