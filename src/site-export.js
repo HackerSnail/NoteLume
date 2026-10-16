@@ -98,12 +98,18 @@ export function buildBacklinks(graph) {
   return bl
 }
 
-/** 从库树（scanVault TreeNode）扁平化出图片 rel 列表 + basename→rel 索引（首个命中）。 */
+/** 从库树（scanVault TreeNode）扁平化出图片 rel 列表 + basename→rel 索引（首个命中）。
+ *  兼容两种入参形状：scan_vault 实际返回的是顶层 TreeNode **数组**（库根下的各子项），
+ *  而单测/调用方也可能传入一个合成的根节点——故对数组逐元素递归，对单节点按原逻辑走。*/
 export function collectImages(tree) {
   const images = []
   const byBase = new Map()
   ;(function walk(node) {
     if (!node) return
+    if (Array.isArray(node)) {
+      for (const n of node) walk(n)
+      return
+    }
     if (node.type === 'folder') {
       for (const c of node.children || []) walk(c)
     } else if (isImageRel(node.path)) {

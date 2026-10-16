@@ -158,6 +158,24 @@ check('collectImages 递归且只收图片', () => {
   assert.strictEqual(byBase.get('p.png'), 'assets/p.png')
 })
 
+// 回归：scan_vault 实际返回顶层数组（非合成根节点）——collectImages 必须能处理数组，
+// 否则 imageSet 为空，导出（docx / 整站）会把所有图片误报「库内未找到」。
+check('collectImages 兼容 scan_vault 返回的顶层数组', () => {
+  const arr = [
+    { type: 'f', name: 'a.md', path: 'a.md' },
+    { type: 'f', name: 'root.png', path: 'root.png' },
+    { type: 'folder', name: 'assets', path: 'assets', children: [
+      { type: 'f', name: 'p.png', path: 'assets/p.png' },
+      { type: 'folder', name: 'sub', path: 'assets/sub', children: [
+        { type: 'f', name: 'q.jpeg', path: 'assets/sub/q.jpeg' },
+      ] },
+    ] },
+  ]
+  const { images, byBase } = collectImages(arr)
+  assert.deepStrictEqual(images.sort(), ['assets/p.png', 'assets/sub/q.jpeg', 'root.png'])
+  assert.strictEqual(byBase.get('q.jpeg'), 'assets/sub/q.jpeg')
+})
+
 // —— buildSearchIndex：rel → root 相对 href ——
 check('buildSearchIndex href 换 .html', () => {
   const idx = buildSearchIndex([{ rel: 'Daily/a.md', title: 'A', text: 'hello' }])
