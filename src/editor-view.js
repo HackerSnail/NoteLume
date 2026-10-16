@@ -25,6 +25,7 @@ import { createModesPlugin } from './editor-modes.js'
 import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plugin.js'
 import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
+import { buildAnchorMap } from './anchor-link.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
 // 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Shift-Enter（硬换行）、
@@ -260,6 +261,17 @@ export function createEditor(opts) {
   // 代码块右上角语言标签：点击弹可搜索语言列表（Typora 式，语言存围栏 info string 不入正文）
   attachCodeLangPicker(view)
 
+  // 跳转到文档内某 pos：大纲与 #锚点 链接共用。目标被折在某节里时先展开，否则跳过去看不见。
+  function jumpToPos(pos) {
+    const open = unfoldCovering(view.state, pos)
+    if (open) view.dispatch(open)
+    const tr = view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, Math.min(pos + 1, view.state.doc.content.size))
+    )
+    view.dispatch(tr.scrollIntoView())
+    view.focus()
+  }
+
   // 点击 [[链接]]：拦截跳转（链接节点 contenteditable=false）
   view.dom.addEventListener('click', (e) => {
     const wiki = e.target.closest('.nl-wiki')
@@ -267,6 +279,19 @@ export function createEditor(opts) {
       e.preventDefault()
       opts.onOpenWiki && opts.onOpenWiki(wiki.getAttribute('data-target'))
       return
+    }
+    // 点击文档内 #锚点 链接（docx 交叉引用等产出）：按共享 slug 规则反查标题并跳转。
+    // 与站点导出（发 heading id）同一套 heading-anchor 规则，故同一 slug 三处必达。
+    const a = e.target.closest('a')
+    if (a) {
+      const href = a.getAttribute('href') || ''
+      if (href.startsWith('#')) {
+        e.preventDefault() // 阻止 webview 走原生锚点导航（会改 URL / 空白跳转）
+        const key = decodeURIComponent(href.slice(1))
+        const map = buildAnchorMap(view.state.doc)
+        if (map.has(key)) jumpToPos(map.get(key))
+        // 无匹配标题：仅拦下默认行为，不跳转（等同普通无效锚点）
+      }
     }
   })
 
@@ -444,15 +469,7 @@ export function createEditor(opts) {
     // 专注 / 打字机模式开关（main.js 驱动并持久化）
     setFocusMode(on) { modes.api.setFocus(on) },
     setTypewriterMode(on) { modes.api.setTypewriter(on) },
-    jumpToPos(pos) {
-      const open = unfoldCovering(view.state, pos) // 目标被折在某节里时先展开，否则跳过去看不见
-      if (open) view.dispatch(open)
-      const tr = view.state.tr.setSelection(
-        TextSelection.create(view.state.doc, Math.min(pos + 1, view.state.doc.content.size))
-      )
-      view.dispatch(tr.scrollIntoView())
-      view.focus()
-    },
+    jumpToPos, // 大纲面板复用同一跳转（含折叠展开 + 落光标 + 滚动）
   }
 }
 

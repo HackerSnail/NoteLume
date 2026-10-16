@@ -1,0 +1,18 @@
+{
+  "_comment": "标题锚点 slug 跨语言契约：JS slugAllInOrder(src/heading-anchor.js) 与 Rust assign_anchors(src-tauri/src/docx_import.rs) 必须对每个 case 逐字符产出 expected。任一实现改规则不同步→双边测试同时红。每个 case: in=有序标题纯文本数组, expected=锚点数组。",
+  "cases": [
+    { "in": ["第 3 节 概述"], "expected": ["第-3-节-概述"] },
+    { "in": ["Hello, World!"], "expected": ["hello-world"] },
+    { "in": ["3.2 方法（一）"], "expected": ["32-方法一"] },
+    { "in": ["引言", "引言", "引言"], "expected": ["引言", "引言-1", "引言-2"] },
+    { "in": ["Foo Bar", "foo bar"], "expected": ["foo-bar", "foo-bar-1"] },
+    { "in": ["Café Résumé"], "expected": ["café-résumé"] },
+    { "in": ["A  B"], "expected": ["a-b"] },
+    { "in": ["  leading and trailing  "], "expected": ["leading-and-trailing"] },
+    { "in": ["# h1 with hash"], "expected": ["h1-with-hash"] },
+    { "in": ["Under_score here"], "expected": ["under_score-here"] },
+    { "in": ["中文English混排123"], "expected": ["中文english混排123"] },
+    { "in": ["Tab\tsep"], "expected": ["tab-sep"] },
+    { "in": ["Version 1.0 (Beta)"], "expected": ["version-10-beta"] }
+  ]
+}

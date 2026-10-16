@@ -190,5 +190,15 @@ check('buildBacklinksHtml 无引用返回空串', () => {
   assert.strictEqual(html, '')
 })
 
+// —— 标题锚点 id（批次 F 后续：与导入侧/编辑器同一套 slugAllInOrder，供 #锚点 内链可跳）——
+check('renderSite 标题发 id（共享锚点 + 同文档重名 dedup）', () => {
+  const md = ['# 第一章', '', '正文', '', '# 第一章', '', '## Foo Bar', '', '# 3.2 方法（一）'].join('\n')
+  const html = renderSite(md, { __site: true, selfRel: 'x.md', fromDir: '' })
+  assert.match(html, /<h1 id="第一章">/, html)
+  assert.match(html, /<h1 id="第一章-1">/, html) // 重名第二个 → -1
+  assert.match(html, /<h2 id="foo-bar">/, html)
+  assert.match(html, /<h1 id="32-方法一">/, html) // 标点丢弃
+})
+
 console.log(`\n结果：${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

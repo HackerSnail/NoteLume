@@ -71,6 +71,9 @@ pub struct DocxStats {
     pub footnotes: u64,
     pub dropped_textboxes: u64,
     pub math: u64,
+    // 批次 F 后续：交叉引用——命中标题目标转内部链接 vs 降级为可见文本 各计数
+    pub xref_resolved: u64,
+    pub xref_degraded: u64,
 }
 
 #[derive(Serialize)]
@@ -318,6 +321,8 @@ struct Ctx<'a> {
     ordered: HashMap<String, u32>,
     // 连续列表的最小 ilvl 基准（None 表示当前不在列表中），用于归一化层级
     list_base: Option<u32>,
+    // 预扫描产物：Word 书签名 -> `#标题锚点`（仅标题目标；供图/表/公式等非标题不入表→引用降级为文本）
+    xref_anchor: HashMap<String, String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -346,6 +351,7 @@ impl<'a> Ctx<'a> {
             referenced: Vec::new(),
             ordered: HashMap::new(),
             list_base: None,
+            xref_anchor: HashMap::new(),
         }
     }
 
@@ -434,6 +440,7 @@ fn map_parts(
     if !footnotes_xml.is_empty() {
         collect_notes(Some(footnotes_xml), &mut ctx);
     }
+    scan_headings_and_bookmarks(&doc, &mut ctx);
     let blocks = map_body(&doc, &mut ctx);
     let mut md = compose(&blocks);
     let fs = render_footnote_section(&ctx);
@@ -468,6 +475,93 @@ fn push_children_blocks(parent: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec
             }
             if let Some(c) = child(node, "sdtContent") {
                 push_children_blocks(c, ctx, blocks);
+            }
+        }
+    }
+}
+
+// ==================== 交叉引用预扫描（批次 F 后续）====================
+
+/// 标题纯文本：拼接段内所有 `w:t`（零副作用）。因 slug 丢弃标点，且链接 URL / 脚注 id / 上下标降级符号
+/// 都不进入此串或本就被 slug 忽略，故与「编辑器 / site 从写出的 md 反算的标题纯文本」**必然同 slug**。
+fn plain_text_wt(p: roxmltree::Node) -> String {
+    let mut s = String::new();
+    for d in p.descendants() {
+        if ns_is(d, W, "t") {
+            s.push_str(d.text().unwrap_or(""));
+        }
+    }
+    s.trim().to_string()
+}
+
+/// 段落是否为标题（**复刻** `push_paragraph` 的 style 判定：outline 或 name 前缀 `heading `）。
+fn heading_level(p: roxmltree::Node, ctx: &Ctx) -> Option<u32> {
+    let ppr = child(p, "pPr");
+    let style_id = ppr
+        .and_then(|pp| child(pp, "pStyle"))
+        .and_then(|s| wattr(s, "val").map(|x| x.to_string()));
+    let st = style_id.as_ref().and_then(|id| ctx.styles.get(id))?;
+    if let Some(o) = st.outline {
+        return Some(o + 1);
+    }
+    let n = st.name.to_ascii_lowercase();
+    n.strip_prefix("heading ").and_then(|rest| rest.trim().parse::<u32>().ok())
+}
+
+/// 收集段内所有 `bookmarkStart@w:name`（书签落在标题段内 → 该段即其跳转目标）。
+fn bookmark_names(p: roxmltree::Node) -> Vec<String> {
+    p.descendants()
+        .filter(|n| is_el(*n, "bookmarkStart"))
+        .filter_map(|n| wattr(n, "name").map(|s| s.to_string()))
+        .collect()
+}
+
+/// 解析域码 `REF`/`PAGEREF`/`NOTEREF` 的目标书签名。形如 ` REF _Ref123 \h \* MERGEFORMAT ` 或 ` REF "名" \h `。
+fn parse_xref_target(instr: &str) -> Option<String> {
+    let mut it = instr.trim().split_whitespace();
+    let field = it.next()?.to_ascii_uppercase();
+    if !matches!(field.as_str(), "REF" | "PAGEREF" | "NOTEREF") {
+        return None;
+    }
+    let name = it.next()?.trim_matches('"');
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+/// 预扫描：顺序遍历正文（含 sdt 递归，与 `push_children_blocks` 同域），收集每个非空标题的纯文本与其
+/// 书签名，用 `assign_anchors` 依文档序算锚点，登记 书签名 -> `#锚点` 到 ctx.xref_anchor。**必须早于 map_body**（前向引用）。
+/// 有序表含**所有**非空标题（非仅带书签者），以保证 dedup 后缀与编辑器读到的整篇标题序一致。
+fn scan_headings_and_bookmarks(doc: &roxmltree::Document, ctx: &mut Ctx) {
+    let body = match doc.root_element().children().find(|n| is_el(*n, "body")) {
+        Some(b) => b,
+        None => return,
+    };
+    let mut ordered: Vec<(String, Vec<String>)> = Vec::new(); // (标题纯文本, 该段书签名)
+    collect_heading_scan(body, ctx, &mut ordered);
+    let plains: Vec<String> = ordered.iter().map(|(t, _)| t.clone()).collect();
+    let anchors = assign_anchors(&plains);
+    for ((_, names), anchor) in ordered.iter().zip(anchors.into_iter()) {
+        for name in names {
+            ctx.xref_anchor.insert(name.clone(), format!("#{anchor}"));
+        }
+    }
+}
+
+fn collect_heading_scan(parent: roxmltree::Node, ctx: &Ctx, out: &mut Vec<(String, Vec<String>)>) {
+    for node in parent.children() {
+        if is_el(node, "p") {
+            if heading_level(node, ctx).is_some() {
+                let plain = plain_text_wt(node);
+                if !plain.is_empty() {
+                    out.push((plain, bookmark_names(node)));
+                }
+            }
+        } else if is_el(node, "sdt") {
+            if let Some(c) = child(node, "sdtContent") {
+                collect_heading_scan(c, ctx, out);
             }
         }
     }
@@ -580,11 +674,12 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
             *n += 1;
             format!("{}.", n)
         };
-        // 归一化列表层级：以连续列表的最小 ilvl 为基准，避免 Word 大 ilvl 直接变成 ≥4
-        // 前导空格被 Markdown 当成缩进代码块（真实回归：整节正文被渲染成代码）；深度封顶 1。
+        // 归一化列表层级：以连续列表的最小 ilvl 为基准 → 每段连续列表最浅项 depth=0，故绝不会
+        // 出现“孤立 ≥4 空格起始行”（缩进代码块只在**无列表标记**的行触发；列表行恒带 `-`/`1.` 标记，
+        // 2 空格/级的缩进被 Markdown 当作子列表嵌套而非代码）。故不封顶深度（批次 F 后续：多级列表）。
         let base = match ctx.list_base { Some(b) => b.min(ilvl), None => ilvl };
         ctx.list_base = Some(base);
-        let depth = ilvl.saturating_sub(base).min(1);
+        let depth = ilvl.saturating_sub(base);
         blocks.push(Block::ListItem { indent: depth, marker, text: text.trim().to_string() });
         return;
     }
@@ -1060,16 +1155,106 @@ fn map_inline(p: roxmltree::Node, ctx: &mut Ctx) -> String {
     out
 }
 
+/// 复杂域状态：一个已打开的 Word 域（`fldChar begin` … `end`）。`collecting=false` 表示正处于
+/// begin..separate 的**域码区**（收集 instr，不产出可见文本）；`true` 表示已过 separate、正处于**结果区**。
+struct OpenField {
+    instr: String,
+    result: String,
+    collecting: bool,
+}
+
+/// 把一段产物路由到输出：若当前仍在某外层域的结果区（嵌套域），并入该域 result；否则追加到 out。
+fn push_inline(fields: &mut Vec<OpenField>, out: &mut String, s: String) {
+    if s.is_empty() {
+        return;
+    }
+    if let Some(f) = fields.last_mut() {
+        if f.collecting {
+            f.result.push_str(&s);
+            return;
+        }
+    }
+    out.push_str(&s);
+}
+
+/// 交叉引用收口（复杂域 end / fldSimple / 内部锚点超链接 三处共用）：域码解析出 REF/PAGEREF/NOTEREF
+/// 目标书签名 → 命中标题锚点则包成 `[结果](#锚点)` 并计 resolved；指向非标题书签则降级为可见文本 + `xref`
+/// 告警并计 degraded；非引用域（PAGE/DATE/TOC 等）原样返回结果文本。
+fn finalize_xref(instr: &str, text: &str, ctx: &mut Ctx) -> String {
+    if let Some(name) = parse_xref_target(instr) {
+        if let Some(anchor) = ctx.xref_anchor.get(&name) {
+            ctx.stats.xref_resolved += 1;
+            let label = if text.trim().is_empty() { anchor.trim_start_matches('#') } else { text };
+            return format!("[{}]({})", label, anchor);
+        }
+        // REF 指向非标题书签（图/表/公式）：降级为可见文本 + 告警
+        ctx.stats.xref_degraded += 1;
+        ctx.warn("xref", "交叉引用指向非标题目标（图/表/公式），已降级为可见文本", instr);
+    }
+    text.to_string()
+}
+
 /// 行内映射：按文档序处理 parent 的行内子节点，追加到 out。对 hyperlink / fldSimple / ins /
 /// smartTag / sdt 递归展开，使被内联内容控件（w:sdt）包裹的 run 不丢失（如模板里的分节标题）。
 /// 相邻且强调格式完全一致的纯文本 run 会被合并（Word 常按 rsid 把一句加粗切成多段 run，
 /// 逐段包裹会得到 **a****b** 这种碎片）。
+/// 批次 F 后续：新增**复杂域状态机**——`fldChar begin/separate/end` + `instrText` 分域码区/结果区，
+/// 域码绝不泄漏为正文；结果若为 REF/PAGEREF/NOTEREF 且命中标题锚点 → `[文本](#锚点)`。非引用域行为原样不变。
 fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String) {
     let mut pending: Option<(u32, String)> = None; // (强调签名, 累积原文)
+    let mut fields: Vec<OpenField> = Vec::new(); // 复杂域栈（支持嵌套）
     for node in parent.children() {
         if is_el(node, "pPr") {
             continue;
         } else if is_el(node, "r") {
+            // 域标记优先：fldChar / instrText 不是正文，先于普通 run 判定
+            let fc = node
+                .children()
+                .find(|c| is_el(*c, "fldChar"))
+                .and_then(|c| wattr(c, "fldCharType"))
+                .map(|s| s.to_string());
+            if let Some(kind) = fc {
+                flush_pending(&mut pending, out);
+                match kind.as_str() {
+                    "begin" => fields.push(OpenField { instr: String::new(), result: String::new(), collecting: false }),
+                    "separate" => {
+                        if let Some(f) = fields.last_mut() {
+                            f.collecting = true;
+                        }
+                    }
+                    "end" => {
+                        if let Some(f) = fields.pop() {
+                            let s = finalize_xref(&f.instr, &f.result, ctx);
+                            push_inline(&mut fields, out, s);
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+            if let Some(code) = node
+                .children()
+                .find(|c| is_el(*c, "instrText"))
+                .and_then(|c| c.text().map(|t| t.to_string()))
+            {
+                flush_pending(&mut pending, out);
+                if let Some(f) = fields.last_mut() {
+                    if !f.collecting {
+                        f.instr.push_str(&code); // 域码累积（可跨多段 instrText run）
+                    }
+                }
+                continue;
+            }
+            // 正处于某域的结果区 → 该 run 文本并入域结果（域结果多为单 run，不做合并）
+            if let Some(f) = fields.last_mut() {
+                if f.collecting {
+                    flush_pending(&mut pending, out);
+                    f.result.push_str(&map_run(node, ctx));
+                    continue;
+                }
+                // 域码区的普通正文 run 属域码，丢弃不产出
+                continue;
+            }
             match mergeable_run(node, ctx) {
                 Some((sig, text)) => match &mut pending {
                     Some((psig, ptext)) if *psig == sig => ptext.push_str(&text),
@@ -1088,27 +1273,35 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
             let mut inner = String::new();
             map_inline_children(node, ctx, &mut inner);
             let rid = rattr(node, "id").unwrap_or("").to_string();
-            if let Some(rel) = ctx.rels.get(&rid) {
+            let anchor = wattr(node, "anchor").unwrap_or("").to_string();
+            let produced = if let Some(rel) = ctx.rels.get(&rid) {
                 let url = resolve_link_target(&rel.target);
                 if rel.external && !url.is_empty() {
                     if inner.trim().is_empty() {
-                        out.push_str(&url);
+                        url
                     } else {
-                        out.push_str(&format!("[{}]({})", inner, url));
+                        format!("[{}]({})", inner, url)
                     }
                 } else {
-                    out.push_str(&inner);
+                    inner
                 }
+            } else if !anchor.is_empty() {
+                // 内部锚点超链接（书签）：命中标题→ [inner](#锚点)，否则经 finalize_xref 降级 + 告警
+                finalize_xref(&format!("REF {}", anchor), &inner, ctx)
             } else {
-                out.push_str(&inner);
-            }
+                inner
+            };
+            push_inline(&mut fields, out, produced);
         } else if is_el(node, "fldSimple") {
             flush_pending(&mut pending, out);
-            let instr = wattr(node, "instr").unwrap_or("");
+            let instr = wattr(node, "instr").unwrap_or("").to_string();
             if instr.to_ascii_uppercase().contains("TOC") {
                 ctx.warn("toc", "目录域已按可见文本降级", "fldSimple");
             }
-            map_inline_children(node, ctx, out);
+            let mut inner = String::new();
+            map_inline_children(node, ctx, &mut inner);
+            let produced = finalize_xref(&instr, &inner, ctx);
+            push_inline(&mut fields, out, produced);
         } else if is_el(node, "ins") || is_el(node, "smartTag") {
             flush_pending(&mut pending, out);
             map_inline_children(node, ctx, out);
@@ -1705,6 +1898,50 @@ fn is_illegal(ch: char) -> bool {
     matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || (ch as u32) < 0x20
 }
 
+// ==================== 标题锚点 slug（批次 F 后续：交叉引用 ↔ 站点/编辑器 三方契约）====================
+// 本函数是前端 src/heading-anchor.js 的**镜像**，二者由共享 fixture `src/tests/fixtures/heading-slug.json`
+// 在 cargo test 与 `npm run test:heading-anchor` 双边逐字符锁死。规则（自定义、非严格 GitHub）：
+//  逐码点小写（unicode 感知）；保留 字母/数字/CJK/`_`/`-`，其余标点整字符丢弃；空白（含连续）折叠为单个 `-`、
+//  首尾裁掉；重名 dedup 由 assign_anchors 依文档序追加 `-1`/`-2`……（首个不加后缀）。
+
+/// 单个标题纯文本 → 基础 slug（不含 dedup 后缀）。
+pub fn heading_anchor_slug(plain: &str) -> String {
+    let mut out = String::new();
+    let mut pending_space = false; // 有待续分隔符（out 非空才置位 → 首尾空白自然裁掉）
+    for ch in plain.to_lowercase().chars() {
+        if ch.is_whitespace() {
+            if !out.is_empty() {
+                pending_space = true;
+            }
+            continue;
+        }
+        if ch.is_alphanumeric() || ch == '_' || ch == '-' {
+            if pending_space {
+                out.push('-');
+                pending_space = false;
+            }
+            out.push(ch);
+        }
+        // 其余（标点/符号）整字符丢弃，不产生分隔符
+    }
+    out
+}
+
+/// 有序标题纯文本 → 逐字符唯一锚点（叠加 dedup）。文档序调用即得与正文标题一致的锚点表。
+pub fn assign_anchors(plain: &[String]) -> Vec<String> {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    plain
+        .iter()
+        .map(|p| {
+            let base = heading_anchor_slug(p);
+            let idx = counts.entry(base.clone()).or_insert(0);
+            let n = *idx;
+            *idx += 1;
+            if n == 0 { base } else { format!("{base}-{n}") }
+        })
+        .collect()
+}
+
 /// 归一化库内相对路径：反斜杠→/、去首斜杠、拒绝 .. 段；返回干净串
 fn sanitize_rel(rel: &str) -> Result<String, String> {
     let norm = rel.trim().replace('\\', "/");
@@ -1785,6 +2022,7 @@ pub fn docx_preview(args: DocxPreviewArgs) -> Result<DocxPreview, String> {
     let mut ctx = Ctx::new(&rels, &numbering, &styles, &content.media, &args.dedup_index, doc_dir.clone(), args.max_image_bytes.max(1));
     collect_notes(content.footnotes.as_deref(), &mut ctx);
     collect_notes(content.endnotes.as_deref(), &mut ctx);
+    scan_headings_and_bookmarks(&doc, &mut ctx);
     let blocks = map_body(&doc, &mut ctx);
     let mut md = compose(&blocks);
     let fn_sec = render_footnote_section(&ctx);
@@ -2182,6 +2420,25 @@ mod tests {
     }
 
     #[test]
+    fn multilevel_list_keeps_depth_beyond_one() {
+        // 批次 F 后续：去掉 .min(1) 封顶后，连续列表 ilvl 0/1/2 → depth 0/1/2（0/2/4 前导空格），
+        // 三级嵌套不被压平；因列表行恒带标记且首项 depth=0，仍不触发缩进代码块。
+        let numbering = format!(
+            r#"<w:numbering xmlns:w="{WNS}">
+<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum>
+<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>"#
+        );
+        let (md, _, _) = map_parts(
+            &doc(r#"<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>甲</w:t></w:r></w:p>
+<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>乙</w:t></w:r></w:p>
+<w:p><w:pPr><w:numPr><w:ilvl w:val="2"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>丙</w:t></w:r></w:p>"#),
+            "", &numbering, "", "", &empty_media(),
+        );
+        assert!(md.contains("- 甲\n  - 乙\n    - 丙"), "got: {md}");
+        assert!(!md.contains("```"), "must not become code fence, got: {md}");
+    }
+
+    #[test]
     fn plain_table_becomes_gfm() {
         let (md, w, stats) = map(r#"<w:tbl>
 <w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr>
@@ -2261,6 +2518,86 @@ mod tests {
         assert_eq!(slugify("a/b:c*d?e"), "abcde");
         assert_eq!(slugify("  中文 标题  "), "中文-标题");
         assert_eq!(slugify("///"), "Untitled");
+    }
+
+    // 跨语言契约：Rust assign_anchors 与前端 slugAllInOrder 读**同一份** fixture 逐字符断言。
+    // 任何一方改规则不同步 → 本测试与 `npm run test:heading-anchor` 同时红。
+    #[test]
+    fn heading_anchor_slug_matches_shared_fixture() {
+        let raw = include_str!("../../src/tests/fixtures/heading-slug.json");
+        let v: serde_json::Value = serde_json::from_str(raw).expect("fixture json");
+        let cases = v["cases"].as_array().expect("cases array");
+        for c in cases {
+            let inputs: Vec<String> = c["in"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_str().unwrap().to_string())
+                .collect();
+            let expected: Vec<String> = c["expected"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(assign_anchors(&inputs), expected, "case: {inputs:?}");
+        }
+    }
+
+    // ---- 批次 F 后续：交叉引用（REF/PAGEREF/NOTEREF 域 + 书签锚点超链接）----
+
+    fn h1_styles() -> String {
+        format!(r#"<w:styles xmlns:w="{WNS}"><w:style w:type="paragraph" w:styleId="H1"><w:name w:val="heading 1"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>"#)
+    }
+
+    #[test]
+    fn complex_field_ref_to_heading_becomes_anchor_link() {
+        // 一个带书签的标题 + 一个复杂域 REF 指向它 → [标题](#锚点)；域码绝不泄漏。
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:pPr><w:pStyle w:val="H1"/></w:pPr><w:bookmarkStart w:id="0" w:name="_Ref1"/><w:r><w:t>目标标题</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:r><w:t>参见 </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF _Ref1 \h \* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>目标标题</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t> 处。</w:t></w:r></w:p>"#),
+            "", "", &h1_styles(), "", &empty_media(),
+        );
+        assert!(md.contains("[目标标题](#目标标题)"), "got: {md}");
+        assert!(!md.contains("MERGEFORMAT") && !md.contains("_Ref1"), "field code must not leak, got: {md}");
+        assert_eq!(stats.xref_resolved, 1);
+    }
+
+    #[test]
+    fn fldsimple_ref_to_heading_becomes_anchor_link() {
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:pPr><w:pStyle w:val="H1"/></w:pPr><w:bookmarkStart w:id="0" w:name="_Ref1"/><w:r><w:t>引言</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:r><w:t>见 </w:t></w:r><w:fldSimple w:instr=" REF _Ref1 \h "><w:r><w:t>引言</w:t></w:r></w:fldSimple><w:r><w:t> 端。</w:t></w:r></w:p>"#),
+            "", "", &h1_styles(), "", &empty_media(),
+        );
+        assert!(md.contains("[引言](#引言)"), "got: {md}");
+        assert_eq!(stats.xref_resolved, 1);
+    }
+
+    #[test]
+    fn ref_to_non_heading_degrades_with_warning() {
+        // REF 目标书签未落在标题上（图/表/公式）→ 保留可见文本、不成链、带 xref 告警。
+        let (md, w, stats) = map_parts(
+            &doc(r#"<w:p><w:pPr><w:pStyle w:val="H1"/></w:pPr><w:r><w:t>某标题</w:t></w:r></w:p>
+<w:p><w:r><w:t>见图 </w:t></w:r><w:fldSimple w:instr=" REF _RefFig1 \h "><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p>"#),
+            "", "", &h1_styles(), "", &empty_media(),
+        );
+        assert!(md.contains("见图 1"), "got: {md}");
+        assert!(!md.contains("[1]("), "must not link non-heading, got: {md}");
+        assert!(w.iter().any(|x| x.code == "xref"), "expected xref warning");
+        assert_eq!(stats.xref_degraded, 1);
+    }
+
+    #[test]
+    fn internal_anchor_hyperlink_to_heading_becomes_link() {
+        // w:anchor 内部超链接（无 r:id）指向带书签标题 → [文本](#锚点)。
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:pPr><w:pStyle w:val="H1"/></w:pPr><w:bookmarkStart w:id="0" w:name="_Ref1"/><w:r><w:t>结论</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:hyperlink w:anchor="_Ref1" w:history="1"><w:r><w:t>结论</w:t></w:r></w:hyperlink></w:p>"#),
+            "", "", &h1_styles(), "", &empty_media(),
+        );
+        assert!(md.contains("[结论](#结论)"), "got: {md}");
+        assert_eq!(stats.xref_resolved, 1);
     }
 
     #[test]

@@ -12,6 +12,7 @@
 
 import katex from 'katex'
 import { tokenizer } from './editor-schema.js'
+import { anchorSlug } from './heading-anchor.js'
 
 // —— 路径小工具（一律用 / 分隔；库内 rel 由 Rust collect_md_paths 以 / 产出）——
 function normRel(p) {
@@ -308,6 +309,28 @@ function ensureRenderRules() {
     const h = t.attrGet('href')
     if (env && env.__site && h) t.attrSet('href', rewriteMdLink(h))
     return defaultLinkOpen(tokens, idx, opts, env, self)
+  }
+
+  // 标题锚定：给每个 <hN> 发 id=共享锚点（与导入侧 Rust assign_anchors / 编辑器点击同一套 slugAllInOrder）。
+  // 标题纯文本 = inline token 子节点里 text/code_inline 的 content 拼接（强调/删除线等标记非 text token → 自然剔除，
+  // 与编辑器 heading.textContent 一致）；同文档重名按渲染序（=文档序） dedup 加 -1/-2。env 每篇新建 → 天然 per-doc。
+  R.heading_open = (tokens, idx, options, env, self) => {
+    const openTok = tokens[idx]
+    const inline = tokens[idx + 1]
+    let plain = ''
+    if (inline && Array.isArray(inline.children)) {
+      for (const ch of inline.children) {
+        if (ch.type === 'text' || ch.type === 'code_inline') plain += ch.content
+      }
+    }
+    const base = anchorSlug(plain)
+    if (base) {
+      if (!env.__anchor) env.__anchor = Object.create(null)
+      const cnt = env.__anchor[base] || 0
+      env.__anchor[base] = cnt + 1
+      openTok.attrSet('id', cnt === 0 ? base : `${base}-${cnt}`)
+    }
+    return self.renderToken(tokens, idx, options)
   }
 }
 let rulesReady = false
