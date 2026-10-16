@@ -8,6 +8,12 @@
 
 let CM = null // 缓存已加载的模块集合
 
+// 选区边界规整：NaN/越界一律夹到 [0, doc.length]
+function clampSel(v, len) {
+  const n = Number.isFinite(v) ? Math.trunc(v) : 0
+  return n < 0 ? 0 : n > len ? len : n
+}
+
 async function loadCM() {
   if (CM) return CM
   const [state, view, commands, language, langmd, lezermd, hl, langdata] = await Promise.all([
@@ -158,6 +164,19 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
     },
     getDoc() {
       return view.state.doc.toString()
+    },
+    // 光标/选区落点：切换模式时由 editor-view 按位置映射设置（保留选区范围，
+    // scrollIntoView 让光标所在行滚入视口——否则整篇跳回开头）
+    setSelection(from, to) {
+      const len = view.state.doc.length
+      const a = clampSel(Number(from), len)
+      const b = clampSel(to == null ? Number(from) : Number(to), len)
+      view.dispatch({ selection: { anchor: a, head: b }, scrollIntoView: true })
+      view.requestMeasure()
+    },
+    getSelection() {
+      const r = view.state.selection.main
+      return { from: r.from, to: r.to }
     },
     setTheme(name) {
       view.dispatch({ effects: themeComp.reconfigure(buildExt(name !== 'light')) })

@@ -7,9 +7,10 @@ import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
-import { schema, parseMarkdown, serializeMarkdown } from './editor-schema.js'
+import { schema, parseMarkdown, serializeMarkdown, serializeMarkdownMapped } from './editor-schema.js'
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js'
 import { resolveSourceText } from './source-sync.js'
+import { createPosMapper } from './pos-map.js'
 import * as yaml from 'js-yaml'
 import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
@@ -316,6 +317,11 @@ export function createEditor(opts) {
   function currentThemeName() {
     return document.documentElement.getAttribute('data-theme') || 'light'
   }
+  // 源码全文里正文的起始偏移（frontmatter 前缀长度）：位置映射以正文为坐标系，
+  // splitFrontmatter 的 body 是入参的后缀，故长度差即前缀长（带 BOM 时也恰好对得上）
+  function bodyOffset(text) {
+    return text.length - splitFrontmatter(text).body.length
+  }
   async function ensureSrc() {
     if (src) return src
     const mod = await import('./source-editor.js')
@@ -329,6 +335,27 @@ export function createEditor(opts) {
     if (srcChangeTimer) clearTimeout(srcChangeTimer)
     srcChangeTimer = setTimeout(() => { opts.onSourceTextChange && opts.onSourceTextChange(text) }, 200)
   }
+  // 光标对齐辅助：映射失败（异常节点 / 极端文本）不阻断模式切换，退回旧行为
+  // （光标落文档开头）——编辑器可用性优先。
+  function mapSelToSource(text) {
+    try {
+      const mapper = createPosMapper({ doc: view.state.doc, serialize: serializeMarkdownMapped, source: text, base: bodyOffset(text) })
+      const sel = view.state.selection
+      return [mapper.pmToSrc(sel.from), mapper.pmToSrc(sel.to)]
+    } catch (_) {
+      return null
+    }
+  }
+  function mapSelFromSource(text, doc, body) {
+    if (!src) return null
+    try {
+      const range = src.getSelection()
+      const mapper = createPosMapper({ doc, serialize: serializeMarkdownMapped, source: text, base: text.length - body.length })
+      return TextSelection.between(doc.resolve(mapper.srcToPm(range.from)), doc.resolve(mapper.srcToPm(range.to)))
+    } catch (_) {
+      return null
+    }
+  }
   async function enterSource() {
     const text = resolveSourceText({ modelDirty, rawSource, serialized: serializedFull() })
     rawSource = text
@@ -338,6 +365,9 @@ export function createEditor(opts) {
     await ensureSrc()
     src.setDoc(text)
     sourceMode = true
+    // 光标对齐：把 WYSIWYG 当前选区换算成源码偏移带过去（原文字节 / 重新序列化都覆盖）
+    const range = mapSelToSource(text)
+    if (range) src.setSelection(range[0], range[1])
     src.focus()
     opts.onFrontmatterChange && opts.onFrontmatterChange()
     return true
@@ -347,7 +377,10 @@ export function createEditor(opts) {
     const text = src ? src.getDoc() : rawSource || ''
     const { yaml: fm, body } = splitFrontmatter(text)
     fmRaw = fm
-    view.updateState(EditorState.create({ schema, doc: parseMarkdown(body), plugins: view.state.plugins }))
+    const doc = parseMarkdown(body)
+    // 光标对齐：源码选区 → 新文档里的对应位置（退出后选区和滚动都落在原处）
+    const sel = mapSelFromSource(text, doc, body)
+    view.updateState(EditorState.create({ schema, doc, plugins: view.state.plugins }))
     rawSource = text
     modelDirty = false
     sourceMode = false
@@ -355,6 +388,7 @@ export function createEditor(opts) {
     if (opts.mountEl) opts.mountEl.classList.remove('hidden')
     emitMeta(view, opts)
     opts.onFrontmatterChange && opts.onFrontmatterChange()
+    if (sel) view.dispatch(view.state.tr.setSelection(sel).scrollIntoView())
     view.focus()
     return false
   }

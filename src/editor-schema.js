@@ -14,6 +14,7 @@ import {
   schema as baseSchema,
   MarkdownParser,
   MarkdownSerializer,
+  MarkdownSerializerState,
   defaultMarkdownParser,
   defaultMarkdownSerializer,
 } from 'prosemirror-markdown'
@@ -928,6 +929,18 @@ function serializeTableHTML(node) {
   return parts.join('') // 单行，供预处理器按行识别
 }
 
+// 位置记账：表格行锚点。单元格文本走 cellToMarkdown 的临时文档序列化、不进文本段记账，
+// 光标落在单元格里时会退到“所在行”的行首——有行锚点就落到正确的行，没有则退到表头行。
+// 只在带记账的 state 上生效（普通序列化路径完全不受影响）。
+function noteRowAnchor(state, pm, pmEnd, line) {
+  if (state.nlRowPm && pm >= 0) {
+    state.nlRowPm.push(pm)
+    state.nlRowPmEnd.push(pmEnd)
+    state.nlRowSrc.push(state.out.length - line.length)
+    state.nlRowSrcEnd.push(state.out.length)
+  }
+}
+
 function serializeTable(state, node) {
   // 含合并单元格 → 输出真 <table> HTML（GitHub/Obsidian 原生渲染、保互操作）
   if (tableHasMerge(node)) {
@@ -937,6 +950,10 @@ function serializeTable(state, node) {
     return
   }
   const rows = []
+  const rowPms = [] // 与 rows 平行：每行的 [起点, 终点] 文档位置（表格本体位置 + 1 起逐行累加）
+  const rowEnds = []
+  const tableAbs = state.nlCurrentAbs ? state.nlCurrentAbs() : -1
+  let rowAbs = tableAbs + 1
   node.forEach((row) => {
     const cells = []
     let hasHeader = false
@@ -945,6 +962,9 @@ function serializeTable(state, node) {
       cells.push({ md: cellToMarkdown(c), header: c.type.name === 'table_header', align: c.attrs.alignment })
     })
     rows.push({ cells, hasHeader })
+    rowPms.push(rowAbs)
+    rowEnds.push(rowAbs + row.nodeSize)
+    rowAbs += row.nodeSize
   })
   if (!rows.length) {
     state.closeBlock(node)
@@ -972,7 +992,9 @@ function serializeTable(state, node) {
 
   state.ensureNewLine()
   // 表头（第一行）
-  state.write(lineOf(rows[0].cells))
+  const headLine = lineOf(rows[0].cells)
+  state.write(headLine)
+  noteRowAnchor(state, rowPms[0], rowEnds[0], headLine)
   state.write('\n')
   // 分隔行
   const sep = aligns.map((a, i) => ' ' + alignColMarker(a).padEnd(widths[i], '-') + ' ').join('|')
@@ -980,7 +1002,9 @@ function serializeTable(state, node) {
   // 数据行
   for (let r = 1; r < rows.length; r++) {
     state.write('\n')
-    state.write(lineOf(rows[r].cells))
+    const line = lineOf(rows[r].cells)
+    state.write(line)
+    noteRowAnchor(state, rowPms[r], rowEnds[r], line)
   }
   state.closeBlock(node)
 }
@@ -1073,6 +1097,231 @@ const SERIALIZER = new MarkdownSerializer(serializerNodes, serializerMarks, {
 /** ProseMirror doc -> Markdown 字符串 */
 export function serializeMarkdown(doc) {
   return SERIALIZER.serialize(doc)
+}
+
+// —— 5. 位置记账序列化：源码模式 ⇄ 所见即所得 的光标互相对齐 ————————————————
+// 两个编辑器（CodeMirror / ProseMirror）位置坐标系不同，切换模式时若不管光标，两边都会
+// 跳回文档开头。这里复用同一个 SERIALIZER，只把内部 state 换成一个“记账子类”，渲染过程
+// 中顺手记录文档位置与输出偏移的对应关系，供 pos-map.js 做双向换算：
+//   · anchorPm/anchorSrc  所有节点起/止边界 → 输出偏移（双单调，可二分）
+//   · segPm/segSrc/segSrcEnd/segDoc  文本段：文档侧只存节点文本引用（不拷贝），输出侧只存
+//     起止偏移；两侧文本只差转义反斜杠、行间定界、围栏前缀等“插入字符”，查询时按需切片
+//     做字符级对齐（pos-map.js 的 charMap）
+//   · blkPm/blkSrc/blkAt  块记录：src = 渲染入口偏移（常落在上一行行尾），at = 本块第一次
+//     落字的位置（write() 钩子回填），那才是它所在行的起点；at = -1 表示空块
+//   · rowPm/rowPmEnd/rowSrc/rowSrcEnd  表格行锚点（含起止范围）：单元格文本不走文本段记账，
+//     光标落在单元格里时靠它落到所在行
+// 记账全部走平行数字数组（不建每段一个的对象、不拷贝字符串）：大文档下一次切换要过整个
+// 序列化器，对象/字符串分配会直接把 GC 打满（实测：记账时对输出串做 slice 反算落点，
+// 28 万字符文档要凭空多花 4 秒——长串 slice 是 O(n)，故首字符落点改由 write() 钩子回填）。
+class MappedSerializerState extends MarkdownSerializerState {
+  constructor(nodes, marks, options) {
+    super(nodes, marks, options)
+    this.nlAnchorPm = []
+    this.nlAnchorSrc = []
+    this.nlSegPm = []
+    this.nlSegSrc = []
+    this.nlSegSrcEnd = []
+    this.nlSegDoc = []
+    this.nlBlkPm = []
+    this.nlBlkSrc = []
+    this.nlBlkAt = []
+    this.nlRowPm = []
+    this.nlRowPmEnd = []
+    this.nlRowSrc = []
+    this.nlRowSrcEnd = []
+    this.nlNodePos = null // node -> 绝对位置（首次 renderContent 时由 doc.descendants 一次建成）
+    this.nlAbsStack = [] // 渲染栈：栈顶 = 正在渲染节点的绝对位置
+    this.nlPendingPm = -1 // 待落账的文本 / 代码块内容的文档位置（render 置、text 落账）
+    this.nlPendingText = null
+    this.nlPendingBlocks = [] // 待记账块下标栈：等各自第一次落字回填 at（见 write()）
+    this.nlCaptureWrite = false // text() 置位：等 write() 回填本行正文首字符落点
+    this.nlFirstWriteEnd = -1
+    this.nlQPm = [] // 行内文本子节点位置（renderInline 每段重建；code 标记内容不走 render()）
+    this.nlQText = []
+  }
+  // 节点绝对位置：优先查预建表；被 withText 替换过的节点（标记空白驱逐）按
+  // 「父内容起点 + 之前兄弟尺寸和」现算
+  nlAbsOf(node, parent, index) {
+    if (this.nlNodePos) {
+      const known = this.nlNodePos.get(node)
+      if (known != null) return known
+    }
+    const parentAbs = this.nlAbsStack.length ? this.nlAbsStack[this.nlAbsStack.length - 1] : -1
+    let off = 0
+    for (let i = 0; i < index; i++) off += parent.child(i).nodeSize
+    return parentAbs + 1 + off
+  }
+  render(node, parent, index) {
+    const abs = this.nlAbsOf(node, parent, index)
+    this.nlAbsStack.push(abs)
+    const outStart = this.out.length
+    // 文本节点 / 代码块整体内容：等 text() 里按字符对齐落账
+    if (node.isText) {
+      this.nlPendingPm = abs
+      this.nlPendingText = node.text
+    } else if (node.type.name === 'code_block') {
+      this.nlPendingPm = abs + 1
+      this.nlPendingText = node.textContent
+    }
+    // 起点锚点必须“子节点之前”入账：父节点的序列化函数会先写前缀（如 callout 的 marker 行）
+    // 再渲染内容，若等到 super.render 返回再记，锚点/块记录的 pm、src 都会乱序，二分全废
+    let blkIdx = -1
+    if (!node.isText) {
+      this.nlAnchorPm.push(abs)
+      this.nlAnchorSrc.push(outStart)
+      if (node.isBlock) {
+        blkIdx = this.nlBlkPm.length
+        this.nlBlkPm.push(abs)
+        this.nlBlkSrc.push(outStart)
+        this.nlBlkAt.push(-1)
+        this.nlPendingBlocks.push(blkIdx)
+      }
+    }
+    try {
+      super.render(node, parent, index)
+    } finally {
+      this.nlPendingPm = -1
+      this.nlPendingText = null
+      this.nlAbsStack.pop()
+      // 渲染结束仍未落字（空段落等）：从待记账栈摘掉，不影响外层块
+      if (blkIdx >= 0 && this.nlBlkAt[blkIdx] < 0) {
+        const i = this.nlPendingBlocks.indexOf(blkIdx)
+        if (i >= 0) this.nlPendingBlocks.splice(i, 1)
+      }
+    }
+    if (node.isText) return
+    this.nlAnchorPm.push(abs + node.nodeSize)
+    this.nlAnchorSrc.push(this.out.length)
+  }
+  write(content) {
+    super.write(content)
+    // 每个块第一次落字时回填内容起点：此刻 flushClose 的块间空行、wrapBlock 的行间定界
+    // 都已补齐，这个位置才落在“本块第一行”上（入口偏移则落在上一块行尾）
+    const chain = this.nlPendingBlocks
+    if (chain.length) {
+      const idx = chain[chain.length - 1]
+      if (this.nlBlkAt[idx] < 0) {
+        this.nlBlkAt[idx] = content ? this.out.length - content.length : this.out.length
+        chain.pop()
+      }
+    }
+    // text() 正在等“本行正文写入前”的位置：write() 返回时定界/空行都已补齐，这个长度
+    // 就是正文首字符的落点（比事后 slice 输出串反算快几个数量级——长串 slice 是 O(n)）
+    if (this.nlCaptureWrite) {
+      this.nlFirstWriteEnd = this.out.length
+      this.nlCaptureWrite = false
+    }
+  }
+  // 当前正在渲染节点的绝对位置（栈顶）：serializeTable 算行位置用
+  nlCurrentAbs() {
+    return this.nlAbsStack.length ? this.nlAbsStack[this.nlAbsStack.length - 1] : -1
+  }
+  text(text, escape = true) {
+    const pendingText = this.nlPendingText
+    // 只有“文档自身的文本”才记账；标记定界符（escape=false）、被驱逐的空白一概跳过
+    if (pendingText != null && text === pendingText) {
+      const start = this.out.length
+      this.nlFirstWriteEnd = -1
+      this.nlCaptureWrite = true
+      super.text(text, escape)
+      // super.text 里的 write() 会先补块间空行 / 行间定界（插入字符），首字符落点由 write()
+      // 钩子回填；输出侧只记起止偏移，文本本体与字符级对齐都留到查询时按需做
+      const from = this.nlFirstWriteEnd >= 0 ? this.nlFirstWriteEnd - start : 0
+      this.nlSegPm.push(this.nlPendingPm)
+      this.nlSegSrc.push(start + from)
+      this.nlSegSrcEnd.push(this.out.length)
+      this.nlSegDoc.push(text)
+      return
+    }
+    // code 标记的内容被合并进一次 `` `xxx` `` 输出（不走 render()），按反引号对切分补账。
+    // 落点按「写入后总长 - 闭引号长 - 节点文本长」回算：合并串整体追加在输出末尾，
+    // 不受前面 write() 补定界影响。
+    if (escape === false && this.nlQText.length) {
+      const hit = this.nlMatchCodeSpan(text)
+      if (hit && !text.includes('\n')) {
+        super.text(text, escape)
+        this.nlSegPm.push(hit.pm)
+        this.nlSegSrc.push(this.out.length - hit.closeLen - hit.text.length)
+        this.nlSegSrcEnd.push(this.out.length)
+        this.nlSegDoc.push(hit.text)
+        return
+      }
+    }
+    super.text(text, escape)
+  }
+  // 形如 `开引号 + 节点文本 + 闭引号` 的反引号合并输出：在行内子节点队列里找文本相符的
+  nlMatchCodeSpan(text) {
+    for (const re of [/^(`+)([\s\S]*)(`+)$/, /^(`+)([\s\S]*?)(`+)$/]) {
+      const m = re.exec(text)
+      if (!m) continue
+      for (let i = 0; i < this.nlQText.length; i++) {
+        if (this.nlQText[i] === m[2]) {
+          this.nlQText[i] = null // 消费掉，避免同段后续误配
+          return { pm: this.nlQPm[i], text: m[2], closeLen: m[3].length }
+        }
+      }
+    }
+    return null
+  }
+  renderInline(parent, fromBlockStart = true) {
+    // 预排队内联文本子节点的位置，供上面 code 合并输出补账（复用同一对数组，避免每段分配）
+    const base = this.nlAbsStack.length ? this.nlAbsStack[this.nlAbsStack.length - 1] + 1 : 0
+    this.nlQPm.length = 0
+    this.nlQText.length = 0
+    let off = 0
+    parent.forEach((child) => {
+      if (child.isText) {
+        this.nlQPm.push(base + off)
+        this.nlQText.push(child.text)
+      }
+      off += child.nodeSize
+    })
+    try {
+      super.renderInline(parent, fromBlockStart)
+    } finally {
+      this.nlQPm.length = 0
+      this.nlQText.length = 0
+    }
+  }
+  renderContent(parent) {
+    // 首次（parent 即 doc）建 node->pos 表；内层 renderContent 不重建
+    if (!this.nlNodePos) {
+      this.nlNodePos = new Map()
+      parent.descendants((n, pos) => this.nlNodePos.set(n, pos))
+    }
+    super.renderContent(parent)
+  }
+}
+
+/**
+ * 带位置记账的序列化：除文本外，还返回「文档位置 ↔ 输出偏移」的映射原料（平行数组）。
+ * 各数组含义见 MappedSerializerState 顶部注释；除 text 外全部单调不减。
+ * @returns {{text:string,
+ *            anchorPm:number[], anchorSrc:number[],
+ *            segPm:number[], segSrc:number[], segSrcEnd:number[], segDoc:string[],
+ *            blkPm:number[], blkSrc:number[], blkAt:number[],
+ *            rowPm:number[], rowSrc:number[]}}
+ */
+export function serializeMarkdownMapped(doc) {
+  const state = new MappedSerializerState(SERIALIZER.nodes, SERIALIZER.marks, SERIALIZER.options)
+  state.renderContent(doc)
+  return {
+    text: state.out,
+    anchorPm: state.nlAnchorPm,
+    anchorSrc: state.nlAnchorSrc,
+    segPm: state.nlSegPm,
+    segSrc: state.nlSegSrc,
+    segSrcEnd: state.nlSegSrcEnd,
+    segDoc: state.nlSegDoc,
+    blkPm: state.nlBlkPm,
+    blkSrc: state.nlBlkSrc,
+    blkAt: state.nlBlkAt,
+    rowPm: state.nlRowPm,
+    rowPmEnd: state.nlRowPmEnd,
+    rowSrc: state.nlRowSrc,
+    rowSrcEnd: state.nlRowSrcEnd,
+  }
 }
 
 // 供大纲/标签面板复用
