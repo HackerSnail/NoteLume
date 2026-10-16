@@ -16,7 +16,8 @@
     "test:docx-export": "node tests/docx-export.test.mjs",
     "test:site-export": "node tests/site-export.test.mjs",
     "test:heading-anchor": "node tests/heading-anchor.test.mjs",
-    "test:anchor-link": "node tests/anchor-link.test.mjs"
+    "test:anchor-link": "node tests/anchor-link.test.mjs",
+    "test:find-in-doc": "node tests/find-in-doc.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

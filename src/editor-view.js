@@ -26,6 +26,7 @@ import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plu
 import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
 import { buildAnchorMap } from './anchor-link.js'
+import { findPlugin } from './find-in-doc.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
 // 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Shift-Enter（硬换行）、
@@ -221,6 +222,7 @@ export function createEditor(opts) {
       highlightPlugin(),
       mermaidPlugin(),
       footnotePlugin(),
+      findPlugin(),
       modes.plugin,
       fold.plugin,
       ...tablePlugins(),

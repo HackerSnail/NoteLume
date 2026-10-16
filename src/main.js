@@ -2,6 +2,7 @@
 // P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
 // 自动保存 + 库内备份、HTML 导出、打印。
 import { createEditor, EDITOR_COMMANDS } from './editor-view.js'
+import { createFindBar } from './find-in-doc.js'
 import { createFrontmatterPanel } from './frontmatter-panel.js'
 import { splitFrontmatter } from './frontmatter.js'
 import {
@@ -136,6 +137,7 @@ const els = {
 }
 
 let editor
+let findBar = null // 文档内查找栏控制器（boot 里 editor 装配后创建）
 let palette = null
 let keySettings = null
 let gitPanel = null
@@ -1994,12 +1996,16 @@ function registerAppCommands() {
   app('app.save', '保存当前文件', 'Mod-s', () => saveCurrent(true))
   app('app.openFile', '打开单个文件', 'Mod-o', () => openSingleFile())
   app('app.openFolder', '打开知识库文件夹', 'Mod-Shift-o', () => openFolder())
-  app('app.search', '聚焦侧栏搜索', 'Mod-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
+  // Ctrl+F = 当前文档内查找（Typora/Obsidian 语义）；全库搜索改到 Ctrl+Shift+F
+  app('app.findInDoc', '在本篇文档中查找', 'Mod-f', () => {
+    if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open()
+  })
+  app('app.search', '聚焦侧栏搜索', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
   // 打印收窄为纯 Ctrl+P：旧实现 key==='p' 未排除 shift，会吞掉 Ctrl+Shift+P（留给命令面板）
   app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
   app('app.graph', '打开知识图谱', 'Mod-g', () => openGraphModal())
   app('app.dailyCapture', '今日速记', 'Mod-Shift-d', () => toggleDailyCapture())
-  app('app.focusMode', '专注模式', 'Mod-Shift-f', () => toggleFocusMode())
+  app('app.focusMode', '专注模式', 'Mod-Shift-e', () => toggleFocusMode())
   app('app.typewriterMode', '打字机模式', 'Mod-Shift-t', () => toggleTypewriterMode())
   app('app.toggleSidebar', '隐藏 / 显示侧栏', 'Mod-Shift-s', () => toggleSidebar())
   app('app.toggleInspector', '隐藏 / 显示检查器', 'Mod-Shift-i', () => toggleInspector())
@@ -2298,6 +2304,9 @@ async function boot() {
     onDocChange: (doc, prev) => { updateDocStats(); if (pluginManager) pluginManager.fireDocChange(doc, prev) },
     onSelectionChange: () => scheduleMacChrome(),
   })
+
+  // 文档内查找栏：挂到编辑区容器（.editor-pane，relative 且为滚动容器），命令式驱动 find 插件
+  findBar = createFindBar({ view: editor.view, paneEl: els.editor.parentElement })
 
   // 文档属性（frontmatter）面板：查看 / 编辑当前 md 文档的 YAML 头
   frontmatterPanel = createFrontmatterPanel({

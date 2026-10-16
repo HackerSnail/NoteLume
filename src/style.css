@@ -1119,6 +1119,72 @@ body {
   outline: none;
   min-height: 100%;
 }
+/* —— 文档内查找（find-in-doc.js）：命中高亮为视图层装饰，不改文档内容 —— */
+.nl-find-match {
+  background: rgba(255, 205, 95, 0.45);
+  border-radius: 2px;
+}
+.nl-find-match-active {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 2px;
+}
+/* 查找栏：绝对定位钉在 .editor-pane 可视顶部（top 由 JS 随 scrollTop 补正） */
+.nl-find-bar {
+  display: none;
+  position: absolute;
+  right: 24px;
+  top: 12px;
+  z-index: 30;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.nl-find-bar.show {
+  display: flex;
+}
+.nl-find-input {
+  width: 180px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+.nl-find-input:focus {
+  border-color: var(--accent);
+}
+.nl-find-count {
+  min-width: 42px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.nl-find-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nl-find-btn:hover {
+  background: var(--hover);
+}
+.nl-find-case.on {
+  background: var(--accent);
+  color: #fff;
+}
 /* —— 标题折叠（fold-plugin.js）：三角绝对定位挂进 .editor 的左内边距，不推挤正文；
       折叠后标题行尾显示「 […] N」，点任一处展开。隐藏只走 display，文档模型不变。 —— */
 .ProseMirror h1,
