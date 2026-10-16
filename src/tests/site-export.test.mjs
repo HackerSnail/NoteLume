@@ -200,5 +200,14 @@ check('renderSite 标题发 id（共享锚点 + 同文档重名 dedup）', () =>
   assert.match(html, /<h1 id="32-方法一">/, html) // 标点丢弃
 })
 
+// —— 交叉引用锚点（批次 F 后续）：非标题目标的 <a id> 应原样渲染（不被 html:false 转义），#id 内链可落 ——
+check('renderSite 交叉引用锚点 <a id> 保真渲染', () => {
+  const md = ['见 [52](#_Ref52)。', '', '<a id="_Ref52"></a>文献条目全文'].join('\n')
+  const html = renderSite(md, { __site: true, selfRel: 'x.md', fromDir: '' })
+  assert.ok(html.includes('<a id="_Ref52"></a>'), '锚点应原样渲染: ' + html)
+  assert.ok(!html.includes('&lt;a id'), '锚点不应被转义为文本: ' + html)
+  assert.ok(html.includes('href="#_Ref52"'), '引用应渲染为 #id 链接: ' + html)
+})
+
 console.log(`\n结果：${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

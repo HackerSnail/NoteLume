@@ -311,6 +311,14 @@ function ensureRenderRules() {
     return defaultLinkOpen(tokens, idx, opts, env, self)
   }
 
+  // 交叉引用锚点（批次 F 后续）：编辑器/导入侧的 `<a id="…"></a>`（非标题目标的跳转落点）。tokenizer 是
+  // html:false，默认渲染会把自定义 anchor token 当转义文本，故显式输出字面锚（id 已在导入侧净化为
+  // [A-Za-z0-9_-]，再走 escAttr 双保险），使站点里 `[文本](#id)` 能落到该锚点。
+  R.anchor = (tokens, idx) => {
+    const id = tokens[idx].attrGet('id') || ''
+    return id ? `<a id="${escAttr(id)}"></a>` : ''
+  }
+
   // 标题锚定：给每个 <hN> 发 id=共享锚点（与导入侧 Rust assign_anchors / 编辑器点击同一套 slugAllInOrder）。
   // 标题纯文本 = inline token 子节点里 text/code_inline 的 content 拼接（强调/删除线等标记非 text token → 自然剔除，
   // 与编辑器 heading.textContent 一致）；同文档重名按渲染序（=文档序） dedup 加 -1/-2。env 每篇新建 → 天然 per-doc。

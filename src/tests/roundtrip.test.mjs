@@ -50,6 +50,8 @@ const SAMPLES = {
   footnote_basic: '正文[^1]结束。\n\n[^1]: 脚注内容。\n',
   footnote_multi: 'A[^a]B[^b]C\n\n[^a]: 甲\n\n[^b]: 乙\n',
   footnote_inline: '带引用[^1]的正文。\n\n[^1]: 注里有 **粗** 和 `code` 与 [[页]]。\n',
+  // 批次 F 后续：交叉引用锚点 <a id> + [文本](#id) 内部链接，往返须幂等（锚点是原子节点、不退化为转义文本）
+  xref_anchor: '见 [52](#_Ref52) 处。\n\n<a id="_Ref52"></a>文献条目全文\n',
   combined:
     '# 总览\n\n前言文字 [[页A]] #idx\n\n| A | B |\n| --- | --- |\n| 1 | ~~2~~ |\n\n- [x] done\n',
 }
@@ -85,6 +87,21 @@ const tagDoc = parseMarkdown('#tag1 普通 #nothash')
 let foundTag = false
 tagDoc.descendants((n) => { if (n.type.name === 'tag') foundTag = true })
 assert.ok(foundTag, '应解析出 tag 节点')
+
+// 交叉引用锚点：`<a id="…"></a>` 应解析为原子 anchor 节点（而非 html:false 下的转义文本），序列化原样写回
+const anchorDoc = parseMarkdown('见 [52](#_Ref52)。\n\n<a id="_Ref52"></a>文献全文\n')
+let foundAnchor = false
+anchorDoc.descendants((n) => {
+  if (n.type.name === 'anchor') {
+    foundAnchor = true
+    assert.strictEqual(n.attrs.id, '_Ref52', 'anchor id 应无损')
+  }
+})
+assert.ok(foundAnchor, '应解析出 anchor 节点（非转义文本）')
+assert.ok(
+  serializeMarkdown(anchorDoc).includes('<a id="_Ref52"></a>'),
+  'anchor 序列化应原样输出字面 <a id>，不被转义'
+)
 
 const mInDoc = parseMarkdown('行内 $x^2$ 公式')
 let foundMathIn = false

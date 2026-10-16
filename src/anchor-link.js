@@ -10,9 +10,12 @@
 import { slugAllInOrder } from './heading-anchor.js'
 
 /**
- * 从 ProseMirror doc 顺序收集顶层标题，返回锚点表 `Map<slug, pos>`。
- * 与 emitMeta 的大纲提取同用 doc.forEach，保证 pos 语义与既有大纲跳转逐字一致。
+ * 从 ProseMirror doc 顺序收集顶层标题（按同一 slug 规则）与被交叉引用命中的非标题锚点节点，
+ * 返回锚点表 `Map<id, pos>`。
+ * 标题部分与 emitMeta 的大纲提取同用 doc.forEach，保证 pos 语义与既有大纲跳转逐字一致（跳转处 +1 进入节点）；
  * slugAllInOrder 已按文档序对重名加 `-1`/`-2` 后缀，故 key 天然唯一。
+ * 非标题锚点（`anchor` 原子节点，携带导入时发的 `<a id="…">`）用 doc.descendants 收集（可嵌套于任意块），
+ * id 即字面锚点名（非重算 slug），与标题 slug 命名空间不同；万一重名以标题优先（先入表）。
  */
 export function buildAnchorMap(doc) {
   const heads = []
@@ -26,5 +29,11 @@ export function buildAnchorMap(doc) {
   const anchors = slugAllInOrder(heads)
   const map = new Map()
   for (let i = 0; i < anchors.length; i++) map.set(anchors[i], positions[i])
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'anchor') {
+      const id = node.attrs.id
+      if (id && !map.has(id)) map.set(id, pos)
+    }
+  })
   return map
 }

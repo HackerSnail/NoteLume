@@ -39,4 +39,18 @@ for (let i = 0; i < expectAnchors.length; i++) {
 // 非标题文本不应进入锚点表
 assert.ok(!map.has('正文段落不是标题'), '段落不应成为锚点')
 
-console.log(`anchor-link: ${expectAnchors.length} 锚点映射 ✓`)
+// —— 交叉引用锚点节点（`<a id>`，非标题目标）也应进入锚点表，以字面 id 为 key ——
+const MD2 = ['# 引言', '见 [52](#_Ref52)。', '', '<a id="_Ref52"></a>文献条目全文', ''].join('\n')
+const doc2 = parseMarkdown(MD2)
+const map2 = buildAnchorMap(doc2)
+assert.ok(map2.has('引言'), '标题 slug 仍应进入锚点表')
+assert.ok(map2.has('_Ref52'), 'anchor 节点 id 应进入锚点表')
+// anchor pos 与 doc.descendants 独立复算的偏移一致（跳转处 +1 落在目标文本起始）
+let anchorPos = -1
+doc2.descendants((n, p) => {
+  if (n.type.name === 'anchor' && n.attrs.id === '_Ref52') anchorPos = p
+})
+assert.ok(anchorPos >= 0, '应找到 anchor 节点')
+assert.strictEqual(map2.get('_Ref52'), anchorPos, 'anchor pos 应等于 descendants 给出的偏移')
+
+console.log(`anchor-link: ${expectAnchors.length} 标题锚点 + 交叉引用锚点 ✓`)

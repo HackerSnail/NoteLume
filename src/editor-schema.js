@@ -143,6 +143,21 @@ const extendedNodes = baseSchema.spec.nodes
       },
     ],
   })
+  // 交叉引用锚点（批次 F 后续）：`<a id="…"></a>`。被交叉引用命中的非标题目标（图/表/公式/参考文献）
+  // 在导入时于其正文里发一个字面 <a id>，作为 `[文本](#id)` 的跳转落点；编辑器需一个原子行内节点承载它
+  // （否则 html:false 会把它当转义文本显示）。零宽、无内容，仅作定位标记，由 buildAnchorMap 按 id 收集。
+  .addToEnd('anchor', {
+    inline: true,
+    group: 'inline',
+    atom: true,
+    attrs: { id: { default: '' } },
+    toDOM(node) {
+      return ['a', { id: node.attrs.id, class: 'nl-anchor', contenteditable: 'false' }]
+    },
+    parseDOM: [
+      { tag: 'a.nl-anchor[id]', getAttrs: (dom) => ({ id: dom.getAttribute('id') || '' }) },
+    ],
+  })
   // $...$ 行内数学（KaTeX）：schema 层无 DOM 依赖，浏览器里由 nodeView 重新渲染
   .addToEnd('math_inline', {
     inline: true,
@@ -467,6 +482,23 @@ tokenizer.inline.ruler.push('tag', (state, silent) => {
   return true
 })
 
+// <a id="…"></a> 交叉引用锚点（html:false 下默认会当转义文本，故自定义行内规则截获）：只认
+// 导入侧序列化的空锚形态 `<a id="X"></a>`（X 为净化后的书签名，不含引号）；其余 <a> 交回默认规则。
+const ANCHOR_RE = /^<a id="([^"]*)"><\/a>/
+tokenizer.inline.ruler.push('anchor', (state, silent) => {
+  const src = state.src
+  const pos = state.pos
+  if (src.charCodeAt(pos) !== 0x3c /* < */) return false
+  const m = ANCHOR_RE.exec(src.slice(pos))
+  if (!m) return false
+  if (!silent) {
+    const token = state.push('anchor', 'a', 0)
+    token.attrSet('id', m[1])
+  }
+  state.pos = pos + m[0].length
+  return true
+})
+
 // $...$ 行内数学（KaTeX）。规则：
 //  • 开头 `$` 后一个字符不能是空白，结尾 `$` 前一个字符不能是空白
 //  • 不跳行；内容里不能包含未转义的 `$`
@@ -610,7 +642,9 @@ const parserTokens = {
       width: pxNum(tok.attrGet('width')),
     }),
   },
-  tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },  math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
+  tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
+  anchor: { node: 'anchor', getAttrs: (tok) => ({ id: tok.attrGet('id') || '' }) },
+  math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   math_block: { node: 'math_block', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   callout: {
     block: 'callout',
@@ -931,6 +965,10 @@ const serializerNodes = {
   },
   tag(state, node) {
     state.write('#' + node.attrs.tag)
+  },
+  anchor(state, node) {
+    // 原样写回字面空锚 <a id="…"></a>（与导入侧发锚、与上方 anchor 行内规则对倒）
+    state.write('<a id="' + escapeAttr(node.attrs.id) + '"></a>')
   },
   math_inline(state, node) {
     // 原样写回，不转义反斜杠/花括号（KaTeX 需要）

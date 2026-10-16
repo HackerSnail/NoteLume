@@ -10,7 +10,7 @@
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read as IoRead;
 use std::path::Path;
 
@@ -321,8 +321,12 @@ struct Ctx<'a> {
     ordered: HashMap<String, u32>,
     // 连续列表的最小 ilvl 基准（None 表示当前不在列表中），用于归一化层级
     list_base: Option<u32>,
-    // 预扫描产物：Word 书签名 -> `#标题锚点`（仅标题目标；供图/表/公式等非标题不入表→引用降级为文本）
+    // 预扫描产物：Word 书签名 -> `#锚点`。含两类目标：① 标题书签（锚点=标题 slug，编辑器/站点靠标题自动
+    // 锚点跳转，无需发 <a id>）；② 被交叉引用命中的非标题书签（图/表/公式/参考文献，锚点=净化后的书签名，
+    // 需在目标处发一个字面 `<a id="…"></a>` 作为跳转落点——GFM 行内 HTML，Typora/Obsidian/GitHub 均认）。
     xref_anchor: HashMap<String, String>,
+    // 需要「发 <a id>」的非标题被引用书签名集合（标题目标不在此集，故不发）。
+    xref_emit: HashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -352,6 +356,7 @@ impl<'a> Ctx<'a> {
             ordered: HashMap::new(),
             list_base: None,
             xref_anchor: HashMap::new(),
+            xref_emit: HashSet::new(),
         }
     }
 
@@ -547,6 +552,79 @@ fn scan_headings_and_bookmarks(doc: &roxmltree::Document, ctx: &mut Ctx) {
         for name in names {
             ctx.xref_anchor.insert(name.clone(), format!("#{anchor}"));
         }
+    }
+    // 第二遍：登记「被交叉引用命中、但不在标题上」的书签 → 分配锚点并标记需发 <a id>。
+    // 来源三处（与收口侧 finalize_xref 一致）：instrText 域码、fldSimple@instr、hyperlink@w:anchor。
+    scan_referenced_nonheading_anchors(body, ctx);
+}
+
+/// 书签名 → 可安全用作 HTML id / URL fragment 的锚点：仅保留 `[A-Za-z0-9_-]`，其余字符丢弃；
+/// 结果为空则回退 `ref`。Word 自动生成的引用书签多为 `_RefNNN`，本就全在保留集内，此处主要兜底外部书签。
+fn sanitize_anchor(name: &str) -> String {
+    let mut s: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    if s.is_empty() {
+        s.push_str("ref");
+    }
+    s
+}
+
+/// 收集正文中被 REF/PAGEREF/NOTEREF 域或内部锚点超链接**引用到**的书签名（按文档序去重），
+/// 对其中「已存在于正文（有对应 bookmarkStart）、又未命中任何标题」（不在 ctx.xref_anchor）者分配净化后的
+/// 唯一锚点、登记进 xref_anchor（令 finalize_xref 能解析）并记入 xref_emit（令目标处发 `<a id>`）。
+/// 目标书签不存在（无 bookmarkStart）→不登记，finalize_xref 仍降级为可见文本；标题目标已在表→跳过不发。
+fn scan_referenced_nonheading_anchors(body: roxmltree::Node, ctx: &mut Ctx) {
+    let mut referenced: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut present: HashSet<String> = HashSet::new(); // 正文中存在 bookmarkStart 的全部书签名
+    let push_name = |name: String, referenced: &mut Vec<String>, seen: &mut HashSet<String>| {
+        if seen.insert(name.clone()) {
+            referenced.push(name);
+        }
+    };
+    for n in body.descendants() {
+        if is_el(n, "bookmarkStart") {
+            if let Some(nm) = wattr(n, "name") {
+                present.insert(nm.to_string());
+            }
+        } else if is_el(n, "instrText") {
+            if let Some(t) = n.text() {
+                if let Some(name) = parse_xref_target(t) {
+                    push_name(name, &mut referenced, &mut seen);
+                }
+            }
+        } else if is_el(n, "fldSimple") {
+            if let Some(instr) = wattr(n, "instr") {
+                if let Some(name) = parse_xref_target(instr) {
+                    push_name(name, &mut referenced, &mut seen);
+                }
+            }
+        } else if is_el(n, "hyperlink") {
+            if let Some(a) = wattr(n, "anchor") {
+                let name = a.to_string();
+                if !name.is_empty() {
+                    push_name(name, &mut referenced, &mut seen);
+                }
+            }
+        }
+    }
+    // 分配锚点：仅处理「正文中存在、且未命中标题」的引用目标（同名净化冲突按计数 dedup `-1`/`-2` 保证唯一）。
+    let mut used: HashMap<String, u32> = HashMap::new();
+    for name in referenced {
+        if !present.contains(&name) {
+            continue; // 目标书签不存在：保持降级行为（不造无落点的悬链接）
+        }
+        if ctx.xref_anchor.contains_key(&name) {
+            continue; // 标题书签：沿用标题 slug 锚点，不发 <a id>
+        }
+        let base = sanitize_anchor(&name);
+        let cnt = used.entry(base.clone()).or_insert(0);
+        let id = if *cnt == 0 { base.clone() } else { format!("{base}-{cnt}") };
+        *cnt += 1;
+        ctx.xref_anchor.insert(name.clone(), format!("#{id}"));
+        ctx.xref_emit.insert(name);
     }
 }
 
@@ -1184,8 +1262,9 @@ fn push_inline(fields: &mut Vec<OpenField>, out: &mut String, s: String) {
 }
 
 /// 交叉引用收口（复杂域 end / fldSimple / 内部锚点超链接 三处共用）：域码解析出 REF/PAGEREF/NOTEREF
-/// 目标书签名 → 命中标题锚点则包成 `[结果](#锚点)` 并计 resolved；指向非标题书签则降级为可见文本 + `xref`
-/// 告警并计 degraded；非引用域（PAGE/DATE/TOC 等）原样返回结果文本。
+/// 目标书签名 → 命中锚点（标题 slug 或被引用的非标题 `<a id>`）则包成 `[结果](#锚点)` 并计 resolved；
+/// 目标书签在正文中不存在（预扫描未登记）则降级为可见文本 + `xref` 告警并计 degraded；
+/// 非引用域（PAGE/DATE/TOC 等）原样返回结果文本。
 fn finalize_xref(instr: &str, text: &str, ctx: &mut Ctx) -> String {
     if let Some(name) = parse_xref_target(instr) {
         if let Some(anchor) = ctx.xref_anchor.get(&name) {
@@ -1193,9 +1272,9 @@ fn finalize_xref(instr: &str, text: &str, ctx: &mut Ctx) -> String {
             let label = if text.trim().is_empty() { anchor.trim_start_matches('#') } else { text };
             return format!("[{}]({})", label, anchor);
         }
-        // REF 指向非标题书签（图/表/公式）：降级为可见文本 + 告警
+        // 目标书签正文中不存在（既未命中标题、也无被登记的 bookmarkStart）：降级为可见文本 + 告警
         ctx.stats.xref_degraded += 1;
-        ctx.warn("xref", "交叉引用指向非标题目标（图/表/公式），已降级为可见文本", instr);
+        ctx.warn("xref", "交叉引用目标书签未找到，已降级为可见文本", instr);
     }
     text.to_string()
 }
@@ -1334,6 +1413,20 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
                 out.push_str(&collapse_ws(&latex));
                 out.push('$');
                 ctx.warn("math", "显示公式与正文混排，已内联为 $..$", "oMathPara");
+            }
+        } else if is_el(node, "bookmarkStart") {
+            // 被交叉引用命中的非标题书签目标：在书签起始处发一个字面 `<a id="…"></a>`（GFM 行内 HTML），
+            // 作为正文 `[文本](#id)` 的跳转落点。标题目标不在 xref_emit，故不发（标题自带锚点）。
+            let anchor = wattr(node, "name").and_then(|nm| {
+                if ctx.xref_emit.contains(nm) {
+                    ctx.xref_anchor.get(nm).cloned()
+                } else {
+                    None
+                }
+            });
+            if let Some(a) = anchor {
+                flush_pending(&mut pending, out);
+                out.push_str(&format!("<a id=\"{}\"></a>", a.trim_start_matches('#')));
             }
         } else if is_el(node, "del") {
             flush_pending(&mut pending, out);
@@ -2607,6 +2700,48 @@ mod tests {
             "", "", &h1_styles(), "", &empty_media(),
         );
         assert!(md.contains("[结论](#结论)"), "got: {md}");
+        assert_eq!(stats.xref_resolved, 1);
+    }
+
+    #[test]
+    fn ref_to_present_non_heading_becomes_link_with_anchor() {
+        // 批次 F 后续：被 REF 命中、且正文里确有 bookmarkStart 的非标题目标（参考文献条目）
+        // → 引用转 [52](#_RefBib)，目标段首发字面 <a id="_RefBib"></a> 作落点；计数 resolved、无降级。
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:bookmarkStart w:id="0" w:name="_RefBib"/><w:r><w:t>文献条目全文</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:r><w:t>见 </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF _RefBib \h </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>52</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t>。</w:t></w:r></w:p>"#),
+            "", "", "", "", &empty_media(),
+        );
+        assert!(md.contains("<a id=\"_RefBib\"></a>"), "anchor emitted at target, got: {md}");
+        assert!(md.contains("[52](#_RefBib)"), "citation becomes link, got: {md}");
+        assert!(!md.contains("REF"), "field code must not leak, got: {md}");
+        assert_eq!(stats.xref_resolved, 1);
+        assert_eq!(stats.xref_degraded, 0);
+    }
+
+    #[test]
+    fn hyperlink_anchor_to_present_non_heading_becomes_link() {
+        // 内部锚点超链接指向正文中存在的非标题书签（图题）→ [图 1](#_RefFig) + 目标处发 <a id>。
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:bookmarkStart w:id="0" w:name="_RefFig"/><w:r><w:t>图 1 系统架构</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:hyperlink w:anchor="_RefFig"><w:r><w:t>图 1</w:t></w:r></w:hyperlink></w:p>"#),
+            "", "", "", "", &empty_media(),
+        );
+        assert!(md.contains("<a id=\"_RefFig\"></a>"), "anchor emitted at target, got: {md}");
+        assert!(md.contains("[图 1](#_RefFig)"), "hyperlink becomes link, got: {md}");
+        assert_eq!(stats.xref_resolved, 1);
+    }
+
+    #[test]
+    fn heading_target_does_not_emit_a_id() {
+        // 被引用的书签落在标题上：解析为标题 slug 链接，但**不**发字面 <a id>（标题自带锚点）。
+        let (md, _, stats) = map_parts(
+            &doc(r#"<w:p><w:pPr><w:pStyle w:val="H1"/></w:pPr><w:bookmarkStart w:id="0" w:name="_Ref1"/><w:r><w:t>目标标题</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:hyperlink w:anchor="_Ref1"><w:r><w:t>目标标题</w:t></w:r></w:hyperlink></w:p>"#),
+            "", "", &h1_styles(), "", &empty_media(),
+        );
+        assert!(md.contains("[目标标题](#目标标题)"), "got: {md}");
+        assert!(!md.contains("<a id"), "heading target must not emit a id, got: {md}");
         assert_eq!(stats.xref_resolved, 1);
     }
 
