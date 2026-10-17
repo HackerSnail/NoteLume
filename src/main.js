@@ -1927,8 +1927,8 @@ function buildExportHtml(title, body) {
   pre { background: #f6f8fa; padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
   pre code { background: none; padding: 0; }
   table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-  th, td { border: 1px solid #dfe2e5; padding: 6px 10px; }
-  th { background: #f6f8fa; font-weight: 600; }
+  th, td { border: 1px solid #dfe2e5; padding: 6px 10px; max-width: 20em; }
+  th { background: #f6f8fa; font-weight: 600; text-align: left; }
   img { max-width: 100%; }
   a { color: #2f6feb; }
   hr { border: none; border-top: 1px solid #e4e6e9; margin: 1.6em 0; }

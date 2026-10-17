@@ -386,8 +386,8 @@ article code{font-family:"SFMono-Regular",Consolas,monospace;background:rgba(127
 article pre{background:rgba(127,127,127,.1);padding:12px 14px;border-radius:6px;overflow-x:auto}
 article pre code{background:none;padding:0}
 article table{border-collapse:collapse;margin:1em 0;width:100%}
-article th,article td{border:1px solid var(--line);padding:6px 10px}
-article th{background:rgba(127,127,127,.08);font-weight:600}
+article th,article td{border:1px solid var(--line);padding:6px 10px;max-width:20em}
+article th{background:rgba(127,127,127,.08);font-weight:600;text-align:left}
 article img{max-width:100%}
 article a{color:var(--link)}
 article hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}

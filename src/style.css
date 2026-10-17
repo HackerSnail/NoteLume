@@ -162,6 +162,7 @@ body {
 .nl-daily-title,
 .nl-daily-cfg,
 .nl-daily-close,
+.nl-find-btn,
 .nl-palette-kind {
   display: inline-flex;
   align-items: center;
@@ -1196,7 +1197,7 @@ body {
   background: var(--accent);
   color: #fff;
 }
-/* 替换按钮：按文字自适应宽度（区别于 ↑↓× 图标按钮） */
+/* 替换按钮：按文字自适应宽度（区别于上一个/下一个/关闭那三个图标按钮） */
 .nl-find-replace-btn {
   min-width: auto;
   width: auto;
@@ -2110,11 +2111,26 @@ body {
   box-sizing: border-box;
   position: relative;
 }
+/* 列宽封顶，三个渲染面同一口径：auto 布局把拉伸后的宽度按各列 max-content 比例分，
+   长列会把短列压成竖排一字一行。它只封顶单元格的首选宽度，不改实际列宽；
+   fixed（编辑器拖过列宽）分支不读它，拖拽结果不受影响 */
+.ProseMirror th,
+.ProseMirror td,
+.nl-docx-render th,
+.nl-docx-render td,
+.cv-node-body th,
+.cv-node-body td {
+  max-width: 20em;
+}
 .ProseMirror th {
   background: var(--bg-panel);
   font-weight: 600;
-  /* WKWebView 的 UA 样式把 th 居中；Typora（Chromium）左对齐。
+  /* 两引擎的 UA 样式都把 th 居中，Typora 的样式表显式左对齐，这里跟 Typora。
      单元格自身的对齐（style.text-align，来自 :---: 标记）是内联样式，优先级更高。 */
+  text-align: left;
+}
+.nl-docx-render th,
+.cv-node-body th {
   text-align: left;
 }
 .ProseMirror tbody tr:nth-child(2n) > td {
@@ -3586,3 +3602,69 @@ body {
 }
 
 
+
+/* ==================== 打印 / 导出 PDF：只出正文 ==================== */
+@media print {
+  /* 壳层与浮层一律不上纸：body 直属浮层、工具条、侧栏与检查器与把手、源码态与画布挂载点 */
+  body > :not(#app),
+  #app > :not(.body),
+  .body > :not(.editor-pane),
+  .editor-pane > :not(.editor) {
+    display: none !important;
+  }
+  /* 应用壳是定高滚动容器，纸上要按内容长高分页 */
+  html,
+  body,
+  #app,
+  .body,
+  .editor-pane {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  #app,
+  .body,
+  .editor-pane {
+    display: block;
+  }
+  .editor {
+    max-width: none;
+    padding: 0;
+  }
+  /* 视图层记号：折叠三角与计数、语言角标、列宽手柄与选中格、查找高亮底色 */
+  .nl-fold-toggle,
+  .nl-fold-count,
+  .nl-code-lang,
+  .ProseMirror .column-resize-handle,
+  .ProseMirror .selectedCell:after {
+    display: none !important;
+  }
+  .nl-find-match,
+  .nl-find-match-active {
+    background: none;
+  }
+  /* 折叠只影响屏显；专注模式的淡出也不带走 */
+  .nl-fold-hidden {
+    display: block !important;
+  }
+  .ProseMirror.nl-focus .nl-blk {
+    opacity: 1;
+  }
+  /* 横向滚动容器在纸上会裁掉超宽内容 */
+  .ProseMirror .tableWrapper,
+  .ProseMirror pre {
+    overflow: visible;
+  }
+  /* 深色与吸血鬼主题转浅色：与主题声明同权重，靠后置生效，否则纸上浅色字不可见 */
+  :root[data-theme] {
+    --bg: #ffffff;
+    --bg-panel: #f7f7f8;
+    --fg: #24292e;
+    --muted: #8a9099;
+    --border: #e4e6e9;
+    --accent: #2f6feb;
+    --code-bg: #f2f3f5;
+    --quote-bar: #d7dade;
+    --hover: #eceef1;
+  }
+}

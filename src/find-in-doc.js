@@ -9,6 +9,7 @@
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
+import { setIcon } from './icons.js'
 
 export const findKey = new PluginKey('nl-find')
 
@@ -162,9 +163,14 @@ export function createFindBar({ view, paneEl }) {
       b.addEventListener('click', fn)
       return b
     }
-    const prev = mk('↑', '上一个（Shift+Enter）', () => { step(-1); input.focus() })
-    const next = mk('↓', '下一个（Enter）', () => { step(1); input.focus() })
-    const closeBtn = mk('×', '关闭（Esc）', () => closeBar())
+    const mkIcon = (icon, title, fn) => {
+      const b = mk('', title, fn)
+      setIcon(b, icon, '')
+      return b
+    }
+    const prev = mkIcon('arrow-up', '上一个（Shift+Enter）', () => { step(-1); input.focus() })
+    const next = mkIcon('arrow-down', '下一个（Enter）', () => { step(1); input.focus() })
+    const closeBtn = mkIcon('close', '关闭（Esc）', () => closeBar())
 
     row1.append(input, countEl, caseBtn, prev, next, closeBtn)
 
