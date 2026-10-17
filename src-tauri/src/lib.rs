@@ -2973,6 +2973,117 @@ mod tests {
     }
 }
 
+// ==================== macOS 菜单栏状态图标（NSStatusItem + NSMenu，经 Tauri tray 落地）====================
+
+/// 组装托盘菜单：显示主窗口 / 新建笔记 / 打开最近（子菜单，按 recent 动态生成）/ 退出。
+/// 「打开最近」项 id 形如 `recent:<绝对路径>`，点击时 on_menu_event 取路径 emit 给前端。
+#[cfg(target_os = "macos")]
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+    recent: &[String],
+) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+    let show = MenuItemBuilder::with_id("show", "显示主窗口").build(app).map_err(|e| e.to_string())?;
+    let new_note = MenuItemBuilder::with_id("new", "新建笔记").build(app).map_err(|e| e.to_string())?;
+
+    let mut sub = SubmenuBuilder::new(app, "打开最近");
+    if recent.is_empty() {
+        let none = MenuItemBuilder::with_id("recent:none", "（暂无最近文件）")
+            .enabled(false)
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        sub = sub.item(&none);
+    } else {
+        for (i, p) in recent.iter().enumerate() {
+            let name = std::path::Path::new(p).file_name().and_then(|s| s.to_str()).unwrap_or(p);
+            // id 用下标：点击回传下标，前端据此在「最近打开」列表取条目打开
+            let item = MenuItemBuilder::with_id(format!("recent:{i}"), name)
+                .build(app)
+                .map_err(|e| e.to_string())?;
+            sub = sub.item(&item);
+        }
+    }
+    let recent_sub = sub.build().map_err(|e| e.to_string())?;
+    let sep = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
+    let quit = MenuItemBuilder::with_id("quit", "退出 NoteLume").build(app).map_err(|e| e.to_string())?;
+
+    MenuBuilder::new(app)
+        .items(&[&show, &new_note, &recent_sub, &sep, &quit])
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+/// 建状态栏图标并挂菜单：左键点图标唤主窗口，右键弹菜单。tray 存入 state 供刷新「打开最近」。
+#[cfg(target_os = "macos")]
+fn build_tray(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    let menu = build_tray_menu(app, &[])?;
+    let tray = TrayIconBuilder::new()
+        .icon(tauri::include_image!("icons/32x32.png"))
+        .tooltip("NoteLume")
+        .menu(&menu)
+        // 左键不弹菜单，统一唤窗口；菜单走右键（mac 上 Ctrl+点亦可）
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| {
+            use tauri::{Emitter, Manager};
+            let id = event.id().as_ref();
+            if id == "show" || id == "new" {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+                let _ = app.emit("notelume://menu-action", id);
+            } else if id == "quit" {
+                // 走窗口关闭，触发前端未保存询问（core:window:allow-destroy 链路）
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.close();
+                }
+            } else if let Some(idx) = id.strip_prefix("recent:") {
+                if idx != "none" {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                    let _ = app.emit("notelume://menu-open", idx);
+                }
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+        })
+        .build(app)
+        .map_err(|e| e.to_string())?;
+    app.manage(tray);
+    Ok(())
+}
+
+/// 前端在「最近文件」变化时调用，重建「打开最近」子菜单。非 mac 为空操作。
+#[tauri::command]
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+fn tray_set_recent(app: tauri::AppHandle, paths: Vec<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        if let Some(tray) = app.try_state::<tauri::tray::TrayIcon>() {
+            if let Ok(menu) = build_tray_menu(&app, &paths) {
+                let _ = tray.set_menu(Some(&menu));
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2987,6 +3098,13 @@ pub fn run() {
                 if let Some(win) = app.get_webview_window("main") {
                     // 个别平台/合成器可能拒绝去边框，失败不致命，忽略
                     let _ = win.set_decorations(false);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            {
+                // 菜单栏状态图标（NSStatusItem + NSMenu）；创建失败不阻断启动，仅打日志
+                if let Err(e) = build_tray(app.handle()) {
+                    eprintln!("NoteLume 菜单栏图标创建失败：{e}");
                 }
             }
             Ok(())
@@ -3062,7 +3180,9 @@ pub fn run() {
             // 批次 F ①：Markdown → Word(.docx) 结构导出
             docx_export::export_docx,
             // macOS 原生菜单（前端算 spec，Rust 落原生对象）
-            set_mac_menu
+            set_mac_menu,
+            // macOS 菜单栏状态图标：刷新「打开最近」子菜单
+            tray_set_recent
         ])
         .on_menu_event(|app, event| {
             use tauri::Emitter;

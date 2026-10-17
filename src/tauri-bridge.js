@@ -377,6 +377,11 @@ export function setMacMenu(spec) {
   return invoke('set_mac_menu', { spec })
 }
 
+/** macOS 菜单栏状态图标：把「最近打开」列表（rel 路径数组）同步到状态栏「打开最近」子菜单；非 mac 为空操作 */
+export function traySetRecent(paths) {
+  return invoke('tray_set_recent', { paths })
+}
+
 /** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。
  *  失败 reject，附 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
  *  hostkey_mismatch / host_unknown / git_error），同 handleRemoteErr 分派表。*/

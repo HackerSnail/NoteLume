@@ -36,6 +36,7 @@ import {
   buildSiteGraph,
   copyVaultAssets,
   setMacMenu,
+  traySetRecent,
   pickDocxFiles,
   docxPreview,
   docxCommit,
@@ -1261,6 +1262,7 @@ function recordRecent(root, rel) {
   const list = loadRecents().filter((e) => !(normVaultPath(e.root) === keyRoot && e.rel === rel))
   list.unshift({ root, rel, name: baseName(rel) })
   saveRecents(list.slice(0, RECENT_MAX))
+  syncTrayRecents()
 }
 function openRecentMenu(anchorEl) {
   const list = loadRecents()
@@ -2565,6 +2567,24 @@ function syncWindowTitle() {
     })
 }
 
+// macOS 菜单栏状态图标：接 Rust 转发的菜单事件（新建笔记 / 打开最近），并把最近列表同步给托盘
+function setupTrayMenu() {
+  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  listen('notelume://menu-action', (e) => {
+    if (e.payload === 'new') els.btnNewFile?.click()
+    // 'show' 由 Rust 侧 show()+set_focus() 处理，前端不用动；'quit' 由 Rust 走窗口关闭
+  })
+  listen('notelume://menu-open', (e) => {
+    const entry = loadRecents()[Number(e.payload)]
+    if (entry) reopenRecent(entry)
+  })
+  syncTrayRecents()
+}
+function syncTrayRecents() {
+  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  traySetRecent(loadRecents().map((e) => e.rel)).catch(() => {})
+}
+
 async function setupMacMenu() {
   if (!IS_MAC || !window.__TAURI_INTERNALS__) return
   try {
@@ -2761,6 +2781,7 @@ async function boot() {
   bindShortcuts()
   setupCloseGuard()
   setupMacMenu()
+  setupTrayMenu()
 
   // 文件树右键菜单：点击菜单外任意处即关闭
   document.addEventListener('pointerdown', (e) => {
