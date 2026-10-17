@@ -1370,6 +1370,25 @@ function highlightActiveFile() {
   }
 }
 
+// 关闭当前文件（Ctrl+W）：回到无文档态。删除当前文档时的清场逻辑与此同一套，
+// 区别只在那条是先删盘上的文件、这条不动盘。
+async function closeCurrentFile() {
+  if (!state.currentFile) {
+    setStatus('没有打开的文件')
+    return
+  }
+  if (!(await ensureSavedBeforeLeave())) return
+  state.currentFile = null
+  state.dirty = false
+  setMode('md')
+  editor.setMarkdown('')
+  els.filename.textContent = '（无打开文档）'
+  els.filename.classList.remove('dirty')
+  refreshLinkPanels()
+  if (snapshotPanel) snapshotPanel.refresh()
+  setStatus('已关闭当前文件')
+}
+
 function cssEscape(s) {
   return (window.CSS && CSS.escape && CSS.escape(s)) || s.replace(/["\\]/g, '\\$&')
 }
@@ -2020,16 +2039,55 @@ function registerAppCommands() {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open('replace')
   })
   app('app.search', '聚焦侧栏搜索', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
-  // 打印收窄为纯 Ctrl+P：旧实现 key==='p' 未排除 shift，会吞掉 Ctrl+Shift+P（留给命令面板）
-  app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
+  // 新建文件（Ctrl+N）：与工具条「新建」按钮同一行为（无库时先提示）
+  app('app.newFile', '新建文件', 'Mod-n', () => els.btnNewFile.click())
+  // 重命名当前文件（F2）：复用文件树右键那条（promptDialog + renameItem + 索引重建）
+  app('app.renameFile', '重命名当前文件', 'F2', () => {
+    if (!state.currentFile) {
+      setStatus('没有打开的文件')
+      return
+    }
+    renameEntry(state.currentFile, baseName(state.currentFile), false)
+  })
+  // 关闭当前文件（Ctrl+W）：无标签页设计，「关闭」= 回到无文档态（不退出应用）
+  app('app.closeFile', '关闭当前文件', 'Mod-w', () => closeCurrentFile())
+  // 插入图片（Ctrl+Shift+I，Typora 习惯）：file input 选图后走落库路径
+  app('app.insertImage', '插入图片…', 'Mod-Shift-i', () => {
+    if (editor && state.mode === 'md') editor.pickAndInsertImages()
+    else setStatus('插入图片仅用于 Markdown 文档')
+  })
+  // 粘贴为纯文本（Ctrl+Shift+P）：读剪贴板文本，去掉格式后插入
+  app('app.pastePlain', '粘贴为纯文本', 'Mod-Shift-p', async () => {
+    // 焦点在输入框（查找栏 / 侧栏搜索 / 源码 CM）里时不抢，那边要的是带格式粘贴
+    const el = document.activeElement
+    if (el && el.closest && el.closest('input, textarea, .cm-content')) return
+    let text = null
+    try {
+      text = await navigator.clipboard.readText()
+    } catch (e) {
+      setStatus('读取剪贴板失败：' + errText(e))
+      return
+    }
+    if (!text) {
+      setStatus('剪贴板里没有文本')
+      return
+    }
+    if (editor && state.mode === 'md') editor.insertPlainText(text)
+    else setStatus('没有可粘贴的文档')
+  })
+  // Ctrl+E = 编辑 / 预览互切（Typora 语义，即源码 ⇄ 所见即所得）；Ctrl+/ 不再占默认键
+  app('app.sourceMode', 'Markdown 源码模式', 'Mod-e', () => toggleSourceMode())
+  // 命令面板占 Ctrl+P（Obsidian 习惯）；打印让位，只留菜单入口与自定义重绑
+  app('app.palette', '命令面板', 'Mod-p', () => { if (palette) palette.open() })
+  app('app.print', '打印 / 另存 PDF', null, () => window.print())
   app('app.graph', '打开知识图谱', 'Mod-g', () => openGraphModal())
   app('app.dailyCapture', '今日速记', 'Mod-Shift-d', () => toggleDailyCapture())
-  app('app.focusMode', '专注模式', 'Mod-Shift-e', () => toggleFocusMode())
+  // 专注模式 Ctrl+Shift+`（Typora 习惯）；原 Ctrl+Shift+E 释放
+  app('app.focusMode', '专注模式', 'Mod-Shift-`', () => toggleFocusMode())
   app('app.typewriterMode', '打字机模式', 'Mod-Shift-t', () => toggleTypewriterMode())
   app('app.toggleSidebar', '隐藏 / 显示侧栏', 'Mod-Shift-s', () => toggleSidebar())
-  app('app.toggleInspector', '隐藏 / 显示检查器', 'Mod-Shift-i', () => toggleInspector())
-  app('app.sourceMode', 'Markdown 源码模式', 'Mod-/', () => toggleSourceMode())
-  app('app.palette', '命令面板', 'Mod-Shift-p', () => { if (palette) palette.open() })
+  // 检查器改到 Ctrl+Shift+B：Ctrl+Shift+I 让给「插入图片」
+  app('app.toggleInspector', '隐藏 / 显示检查器', 'Mod-Shift-b', () => toggleInspector())
   // 以下原先只挂在「更多」菜单里：入注册表后 mac 原生菜单可直接取用（一处定义，两处消费）
   app('app.shortcuts', '快捷键设置…', null, () => { if (keySettings) keySettings.open() })
   app('app.export', '导出为 HTML', null, () => exportHTML())
@@ -2135,10 +2193,10 @@ let macMenuSig = ''
 let macTitle = ''
 const lastRunAt = new Map()
 
-const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.print'])
-const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
+const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.print', 'app.closeFile', 'app.renameFile'])
+const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph', 'app.newFile'])
 // 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
-const MENU_NEEDS_MD = new Set(['app.exportWord'])
+const MENU_NEEDS_MD = new Set(['app.exportWord', 'app.insertImage'])
 const MENU_CHECKED = {
   'app.focusMode': () => localStorage.getItem('nl-focus') === '1',
   'app.typewriterMode': () => localStorage.getItem('nl-typewriter') === '1',
@@ -2300,7 +2358,8 @@ function bindShortcuts() {
   rebuildKeymap()
   if (editor) editor.setKeymapOverrides(loadKeymapOverrides()) // 编辑器层：应用持久化的重绑
   document.addEventListener('keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey || e.altKey)) return
+    // F 键允许裸按（F2 重命名），其余仍要求至少一个修饰键
+    if (!(e.ctrlKey || e.metaKey || e.altKey || /^F([1-9]|1[0-2])$/.test(e.key))) return
     const logical = eventToBinding(e, IS_MAC)
     if (!logical) return
     const id = effectiveKeymap.get(resolveBinding(logical, IS_MAC))
@@ -2326,6 +2385,17 @@ async function boot() {
     onSourceTextChange: () => { updateDocStats(); if (frontmatterPanel) frontmatterPanel.refresh() },
     onDocChange: (doc, prev) => { updateDocStats(); if (pluginManager) pluginManager.fireDocChange(doc, prev) },
     onSelectionChange: () => scheduleMacChrome(),
+    // Ctrl+K 的 URL 询问：所见即所得里没有直接改 href 的入口，只能弹窗问。
+    // 返回 null = 取消，'' = 解除链接，其余为链接地址。
+    onAskLinkUrl: async (current) => {
+      const input = await promptDialog({
+        title: current ? '编辑链接' : '插入链接',
+        placeholder: '链接地址（URL）',
+        defaultValue: current || '',
+      })
+      if (input === null) return null // 取消：不动文档
+      return input.trim()
+    },
   })
 
   // 文档内查找栏：挂到编辑区容器（.editor-pane，relative 且为滚动容器），命令式驱动 find 插件

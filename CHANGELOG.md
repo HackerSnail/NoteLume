@@ -9,9 +9,18 @@
 
 ### Removed
 
+* **两个默认键位取消**：`Ctrl+P` 不再绑打印 / 另存 PDF，让给命令面板（Obsidian 习惯）；`Ctrl+/` 不再绑源码模式，让位第一档的 `Ctrl+E`（切换编辑 / 预览）。两条命令本体不动，打印仍可从「更多」菜单到达，`Ctrl+/` 可在快捷键设置里绑回。
+
 * **工具条状态文字（含右下角浮动版）**：状态提示先是从工具条内联位挪到右下角浮动，看下来不好看也没意义，直接去掉。`#status` 节点与 `.status` 全部样式（`style.css` 的浮动规则、mac 贴底条内的右对齐覆盖、图标留白规则里的 `.status .nl-ico`）删除；`main.js` 的 `setStatus` 不再写 DOM，只保留两件事：`scheduleMacChrome()`（mac 原生菜单可用性/勾选依赖它，约 50 处调用点的副作用不能丢）与 `console.debug('[status] ' + msg)`；`els.status` 与 boot 里的「第一步：点『打开知识库』…」提示行一并移除。`index.html` 的全局错误兜底（`window.__nlError`）原本把未捕获异常写进状态栏，改为 `console.error('[NoteLume] ' + msg)`，错误不再显示在界面上。此前只有状态栏一个出口的提示（如「请先打开知识库文件夹」「打开失败：…」）多数已有 `messageDialog` 弹窗并行，少数只剩状态栏的路径现在只看控制台。纯前端，刷新即生效；`npm run build` 30.05s 无错，1440×900 无头 Chromium 载 `dist` 实测界面无状态条、无 page error。
 
 ### Added
+
+* **快捷键按 Typora / Obsidian 主流习惯整体补齐（含五处撞键裁决）**：此前默认键只覆盖保存 / 打开 / 查找 / 粗斜 / 行内码 / 公式等一小半，新建文件、标题 1~6、代码块、引用、列表、表格、插入链接、删行、插入图片都没有键；同时 Ctrl+P 给打印、Ctrl+Shift+I 给检查器栏、Ctrl+/ 给源码模式，与习惯相反。本次把默认键位整体对到主流习惯，注册表仍是单一事实源——只改 `main.js` 的 `registerAppCommands` 与 `editor-view.js` 的 `EDITOR_COMMANDS`，mac 原生菜单、命令面板、快捷键设置三处自动跟随，`docs/CLUADE.MD` 新增「快捷键规范」一节写全键位与裁决理由。
+  * ① 应用命令：`app.newFile`（Ctrl+N，与工具条「新建」按钮同一行为，无库时先弹提示）、`app.renameFile`（F2，复用文件树右键的 `renameEntry`：promptDialog + renameItem + 索引重建）、`app.closeFile`（Ctrl+W，回到无文档态，清场逻辑与删除当前文档同一套）、`app.insertImage`（Ctrl+Shift+I，隐藏 file input 选图后走既有 `insertImageFiles` 落库路径）、`app.pastePlain`（Ctrl+Shift+P，`navigator.clipboard.readText` 读文本后纯文本插入、换行转硬换行；焦点在查找栏 / 侧栏搜索 / 源码 CM 时不抢，那边要的是带格式粘贴）。编辑器命令：`editor.link`（Ctrl+K，URL 经 `promptDialog` 问——所见即所得里没有改 href 的入口；地址留空 = 解除链接，空选区插「链接文字」骨架并选中）、`editor.deleteLine`（Ctrl+D，列表项整项删 / 否则删最近文本块；文档只剩一个块时清空内容而非删节点，PM 不允许空 doc）。段落命令补默认键：标题 Ctrl+1~6、代码块 Ctrl+Shift+K、引用 Ctrl+Shift+Q、任务列表 Ctrl+Shift+L、无序 / 有序列表 Ctrl+Shift+[ / ]、表格 Ctrl+T、标题升 / 降级 Ctrl+] / [。
+  * ② 撞键裁决（低档位让位，高档位赢）：Ctrl+P 给命令面板，打印取消默认键；Ctrl+Shift+I 给插入图片，检查器栏改 Ctrl+Shift+B；Ctrl+E 给切换编辑 / 预览，源码 ⇄ 所见即所得从 Ctrl+/ 挪走；专注模式从 Ctrl+Shift+E 挪到 Ctrl+Shift+`；Ctrl+` 保留给行内代码（第一档），侧栏显隐维持 Ctrl+Shift+S。
+  * ③ `keymap.js` 放开 F 键裸绑：此前 `parseBinding` / `eventToBinding` 要求至少一个主修饰键，F2 这类无修饰键既录不进也派发不了。F1–F12 豁免（新增 `isFKey`），字母 / 符号仍必须带修饰；`main.js` 全局分发器的门槛同步放行裸 F 键；`eventMatches` 对 F 键按大写比。
+  * ④ 测试：`keymap.test.mjs` 补 F 键裸绑 3 组（parse / eventToBinding / formatBinding 与 toAccelerator 一致），22 passed；`app-menu.test.mjs` fixture 补 7 条新命令并按新键位更新（Word 导入导出位置等既有断言不动），新增断言「文件组新建 / 重命名 / 关闭依次落在打开文件夹之后」，26 passed。另用 prosemirror-keymap 的 `handleKeyDown` 逐条打过 25 个编辑器默认键位——重点验 `Mod-Shift-[`、`Mod-]`、`Mod-1` 这些符号 / 数字键的键名解析，全部命中。纯前端，`npm run build` 36.21s 无错。
+  * 未实测：Windows 真机 WebView2 是否把 Ctrl+1~6 当浏览器 accelerator 吞掉（单标签 webview 预期放行，headless 环境验不了）；mac 原生菜单里 F2 与 Cmd+[ 一类符号 accelerator 的实际渲染（spec 由 Rust `set_mac_menu` 落地，需 `tauri dev` 目视）。
 
 * **工具条加「新建」按钮（位于「打开知识库」与「保存」之间）**：新建文件此前只有文件树右键菜单两个入口（`main.js:1020`、`main.js:1033` 的 `newFileIn`），未开库或找不到文件树时不容易发现。工具条补一个常显按钮，点击行为与右键「新建文件…」一致：无知识库时弹提示框告知需先打开文件夹，有库时在库根弹命名对话框（`promptDialog`，可不带 `.md` 后缀），写入种子内容 `# 文件名` 后刷新文件树并直接打开。`index.html` 新增 `i-file-plus` 图标（文件轮廓加号，走既有 SVG sprite），按钮 id `btn-new-file`；`main.js` 的 `els` 增 `btnNewFile`，boot 里绑定 click。纯前端改动，刷新即生效；`npm run build` 26.29s 无错。
 

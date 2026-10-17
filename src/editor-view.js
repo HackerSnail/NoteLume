@@ -4,6 +4,7 @@
 
 import { EditorView } from 'prosemirror-view'
 import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
+import { Fragment, Slice } from 'prosemirror-model'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
@@ -32,6 +33,7 @@ import { findPlugin } from './find-in-doc.js'
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
 // 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Shift-Enter（硬换行）、
 // Backspace（节点后向删除）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进注册表。
+// 默认键位按 Typora/Obsidian 主流习惯配（见 docs/CLUADE.MD「快捷键规范」）。
 export const EDITOR_COMMANDS = [
   { id: 'editor.undo', title: '撤销', defaultKey: 'Mod-z' },
   { id: 'editor.redo', title: '重做', defaultKey: 'Mod-y' },
@@ -42,6 +44,10 @@ export const EDITOR_COMMANDS = [
   { id: 'editor.mathInline', title: '行内公式', defaultKey: 'Mod-m' },
   { id: 'editor.mathBlock', title: '块级公式', defaultKey: 'Mod-Shift-m' },
   { id: 'editor.foldSection', title: '折叠 / 展开本节', defaultKey: 'Mod-Shift-h' },
+  // 插入 / 编辑链接：所见即所得里没有直接改 href 的入口，URL 经 main.js 注入的弹窗问
+  { id: 'editor.link', title: '插入 / 编辑链接', defaultKey: 'Mod-k' },
+  // 删除当前行 / 段落（Typora 的 Ctrl+D）
+  { id: 'editor.deleteLine', title: '删除当前行 / 段落', defaultKey: 'Mod-d' },
   // 脚注（无默认键，命令面板可搜；Ctrl-Shift-F 已被「专注」占用）
   { id: 'editor.footnote', title: '插入脚注', defaultKey: null },
   { id: 'editor.footnoteDelete', title: '删除脚注', defaultKey: null },
@@ -57,22 +63,31 @@ const PM_COMMANDS = {
   'editor.mathInline': insertMath('math_inline'),
   'editor.mathBlock': insertMath('math_block'),
   'editor.foldSection': foldSectionCommand,
+  'editor.link': insertLink,
+  'editor.deleteLine': deleteLine,
   'editor.footnote': insertFootnote,
   'editor.footnoteDelete': deleteFootnote,
 }
 
 // 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
-EDITOR_COMMANDS.push({ id: 'editor.headingUp', title: '段落：提升标题级别' })
-EDITOR_COMMANDS.push({ id: 'editor.headingDown', title: '段落：降低标题级别' })
+EDITOR_COMMANDS.push({ id: 'editor.headingUp', title: '段落：提升标题级别', defaultKey: 'Mod-]' })
+EDITOR_COMMANDS.push({ id: 'editor.headingDown', title: '段落：降低标题级别', defaultKey: 'Mod-[' })
 PM_COMMANDS['editor.headingUp'] = headingStep(-1)
 PM_COMMANDS['editor.headingDown'] = headingStep(1)
 
 // 段落命令入同一张表：项表复用斜杠菜单（一份定义），公式块不在这里（已有 editor.mathBlock）。
+// 默认键位按 Typora 习惯：标题 Ctrl+1~6、代码块 Ctrl+Shift+K、引用 Ctrl+Shift+Q、
+// 任务列表 Ctrl+Shift+L、无序 / 有序列表 Ctrl+Shift+[ / ]、表格 Ctrl+T。
 // 无 defaultKey → 不占快捷键，只供面板与 mac 原生「段落」菜单调用。
+const BLOCK_DEFAULT_KEYS = {
+  h1: 'Mod-1', h2: 'Mod-2', h3: 'Mod-3', h4: 'Mod-4', h5: 'Mod-5', h6: 'Mod-6',
+  code: 'Mod-Shift-k', quote: 'Mod-Shift-q', task: 'Mod-Shift-l',
+  bullet: 'Mod-Shift-[', ordered: 'Mod-Shift-]', table: 'Mod-t',
+}
 const BLOCK_CMD_IDS = ['para', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'quote', 'code', 'bullet', 'ordered', 'task', 'hr', 'table', 'callout', 'mermaid']
 for (const id of BLOCK_CMD_IDS) {
   const item = SLASH_ITEMS.find((x) => x.id === id)
-  EDITOR_COMMANDS.push({ id: 'editor.block.' + id, title: '段落：' + item.label })
+  EDITOR_COMMANDS.push({ id: 'editor.block.' + id, title: '段落：' + item.label, defaultKey: BLOCK_DEFAULT_KEYS[id] || null })
   PM_COMMANDS['editor.block.' + id] = BLOCK_COMMANDS[id]
 }
 
@@ -112,6 +127,7 @@ function buildEditorKeymap(overrides) {
  */
 export function createEditor(opts) {
   let dirty = false
+  askLinkUrl = typeof opts.onAskLinkUrl === 'function' ? opts.onAskLinkUrl : null
   let fmRaw = null // 当前文档 YAML frontmatter 原文（不含围栏）；null=无
   // 源码模式（CodeMirror）：与 WYSIWYG 整篇互切
   let sourceMode = false
@@ -336,7 +352,7 @@ export function createEditor(opts) {
     srcChangeTimer = setTimeout(() => { opts.onSourceTextChange && opts.onSourceTextChange(text) }, 200)
   }
   // 当前所见即所得选区，以 DOM 选区为准。PM 的 state 选区靠 selectionchange 异步回同步，
-  // 方向键之后立刻按 Ctrl+/ 时可能还没跟上，用户看见的光标才是要映射的位置；
+  // 方向键之后立刻按 Ctrl+E 时可能还没跟上，用户看见的光标才是要映射的位置；
   // DOM 选区不在编辑器内（焦点在别处）时才回退 state。
   function currentSel() {
     const sel = window.getSelection()
@@ -571,6 +587,44 @@ export function createEditor(opts) {
       if (ok) view.focus()
       return !!ok
     },
+    // 插入图片（Ctrl+Shift+I）：隐藏 file input 选图，之后与拖拽 / 粘贴同一条落库路径
+    pickAndInsertImages() {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.multiple = true
+      input.style.display = 'none'
+      input.addEventListener('change', () => {
+        const files = Array.from(input.files || [])
+        if (files.length) insertImageFiles(view, view.state.selection.from, files, opts)
+        input.remove()
+      })
+      document.body.appendChild(input)
+      input.click()
+    },
+    // 粘贴为纯文本（Ctrl+Shift+P）：不带任何格式插入，换行转硬换行（保留视觉分行）
+    insertPlainText(text) {
+      const t = String(text == null ? '' : text)
+      if (!t) return
+      if (sourceMode && src) {
+        const { from, to } = src.getSelection()
+        const doc = src.getDoc()
+        src.setDoc(doc.slice(0, from) + t + doc.slice(to))
+        src.setSelection(from + t.length)
+        return
+      }
+      view.focus()
+      const tr = view.state.tr
+      const sel = view.state.selection
+      if (!sel.empty) tr.delete(sel.from, sel.to)
+      const frag = []
+      t.split('\n').forEach((line, i) => {
+        if (i > 0) frag.push(schema.nodes.hard_break.create())
+        if (line) frag.push(schema.text(line))
+      })
+      tr.replaceSelection(new Slice(Fragment.from(frag), 0, 0))
+      view.dispatch(tr.scrollIntoView())
+    },
     focusEditor() {
       view.focus()
     },
@@ -790,6 +844,89 @@ async function insertImageFiles(view, pos, files, opts) {
       console.error('保存图片失败', err)
     }
   }
+}
+
+// —— 插入 / 编辑链接（Ctrl+K）——
+// 所见即所得里没有直接改 href 的入口，URL 由 main.js 注入的弹窗问（onAskLinkUrl）。
+// 纯编辑器（无注入）时退化为「不问 URL 直接建 / 解除」，供测试与复用。
+let askLinkUrl = null
+
+function markInRange(state, from, to, type) {
+  let found = null
+  state.doc.nodesBetween(from, to, (node) => {
+    if (found || !node.isText) return
+    const m = node.marks.find((x) => x.type === type)
+    if (m) found = m
+  })
+  return found
+}
+
+function insertLink(state, dispatch, view) {
+  const { from, to, empty } = state.selection
+  const type = schema.marks.link
+  const existing = empty
+    ? state.selection.$from.marks().find((m) => m.type === type) || null
+    : markInRange(state, from, to, type)
+  if (!askLinkUrl) {
+    // 已有链接且无询问入口：解除链接；否则套一个空 href
+    applyLinkUrl(view, from, to, empty, existing ? '' : 'https://')
+    return true
+  }
+  Promise.resolve(askLinkUrl(existing ? existing.attrs.href || '' : '')).then((url) => {
+    applyLinkUrl(view, from, to, empty, url)
+  })
+  return true // 已接管：不让按键继续走 webview 默认行为
+}
+
+// url = null 取消（不动文档）；'' 解除链接；其余新建或改址。空选区插「链接文字」骨架并选中。
+function applyLinkUrl(view, from, to, empty, url) {
+  if (url === null) return
+  const cur = view.state
+  const size = cur.doc.content.size
+  const f = Math.max(0, Math.min(from, size))
+  const t = Math.max(f, Math.min(to, size))
+  const type = schema.marks.link
+  const tr = cur.tr
+  if (url === '') {
+    tr.removeMark(f, t, type)
+    view.dispatch(tr.scrollIntoView())
+    view.focus()
+    return
+  }
+  if (empty) {
+    const text = '链接文字'
+    tr.insertText(text, f)
+    tr.addMark(f, f + text.length, type.create({ href: url, title: null }))
+    tr.setSelection(TextSelection.create(tr.doc, f, f + text.length))
+  } else {
+    tr.addMark(f, t, type.create({ href: url, title: null }))
+  }
+  view.dispatch(tr.scrollIntoView())
+  view.focus()
+}
+
+// 删除当前行 / 段落（Ctrl+D）：整项删列表项，否则删最近的文本块（段落 / 标题 / 引用内段落）。
+// 文档只剩一个块时不删节点（PM 不允许空 doc），改为清空其内容，留下一个空段落。
+function deleteLine(state, dispatch) {
+  const $ = state.selection.$head
+  if (!$) return false
+  for (let d = $.depth; d >= 1; d--) {
+    const n = $.node(d)
+    if (n.type.name !== 'list_item' && !n.isTextblock) continue
+    if (!dispatch) return true
+    const only = d === 1 && $.node(0).childCount === 1
+    const tr = state.tr
+    if (only) {
+      tr.delete($.start(d), $.end(d))
+    } else {
+      tr.delete(Math.max(0, $.before(d)), Math.min(state.doc.content.size, $.after(d)))
+      const pos = Math.min(Math.max(0, $.before(d)), tr.doc.content.size)
+      tr.setSelection(TextSelection.near(tr.doc.resolve(pos)))
+    }
+    dispatch(tr.scrollIntoView())
+    return true
+  }
+  return false
 }
 
 function emitMeta(view, opts) {

@@ -1,4 +1,4 @@
-// command-palette.js —— 批次 D：命令面板（Ctrl+Shift+P）
+// command-palette.js —— 批次 D：命令面板（Ctrl+P）
 //
 // 复用 .nl-prompt/.nl-suggest 观感（自建模态，不引 UI 框架）。两种模式（Obsidian 式）：
 //   裸词 = 搜文档（对 {name, rel} 客户端 fuzzy，回车/点击 openFile(rel)）；

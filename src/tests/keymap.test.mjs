@@ -45,6 +45,12 @@ check('parse 无主修饰非法 / Alt 合法', () => {
   const a = parseBinding('Alt-b', false)
   assert.ok(a && a.alt === true && a.ctrl === false, 'Alt 作主修饰应合法')
 })
+check('parse F 键允许裸绑（F2 重命名）', () => {
+  assert.deepStrictEqual(parseBinding('F2', false), { ctrl: false, meta: false, alt: false, shift: false, base: 'F2' })
+  assert.deepStrictEqual(parseBinding('Shift-F2', false), { ctrl: false, meta: false, alt: false, shift: true, base: 'F2' })
+  assert.strictEqual(resolveBinding('F2', false), 'F2')
+  assert.strictEqual(resolveBinding('F2', true), 'F2')
+})
 
 // —— resolveBinding：跨 Mod/Ctrl 归一，用于冲突比较 ——
 check('resolve 使 Mod-b 与 Ctrl-b 在非 mac 归一', () => {
@@ -60,6 +66,10 @@ check('eventToBinding 组合还原为逻辑串', () => {
 check('eventToBinding 拒绝无主修饰与结构性键', () => {
   assert.strictEqual(eventToBinding({ ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, key: 'b' }, false), null)
   assert.strictEqual(eventToBinding({ ctrlKey: true, shiftKey: false, altKey: false, metaKey: false, key: 'Escape' }, false), null)
+})
+check('eventToBinding F 键裸按也还原', () => {
+  assert.strictEqual(eventToBinding({ ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, key: 'F2' }, false), 'F2')
+  assert.strictEqual(eventToBinding({ ctrlKey: false, shiftKey: true, altKey: false, metaKey: false, key: 'F2' }, false), 'Shift-F2')
 })
 
 // —— eventMatches ——
@@ -121,6 +131,11 @@ check('toAccelerator 非法/无主修饰/解绑 → null', () => {
 check('toAccelerator 与 formatBinding 各走各的（符号只给人看）', () => {
   assert.strictEqual(formatBinding('Mod-Shift-s', true), '⌘⇧S')
   assert.strictEqual(toAccelerator('Mod-Shift-s'), 'Cmd+Shift+S')
+})
+check('F2 两处展示与系统串一致', () => {
+  assert.strictEqual(formatBinding('F2', false), 'F2')
+  assert.strictEqual(formatBinding('F2', true), 'F2')
+  assert.strictEqual(toAccelerator('F2'), 'F2')
 })
 
 // —— fuzzyMatch ——

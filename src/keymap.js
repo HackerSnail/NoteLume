@@ -2,6 +2,7 @@
 //
 // 绑定串用 ProseMirror 同款逻辑文法：修饰键 Mod/Ctrl/Alt/Shift + 一个基础键，'-' 连接。
 //   例：'Mod-b'、'Mod-Shift-x'、'Mod-/'、'Mod-`'。存储只用 'Mod'（跨平台：mac→Cmd，其余→Ctrl）。
+//   F1–F12 允许裸绑（不带修饰），供 F2 重命名这类习惯键使用；其余基础键必须带主修饰。
 // 本层负责：规范化/解析绑定、把 KeyboardEvent 反解为绑定、匹配、有效绑定合成、冲突检出、可读化。
 // 匹配/冲突一律在「按平台解析后」的规范形上进行——这样 'Mod-b' 与 'Ctrl-b' 在非 mac 平台视为同一，能查出冲突。
 
@@ -21,8 +22,12 @@ export function detectIsMac() {
 // 基础键是否合法：可打印单字符（非空格）或 F1–F12
 function validBase(base) {
   if (base == null) return false
-  if (/^F([1-9]|1[0-2])$/.test(base)) return true
+  if (isFKey(base)) return true
   return base.length === 1 && base !== ' '
+}
+
+function isFKey(base) {
+  return /^F([1-9]|1[0-2])$/.test(String(base || ''))
 }
 
 // 解析任意写法 → { mods:Set, base:string }；非法返回 null。修饰键大小写不敏感，base 统一小写（F 键除外）
@@ -38,7 +43,7 @@ function split(raw) {
     mods.push(canon)
   }
   if (!validBase(base)) return null
-  return { mods: new Set(mods), base: /^F([1-9]|1[0-2])$/.test(base) ? base : base.toLowerCase() }
+  return { mods: new Set(mods), base: isFKey(base) ? base : base.toLowerCase() }
 }
 
 // 规范化逻辑串（不改 Mod/Ctrl 语义，仅统一修饰顺序与基础键大小写）
@@ -49,18 +54,19 @@ export function normalizeBinding(raw) {
   return ordered.concat(p.base).join('-')
 }
 
-// 解析为按键匹配描述（Mod 依平台展开）；至少含一个主修饰键（Mod/Ctrl/Cmd/Alt）方合法，Shift 单独不算
+// 解析为按键匹配描述（Mod 依平台展开）。主修饰键（Mod/Ctrl/Cmd/Alt）至少含一个方合法，
+// Shift 单独不算；例外是 F1–F12 功能键，允许裸绑（F2 重命名这类编辑器习惯键不带修饰）。
 export function parseBinding(raw, isMac = false) {
   const p = split(raw)
   if (!p) return null
   const hasPrimary = p.mods.has('Mod') || p.mods.has('Ctrl') || p.mods.has('Cmd') || p.mods.has('Alt')
-  if (!hasPrimary) return null // 必须含 Ctrl/Cmd/Mod/Alt 之一作主修饰
+  if (!hasPrimary && !isFKey(p.base)) return null // 必须含 Ctrl/Cmd/Mod/Alt 之一作主修饰（F 键除外）
   return {
     ctrl: p.mods.has('Ctrl') || (p.mods.has('Mod') && !isMac),
     meta: p.mods.has('Cmd') || (p.mods.has('Mod') && isMac),
     alt: p.mods.has('Alt'),
     shift: p.mods.has('Shift'),
-    base: p.base.toLowerCase(),
+    base: isFKey(p.base) ? p.base : p.base.toLowerCase(),
   }
 }
 
@@ -73,10 +79,10 @@ export function resolveBinding(raw, isMac = false) {
   if (d.meta) mods.push('Cmd')
   if (d.alt) mods.push('Alt')
   if (d.shift) mods.push('Shift')
-  return mods.concat(d.base.toLowerCase()).join('-')
+  return mods.concat(isFKey(d.base) ? d.base : d.base.toLowerCase()).join('-')
 }
 
-// 由 KeyboardEvent 反解出逻辑绑定（录制用）；结构性键或无主修饰 → null
+// 由 KeyboardEvent 反解出逻辑绑定（录制用）；结构性键或无主修饰 → null（F 键豁免无主修饰）
 export function eventToBinding(e, isMac = false) {
   const key = e.key
   if (key == null) return null
@@ -86,11 +92,11 @@ export function eventToBinding(e, isMac = false) {
   // 主修饰：mac 用 Cmd(meta)，其余用 Ctrl；存成 'Mod' 保跨平台可移植
   const meta = !!e.metaKey
   const ctrl = !!e.ctrlKey
-  if (!(meta || ctrl || e.altKey)) return null // 至少要一个主修饰
+  if (!(meta || ctrl || e.altKey) && !isFKey(key)) return null // 至少要一个主修饰（F 键可裸绑）
   if (meta || ctrl) mods.push('Mod')
   if (e.altKey) mods.push('Alt')
   if (e.shiftKey) mods.push('Shift')
-  const base = /^F([1-9]|1[0-2])$/.test(key) ? key : key.toLowerCase()
+  const base = isFKey(key) ? key : key.toLowerCase()
   const set = new Set(mods)
   return MOD_ORDER.filter((m) => set.has(m)).concat(base).join('-')
 }
@@ -101,7 +107,9 @@ export function eventMatches(e, binding, isMac = false) {
   if (!d) return false
   if (d.ctrl !== !!e.ctrlKey || d.meta !== !!e.metaKey) return false
   if (d.alt !== !!e.altKey || d.shift !== !!e.shiftKey) return false
-  return d.base === String(e.key || '').toLowerCase()
+  const key = String(e.key || '')
+  // F 键按大写比（KeyboardEvent.key 给出 'F2'），其余按小写比
+  return isFKey(d.base) ? key.toUpperCase() === d.base : d.base === key.toLowerCase()
 }
 
 // 可读化展示（面板/设置页）：mac 用符号，其余用 Ctrl/Alt/Shift 文本

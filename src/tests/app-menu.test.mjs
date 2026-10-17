@@ -23,6 +23,9 @@ const base = () => [
   C('app.save', '保存当前文件', { accelerator: 'Cmd+S' }),
   C('app.openFile', '打开单个文件', { accelerator: 'Cmd+O' }),
   C('app.openFolder', '打开知识库文件夹', { accelerator: 'Cmd+Shift+O' }),
+  C('app.newFile', '新建文件', { accelerator: 'Cmd+N' }),
+  C('app.renameFile', '重命名当前文件', { accelerator: 'F2' }),
+  C('app.closeFile', '关闭当前文件', { accelerator: 'Cmd+W' }),
   C('app.newCanvas', '新画布 / 白板'),
   C('app.newTemplate', '新建空白模板…'),
   C('app.dailySettings', '今日速记设置…'),
@@ -31,32 +34,36 @@ const base = () => [
   C('app.exportSite', '导出整站…'),
   C('app.importWord', '导入 Word(.docx)…'),
   C('app.exportWord', '导出 Word(.docx)…'),
-  C('app.print', '打印 / 另存 PDF', { accelerator: 'Cmd+P' }),
+  C('app.print', '打印 / 另存 PDF'),
   C('app.dailyCapture', '今日速记', { accelerator: 'Cmd+Shift+D' }),
   C('app.autosave', '自动保存', { checked: false }),
   C('app.shortcuts', '快捷键设置…'),
-  C('app.search', '聚焦侧栏搜索', { accelerator: 'Cmd+F' }),
+  C('app.search', '聚焦侧栏搜索', { accelerator: 'Cmd+Shift+F' }),
+  C('app.insertImage', '插入图片…', { accelerator: 'Cmd+Shift+I' }),
   C('editor.undo', '撤销', { accelerator: 'Cmd+Z' }),
   C('editor.redo', '重做', { accelerator: 'Cmd+Y' }),
   C('editor.bold', '加粗', { accelerator: 'Cmd+B' }),
   C('editor.italic', '斜体', { accelerator: 'Cmd+I' }),
   C('editor.code', '行内代码', { accelerator: 'Cmd+`' }),
   C('editor.strike', '删除线', { accelerator: 'Cmd+Shift+X' }),
+  C('editor.link', '插入 / 编辑链接', { accelerator: 'Cmd+K' }),
+  C('editor.deleteLine', '删除当前行 / 段落', { accelerator: 'Cmd+D' }),
+  C('app.pastePlain', '粘贴为纯文本', { accelerator: 'Cmd+Shift+P' }),
   C('editor.mathInline', '行内公式', { accelerator: 'Cmd+M' }),
   C('editor.mathBlock', '块级公式', { accelerator: 'Cmd+Shift+M' }),
   C('editor.block.para', '段落：正文', { checked: false }),
   C('editor.block.h1', '段落：一级标题', { checked: true }),
   C('editor.block.mermaid', '段落：Mermaid 图', { checked: false }),
-  C('editor.headingUp', '段落：提升标题级别'),
-  C('editor.headingDown', '段落：降低标题级别'),
+  C('editor.headingUp', '段落：提升标题级别', { accelerator: 'Cmd+]' }),
+  C('editor.headingDown', '段落：降低标题级别', { accelerator: 'Cmd+[' }),
   C('editor.foldSection', '折叠 / 展开本节', { accelerator: 'Cmd+Shift+H' }),
-  C('app.sourceMode', 'Markdown 源码模式', { accelerator: 'Cmd+/' }),
+  C('app.sourceMode', 'Markdown 源码模式', { accelerator: 'Cmd+E' }),
   C('app.focusMode', '专注模式', { checked: true }),
   C('app.typewriterMode', '打字机模式', { checked: false }),
   C('app.toggleSidebar', '隐藏 / 显示侧栏', { checked: true }),
-  C('app.toggleInspector', '隐藏 / 显示检查器', { checked: true }),
+  C('app.toggleInspector', '隐藏 / 显示检查器', { accelerator: 'Cmd+Shift+B' }),
   C('app.graph', '打开知识图谱', { accelerator: 'Cmd+G' }),
-  C('app.palette', '命令面板', { accelerator: 'Cmd+Shift+P' }),
+  C('app.palette', '命令面板', { accelerator: 'Cmd+P' }),
 ]
 
 const specOf = (commands = base(), extra = {}) => buildMacMenuSpec({ commands, ...extra })
@@ -128,8 +135,14 @@ t('应用组含原生角色项（关于/服务/隐藏/退出）', () => {
 t('编辑组含剪贴板角色，且角色项排在撤销/重做之后', () => {
   const spec = specOf()
   assert.deepEqual(ids(group(spec, 'edit')), [
-    'editor.undo', 'editor.redo', 'sep', 'Cut', 'Copy', 'Paste', 'SelectAll', 'sep', 'app.search',
+    'editor.undo', 'editor.redo', 'sep', 'Cut', 'Copy', 'Paste', 'app.pastePlain', 'app.insertImage', 'SelectAll', 'sep', 'app.search',
   ])
+})
+
+t('文件组新建/重命名/关闭依次落在打开文件夹之后', () => {
+  const list = ids(group(specOf(), 'file'))
+  assert.deepEqual(list.slice(1, 4), ['app.openFolder', 'app.newFile', 'app.renameFile'])
+  assert.equal(list[list.length - 2], 'app.closeFile')
 })
 
 t('段落组由注册表 editor.block.* 驱动、去掉「段落：」前缀，尾部挂提升 / 降级', () => {

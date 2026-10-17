@@ -30,7 +30,7 @@
 1. WYSIWYG一体化Markdown编辑，GFM全支持：标题、粗体、斜体、删除线、段落、引用、无序列表、有序列表、任务列表、表格、行内代码、代码块
 2. Markdown字符串 ↔ ProseMirror文档双向无损转换
 3. 拖拽/粘贴图片：自动把图片复制到库内 `assets` 文件夹，自动生成相对路径图片链接 `![](./assets/xxx.png)`
-4. 基础快捷键：Ctrl+S保存，Ctrl+O打开文件，Ctrl+B粗体、Ctrl+I斜体
+4. 基础快捷键：Ctrl+S保存，Ctrl+O打开文件，Ctrl+B粗体、Ctrl+I斜体（完整键位见下方「快捷键规范」）
 5. 浅色/暗黑主题切换，类Typora阅读排版（固定阅读宽度、舒适字体、行高）
 
 知识库核心（精简Obsidian能力）
@@ -62,6 +62,66 @@
 3. 插件基础钩子系统（简单自定义JS插件接口）
 4. 画布/白板卡片（可选，复杂度高，放最后）
 5. 移动端适配（低优先级）
+
+## 快捷键规范
+
+键位按 Typora / Obsidian 主流习惯配置，Windows/Linux 用 Ctrl，mac 用 Cmd（下文写 Ctrl，mac 读者替换为 ⌘）。全部键位走统一命令注册表：应用命令由全局分发器触发，编辑器命令进 ProseMirror keymap，每条都能在「快捷键设置…」里重绑 / 解绑 / 重置，撞键硬阻止保存。改默认键只需改 `main.js` 的 `registerAppCommands` 与 `editor-view.js` 的 `EDITOR_COMMANDS`，菜单、命令面板、设置页三处自动跟随。
+
+第一档（肌肉记忆级，缺了会不顺手）：
+
+| 功能 | Win/Linux | Mac |
+| --- | --- | --- |
+| 新建文件 | Ctrl+N | Cmd+N |
+| 保存 | Ctrl+S | Cmd+S |
+| 撤销 / 重做 | Ctrl+Z / Ctrl+Shift+Z | Cmd+Z / Cmd+Shift+Z |
+| 查找 / 替换 | Ctrl+F / Ctrl+H | Cmd+F / Cmd+H |
+| 加粗 / 斜体 | Ctrl+B / Ctrl+I | Cmd+B / Cmd+I |
+| 插入链接 | Ctrl+K | Cmd+K |
+| 代码块 | Ctrl+Shift+K | Cmd+Shift+K |
+| 行内代码 | Ctrl+` | Cmd+` |
+| 标题 1~6 | Ctrl+1~6 | Cmd+1~6 |
+| 切换编辑 / 预览 | Ctrl+E | Cmd+E |
+
+第二档（区分「能用」与「好用」）：
+
+| 功能 | Win/Linux | Mac |
+| --- | --- | --- |
+| 命令面板 | Ctrl+P | Cmd+P |
+| 快速打开文件 | Ctrl+O | Cmd+O |
+| 粘贴为纯文本 | Ctrl+Shift+P | Cmd+Shift+P |
+| 任务列表 | Ctrl+Shift+L | Cmd+Shift+L |
+| 无序 / 有序列表 | Ctrl+Shift+[ / Ctrl+Shift+] | Cmd+Shift+[ / Cmd+Shift+] |
+| 插入表格 | Ctrl+T | Cmd+T |
+| 插入图片 | Ctrl+Shift+I | Cmd+Shift+I |
+| 引用块 | Ctrl+Shift+Q | Cmd+Shift+Q |
+| 删除当前行 / 段落 | Ctrl+D | Cmd+D |
+| 提升 / 降低标题级别 | Ctrl+] / Ctrl+[ | Cmd+] / Cmd+[ |
+
+第三档（加分项，已做的）：
+
+| 功能 | Win/Linux | Mac |
+| --- | --- | --- |
+| 关闭当前文件 | Ctrl+W | Cmd+W |
+| 专注模式（沉浸写作） | Ctrl+Shift+` | Cmd+Shift+` |
+| 重命名当前文件 | F2 | F2 |
+
+冲突裁决（同一键被两个习惯占用时，按档位取舍，低档位改键）：
+
+1. Ctrl+P：命令面板（第二档）赢，打印 / 另存 PDF 取消默认键，只剩「更多」菜单入口，可在快捷键设置里自绑。
+2. Ctrl+Shift+I：插入图片（第二档）赢，隐藏 / 显示检查器栏改到 Ctrl+Shift+B。
+3. Ctrl+E：切换编辑 / 预览（第一档）赢，源码 ⇄ 所见即所得从 Ctrl+/ 挪到 Ctrl+E，Ctrl+/ 不再占默认键（设置里可绑回）。
+4. Ctrl+Shift+`：专注模式（第三档）从 Ctrl+Shift+E 挪到 Ctrl+Shift+`，Ctrl+Shift+E 释放。
+5. Ctrl+`：行内代码（第一档）赢，侧栏显隐保持 Ctrl+Shift+S，不占 Ctrl+`。
+
+暂不做的：
+
+- Ctrl+Tab 切换标签：本应用无标签页设计，不做标签切换。
+- 关闭窗口 / 退出应用：交给系统（Alt+F4 / Cmd+Q），不占用 Ctrl+W。
+
+两条链路说明：
+
+- 编辑器命令（标题、列表、表格、链接、删行等）在 ProseMirror keymap 里求值，源码态（CodeMirror）下撤销 / 重做单独走 CM 历史，其余命令对源码态不生效。
+- 应用命令（文件、视图、粘贴为纯文本）走 document 级 keydown 分发器，F2 这类无修饰键也已放行（keymap.js 允许 F1–F12 裸绑）。
 
 ## 架构设计
 

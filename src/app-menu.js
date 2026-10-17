@@ -117,6 +117,8 @@ export function buildMacMenuSpec(ctx = {}) {
     group('file', '文件', [
       'app.openFile',
       'app.openFolder',
+      'app.newFile',
+      'app.renameFile',
       submenu('recent', '打开最近', 'recents', ['app.clearRecents']),
       'app.newCanvas',
       submenu('templates', '模板', 'templates', ['app.newTemplate', 'app.dailySettings']),
@@ -131,6 +133,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.dailyCapture',
       'app.autosave',
       'sep',
+      'app.closeFile',
       role('CloseWindow'),
     ]),
     group('edit', '编辑', [
@@ -140,6 +143,8 @@ export function buildMacMenuSpec(ctx = {}) {
       role('Cut'),
       role('Copy'),
       role('Paste'),
+      'app.pastePlain',
+      'app.insertImage',
       role('SelectAll'),
       'sep',
       'app.search',
