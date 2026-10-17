@@ -230,14 +230,23 @@ body {
 .toolbar .btn-group {
   display: contents;
 }
+/* 状态文字浮在窗口右下角：不占工具条行宽，窄窗口下也不挤按钮。
+   带一层面板底色，压在正文上仍可读 */
 .status {
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  z-index: 30;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  max-width: 30vw;
-  flex-shrink: 1;
+  max-width: 50vw;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
 }
 
 /* —— mac：动作交给系统菜单栏，窗口内工具条下沉为底部状态条 —— */
@@ -256,9 +265,15 @@ body {
 [data-mac] #filename {
   display: none;
 }
+/* mac：工具条本身已贴底，状态留在条内右侧即可，不吃全局的右下角浮动 */
 [data-mac] .toolbar .status {
+  position: static;
   margin-left: auto;
   max-width: 60vw;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 /* mac：窗口用 Overlay 标题栏（原生标题仍居中绘制），顶部留出标题条高度，
    栏切换图标与词数统计定位在这一条里，与红绿灯同一行。

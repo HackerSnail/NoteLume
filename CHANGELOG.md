@@ -9,6 +9,8 @@
 
 ### Added
 
+* **状态文字移到窗口右下角**：`#status` 原在工具条内联排（文件名右侧、自动保存左侧），窄窗口下工具栏 wrap 时会挤占按钮行。改为 `position:fixed` 钉在右下角（`style.css` 的 `.status`，右下各 10-12px，带 `--bg-panel` 底色与 1px 边框保证压在正文上可读，`max-width:50vw` 超长省略号）。mac 例外：`[data-mac]` 下工具条本身已贴底，状态保持条内右对齐（`position:static`），不吃全局浮动定位。纯 CSS，刷新即生效；`npm run build` 30.7s 无错，1440×900 无头 Chromium 载 `dist` 实测文字落在右下角。
+
 * **工具条加「新建」按钮（位于「打开知识库」与「保存」之间）**：新建文件此前只有文件树右键菜单两个入口（`main.js:1020`、`main.js:1033` 的 `newFileIn`），未开库或找不到文件树时不容易发现。工具条补一个常显按钮，点击行为与右键「新建文件…」一致：无知识库时弹提示框告知需先打开文件夹，有库时在库根弹命名对话框（`promptDialog`，可不带 `.md` 后缀），写入种子内容 `# 文件名` 后刷新文件树并直接打开。`index.html` 新增 `i-file-plus` 图标（文件轮廓加号，走既有 SVG sprite），按钮 id `btn-new-file`；`main.js` 的 `els` 增 `btnNewFile`，boot 里绑定 click。纯前端改动，刷新即生效；`npm run build` 26.29s 无错。
 
 * **docx→md 导入：交叉引用可点击跳到非标题目标（图/表/公式/参考文献）（批次 F 子项目③ 后续）**：把内部锚点从「仅标题」扩展到「被引用的非标题书签」。Word 交叉引用（REF/PAGEREF/NOTEREF 域 + `w:anchor` 内部超链接）指向图/表/公式/参考文献条目时，此前一律降级为纯文本；现于目标处（`bookmarkStart`）发一个字面 `<a id="净化书签名"></a>`、引用转 `[可见文本](#id)`，令其在编辑器与导出站都能跳到那条。`<a id>` 是标准 GFM 允许的行内 HTML（与合并表存 `<table>` 同一先例），Typora/Obsidian/GitHub 均认，非私有格式。改动四处：① 导入（`src-tauri/src/docx_import.rs`）`scan_headings_and_bookmarks` 增第二遍 `scan_referenced_nonheading_anchors`——预扫描正文中被引用**且确有 bookmarkStart** 的非标题书签，分配净化去重后的锚点（`xref_anchor`/新 `xref_emit`），`map_inline_children` 命中 `bookmarkStart` 发 `<a id>`；未命中标题且书签不存在的仍降级（不造悬链接）。② 编辑器 schema（`src/editor-schema.js`）新增 `anchor` 原子行内节点 + 匹配 `<a id="…"></a>` 的 markdown-it 行内规则 + 序列化原样写回（否则 `html:false` 会把它当转义文本显示）。③ 编辑器跳转（`src/anchor-link.js` `buildAnchorMap`）除标题外用 `doc.descendants` 收集 `anchor` 节点（`id→pos`），复用既有 `#` 点击跳转。④ 站点导出（`src/site-export.js` `R.anchor`）把 `anchor` token 渲染成原始 `<a id>`。含 Rust + schema → 需重启 `tauri dev`。
