@@ -52,6 +52,7 @@ import { createPalette } from './command-palette.js'
 import { createShortcutSettings } from './shortcut-settings.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
+import { initTitlebar } from './titlebar.js'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
 import { createGitPanel } from './git-panel.js'
@@ -2615,6 +2616,7 @@ function bindShortcuts() {
 }
 
 async function boot() {
+  initTitlebar()
   // 标签页先建：编辑器回调（onDirty → markDirty → tabs.setDirty）可能在装配过程中就触发
   tabs = createTabs({
     mountEl: els.tabs,

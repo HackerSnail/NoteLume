@@ -12,12 +12,14 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "NoteLume — Markdown 知识库编辑器",
         "width": 1240,
         "height": 820,
         "minWidth": 900,
         "minHeight": 600,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

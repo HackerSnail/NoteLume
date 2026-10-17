@@ -22,6 +22,9 @@
       <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.2" /><circle cx="18" cy="9" r="2.2" /><circle cx="10.5" cy="18" r="2.2" /><path d="M7.9 8.1 9.9 15.8M8.1 6.9l7.8 1.7M16.3 10.9l-4.4 5.2" /></symbol>
       <symbol id="i-board" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17z" /><path d="M7 8.5h5v5H7z" /><path d="M15 9.5h3M15 13.5h3" /></symbol>
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></symbol>
+      <symbol id="i-win-min" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
+      <symbol id="i-win-max" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1" /></symbol>
+      <symbol id="i-win-restore" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="9" height="9" rx="1" /><path d="M5.5 15.5v-8a2 2 0 0 1 2-2h8" /></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></symbol>
       <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5" /></symbol>
       <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4 21 19.5H3z" /><path d="M12 10v4.2M12 17h.01" /></symbol>
@@ -76,6 +79,7 @@
     </svg>
     <div id="app">
       <header class="toolbar">
+        <span class="appbar-lead" data-tauri-drag-region>NoteLume</span>
         <div class="btn-group">
           <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg><span class="btn-label">打开文件</span></button>
           <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg><span class="btn-label">打开知识库</span></button>
@@ -87,11 +91,22 @@
         </div>
         <span id="docstats" class="docstats" title="写作统计（点击设置字数目标）"></span>
         <span id="filename" class="filename">未打开文档</span>
-        <span class="spacer"></span>
+        <span class="spacer" data-tauri-drag-region></span>
         <label class="autosave-toggle" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
           <input type="checkbox" id="chk-autosave" /> 自动保存
         </label>
         <button id="btn-theme" title="切换主题"><svg class="nl-ico"><use href="#i-moon" /></svg>暗黑</button>
+        <div class="win-btns">
+          <button type="button" data-win="min" title="最小化" aria-label="最小化">
+            <svg class="nl-ico" aria-hidden="true"><use href="#i-win-min" /></svg>
+          </button>
+          <button type="button" data-win="max" title="最大化 / 还原" aria-label="最大化 / 还原">
+            <svg class="nl-ico" aria-hidden="true"><use href="#i-win-max" /></svg>
+          </button>
+          <button type="button" data-win="close" title="关闭" aria-label="关闭">
+            <svg class="nl-ico" aria-hidden="true"><use href="#i-close" /></svg>
+          </button>
+        </div>
       </header>
       <div id="tabbar" class="tabbar hidden" role="tablist" aria-label="打开的文档"></div>
 

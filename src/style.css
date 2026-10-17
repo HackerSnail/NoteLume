@@ -98,6 +98,61 @@ body {
   height: 100vh;
 }
 
+/* ==================== 单栏标题（Windows / Linux）====================
+   工具条即标题栏：左端 .appbar-lead 应用名与中部 .spacer 为拖拽区，右端 .win-btns 窗口控制；
+   mac 走原生 Overlay（工具条沉底为状态条），.appbar-lead / .win-btns 默认隐藏，仅 win/linux 显示 */
+.appbar-lead {
+  display: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  flex: none;
+  padding-right: 10px;
+}
+[data-tauri-platform="windows"] .appbar-lead,
+[data-tauri-platform="linux"] .appbar-lead {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+}
+/* 拖拽区（应用名 / 中部空白）撑满工具条高度，才有可点的拖动热区 */
+[data-tauri-platform="windows"] .toolbar .spacer,
+[data-tauri-platform="linux"] .toolbar .spacer {
+  align-self: stretch;
+}
+.win-btns {
+  display: none;
+  margin-left: 8px;
+  align-items: center;
+  flex: none;
+}
+[data-tauri-platform="windows"] .win-btns,
+[data-tauri-platform="linux"] .win-btns {
+  display: flex;
+}
+.win-btns button {
+  width: 34px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.win-btns button:hover {
+  background: var(--hover);
+}
+.win-btns button[data-win="close"]:hover {
+  background: #e81123;
+  color: #fff;
+}
+.win-btns .nl-ico {
+  width: 13px;
+  height: 13px;
+}
+
 /* 工具条 */
 .toolbar {
   display: flex;

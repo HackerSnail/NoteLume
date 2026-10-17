@@ -2978,6 +2978,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
+        .setup(|app| {
+            // 非 macOS：去掉原生标题栏，改由前端 .titlebar 顶替。
+            // macOS 保留 Overlay（红黄绿按钮 + 透明标题条），不碰。
+            #[cfg(not(target_os = "macos"))]
+            {
+                use tauri::Manager;
+                if let Some(win) = app.get_webview_window("main") {
+                    // 个别平台/合成器可能拒绝去边框，失败不致命，忽略
+                    let _ = win.set_decorations(false);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // P0
             scan_vault,

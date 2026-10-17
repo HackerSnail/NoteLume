@@ -1,13 +1,24 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口默认权限：核心 API + 文件夹选择对话框 + 关闭窗口前可销毁（未保存询问）+ 设置窗口标题 + 打印（mac 的 window.print 走 IPC）",
+  "description": "主窗口默认权限：核心 API + 文件夹选择对话框 + 关闭窗口前可销毁（未保存询问）+ 设置窗口标题 + 打印（mac 的 window.print 走 IPC）+ 自定义标题栏窗口控制",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:default",
     "core:webview:allow-print",
     "core:window:allow-destroy",
-    "core:window:allow-set-title"
+    "core:window:allow-set-title",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-is-maximized",
+    "core:window:allow-start-dragging"
   ]
 }
