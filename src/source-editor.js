@@ -93,6 +93,39 @@ function buildHighlight(CM) {
   ])
 }
 
+// 围栏代码块子语言 token 高亮：明/暗两套，随主题切换。
+// 原先用 CM 默认 defaultHighlightStyle——固定浅色底调，暗底下注释/关键字发灰、对比度不足。
+// 这里自定义，且刻意“少上色”：普通变量/方法调用名不染色、走默认前景（暗 #d8dee6 / 浅 #24292e），
+// 只给关键字/类型/字面量/注释/运算符上色——代码里标识符最多，若一并染色会满屏同色发糊、
+// 真正的主体反而不突出（这是“看不清”的主因）。tag 名已对照 @lezer/highlight 逐一核实。
+function buildCodeHighlight(CM, isDark) {
+  const { tags } = CM.hl
+  const spec = isDark
+    ? [
+        { tag: [tags.comment, tags.docComment, tags.blockComment, tags.lineComment], color: '#8b94a1', fontStyle: 'italic' },
+        { tag: [tags.keyword, tags.controlKeyword, tags.operatorKeyword, tags.moduleKeyword, tags.definitionKeyword, tags.modifier, tags.self, tags.null, tags.atom], color: '#c678dd' },
+        { tag: [tags.string, tags.docString, tags.character, tags.attributeValue, tags.regexp], color: '#98c379' },
+        { tag: [tags.integer, tags.float, tags.bool, tags.unit, tags.constant(tags.variableName)], color: '#d19a66' },
+        { tag: [tags.typeName, tags.className, tags.namespace, tags.tagName, tags.labelName], color: '#56b6c2' },
+        { tag: [tags.definition(tags.variableName), tags.definition(tags.propertyName), tags.function(tags.variableName), tags.standard(tags.name), tags.propertyName, tags.attributeName], color: '#ffcb6b', fontWeight: '600' },
+        { tag: [tags.operator, tags.derefOperator, tags.arithmeticOperator, tags.logicOperator, tags.bitwiseOperator, tags.compareOperator, tags.updateOperator, tags.definitionOperator, tags.typeOperator, tags.controlOperator, tags.escape], color: '#56b6c2' },
+        { tag: [tags.punctuation, tags.separator, tags.bracket, tags.angleBracket, tags.squareBracket, tags.paren, tags.brace], color: '#9aa4b2' },
+        { tag: tags.invalid, color: '#e06c75' },
+      ]
+    : [
+        { tag: [tags.comment, tags.docComment, tags.blockComment, tags.lineComment], color: '#9aa0a6', fontStyle: 'italic' },
+        { tag: [tags.keyword, tags.controlKeyword, tags.operatorKeyword, tags.moduleKeyword, tags.definitionKeyword, tags.modifier, tags.self, tags.null, tags.atom], color: '#a626a4' },
+        { tag: [tags.string, tags.docString, tags.character, tags.attributeValue, tags.regexp], color: '#50a14f' },
+        { tag: [tags.integer, tags.float, tags.bool, tags.unit, tags.constant(tags.variableName)], color: '#b76b01' },
+        { tag: [tags.typeName, tags.className, tags.namespace, tags.tagName, tags.labelName], color: '#c18401' },
+        { tag: [tags.definition(tags.variableName), tags.definition(tags.propertyName), tags.function(tags.variableName), tags.standard(tags.name), tags.propertyName, tags.attributeName], color: '#4078f2' },
+        { tag: [tags.operator, tags.derefOperator, tags.arithmeticOperator, tags.logicOperator, tags.bitwiseOperator, tags.compareOperator, tags.updateOperator, tags.definitionOperator, tags.typeOperator, tags.controlOperator, tags.escape], color: '#0184bc' },
+        { tag: [tags.punctuation, tags.separator, tags.bracket, tags.angleBracket, tags.squareBracket, tags.paren, tags.brace], color: '#8b949e' },
+        { tag: tags.invalid, color: '#e45649' },
+      ]
+  return CM.language.HighlightStyle.define(spec, { themeType: isDark ? 'dark' : 'light' })
+}
+
 /**
  * 创建源码编辑器（异步：首次调用会加载 CM 依赖）。
  * @param {object} cfg
@@ -114,7 +147,8 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
     // （keyword/type/varName/number…）。实测：若用 {fallback:true} 反而会让子语言
     // 不包 span（代码块单色）；必须 buildHL 高优先 + default 普通注册，两者才能共存。
     CM.state.Prec.highest(CM.language.syntaxHighlighting(buildHighlight(CM))),
-    CM.language.syntaxHighlighting(CM.language.defaultHighlightStyle),
+    // 代码块子语言 token 配色（明/暗两套，随主题）；替换 CM 默认 defaultHighlightStyle（暗底对比度不足）
+    CM.language.syntaxHighlighting(buildCodeHighlight(CM, isDark)),
   ]
   const isDark = theme !== 'light'
 

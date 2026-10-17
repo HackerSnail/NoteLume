@@ -2697,73 +2697,85 @@ details.panel[open] > summary::before {
   border-radius: 3px;
 }
 
-/* 代码高亮配色（兼容 GitHub 风。自定义可替换为 hljs theme）*/
-.hljs-comment,
-.hljs-quote {
+/* 浅色主题代码高亮（GitHub 风）。限定在 [data-theme='light']，防止漏进暗色/吸血鬼主题——
+   ProseMirror 会把重叠装饰 class 合并到同一元素，未限定的浅色规则会在暗底下命中、整体发暗蓝 */
+[data-theme='light'] .hljs-comment,
+[data-theme='light'] .hljs-quote {
   color: #6a737d;
   font-style: italic;
 }
-.hljs-keyword,
-.hljs-selector-tag,
-.hljs-type,
-.hljs-built_in,
-.hljs-name,
-.hljs-tag {
+[data-theme='light'] .hljs-keyword,
+[data-theme='light'] .hljs-selector-tag,
+[data-theme='light'] .hljs-type,
+[data-theme='light'] .hljs-built_in,
+[data-theme='light'] .hljs-name,
+[data-theme='light'] .hljs-tag {
   color: #d73a49;
 }
-.hljs-string,
-.hljs-title,
-.hljs-attr,
-.hljs-template-variable,
-.hljs-addition {
+[data-theme='light'] .hljs-string,
+[data-theme='light'] .hljs-title,
+[data-theme='light'] .hljs-attr,
+[data-theme='light'] .hljs-template-variable,
+[data-theme='light'] .hljs-addition {
   color: #032f62;
 }
-.hljs-number,
-.hljs-literal,
-.hljs-variable,
-.hljs-deletion {
+[data-theme='light'] .hljs-number,
+[data-theme='light'] .hljs-literal,
+[data-theme='light'] .hljs-variable,
+[data-theme='light'] .hljs-deletion {
   color: #005cc5;
 }
-.hljs-params,
-.hljs-function .hljs-title {
+[data-theme='light'] .hljs-params,
+[data-theme='light'] .hljs-function .hljs-title {
   color: #6f42c1;
 }
-.hljs-meta,
-.hljs-symbol,
-.hljs-bullet {
+[data-theme='light'] .hljs-meta,
+[data-theme='light'] .hljs-symbol,
+[data-theme='light'] .hljs-bullet {
   color: #e36209;
 }
+/* 暗黑主题代码高亮：函数名用高亮金（#e5c07b）确保醒目，类型/类名用青，关键字紫，普通标识符不染色 */
 [data-dark] .hljs-comment,
 [data-dark] .hljs-quote {
-  color: #7b828d;
+  color: #8b94a1;
+  font-style: italic;
 }
 [data-dark] .hljs-keyword,
 [data-dark] .hljs-selector-tag,
-[data-dark] .hljs-type,
-[data-dark] .hljs-built_in,
 [data-dark] .hljs-name,
 [data-dark] .hljs-tag {
-  color: #ff7b72;
+  color: #c678dd;
+}
+/* 函数/方法名：亮黄 + 加粗，暗底最扛打。PM 把重叠装饰 class 合并到同一元素，
+   故同时写后代与并列两种选择器确保命中 */
+[data-dark] .hljs-function .hljs-title,
+[data-dark] .hljs-function.hljs-title,
+[data-dark] .hljs-title.function_,
+[data-dark] .hljs-built_in {
+  color: #ffcb6b;
+  font-weight: 600;
+}
+/* 类型/类名：青，与函数名区分 */
+[data-dark] .hljs-type,
+[data-dark] .hljs-class .hljs-title,
+[data-dark] .hljs-title.class_ {
+  color: #56b6c2;
 }
 [data-dark] .hljs-string,
+[data-dark] .hljs-attr,
 [data-dark] .hljs-template-variable,
 [data-dark] .hljs-addition {
-  color: #a5d6ff;
+  color: #98c379;
 }
 [data-dark] .hljs-number,
 [data-dark] .hljs-literal,
-[data-dark] .hljs-variable,
-[data-dark] .hljs-deletion {
-  color: #79c0ff;
-}
-[data-dark] .hljs-params,
-[data-dark] .hljs-function .hljs-title {
-  color: #d2a8ff;
-}
-[data-dark] .hljs-meta,
 [data-dark] .hljs-symbol,
-[data-dark] .hljs-bullet {
-  color: #ffa657;
+[data-dark] .hljs-bullet,
+[data-dark] .hljs-deletion {
+  color: #d19a66;
+}
+[data-dark] .hljs-meta {
+  color: #56b6c2;
 }
 /* 吸血鬼主题代码高亮 = Dracula 官方语法色（放在 [data-dark] 之后以覆盖） */
 [data-theme='vampire'] .hljs-comment,
@@ -2779,7 +2791,8 @@ details.panel[open] > summary::before {
 }
 [data-theme='vampire'] .hljs-built_in,
 [data-theme='vampire'] .hljs-title.class_,
-[data-theme='vampire'] .hljs-class .hljs-title {
+[data-theme='vampire'] .hljs-class .hljs-title,
+[data-theme='vampire'] .hljs-class.hljs-title {
   color: #8be9fd;
 }
 [data-theme='vampire'] .hljs-string,
@@ -2794,6 +2807,7 @@ details.panel[open] > summary::before {
   color: #bd93f9;
 }
 [data-theme='vampire'] .hljs-function .hljs-title,
+[data-theme='vampire'] .hljs-function.hljs-title,
 [data-theme='vampire'] .hljs-title.function_ {
   color: #50fa7b;
 }
