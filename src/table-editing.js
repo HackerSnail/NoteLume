@@ -1,5 +1,6 @@
 // table-editing.js —— 表格编辑人体工学（基于 prosemirror-tables）
-// 提供三块：① tablePlugins()：列宽拖拽 columnResizing + 单元格选择/规范化 tableEditing；
+// 提供三块：① tablePlugins()：列宽拖拽 columnResizing + 单元格选择/规范化 tableEditing，
+//   拖拽开始时由 pinColWidthsPlugin 先把当前列宽固化成 colwidth（原因见该插件处注释）；
 // ② tableKeymap()：Tab / Shift-Tab 在单元格间跳转（仅在表内生效，否则交回默认键位）；
 // ③ attachTableContextMenu(view)：在单元格上右键弹出行列操作菜单（复用全局 .cv-menu 样式）。
 //
@@ -8,7 +9,7 @@
 // 注意单元格内容受 cellContent:'inline*' 约束：一个格内不放多段落/块级列表（合并为单段内联）。
 
 import { keymap } from 'prosemirror-keymap'
-import { TextSelection } from 'prosemirror-state'
+import { Plugin, TextSelection } from 'prosemirror-state'
 import {
   columnResizing,
   tableEditing,
@@ -28,6 +29,7 @@ import {
   splitCell,
   cellAround,
   CellSelection,
+  TableMap,
 } from 'prosemirror-tables'
 
 // 没有拖过列宽的表按内容分宽（table-layout:auto，同 Typora）；一旦 colwidth 写进文档
@@ -70,10 +72,111 @@ class AutoTableView extends TableView {
   }
 }
 
-// 装配进编辑器插件数组。tableEditing 放在数组靠后（它对鼠标/方向键处理较宽泛，
-// 让 columnResizing 等更具体的插件先取得事件权）。
+// —— 拖列宽前先把当前列宽固化 ——
+// 没拖过列宽的表是 table-layout:auto：<col> 上的 width 只是建议值，列宽最终按内容分，
+// 浏览器随时重排。而 prosemirror-tables 的拖拽是在 mousemove 里直接写 <col> 宽度、
+// 到 mouseup 才把 colwidth 写进文档，整段拖拽都跑在 auto 布局上——内容每重排一次，
+// 拖着的那条边就跳一截，在单元格换行阈值附近左右来回晃、闪。
+// 这里在 mousedown 命中手柄时，先把当前渲染列宽固化成 colwidth：fitLayout 随即转
+// fixed，拖拽的起点与过程仍是库的逻辑（currentColWidth 改读固化值，起点不变）。
+const HANDLE_WIDTH = 5 // 与 columnResizing 的 handleWidth 默认值一致
+
+// 复刻 columnresizing.ts 的悬停判定（库未导出这两个函数）：鼠标落在单元格左/右
+// HANDLE_WIDTH 内才算手柄；首列左沿不给手柄，其余边沿取该侧格子的 doc 位置。
+function domCellAround(target) {
+  while (target && target.nodeName != 'TD' && target.nodeName != 'TH') {
+    target = target.classList && target.classList.contains('ProseMirror') ? null : target.parentNode
+  }
+  return target
+}
+function edgeCell(view, event, side) {
+  const offset = side == 'right' ? -HANDLE_WIDTH : HANDLE_WIDTH
+  const found = view.posAtCoords({ left: event.clientX + offset, top: event.clientY })
+  if (!found) return -1
+  const $cell = cellAround(view.state.doc.resolve(found.pos))
+  if (!$cell) return -1
+  if (side == 'right') return $cell.pos
+  const map = TableMap.get($cell.node(-1)), start = $cell.start(-1)
+  const index = map.map.indexOf($cell.pos - start)
+  return index % map.width == 0 ? -1 : start + map.map[index - 1]
+}
+// mousedown 是否落在列宽手柄上：是则返回手柄格子的 doc 位置，否则 -1
+function resizeHandlePos(view, event) {
+  const target = domCellAround(event.target)
+  if (!target) return -1
+  const { left, right } = target.getBoundingClientRect()
+  if (event.clientX - left <= HANDLE_WIDTH) return edgeCell(view, event, 'left')
+  if (right - event.clientX <= HANDLE_WIDTH) return edgeCell(view, event, 'right')
+  return -1
+}
+
+// 把表格当前的渲染列宽写进每个单元格的 colwidth。量第一行的格子（offsetWidth 与
+// currentColWidth 同口径）；colspan 格按跨度均分；rowspan 的复用格只写一次。
+// 返回事务；量不到（空表、DOM 异常）返回 null。
+function snapshotColWidths(view, cellPos) {
+  const state = view.state
+  const $cell = state.doc.resolve(cellPos)
+  const table = $cell.node(-1)
+  const map = TableMap.get(table)
+  const start = $cell.start(-1)
+  if (!table.firstChild) return null
+
+  const dom = view.domAtPos(cellPos)
+  const cellDom = dom.node.childNodes && dom.node.childNodes[dom.offset]
+  const tableDom = cellDom && cellDom.closest ? cellDom.closest('table') : null
+  if (!tableDom) return null
+  // :scope 保证只取本表 tbody 的行，不至于伸进单元格里嵌套表的行
+  const rowDom = tableDom.querySelector(':scope > tbody > tr')
+  if (!rowDom) return null
+
+  const colWidths = []
+  for (const td of rowDom.children) {
+    const span = td.colSpan || 1
+    for (let j = 0; j < span; j++) colWidths.push(td.offsetWidth / span)
+  }
+  if (colWidths.length != map.width) return null
+
+  const tr = state.tr
+  const seen = new Set()
+  for (let row = 0; row < map.height; row++) {
+    for (let col = 0; col < map.width; col++) {
+      const pos = map.map[row * map.width + col]
+      if (seen.has(pos)) continue
+      seen.add(pos)
+      const cell = table.nodeAt(pos)
+      const span = cell.attrs.colspan
+      const startCol = map.colCount(pos)
+      const colwidth = []
+      for (let j = 0; j < span; j++) colwidth.push(colWidths[startCol + j])
+      tr.setNodeMarkup(start + pos, null, { ...cell.attrs, colwidth })
+    }
+  }
+  return tr.docChanged ? tr : null
+}
+
+// mousedown 命中手柄且该表还没有 colwidth 时先固化列宽，再交回 columnResizing 开始
+// 拖拽（始终返回 false，不抢事件）。已有 colwidth 的表本就是 fixed，不用这一下。
+const pinColWidthsPlugin = new Plugin({
+  props: {
+    handleDOMEvents: {
+      mousedown(view, event) {
+        const cellPos = resizeHandlePos(view, event)
+        if (cellPos < 0) return false
+        const table = view.state.doc.resolve(cellPos).node(-1)
+        if (!table || hasColwidth(table)) return false
+        const tr = snapshotColWidths(view, cellPos)
+        if (tr) view.dispatch(tr)
+        return false
+      },
+    },
+  },
+})
+
+// 装配进编辑器插件数组。pinColWidthsPlugin 要在 columnResizing 之前：mousedown 先
+// 固化列宽，库的拖拽随后拿到的就是固定宽度。tableEditing 放在数组靠后（它对鼠标/
+// 方向键处理较宽泛，让 columnResizing 等更具体的插件先取得事件权）。
 export function tablePlugins() {
-  return [columnResizing({ View: AutoTableView }), tableEditing()]
+  return [pinColWidthsPlugin, columnResizing({ View: AutoTableView }), tableEditing()]
 }
 
 // Tab / Shift-Tab 跨格。放在普通 keymap 之前；不在表内时返回 false 交回后续键位。
