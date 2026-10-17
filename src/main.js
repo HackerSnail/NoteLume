@@ -1178,6 +1178,14 @@ function openTemplateMenu(anchorEl) {
 }
 
 // 工具条「更多」菜单：收纳低频操作（导出/打印/图谱/画布/模板）与视图模式开关（专注/打字机）
+// 已入注册表的项走 addMenuCmd：文案与键位都取注册表，菜单不自带第二份文案
+function addMenuCmd(menu, id, icon) {
+  const cmd = commandRegistry.get(id)
+  if (!cmd) return
+  const key = commandBindingFor(id)
+  menu.appendChild(makeMenuItem(cmd.title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, false, icon))
+}
+
 function openMoreMenu(anchorEl) {
   closeTreeMenu()
   const menu = document.createElement('div')
@@ -1186,8 +1194,8 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem('快捷键设置…', () => keySettings && keySettings.open(), false, false, 'sliders'))
   menu.appendChild(makeMenuItem('导出为 HTML', () => exportHTML(), false, false, 'export'))
   menu.appendChild(makeMenuItem('导出整站…', () => exportSiteFull(), false, false, 'globe'))
-    menu.appendChild(makeMenuItem('导入 Word(.docx)…', () => importWordViaDialog(), false, false, 'file'))
-    menu.appendChild(makeMenuItem('导出 Word(.docx)…', () => exportWordViaDialog(), false, false, 'export'))
+  addMenuCmd(menu, 'app.importWord', 'file')
+  addMenuCmd(menu, 'app.exportWord', 'export')
   menu.appendChild(makeMenuItem('打印 / 导出 PDF (Ctrl+P)', () => window.print(), false, false, 'printer'))
   menu.appendChild(makeMenuItem('知识图谱 (Ctrl+G)', () => openGraphModal(), false, false, 'graph'))
   menu.appendChild(makeMenuItem('新画布 / 白板', () => newCanvas(), false, false, 'board'))
@@ -1853,6 +1861,11 @@ function irResolveImageRels(ir, fromDir, imageSet, byBase) {
 
 async function exportWordViaDialog() {
   if (!editor) return
+  // 菜单已按「有 md 文档」置灰，这里兜住命令面板那条路：空文档导出一份空 Word 不如直接拒
+  if (!state.currentFile) {
+    setStatus('没有可导出的文档')
+    return
+  }
   if (state.mode === 'canvas') {
     setStatus('画布不支持导出 Word')
     return
@@ -2122,6 +2135,8 @@ const lastRunAt = new Map()
 
 const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.print'])
 const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
+// 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
+const MENU_NEEDS_MD = new Set(['app.exportWord'])
 const MENU_CHECKED = {
   'app.focusMode': () => localStorage.getItem('nl-focus') === '1',
   'app.typewriterMode': () => localStorage.getItem('nl-typewriter') === '1',
@@ -2134,7 +2149,7 @@ const MENU_CHECKED = {
 function menuEnabled(id) {
   if (MENU_NEEDS_DOC.has(id) && !state.currentFile) return false
   // PM 编辑命令只在所见即所得的文档上可用（画布 / 未打开文档时置灰）
-  if (id.startsWith('editor.') && !(state.currentFile && state.mode === 'md')) return false
+  if ((id.startsWith('editor.') || MENU_NEEDS_MD.has(id)) && !(state.currentFile && state.mode === 'md')) return false
   if (MENU_NEEDS_VAULT.has(id) && !state.vaultRoot) return false
   return true
 }
