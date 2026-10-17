@@ -1178,36 +1178,36 @@ function openTemplateMenu(anchorEl) {
 }
 
 // 工具条「更多」菜单：收纳低频操作（导出/打印/图谱/画布/模板）与视图模式开关（专注/打字机）
-// 已入注册表的项走 addMenuCmd：文案与键位都取注册表，菜单不自带第二份文案
+// 文案、键位后缀、勾选态都取注册表那一套（与 mac 原生菜单同源），菜单不自带第二份文案
 function addMenuCmd(menu, id, icon) {
   const cmd = commandRegistry.get(id)
   if (!cmd) return
   const key = commandBindingFor(id)
-  menu.appendChild(makeMenuItem(cmd.title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, false, icon))
+  const checked = MENU_CHECKED[id] ? MENU_CHECKED[id]() : false
+  menu.appendChild(makeMenuItem(cmd.title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, icon))
 }
 
 function openMoreMenu(anchorEl) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
-  menu.appendChild(makeMenuItem('命令面板 (Ctrl+Shift+P)', () => palette && palette.open(), false, false, 'terminal'))
-  menu.appendChild(makeMenuItem('快捷键设置…', () => keySettings && keySettings.open(), false, false, 'sliders'))
-  menu.appendChild(makeMenuItem('导出为 HTML', () => exportHTML(), false, false, 'export'))
-  menu.appendChild(makeMenuItem('导出整站…', () => exportSiteFull(), false, false, 'globe'))
+  addMenuCmd(menu, 'app.palette', 'terminal')
+  addMenuCmd(menu, 'app.shortcuts', 'sliders')
+  addMenuCmd(menu, 'app.export', 'export')
+  addMenuCmd(menu, 'app.exportSite', 'globe')
   addMenuCmd(menu, 'app.importWord', 'file')
   addMenuCmd(menu, 'app.exportWord', 'export')
-  menu.appendChild(makeMenuItem('打印 / 导出 PDF (Ctrl+P)', () => window.print(), false, false, 'printer'))
-  menu.appendChild(makeMenuItem('知识图谱 (Ctrl+G)', () => openGraphModal(), false, false, 'graph'))
-  menu.appendChild(makeMenuItem('新画布 / 白板', () => newCanvas(), false, false, 'board'))
+  addMenuCmd(menu, 'app.print', 'printer')
+  addMenuCmd(menu, 'app.graph', 'graph')
+  addMenuCmd(menu, 'app.newCanvas', 'board')
+  // 这两项是子菜单而非命令，注册表里没有对应条目，文案只能写在这里
   menu.appendChild(makeMenuItem('最近打开', () => openRecentMenu(anchorEl), false, false, 'clock'))
   menu.appendChild(makeMenuItem('模板 / 今日速记设置', () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
   menu.appendChild(menuSep())
-  menu.appendChild(makeMenuItem('专注模式 (Ctrl+Shift+F)', () => toggleFocusMode(), false, localStorage.getItem('nl-focus') === '1', 'target'))
-  menu.appendChild(makeMenuItem('打字机模式 (Ctrl+Shift+T)', () => toggleTypewriterMode(), false, localStorage.getItem('nl-typewriter') === '1', 'keyboard'))
-  const sbKey = commandBindingFor('app.toggleSidebar')
-  menu.appendChild(makeMenuItem('侧栏' + (sbKey ? ' (' + sbKey + ')' : ''), () => toggleSidebar(), false, localStorage.getItem('nl-sidebar') !== 'hidden', 'sidebar'))
-  const inKey = commandBindingFor('app.toggleInspector')
-  menu.appendChild(makeMenuItem('检查器' + (inKey ? ' (' + inKey + ')' : ''), () => toggleInspector(), false, !inspectorHidden(), 'sliders'))
+  addMenuCmd(menu, 'app.focusMode', 'target')
+  addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
+  addMenuCmd(menu, 'app.toggleSidebar', 'sidebar')
+  addMenuCmd(menu, 'app.toggleInspector', 'sliders')
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
 }
