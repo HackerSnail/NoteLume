@@ -90,7 +90,6 @@
         <label class="autosave-toggle" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
           <input type="checkbox" id="chk-autosave" /> 自动保存
         </label>
-        <span id="status" class="status">选择本地文件夹作为知识库开始编辑</span>
         <button id="btn-theme" title="切换主题"><svg class="nl-ico"><use href="#i-moon" /></svg>暗黑</button>
       </header>
 
@@ -184,15 +183,10 @@
     </div>
 
     <script>
-      // 全局错误可视化：任何未捕获异常 / Promise 拒绝都写进状态栏，
-      // 避免“白屏无反应”时看不到原因（模块加载失败也能捕获）。
+      // 全局错误可视化：任何未捕获异常 / Promise 拒绝都不再显示在界面（状态栏已去掉），
+      // 统一打到 console，避免“白屏无反应”时无从排查（模块加载失败也能捕获）。
       window.__nlError = function (msg) {
-        var s = document.getElementById('status')
-        if (s) {
-          s.innerHTML = '<svg class="nl-ico"><use href="#i-warning" /></svg>'
-          s.appendChild(document.createTextNode(msg))
-          s.style.color = '#c0392b'
-        }
+        console.error('[NoteLume] ' + msg)
       }
       window.addEventListener('error', function (e) {
         window.__nlError('启动错误：' + (e.message || e.error))

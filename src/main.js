@@ -107,7 +107,6 @@ const els = {
   tagsGlobalDocs: $('tags-global-docs'),
   editor: $('editor'),
   filename: $('filename'),
-  status: $('status'),
   btnOpen: $('btn-open'),
   btnOpenFile: $('btn-open-file'),
   btnNewFile: $('btn-new-file'),
@@ -152,9 +151,11 @@ function isCanvasPath(p) {
   return /\.canvas$/i.test(p || '')
 }
 
+// 状态提示已从界面去掉（右下角浮版不好看也没意义），这里只保留 mac 原生菜单
+// 可用性/勾选的重建触发与 console 记录，便于排查
 function setStatus(msg) {
-  els.status.textContent = msg
-  // mac 原生菜单的可用性/勾选随状态变（开库、开文档、模式、主题…），状态栏是所有这些路径的公共出口，
+  console.debug('[status] ' + msg)
+  // mac 原生菜单的可用性/勾选随状态变（开库、开文档、模式、主题…），所有这些路径的公共出口，
   // 在这里挂一次重建即可覆盖全部；spec 内容没变时 syncMacChrome 自行跳过
   scheduleMacChrome()
 }
@@ -2449,8 +2450,6 @@ async function boot() {
   document.addEventListener('pointerdown', (e) => {
     if (treeMenuEl && !treeMenuEl.contains(e.target)) closeTreeMenu()
   }, true)
-
-  setStatus('第一步：点「打开知识库」选择一个本地文件夹')
 }
 
 boot().catch((e) => {

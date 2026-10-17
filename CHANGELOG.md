@@ -7,9 +7,11 @@
 
 ## [Unreleased](https://gitee.com/hackerSnail/note-lume/compare/master...dev)
 
-### Added
+### Removed
 
-* **状态文字移到窗口右下角**：`#status` 原在工具条内联排（文件名右侧、自动保存左侧），窄窗口下工具栏 wrap 时会挤占按钮行。改为 `position:fixed` 钉在右下角（`style.css` 的 `.status`，右下各 10-12px，带 `--bg-panel` 底色与 1px 边框保证压在正文上可读，`max-width:50vw` 超长省略号）。mac 例外：`[data-mac]` 下工具条本身已贴底，状态保持条内右对齐（`position:static`），不吃全局浮动定位。纯 CSS，刷新即生效；`npm run build` 30.7s 无错，1440×900 无头 Chromium 载 `dist` 实测文字落在右下角。
+* **工具条状态文字（含右下角浮动版）**：状态提示先是从工具条内联位挪到右下角浮动，看下来不好看也没意义，直接去掉。`#status` 节点与 `.status` 全部样式（`style.css` 的浮动规则、mac 贴底条内的右对齐覆盖、图标留白规则里的 `.status .nl-ico`）删除；`main.js` 的 `setStatus` 不再写 DOM，只保留两件事：`scheduleMacChrome()`（mac 原生菜单可用性/勾选依赖它，约 50 处调用点的副作用不能丢）与 `console.debug('[status] ' + msg)`；`els.status` 与 boot 里的「第一步：点『打开知识库』…」提示行一并移除。`index.html` 的全局错误兜底（`window.__nlError`）原本把未捕获异常写进状态栏，改为 `console.error('[NoteLume] ' + msg)`，错误不再显示在界面上。此前只有状态栏一个出口的提示（如「请先打开知识库文件夹」「打开失败：…」）多数已有 `messageDialog` 弹窗并行，少数只剩状态栏的路径现在只看控制台。纯前端，刷新即生效；`npm run build` 30.05s 无错，1440×900 无头 Chromium 载 `dist` 实测界面无状态条、无 page error。
+
+### Added
 
 * **工具条加「新建」按钮（位于「打开知识库」与「保存」之间）**：新建文件此前只有文件树右键菜单两个入口（`main.js:1020`、`main.js:1033` 的 `newFileIn`），未开库或找不到文件树时不容易发现。工具条补一个常显按钮，点击行为与右键「新建文件…」一致：无知识库时弹提示框告知需先打开文件夹，有库时在库根弹命名对话框（`promptDialog`，可不带 `.md` 后缀），写入种子内容 `# 文件名` 后刷新文件树并直接打开。`index.html` 新增 `i-file-plus` 图标（文件轮廓加号，走既有 SVG sprite），按钮 id `btn-new-file`；`main.js` 的 `els` 增 `btnNewFile`，boot 里绑定 click。纯前端改动，刷新即生效；`npm run build` 26.29s 无错。
 
