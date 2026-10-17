@@ -29,6 +29,8 @@ const base = () => [
   C('app.clearRecents', '清空最近记录'),
   C('app.export', '导出为 HTML'),
   C('app.exportSite', '导出整站…'),
+  C('app.importWord', '导入 Word(.docx)…'),
+  C('app.exportWord', '导出 Word(.docx)…'),
   C('app.print', '打印 / 另存 PDF', { accelerator: 'Cmd+P' }),
   C('app.dailyCapture', '今日速记', { accelerator: 'Cmd+Shift+D' }),
   C('app.autosave', '自动保存', { checked: false }),
@@ -77,6 +79,12 @@ t('注册表缺失的 id 被跳过（不会挂空动作）', () => {
   const spec = specOf(base().filter((c) => c.id !== 'app.export' && c.id !== 'app.graph'))
   assert.equal(group(spec, 'file').items.filter((i) => i.id === 'app.export').length, 0)
   assert.equal(group(spec, 'view').items.filter((i) => i.id === 'app.graph').length, 0)
+})
+
+t('Word 导入/导出落在「文件」组，紧跟导出整站', () => {
+  const list = ids(group(specOf(), 'file'))
+  const i = list.indexOf('app.exportSite')
+  assert.deepEqual(list.slice(i, i + 4), ['app.exportSite', 'app.importWord', 'app.exportWord', 'app.print'])
 })
 
 t('accelerator 原样透传；无键命令不带 accelerator', () => {

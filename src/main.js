@@ -2019,6 +2019,8 @@ function registerAppCommands() {
   app('app.shortcuts', '快捷键设置…', null, () => { if (keySettings) keySettings.open() })
   app('app.export', '导出为 HTML', null, () => exportHTML())
   app('app.exportSite', '导出整站…', null, () => exportSiteFull())
+  app('app.importWord', '导入 Word(.docx)…', null, () => importWordViaDialog())
+  app('app.exportWord', '导出 Word(.docx)…', null, () => exportWordViaDialog())
   app('app.newCanvas', '新画布 / 白板', null, () => newCanvas())
   app('app.newTemplate', '新建空白模板…', null, () => newBlankTemplate())
   app('app.dailySettings', '今日速记设置…', null, () => configureDailyCapture())

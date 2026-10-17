@@ -124,6 +124,8 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.save',
       'app.export',
       'app.exportSite',
+      'app.importWord',
+      'app.exportWord',
       'app.print',
       'sep',
       'app.dailyCapture',
