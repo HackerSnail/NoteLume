@@ -644,6 +644,11 @@ details.panel[open] > summary::before {
   padding: 2px 4px;
   border-radius: 4px;
   font-weight: 600;
+  list-style: none;
+}
+/* 藏掉 <details> 原生实心三角，文件树折叠标记统一用 chevron（见 .tree-folder > summary::before） */
+.filetree summary::-webkit-details-marker {
+  display: none;
 }
 .filetree summary:hover,
 .tree-file:hover:not(.active) {
@@ -696,6 +701,24 @@ details.panel[open] > summary::before {
 .tree-folder > summary {
   cursor: pointer;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+/* chevron：mask 取 sprite #i-chevron-down 几何，与大纲折叠三角同风格；展开朝下、收起右旋 90° */
+.tree-folder > summary::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><path d='M6.5 9.5 12 15l5.5-5.5'/></svg>") center / contain no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><path d='M6.5 9.5 12 15l5.5-5.5'/></svg>") center / contain no-repeat;
+}
+.tree-folder:not([open]) > summary::before {
+  transform: rotate(-90deg);
 }
 .tree-drop-hover {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
@@ -3861,6 +3884,10 @@ details.panel[open] > summary::before {
 
 /* ==================== 打印 / 导出 PDF：只出正文 ==================== */
 @media print {
+  /* 纸上页边距：A4 上下 18mm、左右 20mm。经 window.print() 存 PDF 时，打印对话框边距选「默认」即生效 */
+  @page {
+    margin: 18mm 20mm;
+  }
   /* 壳层与浮层一律不上纸：body 直属浮层、工具条、侧栏与检查器与把手、源码态与画布挂载点 */
   body > :not(#app),
   #app > :not(.body),
