@@ -22,6 +22,7 @@
       <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.2" /><circle cx="18" cy="9" r="2.2" /><circle cx="10.5" cy="18" r="2.2" /><path d="M7.9 8.1 9.9 15.8M8.1 6.9l7.8 1.7M16.3 10.9l-4.4 5.2" /></symbol>
       <symbol id="i-board" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17z" /><path d="M7 8.5h5v5H7z" /><path d="M15 9.5h3M15 13.5h3" /></symbol>
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></symbol>
       <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5" /></symbol>
       <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4 21 19.5H3z" /><path d="M12 10v4.2M12 17h.01" /></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" /></symbol>
@@ -76,13 +77,13 @@
     <div id="app">
       <header class="toolbar">
         <div class="btn-group">
-          <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg>打开文件</button>
-          <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg>打开知识库</button>
-          <button id="btn-new-file" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg>新建</button>
-          <button id="btn-save" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg>保存</button>
-          <button id="btn-daily" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg>今日</button>
-          <button id="btn-source" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg>源码</button>
-          <button id="btn-more" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg>更多</button>
+          <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg><span class="btn-label">打开文件</span></button>
+          <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg><span class="btn-label">打开知识库</span></button>
+          <button id="btn-new-file" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg><span class="btn-label">新建</span></button>
+          <button id="btn-save" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg><span class="btn-label">保存</span></button>
+          <button id="btn-daily" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg><span class="btn-label">今日</span></button>
+          <button id="btn-source" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg><span class="btn-label">源码</span></button>
+          <button id="btn-more" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg><span class="btn-label">更多</span></button>
         </div>
         <span id="docstats" class="docstats" title="写作统计（点击设置字数目标）"></span>
         <span id="filename" class="filename">未打开文档</span>
@@ -106,7 +107,10 @@
               <button type="button" class="side-tab" data-tab="files" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-folder" /></svg>文件</button>
               <button type="button" class="side-tab" data-tab="outline" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-list-bullet" /></svg>大纲</button>
             </div>
-            <input id="search-input" class="search-input" type="search" placeholder="标题 / 正文 / #标签" autocomplete="off" />
+            <div class="search-box">
+              <svg class="nl-ico"><use href="#i-search" /></svg>
+              <input id="search-input" class="search-input" type="search" placeholder="标题 / 正文 / #标签" autocomplete="off" />
+            </div>
             <div id="search-results" class="search-results"></div>
             <div id="filetree" class="filetree"></div>
             <nav id="outline" class="outline hidden"></nav>
@@ -122,24 +126,30 @@
 
         <div class="nl-gutter" id="gutter-insp" role="separator" aria-orientation="vertical" title="拖拽改变检查器宽度"></div>
         <aside class="inspector" id="inspector">
-          <section class="panel">
-            <h2>文档属性</h2>
-            <div id="frontmatter" class="frontmatter"></div>
-          </section>
-          <section class="panel">
-            <h2>标签</h2>
-            <div id="tags" class="tags"></div>
-            <div class="tags-sub">全局标签</div>
-            <div id="tags-global" class="tags tags-global"></div>
-            <div id="tags-global-docs" class="tags-global-docs"></div>
-          </section>
-          <section class="panel">
-            <h2>双向链接</h2>
-            <div class="bl-h3">引用本文档</div>
-            <div id="backlinks" class="link-list"></div>
-            <div class="bl-h3">本文档引用</div>
-            <div id="outgoing" class="link-list"></div>
-          </section>
+          <details class="panel">
+            <summary><h2>文档属性</h2></summary>
+            <div class="panel-body">
+              <div id="frontmatter" class="frontmatter"></div>
+            </div>
+          </details>
+          <details class="panel">
+            <summary><h2>标签</h2></summary>
+            <div class="panel-body">
+              <div id="tags" class="tags"></div>
+              <div class="tags-sub">全局标签</div>
+              <div id="tags-global" class="tags tags-global"></div>
+              <div id="tags-global-docs" class="tags-global-docs"></div>
+            </div>
+          </details>
+          <details class="panel">
+            <summary><h2>双向链接</h2></summary>
+            <div class="panel-body">
+              <div class="bl-h3">引用本文档</div>
+              <div id="backlinks" class="link-list"></div>
+              <div class="bl-h3">本文档引用</div>
+              <div id="outgoing" class="link-list"></div>
+            </div>
+          </details>
           <section class="panel">
             <h2><svg class="nl-ico"><use href="#i-box" /></svg>历史版本</h2>
             <div id="snapshots" class="snapshots"></div>

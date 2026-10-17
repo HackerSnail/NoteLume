@@ -37,7 +37,7 @@ function buildTheme(CM, isDark, extra) {
     {
       '&': { color: 'var(--fg)', backgroundColor: 'transparent', fontSize: '14px' },
       '.cm-scroller': {
-        fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+        fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace",
         lineHeight: '1.7',
       },
       '.cm-content': { caretColor: 'var(--accent)', padding: '8px 0' },

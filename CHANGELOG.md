@@ -7,6 +7,20 @@
 
 ## [Unreleased](https://gitee.com/hackerSnail/note-lume/compare/master...dev)
 
+### Changed
+
+* **编辑器与侧栏排版整体收紧（浅色 / 暗黑 / Dracula 三主题分别调过）**：此前的界面文字贴边、表格满框竖线、侧栏与编辑区只靠 1px 硬边框分界，看着像表格工具不像编辑器。本次按 Notion / Obsidian 的路子重排，配色按主题各自给值，不搞一套色三个主题硬套。
+  * ① 表格去竖框：`.ProseMirror th/td` 从 `border: 1px solid` 改为只留 `border-bottom`（表头 2px、行间 1px），内边距 6px 10px → 8px 12px，整表 `margin: 1.5em 0; font-size: .95em`，表头不再铺底色；新增行悬停高亮（主题色 8% 浅底，压在既有斑马纹之上）。列宽封顶、拖拽手柄、选中格覆盖等既有规则不动。
+  * ② 标题与正文呼吸感：h1–h3 改 `margin: 2em 0 1em`，h4–h6 `1.6em 0 0.8em`（原统一 1.4em/0.6em）；文档首个子元素的标题 `margin-top: 0`，否则篇首凭空多出 2em；正文段距 0.7em → 0.8em；行高维持 1.75。
+  * ③ 侧栏 / 检查器分层改底色差：`--bg-panel` 三主题各加深一档（浅 #f7f7f8→#f4f5f7、暗 #171a1f→#16181d、Dracula #21222c→#1f202c），同时删掉 `.sidebar` 的 `border-right` 与 `.inspector` 的 `border-left`，区域分隔不再靠硬边框。
+  * ④ 文件树选中改左侧竖条：原先是 `--accent` 整行色块 + 白字，现改为行背景透明、文字加粗，左侧 3px 主题色竖条（`.tree-file.active::before`，VS Code 风）；悬停底色不再覆盖选中行。
+  * ⑤ 工具条图标化：主操作组（打开文件 / 打开知识库 / 新建 / 保存 / 今日 / 源码 / 更多）文字包进 `.btn-label` 后 `display: none`，只留图标，悬停提示沿用各按钮原有 `title`；按钮整体改幽灵样式（无底无边框，悬停才出 `--hover`，激活态仍是主题色实底）。主题按钮保留文字——它显示当前是哪个主题。
+  * ⑥ 按钮与输入框收口为幽灵 / 细边框：frontmatter 的「应用 / 重新格式化 / 移除」与快照弹窗的「回滚到此版本」去掉实底，「应用」改为主题色文字 + 45% 透明度细边框，悬停才出 12% 淡底；`.plugin-reload` 同步。侧栏搜索框外包一层 `.search-box`（`index.html`），左侧挂新增的 `i-search` 放大镜图标，输入本体无边框透明，聚焦色挪到容器上（`:focus-within`）。
+  * ⑦ 代码字体与底色：新增 `--font-mono` 令牌（JetBrains Mono / Fira Code 优先，未装退回系统等宽），行内代码、代码块、frontmatter 的 key 与 textarea、源码模式 CodeMirror 统一改用它；行内代码按主题上色（浅 #c0341d / 暗 #f38ba8 / Dracula #ff79c6），代码块另用更深的 `--pre-bg`（浅 #f6f8fa / 暗 #14161b / Dracula #1b1c26）与周围拉开；代码块圆角 8px → 6px，callout 同步 6px，与按钮输入框对齐。
+  * ⑧ 正文字体栈前置 Inter / HarmonyOS Sans / Noto Sans SC（原只有系统栈），三主题共用。
+  * ⑨ 检查器折叠：文档属性 / 标签 / 双向链接三个 `<section class="panel">` 改为 `<details class="panel">`，标题行即摘要行（`summary` flex + 自绘折叠尖角，收起右尖角、展开下尖角），默认收起，不再一股脑全展开；历史版本 / Git / 插件三个面板不动。
+  * 实测（无头 Edge 载 `src/dist`，按 `data-theme` 逐个切换读计算样式）：三主题下表格 `td` 均 `padding: 8px 12px`、`border-bottom: 1px`、`border-left: 0`，`th` 底线 2px；标题 h1 上 64.6px（2em）下 32.3px（1em）、行高 1.75；侧栏底色与正文底色三主题均不同且无右边框；选中文件行背景透明、`::before` 竖条 3px 且取各自主题色（#2f6feb / #5b8cff / #bd93f9）；代码块底色与圆角 6px 三主题各自生效；工具条主按钮 `.btn-label` 均为 `display: none`。另起本地静态服务加载真实应用（非合成页）无头启动：`#docstats` 有统计文案、三个 `details` 面板与搜索框容器均在位，`writing-stats` 4 passed、`source-sync` 4 passed、`npm run build:web` 32.31s 无错。未实测项：Inter / JetBrains Mono 未安装机器上的实际回退效果（本机回落系统无衬线 / Consolas）；真机 WebView2 与打包版的观感。
+
 ### Removed
 
 * **默认键位取消：Ctrl+/**：`Ctrl+/` 不再绑源码模式，让位第一档的 `Ctrl+E`（切换编辑 / 预览）。命令本体不动，`Ctrl+/` 可在快捷键设置里绑回。（初版还把 `Ctrl+P` 从打印让给了命令面板，随后按用户要求改回，结论见下面「标签页」条目。）
