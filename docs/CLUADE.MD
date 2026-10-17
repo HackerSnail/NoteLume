@@ -90,6 +90,7 @@
 4. 代码附带注释，所有代码必须可直接复制运行；按文件拆分输出
 5. 每次输出先给出完整最小可运行demo，再逐步增加功能
 6. 优先保证编辑器流畅性，知识库索引不要阻塞UI（Rust后台扫描）
+7. 前端界面不用 emoji 与临时字形（✕ ✓ ▾ ↑ ↓ ⚠ • 之类），图标统一走 SVG sprite：`src/icons.js` 的 `setIcon(el, name, label)` / `iconHTML(name)`，图形数据只有 `index.html` 里 `<svg class="nl-sprite">` 那一份 `<symbol id="i-*">`。例外：键位图例（⌘ ⌥）、提示句里的 →、Git 状态字母徽标（M/N/D/R/C/?）
 
 ## 当前状态
 
