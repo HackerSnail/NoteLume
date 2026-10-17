@@ -59,6 +59,7 @@ import { promptDialog } from './prompt-dialog.js'
 import { confirm3Dialog } from './confirm3-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createRegistry } from './commands.js'
+import { createTabs } from './tabs.js'
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createCanvasView } from './canvas-view.js'
@@ -69,6 +70,7 @@ import { countWords, statsLabel } from './writing-stats.js'
 import { setIcon } from './icons.js'
 import { analyzeOutline, hiddenRows } from './outline-tree.js'
 import MarkdownIt from 'markdown-it'
+import { tempDir, join } from '@tauri-apps/api/path'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
 // 与 editor-schema 里的 tokenizer 分开，避免污染 schema 层的解析器
@@ -78,6 +80,8 @@ const state = {
   vaultRoot: null, // 知识库根（绝对路径）
   currentFile: null, // 当前文档库内相对路径
   tempImportRoot: '', // 非空 = 当前 vaultRoot 来自 Word 导入的系统 temp 一次性目录（手动保存会升级为“另存为”）
+  scratch: false, // true = 当前文档是「新建到系统临时目录、还没选保存位置」的文件（Ctrl+S / 关闭时会问位置）
+  scratchRoot: (() => { try { return localStorage.getItem('nl-scratch-dir') } catch { return null } })(), // 上述临时目录的绝对路径
   mode: 'md', // 'md' 编辑器 | 'canvas' 画布
   dirty: false,
   indexReady: false,
@@ -107,6 +111,7 @@ const els = {
   tagsGlobalDocs: $('tags-global-docs'),
   editor: $('editor'),
   filename: $('filename'),
+  tabs: $('tabbar'),
   btnOpen: $('btn-open'),
   btnOpenFile: $('btn-open-file'),
   btnNewFile: $('btn-new-file'),
@@ -138,6 +143,7 @@ const els = {
 
 let editor
 let findBar = null // 文档内查找栏控制器（boot 里 editor 装配后创建）
+let tabs = null // 标签页（文档 tabs）控制器，boot 里创建
 let palette = null
 let keySettings = null
 let gitPanel = null
@@ -164,6 +170,7 @@ function setStatus(msg) {
 function markDirty(d) {
   state.dirty = d
   els.filename.classList.toggle('dirty', d)
+  if (tabs) tabs.setDirty(d)
   if (d) {
     scheduleAutosave()
   } else if (state.autosave.idleTimer) {
@@ -602,6 +609,7 @@ async function openSingleFile() {
     }
     const md = await readMdFile(dir, name)
     state.currentFile = name
+    state.scratch = false
     setMode('md')
     editor.setMarkdown(md)
     els.filename.textContent = abs
@@ -614,6 +622,7 @@ async function openSingleFile() {
     if (snapshotPanel) snapshotPanel.refresh()
     if (pluginManager) pluginManager.reload()
     if (gitPanel) gitPanel.refresh()
+    if (tabs) tabs.open({ root: dir, rel: name })
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus('打开文件失败：' + msg)
@@ -1263,6 +1272,7 @@ async function reopenRecent(entry) {
   try {
     state.vaultRoot = entry.root
     state.tempImportRoot = ''
+    state.scratch = false
     state.currentFile = null // 避免 openFile 的“同一相对路径”早退（跨库可能同名）
     const tree = await scanVault(entry.root)
     renderTree(tree)
@@ -1334,6 +1344,7 @@ function remapCurrentAfterRename(from, to, isFolder) {
   state.currentFile = newCf
   els.filename.textContent = newCf
   highlightActiveFile()
+  if (tabs && tabs.active()) tabs.update(tabs.active().id, { rel: newCf })
 }
 
 async function deleteVaultFile(rel, name) {
@@ -1348,12 +1359,19 @@ async function deleteVaultFile(rel, name) {
       // 删的是当前打开文档：清空编辑区，回到无文档态
       state.dirty = false
       state.currentFile = null
+      state.scratch = false
       setMode('md')
       editor.setMarkdown('')
       els.filename.textContent = '（无打开文档）'
       els.filename.classList.remove('dirty')
       refreshLinkPanels()
       if (snapshotPanel) snapshotPanel.refresh()
+      const act = tabs && tabs.active()
+      if (act) {
+        const next = tabs.neighborOf(act.id)
+        tabs.remove(act.id)
+        if (next) await openTabDoc(next)
+      }
     }
     renderTree(await scanVault(state.vaultRoot))
     setStatus('已移入回收站：' + rel)
@@ -1370,23 +1388,178 @@ function highlightActiveFile() {
   }
 }
 
-// 关闭当前文件（Ctrl+W）：回到无文档态。删除当前文档时的清场逻辑与此同一套，
-// 区别只在那条是先删盘上的文件、这条不动盘。
-async function closeCurrentFile() {
-  if (!state.currentFile) {
-    setStatus('没有打开的文件')
-    return
+// —— 标签页（文档 tabs）——
+// 模型见 tabs.js 文件头：一个编辑器实例 + 一列打开中的文档；切页/关页都走既有打开链路。
+// 活动页的 root/rel 恒等于 state.vaultRoot/state.currentFile（scratch 页例外见 openTabDoc）。
+
+// 新建到系统临时目录：先落一个能立刻编辑的文件，保存 / 关闭时再选正式位置。
+// 临时目录固定为 <temp>/NoteLume/scratch（与 docx 导入的 temp 同根，互不重叠）。
+async function ensureScratchDir() {
+  const base = await tempDir()
+  try {
+    await createDir(base, 'NoteLume/scratch')
+  } catch (_) {
+    /* 已存在：create_dir 对已存在目录报错，忽略 */
   }
+  const dir = await join(base, 'NoteLume', 'scratch')
+  state.scratchRoot = dir // 记住它：openFile 据此判当前文档是不是临时文件
+  try {
+    localStorage.setItem('nl-scratch-dir', dir) // 跨会话记住：重开后从「打开文件」进临时目录也能认出来
+  } catch (_) {
+    /* 隐私模式等场景写不进去，不影响本次 */
+  }
+  return dir
+}
+
+async function newScratchFile() {
   if (!(await ensureSavedBeforeLeave())) return
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  try {
+    const root = await ensureScratchDir()
+    const rel = `未命名-${stamp}.md`
+    await writeMdFile(root, rel, '# 未命名\n\n')
+    await openTabDoc({ root, rel, scratch: true })
+    setStatus('已新建（临时文件，Ctrl+S 或关闭时再选保存位置）')
+    editor.focus()
+  } catch (e) {
+    await messageDialog('新建失败：' + errText(e))
+  }
+}
+
+// 切到某一页：先处理当前文档的未保存改动，再换根开文档（跨库 / 临时目录都要重载树与索引）
+async function switchToTab(id) {
+  const tab = tabs && tabs.get(id)
+  if (!tab) return
+  const active = tabs.active()
+  if (active && active.id === id) return
+  if (!(await ensureSavedBeforeLeave())) return
+  await openTabDoc(tab)
+}
+
+async function openTabDoc(tab) {
+  state.vaultRoot = tab.root
+  state.tempImportRoot = ''
+  state.scratch = !!tab.scratch
+  if (tab.canvas) {
+    renderSingleFileTree(tab.rel)
+    await openCanvas(tab.rel)
+  } else {
+    if (tab.scratch) {
+      // 临时目录不进侧栏树（那是系统 temp，铺开只会碍事）；也只列当前这一个
+      renderSingleFileTree(tab.rel)
+      state.tree = []
+    } else {
+      renderTree(await scanVault(tab.root))
+    }
+    await openFile(tab.rel, true)
+  }
+  if (tabs) tabs.open(tab)
+  startIndexPolling() // 根可能变（跨库 / 临时目录），索引跟着换
+  if (pluginManager) pluginManager.reload()
+  if (gitPanel) gitPanel.refresh()
+  if (snapshotPanel) snapshotPanel.refresh()
+}
+
+// 关闭一页。活动页：临时且未定落的先问是否选位置，脏的走「保存 / 不保存 / 取消」。
+// 非活动页按构造是干净的（离开时已强制保存或放弃），直接移除。
+async function closeTab(id) {
+  if (!tabs) return
+  const tab = tabs.get(id)
+  if (!tab) return
+  if (tabs.active() && tabs.active().id === id) {
+    if (tab.scratch) {
+      // 临时页：先按常规处理改动（选「保存」会走另存为，成功后这一页已不再是临时页），
+      // 仍是临时页（没改动 / 自动保存过 / 选了不保存）再问要不要选正式位置
+      if (!(await ensureSavedBeforeLeave())) return
+      if (tab.scratch) {
+        const choice = await confirm3Dialog({
+          title: '尚未选择保存位置',
+          message: `「${baseName(tab.rel)}」还没保存到正式位置，现在选吗？`,
+          confirmLabel: '选择位置',
+          neutralLabel: '直接关闭',
+          cancelLabel: '取消',
+        })
+        if (choice === 'cancel') return
+        if (choice === 'confirm' && !(await saveScratchAs())) return
+      }
+    } else if (!(await ensureSavedBeforeLeave())) {
+      return
+    }
+    // 另存为会改这一页的 id（root/rel 变了），故用 tab 对象上的现值，不用入参 id
+    const next = tabs.neighborOf(tab.id) // 先问邻居，再移除（移除后该页就没了）
+    tabs.remove(tab.id)
+    if (next) await openTabDoc(next)
+    else await goNoDoc()
+  } else {
+    tabs.remove(id)
+  }
+}
+
+// 全部关完：回到无文档态（不退出应用）
+async function goNoDoc() {
   state.currentFile = null
   state.dirty = false
+  state.scratch = false
   setMode('md')
   editor.setMarkdown('')
   els.filename.textContent = '（无打开文档）'
   els.filename.classList.remove('dirty')
   refreshLinkPanels()
   if (snapshotPanel) snapshotPanel.refresh()
-  setStatus('已关闭当前文件')
+}
+
+// Ctrl+Tab / Ctrl+Shift+Tab：循环切页（dir = 1 下一个，-1 上一个）
+async function cycleTab(dir) {
+  if (!tabs) return
+  const list = tabs.list()
+  if (list.length < 2) {
+    setStatus(list.length ? '只有一个标签页' : '没有打开的标签页')
+    return
+  }
+  const i = list.findIndex((t) => t.id === (tabs.active() || {}).id)
+  const next = list[(i + dir + list.length) % list.length]
+  await switchToTab(next.id)
+}
+
+// 临时文件的「保存」：选一个正式位置写盘，然后把这一页改指到新位置（退出临时态）
+async function saveScratchAs() {
+  try {
+    const md = editor.getMarkdown()
+    const abs = await pickSaveAs(state.currentFile || '未命名.md')
+    if (!abs) {
+      setStatus('已取消保存（文件仍在临时目录）')
+      return false
+    }
+    const { dir, name } = splitAbs(abs)
+    await writeMdFile(dir, name, md)
+    state.vaultRoot = dir
+    state.tempImportRoot = ''
+    state.scratch = false
+    state.currentFile = name
+    editor.markSaved()
+    els.filename.textContent = abs
+    if (tabs && tabs.active()) tabs.update(tabs.active().id, { root: dir, rel: name, scratch: false })
+    renderTree(await scanVault(dir))
+    highlightActiveFile()
+    try {
+      await updateIndexDoc(name, md)
+      refreshLinkPanels()
+    } catch (_) {
+      /* 索引增量失败不阻断保存 */
+    }
+    recordRecent(dir, name)
+    startIndexPolling()
+    if (snapshotPanel) snapshotPanel.refresh()
+    if (gitPanel) gitPanel.refresh()
+    if (pluginManager) pluginManager.reload()
+    setStatus('已保存到：' + abs)
+    return true
+  } catch (e) {
+    await messageDialog('保存失败：' + errText(e))
+    return false
+  }
 }
 
 function cssEscape(s) {
@@ -1410,9 +1583,10 @@ async function openFile(rel, skipDirtyConfirm) {
   try {
     const md = await readMdFile(state.vaultRoot, rel)
     state.currentFile = rel
+    state.scratch = isScratchRoot(state.vaultRoot)
     setMode('md')
     editor.setMarkdown(md)
-    els.filename.textContent = rel
+    els.filename.textContent = state.scratch ? await joinPath(state.vaultRoot, rel) : rel
     highlightActiveFile()
     setStatus('已打开：' + rel)
     editor.focus()
@@ -1420,9 +1594,25 @@ async function openFile(rel, skipDirtyConfirm) {
     if (snapshotPanel) snapshotPanel.refresh()
     if (pluginManager) pluginManager.fireFileOpen(rel, md)
     resetBackupTimer()
-    recordRecent(state.vaultRoot, rel)
+    // 临时文件不进「最近打开」：它的归宿是另存为那一刻的正式路径（saveScratchAs 里记）
+    if (!state.scratch) recordRecent(state.vaultRoot, rel)
+    if (tabs) tabs.open({ root: state.vaultRoot, rel, scratch: state.scratch })
   } catch (e) {
     await messageDialog('打开失败：' + e)
+  }
+}
+
+// 当前根是不是「新建未定落」的临时目录（决定 Ctrl+S 是否走另存为、标签页是否带临时标）
+function isScratchRoot(root) {
+  return !!state.scratchRoot && !!root && normVaultPath(root) === normVaultPath(state.scratchRoot)
+}
+
+// 展示用路径拼接：走 Tauri 的 join，非桌面环境（纯浏览器预览）退化成斜杠拼接
+async function joinPath(a, b) {
+  try {
+    return await join(a, b)
+  } catch {
+    return String(a).replace(/[\\/]$/, '') + '/' + b
   }
 }
 
@@ -1449,11 +1639,13 @@ async function openCanvas(path) {
     setMode('canvas') // 先显示容器，open 内的 fitView 才能拿到真实尺寸（否则 0×0 会把节点甩到左上角）
     await canvasView.open(path)
     state.currentFile = path
+    state.scratch = isScratchRoot(state.vaultRoot)
     els.filename.textContent = path
     highlightActiveFile()
     setStatus('已打开画布：' + path)
     resetBackupTimer()
     recordRecent(state.vaultRoot, path)
+    if (tabs) tabs.open({ root: state.vaultRoot, rel: path, canvas: true, scratch: state.scratch })
   } catch (e) {
     await messageDialog('打开画布失败：' + ((e && e.message) || e))
   }
@@ -1479,6 +1671,7 @@ async function newCanvas() {
     await canvasView.save() // 先落盘一个空画布，使其出现在文件树
     renderTree(await scanVault(state.vaultRoot))
     setStatus('新建画布：' + name)
+    if (tabs) tabs.open({ root: state.vaultRoot, rel: name, canvas: true })
   } catch (e) {
     await messageDialog('新建画布失败：' + ((e && e.message) || e))
   }
@@ -1490,6 +1683,8 @@ async function saveCurrent(manual = true) {
     if (manual) setStatus('没有可保存的文档')
     return
   }
+  // 新建未定落的临时文件：手动保存 = 选正式位置（另存为），自动保存仍写临时目录保命
+  if (manual && state.scratch) return saveScratchAs()
   // 独立解析模式（temp 一次性目录）下的手动保存 → 升级为“另存为”，避免默认行为就是默默覆写 temp
   if (manual && state.tempImportRoot && normVaultPath(state.vaultRoot) === normVaultPath(state.tempImportRoot)) {
     return saveTempAsFormal()
@@ -1548,6 +1743,8 @@ async function saveTempAsFormal() {
     // 4) 切换工作根到新目录：同 rel 内容已存在，无需重开文件，只换 vaultRoot 标识
     state.vaultRoot = target
     state.tempImportRoot = ''
+    state.scratch = false
+    if (tabs && tabs.active()) tabs.update(tabs.active().id, { root: target })
     renderTree(await scanVault(target))
     startIndexPolling()
     if (pluginManager) pluginManager.reload()
@@ -2039,8 +2236,8 @@ function registerAppCommands() {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open('replace')
   })
   app('app.search', '聚焦侧栏搜索', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
-  // 新建文件（Ctrl+N）：与工具条「新建」按钮同一行为（无库时先提示）
-  app('app.newFile', '新建文件', 'Mod-n', () => els.btnNewFile.click())
+  // 新建文件（Ctrl+N）：建到系统临时目录，不要求先开知识库；Ctrl+S / 关闭时再选保存位置
+  app('app.newFile', '新建文件', 'Mod-n', () => newScratchFile())
   // 重命名当前文件（F2）：复用文件树右键那条（promptDialog + renameItem + 索引重建）
   app('app.renameFile', '重命名当前文件', 'F2', () => {
     if (!state.currentFile) {
@@ -2049,15 +2246,25 @@ function registerAppCommands() {
     }
     renameEntry(state.currentFile, baseName(state.currentFile), false)
   })
-  // 关闭当前文件（Ctrl+W）：无标签页设计，「关闭」= 回到无文档态（不退出应用）
-  app('app.closeFile', '关闭当前文件', 'Mod-w', () => closeCurrentFile())
+  // 关闭当前标签页（Ctrl+W）：只剩一页时等同关闭文档，回到无文档态
+  app('app.closeFile', '关闭当前标签页', 'Mod-w', () => {
+    const act = tabs && tabs.active()
+    if (!act) {
+      setStatus('没有打开的标签页')
+      return
+    }
+    closeTab(act.id)
+  })
+  // 标签页循环（Ctrl+Tab / Ctrl+Shift+Tab）：刻意用 Ctrl 而非 Mod——mac 上 Cmd+Tab 被系统切应用占用
+  app('app.nextTab', '切换下一个标签页', 'Ctrl-Tab', () => cycleTab(1))
+  app('app.prevTab', '切换上一个标签页', 'Ctrl-Shift-Tab', () => cycleTab(-1))
   // 插入图片（Ctrl+Shift+I，Typora 习惯）：file input 选图后走落库路径
   app('app.insertImage', '插入图片…', 'Mod-Shift-i', () => {
     if (editor && state.mode === 'md') editor.pickAndInsertImages()
     else setStatus('插入图片仅用于 Markdown 文档')
   })
-  // 粘贴为纯文本（Ctrl+Shift+P）：读剪贴板文本，去掉格式后插入
-  app('app.pastePlain', '粘贴为纯文本', 'Mod-Shift-p', async () => {
+  // 粘贴为纯文本（Ctrl+Shift+V，Typora/Obsidian 习惯键）
+  app('app.pastePlain', '粘贴为纯文本', 'Ctrl-Shift-v', async () => {
     // 焦点在输入框（查找栏 / 侧栏搜索 / 源码 CM）里时不抢，那边要的是带格式粘贴
     const el = document.activeElement
     if (el && el.closest && el.closest('input, textarea, .cm-content')) return
@@ -2077,9 +2284,9 @@ function registerAppCommands() {
   })
   // Ctrl+E = 编辑 / 预览互切（Typora 语义，即源码 ⇄ 所见即所得）；Ctrl+/ 不再占默认键
   app('app.sourceMode', 'Markdown 源码模式', 'Mod-e', () => toggleSourceMode())
-  // 命令面板占 Ctrl+P（Obsidian 习惯）；打印让位，只留菜单入口与自定义重绑
-  app('app.palette', '命令面板', 'Mod-p', () => { if (palette) palette.open() })
-  app('app.print', '打印 / 另存 PDF', null, () => window.print())
+  // 打印保留 Ctrl+P（用户明确要求）；命令面板回 Ctrl+Shift+P
+  app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
+  app('app.palette', '命令面板', 'Mod-Shift-p', () => { if (palette) palette.open() })
   app('app.graph', '打开知识图谱', 'Mod-g', () => openGraphModal())
   app('app.dailyCapture', '今日速记', 'Mod-Shift-d', () => toggleDailyCapture())
   // 专注模式 Ctrl+Shift+`（Typora 习惯）；原 Ctrl+Shift+E 释放
@@ -2194,7 +2401,7 @@ let macTitle = ''
 const lastRunAt = new Map()
 
 const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.print', 'app.closeFile', 'app.renameFile'])
-const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph', 'app.newFile'])
+const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
 // 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
 const MENU_NEEDS_MD = new Set(['app.exportWord', 'app.insertImage'])
 const MENU_CHECKED = {
@@ -2370,6 +2577,12 @@ function bindShortcuts() {
 }
 
 async function boot() {
+  // 标签页先建：编辑器回调（onDirty → markDirty → tabs.setDirty）可能在装配过程中就触发
+  tabs = createTabs({
+    mountEl: els.tabs,
+    onSwitch: (id) => switchToTab(id),
+    onClose: (id) => closeTab(id),
+  })
   editor = createEditor({
     mountEl: els.editor,
     getVault: () => ({ vaultRoot: state.vaultRoot, mdRel: state.currentFile }),
@@ -2470,14 +2683,7 @@ async function boot() {
 
   els.btnOpen.addEventListener('click', openFolder)
   els.btnOpenFile.addEventListener('click', openSingleFile)
-  els.btnNewFile.addEventListener('click', async () => {
-    if (!state.vaultRoot) {
-      setStatus('请先打开知识库文件夹')
-      await messageDialog('新建文件前请先打开一个知识库文件夹（文件会创建在库根目录）。', 'info')
-      return
-    }
-    await newFileIn('')
-  })
+  els.btnNewFile.addEventListener('click', () => newScratchFile())
   els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())

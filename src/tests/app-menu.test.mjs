@@ -25,7 +25,9 @@ const base = () => [
   C('app.openFolder', '打开知识库文件夹', { accelerator: 'Cmd+Shift+O' }),
   C('app.newFile', '新建文件', { accelerator: 'Cmd+N' }),
   C('app.renameFile', '重命名当前文件', { accelerator: 'F2' }),
-  C('app.closeFile', '关闭当前文件', { accelerator: 'Cmd+W' }),
+  C('app.closeFile', '关闭当前标签页', { accelerator: 'Cmd+W' }),
+  C('app.nextTab', '切换下一个标签页', { accelerator: 'Ctrl+Tab' }),
+  C('app.prevTab', '切换上一个标签页', { accelerator: 'Ctrl+Shift+Tab' }),
   C('app.newCanvas', '新画布 / 白板'),
   C('app.newTemplate', '新建空白模板…'),
   C('app.dailySettings', '今日速记设置…'),
@@ -34,7 +36,7 @@ const base = () => [
   C('app.exportSite', '导出整站…'),
   C('app.importWord', '导入 Word(.docx)…'),
   C('app.exportWord', '导出 Word(.docx)…'),
-  C('app.print', '打印 / 另存 PDF'),
+  C('app.print', '打印 / 另存 PDF', { accelerator: 'Cmd+P' }),
   C('app.dailyCapture', '今日速记', { accelerator: 'Cmd+Shift+D' }),
   C('app.autosave', '自动保存', { checked: false }),
   C('app.shortcuts', '快捷键设置…'),
@@ -48,7 +50,7 @@ const base = () => [
   C('editor.strike', '删除线', { accelerator: 'Cmd+Shift+X' }),
   C('editor.link', '插入 / 编辑链接', { accelerator: 'Cmd+K' }),
   C('editor.deleteLine', '删除当前行 / 段落', { accelerator: 'Cmd+D' }),
-  C('app.pastePlain', '粘贴为纯文本', { accelerator: 'Cmd+Shift+P' }),
+  C('app.pastePlain', '粘贴为纯文本', { accelerator: 'Cmd+Shift+V' }),
   C('editor.mathInline', '行内公式', { accelerator: 'Cmd+M' }),
   C('editor.mathBlock', '块级公式', { accelerator: 'Cmd+Shift+M' }),
   C('editor.block.para', '段落：正文', { checked: false }),
@@ -63,7 +65,7 @@ const base = () => [
   C('app.toggleSidebar', '隐藏 / 显示侧栏', { checked: true }),
   C('app.toggleInspector', '隐藏 / 显示检查器', { accelerator: 'Cmd+Shift+B' }),
   C('app.graph', '打开知识图谱', { accelerator: 'Cmd+G' }),
-  C('app.palette', '命令面板', { accelerator: 'Cmd+P' }),
+  C('app.palette', '命令面板', { accelerator: 'Cmd+Shift+P' }),
 ]
 
 const specOf = (commands = base(), extra = {}) => buildMacMenuSpec({ commands, ...extra })

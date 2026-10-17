@@ -173,7 +173,14 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.palette',
       submenu('theme', '主题', 'themes'),
     ]),
-    group('window', '窗口', [role('Minimize'), role('Maximize'), 'sep', role('Fullscreen')]),
+    group('window', '窗口', [
+      'app.nextTab',
+      'app.prevTab',
+      role('Minimize'),
+      role('Maximize'),
+      'sep',
+      role('Fullscreen'),
+    ]),
   ].filter(Boolean)
 
   // 「段落」组的注册表标题带「段落：」前缀（面板里便于归类），菜单里是多余的

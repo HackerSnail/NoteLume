@@ -71,6 +71,17 @@ check('eventToBinding F 键裸按也还原', () => {
   assert.strictEqual(eventToBinding({ ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, key: 'F2' }, false), 'F2')
   assert.strictEqual(eventToBinding({ ctrlKey: false, shiftKey: true, altKey: false, metaKey: false, key: 'F2' }, false), 'Shift-F2')
 })
+check('Ctrl+Tab 可录可解析，裸 Tab 仍忽略', () => {
+  assert.strictEqual(eventToBinding({ ctrlKey: true, shiftKey: false, altKey: false, metaKey: false, key: 'Tab' }, false), 'Mod-tab')
+  assert.strictEqual(eventToBinding({ ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, key: 'Tab' }, false), 'Mod-Shift-tab')
+  assert.strictEqual(eventToBinding({ ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, key: 'Tab' }, false), null)
+  assert.strictEqual(parseBinding('Tab', false), null) // 裸 Tab 不给绑
+  assert.deepStrictEqual(parseBinding('Ctrl-Tab', false), { ctrl: true, meta: false, alt: false, shift: false, base: 'tab' })
+  assert.strictEqual(normalizeBinding('Ctrl-Shift-Tab'), 'Ctrl-Shift-tab')
+  assert.strictEqual(formatBinding('Ctrl-Tab', false), 'Ctrl+Tab')
+  assert.strictEqual(formatBinding('Ctrl-Tab', true), '⌃Tab')
+  assert.strictEqual(toAccelerator('Ctrl-Tab'), 'Control+Tab')
+})
 
 // —— eventMatches ——
 check('eventMatches 大小写与修饰严格匹配', () => {

@@ -230,12 +230,99 @@ body {
   display: contents;
 }
 
+/* —— 标签页（文档 tabs）：工具条下方一横条，超出宽度横向滚动 —— */
+.tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 8px;
+  min-height: 30px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: none;
+}
+.tabbar.hidden {
+  display: none;
+}
+.tabbar::-webkit-scrollbar {
+  height: 0;
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+  max-width: 220px;
+  user-select: none;
+}
+.tab:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.tab.active {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--border);
+}
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.tab-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.tab.dirty .tab-dot {
+  display: inline-block;
+}
+.tab-x {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.55;
+  flex: none;
+}
+.tab-x:hover {
+  opacity: 1;
+  background: var(--hover);
+}
+/* 临时文件（新建未选保存位置）：标题后加一个细标记，肉眼可辨「这一页还没定落」 */
+.tab.scratch .tab-name::after {
+  content: ' ·';
+  color: var(--accent);
+}
+
 /* —— mac：动作交给系统菜单栏，窗口内工具条下沉为底部状态条 —— */
-[data-mac] .body {
+/* 标签条留顶部（与浏览器一致）：tabbar 1 → body 2 → toolbar 3（底部状态条） */
+[data-mac] .tabbar {
   order: 1;
+  border-top: none;
+}
+[data-mac] .body {
+  order: 2;
 }
 [data-mac] .toolbar {
-  order: 2;
+  order: 3;
   border-bottom: 0;
   border-top: 1px solid var(--border);
   padding: 5px 12px;

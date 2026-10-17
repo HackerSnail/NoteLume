@@ -3,11 +3,13 @@
 // 绑定串用 ProseMirror 同款逻辑文法：修饰键 Mod/Ctrl/Alt/Shift + 一个基础键，'-' 连接。
 //   例：'Mod-b'、'Mod-Shift-x'、'Mod-/'、'Mod-`'。存储只用 'Mod'（跨平台：mac→Cmd，其余→Ctrl）。
 //   F1–F12 允许裸绑（不带修饰），供 F2 重命名这类习惯键使用；其余基础键必须带主修饰。
+//   Tab 允许带修饰绑定（Ctrl+Tab 切标签页），裸 Tab 始终忽略（焦点导航归编辑器/系统）。
 // 本层负责：规范化/解析绑定、把 KeyboardEvent 反解为绑定、匹配、有效绑定合成、冲突检出、可读化。
 // 匹配/冲突一律在「按平台解析后」的规范形上进行——这样 'Mod-b' 与 'Ctrl-b' 在非 mac 平台视为同一，能查出冲突。
 
 const MOD_ORDER = ['Mod', 'Ctrl', 'Cmd', 'Alt', 'Shift'] // 规范化时的固定次序
-// 结构性键：留给编辑器/系统，不作为可重绑目标（录制时忽略）
+// 结构性键：留给编辑器/系统，不作为可重绑目标（录制时忽略）。
+// Tab 例外：Ctrl+Tab 切标签页是各平台通用习惯，允许带修饰绑定，裸 Tab 仍忽略（焦点导航）。
 const STRUCTURAL = new Set([' ', 'Escape', 'Enter', 'Tab', 'Spacebar', 'Control', 'Alt', 'Meta', 'Shift', 'CapsLock'])
 
 export function detectIsMac() {
@@ -19,10 +21,11 @@ export function detectIsMac() {
   }
 }
 
-// 基础键是否合法：可打印单字符（非空格）或 F1–F12
+// 基础键是否合法：可打印单字符（非空格）、F1–F12，或带修饰的 Tab（Ctrl+Tab 切标签页）
 function validBase(base) {
   if (base == null) return false
   if (isFKey(base)) return true
+  if (base === 'Tab') return true
   return base.length === 1 && base !== ' '
 }
 
@@ -86,7 +89,8 @@ export function resolveBinding(raw, isMac = false) {
 export function eventToBinding(e, isMac = false) {
   const key = e.key
   if (key == null) return null
-  if (STRUCTURAL.has(key)) return null
+  // 裸 Tab 仍是焦点导航，不录；带修饰的 Tab 放行（Ctrl+Tab 切标签页）
+  if (STRUCTURAL.has(key) && !(key === 'Tab' && (e.ctrlKey || e.metaKey || e.altKey))) return null
   if (!validBase(key)) return null
   const mods = []
   // 主修饰：mac 用 Cmd(meta)，其余用 Ctrl；存成 'Mod' 保跨平台可移植
@@ -128,7 +132,8 @@ export function formatBinding(raw, isMac = false) {
     if (d.shift) parts.push('Shift')
   }
   const b = d.base
-  parts.push(b.length === 1 ? b.toUpperCase() : b)
+  // 单字符与 F 键走大写展示形；Tab 首字母大写；其余多字符键原样
+  parts.push(b.length === 1 || isFKey(b) ? b.toUpperCase() : b === 'tab' ? 'Tab' : b)
   return isMac ? parts.join('') : parts.join('+')
 }
 
@@ -143,7 +148,8 @@ export function toAccelerator(raw) {
   if (d.meta) mods.push('Cmd')
   if (d.alt) mods.push('Option')
   if (d.shift) mods.push('Shift')
-  const key = d.base.toUpperCase() // 字母/符号/F 键统一大写形（'/'、'`' 等符号 toUpperCase 为恒等）
+  // 字母/符号/F 键/Tab 统一大写形（'/'、'`' 等符号 toUpperCase 为恒等）
+  const key = d.base === 'tab' ? 'Tab' : d.base.toUpperCase()
   return mods.concat(key).join('+')
 }
 

@@ -78,7 +78,7 @@
         <div class="btn-group">
           <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg>打开文件</button>
           <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg>打开知识库</button>
-          <button id="btn-new-file" title="在知识库根目录新建 Markdown 文件"><svg class="nl-ico"><use href="#i-file-plus" /></svg>新建</button>
+          <button id="btn-new-file" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg>新建</button>
           <button id="btn-save" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg>保存</button>
           <button id="btn-daily" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg>今日</button>
           <button id="btn-source" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg>源码</button>
@@ -92,7 +92,7 @@
         </label>
         <button id="btn-theme" title="切换主题"><svg class="nl-ico"><use href="#i-moon" /></svg>暗黑</button>
       </header>
-
+      <div id="tabbar" class="tabbar hidden" role="tablist" aria-label="打开的文档"></div>
 
       <div class="body">
         <div class="side-corner" role="group">

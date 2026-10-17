@@ -81,14 +81,15 @@
 | 行内代码 | Ctrl+` | Cmd+` |
 | 标题 1~6 | Ctrl+1~6 | Cmd+1~6 |
 | 切换编辑 / 预览 | Ctrl+E | Cmd+E |
+| 打印 / 另存 PDF | Ctrl+P | Cmd+P |
 
 第二档（区分「能用」与「好用」）：
 
 | 功能 | Win/Linux | Mac |
 | --- | --- | --- |
-| 命令面板 | Ctrl+P | Cmd+P |
+| 命令面板 | Ctrl+Shift+P | Cmd+Shift+P |
 | 快速打开文件 | Ctrl+O | Cmd+O |
-| 粘贴为纯文本 | Ctrl+Shift+P | Cmd+Shift+P |
+| 粘贴为纯文本 | Ctrl+Shift+V | Cmd+Shift+V |
 | 任务列表 | Ctrl+Shift+L | Cmd+Shift+L |
 | 无序 / 有序列表 | Ctrl+Shift+[ / Ctrl+Shift+] | Cmd+Shift+[ / Cmd+Shift+] |
 | 插入表格 | Ctrl+T | Cmd+T |
@@ -96,32 +97,54 @@
 | 引用块 | Ctrl+Shift+Q | Cmd+Shift+Q |
 | 删除当前行 / 段落 | Ctrl+D | Cmd+D |
 | 提升 / 降低标题级别 | Ctrl+] / Ctrl+[ | Cmd+] / Cmd+[ |
+| 关闭当前标签页 | Ctrl+W | Cmd+W |
+| 切换下一个 / 上一个标签页 | Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab |
 
 第三档（加分项，已做的）：
 
 | 功能 | Win/Linux | Mac |
 | --- | --- | --- |
-| 关闭当前文件 | Ctrl+W | Cmd+W |
 | 专注模式（沉浸写作） | Ctrl+Shift+` | Cmd+Shift+` |
 | 重命名当前文件 | F2 | F2 |
 
 冲突裁决（同一键被两个习惯占用时，按档位取舍，低档位改键）：
 
-1. Ctrl+P：命令面板（第二档）赢，打印 / 另存 PDF 取消默认键，只剩「更多」菜单入口，可在快捷键设置里自绑。
-2. Ctrl+Shift+I：插入图片（第二档）赢，隐藏 / 显示检查器栏改到 Ctrl+Shift+B。
-3. Ctrl+E：切换编辑 / 预览（第一档）赢，源码 ⇄ 所见即所得从 Ctrl+/ 挪到 Ctrl+E，Ctrl+/ 不再占默认键（设置里可绑回）。
-4. Ctrl+Shift+`：专注模式（第三档）从 Ctrl+Shift+E 挪到 Ctrl+Shift+`，Ctrl+Shift+E 释放。
-5. Ctrl+`：行内代码（第一档）赢，侧栏显隐保持 Ctrl+Shift+S，不占 Ctrl+`。
+1. Ctrl+P 归打印 / 另存 PDF（明确要求保留）；命令面板回 Ctrl+Shift+P；粘贴为纯文本改 Ctrl+Shift+V——这本来就是 Typora / Obsidian 的纯文本粘贴习惯键，且 mac 上 Cmd+Shift+V 就是系统级「粘贴并匹配样式」，语义重合。
+2. Ctrl+Shift+I 归插入图片，隐藏 / 显示检查器栏改到 Ctrl+Shift+B。
+3. Ctrl+E 归切换编辑 / 预览，源码 ⇄ 所见即所得从 Ctrl+/ 挪到 Ctrl+E，Ctrl+/ 不再占默认键（设置里可绑回）。
+4. 专注模式用 Ctrl+Shift+`，原 Ctrl+Shift+E 释放。
+5. Ctrl+` 归行内代码（第一档），侧栏显隐保持 Ctrl+Shift+S。
+6. 标签页切换刻意用 Ctrl 而非 Mod：mac 上 Cmd+Tab 被系统「切换应用」占用，按键到不了应用内，故两个平台都绑 Ctrl+Tab。
 
 暂不做的：
 
-- Ctrl+Tab 切换标签：本应用无标签页设计，不做标签切换。
-- 关闭窗口 / 退出应用：交给系统（Alt+F4 / Cmd+Q），不占用 Ctrl+W。
+- 关闭窗口 / 退出应用交给系统（Alt+F4 / Cmd+Q），不占用 Ctrl+W。
 
 两条链路说明：
 
 - 编辑器命令（标题、列表、表格、链接、删行等）在 ProseMirror keymap 里求值，源码态（CodeMirror）下撤销 / 重做单独走 CM 历史，其余命令对源码态不生效。
-- 应用命令（文件、视图、粘贴为纯文本）走 document 级 keydown 分发器，F2 这类无修饰键也已放行（keymap.js 允许 F1–F12 裸绑）。
+- 应用命令（文件、标签页、视图、粘贴为纯文本）走 document 级 keydown 分发器；F2 这类无修饰键与 Ctrl+Tab 这类带修饰的 Tab 均已放行（keymap.js 的 `isFKey` 与 Tab 例外）。
+
+## 标签页设计
+
+单编辑器实例 + 一列打开中的文档：`src/tabs.js` 管列表与标签条，`main.js` 管切页 / 关页链路。不做多文档并发编辑——那要编辑器实例池加各自的脏状态机，收益不抵复杂度；标签页在这里的职责是「快速回到刚才看过的几篇」，与文件树、最近打开互补。
+
+不变式：非活动页一定是干净的。离开一页时 `ensureSavedBeforeLeave` 已强制保存或放弃改动，所以关非活动页不必再问；标签上的脏点也只可能出现在活动页。
+
+行为规则：
+
+- 打开动作（点文件树 / 命令面板 / wikilink / 模板 / 最近打开 / 拖拽导入）都会落到某一页；同一路径只开一个标签，重复打开改为激活。
+- 切页走既有打开链路：先处理当前文档的未保存改动，再换工作根、重载文件树与索引、重载插件。跨根切页（库 A 的文件切到临时目录的文件）同理，索引跟着根走。
+- Ctrl+W 关活动页；只剩一页时等同关闭文档，回到无文档态（不退出应用）。关页后激活右邻，没有右邻取左邻。中键点标签 = 关闭，标签条超出宽度横向滚动。
+
+新建文件的临时目录机制（配 Ctrl+N）：
+
+- Ctrl+N 与工具条「新建」不要求先开知识库：文件建到系统临时目录 `<temp>/NoteLume/scratch/未命名-<时间戳>.md`，直接可编辑。
+- 临时文件也是普通一页，标签带临时标记（标题后一个点）；侧栏在临时态只列当前这一个文件，不铺开 temp 目录。
+- Ctrl+S 对临时文件 = 另存为：弹保存框选正式位置，落盘后该页改指新路径、退出临时态，并记入「最近打开」。自动保存仍写临时目录保命，不改变「还没选位置」这个事实。
+- 关闭临时页先问「选位置 / 直接关闭 / 取消」；自动保存过也不再问保存与否，但仍会问要不要选位置。
+- 临时目录路径存 localStorage（`nl-scratch-dir`），重开后从「打开文件」进到这个目录也能认出是临时文件。
+- 文件树右键的「新建文件…」不变：那是在既有知识库里按目录建，属另一个刻意动作。
 
 ## 架构设计
 
