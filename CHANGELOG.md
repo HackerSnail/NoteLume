@@ -25,7 +25,13 @@
 
 ### Fixed
 
-* **打印 / 导出 PDF 只出正文**：此前全站零 `@media print` 规则，`Ctrl+P` 走 `window.print()` 把应用壳层一起打进纸面（工具条、侧栏、检查器、栏把手、各类浮层）。新增 `style.css:3606-3670` 一段打印样式，按结构收口而非逐个登记类名：`body > :not(#app)`、`#app > :not(.body)`、`.body > :not(.editor-pane)`、`.editor-pane > :not(.editor)` 四条一并 `display:none`，覆盖 14 处 `document.body.appendChild` 挂出的浮层（对话框、预览、菜单、图片查看器 等）。
+* **表格列边界悬停时列线不停闪烁（仅 macOS）**：prosemirror-tables 的列宽手柄是块级 widget，ProseMirror 会在格尾跟着补一个 `<br class="ProseMirror-trailingBreak">`；WebKit 因为这个 br 重算整表列宽，而重算时把未改动列的 max-content 按「当前列宽」而非无限宽来量，于是 20em 封顶列顶到 340px、邻列从 307.5px 缩到 275px。边界一挪开 32.5px，鼠标就退出 5px 命中区，手柄撤掉、列宽弹回、再次命中，形成自激闪烁。修法是一条 CSS：`.ProseMirror th .ProseMirror-trailingBreak, .ProseMirror td .ProseMirror-trailingBreak { display:none }`（`style.css:2125-2131`）。
+  * ① 录屏取证（3.87s / 120 帧逐帧差分，仅 1/44/73/103 四对帧有大面积变化）：按连续竖线检测取表框，设备像素 2x 下表左 698、第一列界 910、表右 2138 全程不动，只有活动边界在 1524 与 1589 之间来回，换算逻辑列宽 105/307.5/307.5 与 105/340/275 两态，与该夹具在 720px 正文宽下的引擎实测值吻合。
+  * ② 触发面二分：先用 jsdom 跑真 schema + `tablePlugins()` 派发 `setHandle` 抓到悬停的真实 DOM（格内变成 `文本 + div.column-resize-handle + br.ProseMirror-trailingBreak`），再喂进两引擎量列宽。只插 div 不闪、只插 br 不闪、div+br 一起必闪；手柄换 `right:0`、`transform`、`contain`、`width:0`+边框、`left:100%` 五种写法全都还闪，隐掉 br 立刻不闪，即与手柄几何无关、只与那一行结构有关。Chromium 侧 9 个变体 × 9 档宽度（640 到 900）一律不闪，确认是 WebKit 独有的重算分歧。
+  * ③ 修后两引擎同页复测：基线 / 悬停 / 撤掉三段列宽恒等（WKWebView 105/307.5/307.5，Chromium 99.1/315.5/305.4），表高 973 与 994.8 不变；手柄仍为 `position:absolute`、4×41px、越出格右边 2px，视觉与拖拽命中区都没变。单元格改文本不触发重算（加一个字、删一个字列宽都不动），所以闪烁只可能来自手柄这条路径。
+  * ④ 边界：WKWebView 首帧布局给 307.5/307.5、增量重算给 340/275 的分歧本身还在（封顶带来的二义），本次只是去掉了反复触发它的东西；`.nl-docx-render` 与 `.cv-node-body` 两个非编辑渲染面无 PM widget，不涉及。未实测项：应用内目视（修后需在 macOS 应用里悬停列边界确认，数字来自按真实 `style.css` 搭的独立 harness 页）。验收：`npm run build:web` 成功（34.24s，chunk 体积告警为既有）、`test:merged-table` 7 passed、`test:roundtrip` 58 passed。
+
+* **打印 / 导出 PDF 只出正文**：此前全站零 `@media print` 规则，`Ctrl+P` 走 `window.print()` 把应用壳层一起打进纸面（工具条、侧栏、检查器、栏把手、各类浮层）。新增 `style.css:3613-3677` 一段打印样式，按结构收口而非逐个登记类名：`body > :not(#app)`、`#app > :not(.body)`、`.body > :not(.editor-pane)`、`.editor-pane > :not(.editor)` 四条一并 `display:none`，覆盖 14 处 `document.body.appendChild` 挂出的浮层（对话框、预览、菜单、图片查看器 等）。
   * ① 壳层是 `#app{height:100vh}` + `.editor-pane{overflow-y:auto}` 的定高滚动容器，纸上只出一屏，故把 `html,body,#app,.body,.editor-pane` 转 `height:auto` 与 `overflow:visible` 并按块排布，`.editor` 去掉 860px 版心与 48/30/120 内边距。
   * ② 视图层记号不上纸：折叠三角 `.nl-fold-toggle` 与计数 `.nl-fold-count`、代码块语言角标 `.nl-code-lang`、列宽手柄与选中格覆盖。`.nl-fold-hidden` 打印态转 `display:block`（折叠只作用于渲染，`fold-plugin.js:73` 的 `Decoration.node`，被折段落照样出纸）；专注模式的 `opacity:.3` 转 1；查找高亮底色转 `none`；`.tableWrapper` 与 `pre` 的 `overflow-x:auto` 转 visible，否则超宽表格与代码行在纸上被裁。
   * ③ 深色与吸血鬼主题转浅色：主题声明是 `:root[data-theme='dark']`（权重 0,2,0），打印块用同权重 `:root[data-theme]` 后置生效，九个变量整体换浅色一套。不改的后果是浏览器默认不打背景，浅色字落在白纸上不可读。
