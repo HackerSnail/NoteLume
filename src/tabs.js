@@ -97,6 +97,13 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
       render()
       return gone
     },
+    /** 清空全部标签：换知识库 / 换单文件根时，旧根的打开记录整体作废 */
+    clear() {
+      items.length = 0
+      activeId = null
+      dirty = false
+      render()
+    },
     /** 关闭一页后该激活谁：先右后左；在 remove 之前调用，没有则 null（调用方走无文档态） */
     neighborOf(id) {
       const i = items.findIndex((t) => t.id === id)

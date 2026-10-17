@@ -60,6 +60,9 @@
 
 ### Fixed
 
+* **已经打开一个知识库时，打不开另一个知识库**：`openFolder`（工具条「打开知识库」/ Ctrl+Shift+O）此前只换 `state.vaultRoot` 和文件树，不动文档态——开着库 A 的文档时开到库 B，编辑区、文件名、标签页全都还指着 A；更要命的是 `openFile` 开头 `if (rel === state.currentFile) return` 的同名早退，两个库各有一个 `README.md` 时新库的那个怎么点都没反应（`reopenRecent` 早有注释修过这条，`openFolder` 漏了）。现在换库前先走 `ensureSavedBeforeLeave`（未保存改动按老规矩问保存 / 不保存 / 取消，取消则不换）；挑到的若是当前库直接返回、不动任何状态（顺带保护已打开的标签页）；否则清标签页、回无文档态、清掉搜索框里残留的旧库命中，再按新根扫树，反链 / 全局标签 / 快照面板一并重取。同类隐患的 `openSingleFile`（打开单个文件）与 `reopenRecent`（打开最近）也换到这条收尾路径，跨根才清、同根不动。`tabs.js` 新增 `clear()`。
+  * 实测（打桩 Tauri IPC 的无头 Edge 全流程驱动，脚本化点按钮与文件树）：库 A 开着一篇文档时开到库 B → 树换 B、文件名回「（无打开文档）」、编辑区清空、标签条收起；再点 B 的同名 `README.md` 能正常打开 B 的内容；重挑当前库 B → 标签与编辑区原样不动；脏文档时换库弹三选框，点「取消」留在 A 不动，点「不保存」完成切换。20 套离线单测全过、`npm run build:web` 无错。未实测项：真机 WebView2 下原生对话框与实际点击的时序。
+
 * **切标签后工具条的字数/时长还是上一个文档的，两个标签看起来像对调了**：`openFile`、单文件打开、关完所有标签、删当前文档、git 拉取重载这五处换文档，都是先 `setMode('md')`（内部调 `updateDocStats`）再 `editor.setMarkdown(...)`——统计刷新跑在换内容之前，用的还是编辑器里上一个文档的文本。于是打开 B 文档显示 A 的字数，切回 A 又显示 B 的。`setMarkdown` 不发 `onDocChange`（只发 `onDirty`/`onFrontmatterChange`/`onSourceTextChange`），那次刷新补不回来。五处 `setMarkdown` 之后各补一次 `updateDocStats()`；关完标签与删当前文档两条顺带让统计归零，不残留最后一个文档的字数。
   * 顺带把估时改诚实：`statsLabel` 此前靠 `readingMinutes` 的 `max(1, …)` 兜底，任何非空文档都写「约 N 分钟」，3 个字也显示「约 1 分钟」。现在不足 300 字写「不到 1 分钟」，空文档只写「0 字」；`writing-stats.js` 文件头「向上取整」与实际的四舍五入口径对齐。`writing-stats.test.mjs` 补 4 条断言（空文档、不足一分钟、满一分钟、1200 字≈4 分钟），4 passed；`npm run build:web` 26.07s 无错。纯前端，刷新即生效。
 

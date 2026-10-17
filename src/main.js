@@ -537,14 +537,25 @@ function toggleTheme() {
 // —— 打开文件夹作为知识库 ——
 async function openFolder() {
   try {
+    // 换库 = 离开当前文档：未保存改动先按切换文档的老规矩问（保存 / 不保存 / 取消）
+    if (!(await ensureSavedBeforeLeave())) return
     const root = await pickFolder()
     if (!root) return
+    if (!leaveCurrentVault(root)) {
+      // 挑的就是当前库：什么都不动（也顺带保护已打开的标签页不被清掉）
+      setStatus('已在当前知识库：' + root)
+      return
+    }
     state.vaultRoot = root
     state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
     const tree = await scanVault(root)
     renderTree(tree)
     setStatus('知识库已加载：' + root + '（索引构建中…）')
     startIndexPolling()
+    // 面板按新库重取：反链 / 全局标签 / 快照列表都不许残留旧库内容
+    refreshLinkPanels()
+    refreshGlobalTags()
+    if (snapshotPanel) snapshotPanel.refresh()
     if (pluginManager) pluginManager.reload()
     if (gitPanel) gitPanel.refresh()
   } catch (e) {
@@ -599,6 +610,7 @@ async function openSingleFile() {
     const abs = await pickFile()
     if (!abs) return
     const { dir, name } = splitAbs(abs)
+    leaveCurrentVault(dir) // 跨目录打开：旧根的标签页与文档态作废，避免还指着上一个库
     state.vaultRoot = dir
     state.tempImportRoot = ''
     if (isCanvasPath(name)) {
@@ -1271,10 +1283,12 @@ function openRecentMenu(anchorEl) {
 async function reopenRecent(entry) {
   if (!(await ensureSavedBeforeLeave())) return
   try {
+    // 跨库打开：清标签页 + 回无文档态（后者同时消掉 openFile「同一相对路径」早退——
+    // 两个库各有一个 README.md 时，不清 currentFile 会让新库的那个点不动）
+    leaveCurrentVault(entry.root)
     state.vaultRoot = entry.root
     state.tempImportRoot = ''
     state.scratch = false
-    state.currentFile = null // 避免 openFile 的“同一相对路径”早退（跨库可能同名）
     const tree = await scanVault(entry.root)
     renderTree(tree)
     startIndexPolling()
@@ -1501,16 +1515,35 @@ async function closeTab(id) {
 
 // 全部关完：回到无文档态（不退出应用）
 async function goNoDoc() {
-  state.currentFile = null
-  state.dirty = false
-  state.scratch = false
-  setMode('md')
-  editor.setMarkdown('')
-  updateDocStats() // 全部关完回到无文档态：统计归零，不残留最后一个文档的字数
-  els.filename.textContent = '（无打开文档）'
-  els.filename.classList.remove('dirty')
+  resetToNoDoc()
   refreshLinkPanels()
   if (snapshotPanel) snapshotPanel.refresh()
+}
+
+// 回到无文档态：清编辑器 / 统计 / 脏标记 / 文件名（标签页与面板由调用方决定）
+function resetToNoDoc() {
+  state.currentFile = null
+  state.scratch = false
+  markDirty(false) // 走统一入口：顺带清掉待触发的自动保存，避免切走后存错文件
+  setMode('md')
+  editor.setMarkdown('')
+  updateDocStats() // setMode 里的刷新发生在清空之前，这里补一次归零
+  els.filename.textContent = '（无打开文档）'
+  els.filename.classList.remove('dirty')
+}
+
+// 换根（换知识库 / 单文件模式 / 打开跨库的最近文档）前的收尾：
+// 旧根的打开记录整体作废——标签页清空、回到无文档态、清掉搜索残留。
+// 不做脏检查（调用方在换根前已问过），也不重扫树（由调用方按新根扫）。
+// 返回 false = 挑的就是当前根，调用方应原样返回，不动任何状态。
+function leaveCurrentVault(root) {
+  if (normVaultPath(root) === normVaultPath(state.vaultRoot)) return false
+  if (tabs) tabs.clear()
+  resetToNoDoc()
+  // 搜索结果还挂着旧库的命中：点进去会用新根打开一个同名（或不存在）的文件
+  els.searchInput.value = ''
+  els.searchResults.innerHTML = ''
+  return true
 }
 
 // Ctrl+Tab / Ctrl+Shift+Tab：循环切页（dir = 1 下一个，-1 上一个）
