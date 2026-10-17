@@ -11,6 +11,7 @@
          描边色继承 currentColor，浅色/暗黑/吸血鬼主题下自动换色。 -->
     <svg class="nl-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></symbol>
+      <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" /><path d="M14 3v5h5" /><path d="M15 14.5v6M12 17.5h6" /></symbol>
       <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol>
       <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v5h7V4" /><path d="M8 14h8v6H8z" /></symbol>
       <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" /><path d="M4 10h16M8 3.5v4M16 3.5v4" /></symbol>
@@ -77,6 +78,7 @@
         <div class="btn-group">
           <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg>打开文件</button>
           <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg>打开知识库</button>
+          <button id="btn-new-file" title="在知识库根目录新建 Markdown 文件"><svg class="nl-ico"><use href="#i-file-plus" /></svg>新建</button>
           <button id="btn-save" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg>保存</button>
           <button id="btn-daily" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg>今日</button>
           <button id="btn-source" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+/)"><svg class="nl-ico"><use href="#i-code" /></svg>源码</button>

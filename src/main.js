@@ -110,6 +110,7 @@ const els = {
   status: $('status'),
   btnOpen: $('btn-open'),
   btnOpenFile: $('btn-open-file'),
+  btnNewFile: $('btn-new-file'),
   btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
   chkAutosave: $('chk-autosave'),
@@ -2398,6 +2399,14 @@ async function boot() {
 
   els.btnOpen.addEventListener('click', openFolder)
   els.btnOpenFile.addEventListener('click', openSingleFile)
+  els.btnNewFile.addEventListener('click', async () => {
+    if (!state.vaultRoot) {
+      setStatus('请先打开知识库文件夹')
+      await messageDialog('新建文件前请先打开一个知识库文件夹（文件会创建在库根目录）。', 'info')
+      return
+    }
+    await newFileIn('')
+  })
   els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
