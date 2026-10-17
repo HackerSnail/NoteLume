@@ -612,6 +612,7 @@ async function openSingleFile() {
     state.scratch = false
     setMode('md')
     editor.setMarkdown(md)
+    updateDocStats() // setMode 里的刷新发生在换文档之前，这里按新内容补一次
     els.filename.textContent = abs
     renderSingleFileTree(name)
     setStatus('已打开文件：' + abs)
@@ -1362,6 +1363,7 @@ async function deleteVaultFile(rel, name) {
       state.scratch = false
       setMode('md')
       editor.setMarkdown('')
+      updateDocStats() // 清空后统计归零，不沿用被删文档的字数
       els.filename.textContent = '（无打开文档）'
       els.filename.classList.remove('dirty')
       refreshLinkPanels()
@@ -1504,6 +1506,7 @@ async function goNoDoc() {
   state.scratch = false
   setMode('md')
   editor.setMarkdown('')
+  updateDocStats() // 全部关完回到无文档态：统计归零，不残留最后一个文档的字数
   els.filename.textContent = '（无打开文档）'
   els.filename.classList.remove('dirty')
   refreshLinkPanels()
@@ -1586,6 +1589,7 @@ async function openFile(rel, skipDirtyConfirm) {
     state.scratch = isScratchRoot(state.vaultRoot)
     setMode('md')
     editor.setMarkdown(md)
+    updateDocStats() // setMode 里的刷新发生在换文档之前（切标签时编辑器还是上一个文档），这里补一次
     els.filename.textContent = state.scratch ? await joinPath(state.vaultRoot, rel) : rel
     highlightActiveFile()
     setStatus('已打开：' + rel)
@@ -2339,6 +2343,7 @@ async function afterRemotePull() {
       try {
         const md = await readMdFile(state.vaultRoot, cf)
         editor.setMarkdown(md)
+        updateDocStats() // 重新加载的是远端版本，字数/时长跟着换
         markDirty(false)
         refreshLinkPanels()
       } catch (_) {

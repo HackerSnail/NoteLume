@@ -46,6 +46,9 @@
 
 ### Fixed
 
+* **切标签后工具条的字数/时长还是上一个文档的，两个标签看起来像对调了**：`openFile`、单文件打开、关完所有标签、删当前文档、git 拉取重载这五处换文档，都是先 `setMode('md')`（内部调 `updateDocStats`）再 `editor.setMarkdown(...)`——统计刷新跑在换内容之前，用的还是编辑器里上一个文档的文本。于是打开 B 文档显示 A 的字数，切回 A 又显示 B 的。`setMarkdown` 不发 `onDocChange`（只发 `onDirty`/`onFrontmatterChange`/`onSourceTextChange`），那次刷新补不回来。五处 `setMarkdown` 之后各补一次 `updateDocStats()`；关完标签与删当前文档两条顺带让统计归零，不残留最后一个文档的字数。
+  * 顺带把估时改诚实：`statsLabel` 此前靠 `readingMinutes` 的 `max(1, …)` 兜底，任何非空文档都写「约 N 分钟」，3 个字也显示「约 1 分钟」。现在不足 300 字写「不到 1 分钟」，空文档只写「0 字」；`writing-stats.js` 文件头「向上取整」与实际的四舍五入口径对齐。`writing-stats.test.mjs` 补 4 条断言（空文档、不足一分钟、满一分钟、1200 字≈4 分钟），4 passed；`npm run build:web` 26.07s 无错。纯前端，刷新即生效。
+
 * **mac 少两个入口：导入 / 导出 Word(.docx)**：Windows 工具条「更多」下拉里这两项是硬编的（`openMoreMenu` 内直写 `makeMenuItem`），而 mac 下 `[data-mac] .toolbar .btn-group { display:none }`（`style.css:253-257`）把含「更多」的整组按钮收掉、动作交给系统菜单栏；菜单栏 spec 只从命令注册表取条目（`app-menu.js`），这两项从未注册 → mac 上没有任何入口能调到它们（功能本身在，Rust 的 `export_docx` 与 docx 导入均无平台分支）。按 `registerAppCommands`（`main.js:2006` 起）既有套路补齐：注册 `app.importWord`/`app.exportWord`（无默认键，不抢既有绑定），「文件」组内插在 `app.exportSite` 之后、「打印」之前。顺带的两侧收益：命令面板能搜到、快捷键设置里可自行绑键。
   * ① 平台差全量对账（不止截图那一条）：Windows「更多」15 项里 13 项 mac 原生菜单已有对应（命令面板/专注/打字机/侧栏/检查器/源码→视图，快捷键设置→应用组，导出 HTML/导出整站/新画布/打开最近/模板与今日速记设置/打印→文件，知识图谱→视图），缺的正是这两项；同下拉的两个子菜单尾部项（清空最近记录、新建空白模板、今日速记设置、今日速记）与 `.btn-group` 其余 5 按钮也都已注册。不计入缺口的两类：查找/替换与 Git 那 8 条在两边都没有菜单项（各走 Ctrl+F/Ctrl+H 与检查器面板）。反向也无 mac 独有：原生菜单的「格式」「段落」组在 Windows 靠快捷键与命令面板到达，属设计文档写明的非目标（不为 Win 建第二套 UI）。
   * ② 回归：`app-menu.test.mjs` fixture 补两条命令，新增断言「Word 导入/导出落在『文件』组，紧跟导出整站」，25 passed；`npm run build:web` 31.68s 无错。未实测项：mac 原生菜单的实际渲染（spec 由 Rust `set_mac_menu` 落地，需 `tauri dev` 起来目视「文件」组那两行文案与点击）；Windows 侧当时未改，下拉条目仍走原直调函数（该差异随后收口，见下条）。

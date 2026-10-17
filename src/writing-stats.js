@@ -1,7 +1,8 @@
 // writing-stats.js —— 写作统计（纯函数，无 DOM，可 Node 单测）
 //
 // 口径：中日韩（含韩文谚文、平/片假名、扩展A）按"字"逐个计；拉丁/西里尔等按空白分词计"词"。
-// 阅读时长按 ~300 字/分钟粗估（纯展示用，向上取整、至少 1 分钟）。
+// 阅读时长按 ~300 字/分钟粗估（纯展示用，四舍五入、至少 1 分钟；
+// 不足一分钟不四舍五入成「约 1 分钟」，由 statsLabel 写「不到 1 分钟」）。
 
 const CJK = '[\\u3400-\\u4dbf\\u4e00-\\u9fff\\u3040-\\u30ff\\uac00-\\ud7af\\uf900-\\ufaff]'
 
@@ -20,7 +21,9 @@ export function readingMinutes(words, wpm = 300) {
 }
 
 // 统计结果的可读串（供工具条展示；前缀图标由调用方挂 .nl-ico）
-export function statsLabel(words) {
-  const m = readingMinutes(words)
-  return words + ' 字 · 约 ' + m + ' 分钟'
+export function statsLabel(words, wpm = 300) {
+  const w = Number(words) || 0
+  if (w <= 0) return '0 字'
+  if (w < wpm) return w + ' 字 · 不到 1 分钟'
+  return w + ' 字 · 约 ' + readingMinutes(w, wpm) + ' 分钟'
 }

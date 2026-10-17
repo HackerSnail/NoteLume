@@ -22,4 +22,10 @@ ok('readingMinutes 阈值')
 assert.match(statsLabel(1200), /1200 字/)
 ok('statsLabel 文案')
 
+assert.strictEqual(statsLabel(0), '0 字')                          // 空文档不带时长
+assert.match(statsLabel(50), /50 字 · 不到 1 分钟/)                // 不足一分钟不四舍五入成「约 1 分钟」
+assert.match(statsLabel(300), /300 字 · 约 1 分钟/)                // 满一分钟起才写「约」
+assert.match(statsLabel(1200), /约 4 分钟/)                        // 300 字/分钟粗估
+ok('statsLabel 时长文案')
+
 console.log(`\n结果：${pass} passed`)
