@@ -17,3 +17,6 @@ cache/
 # 编辑器/系统噪音
 .DS_Store
 Thumbs.db
+img/preview/dark.png
+img/preview/light.png
+img/preview/vampire.png
