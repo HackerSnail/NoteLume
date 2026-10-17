@@ -1,23 +1,22 @@
-// pos-map.js —— 源码模式 ⇄ 所见即所得 的光标位置映射（纯逻辑，无 DOM，可 Node 单测）
+// pos-map.js —— 源码模式与所见即所得之间的光标位置映射（纯逻辑，无 DOM，可 Node 单测）
 //
-// 背景：WYSIWYG 与源码是两个编辑器（ProseMirror / CodeMirror），文档同一份但位置坐标系
-// 不同。切换模式时若不管光标，两边都跳回文档开头——表现为“源码和所见即所得对不上、
-// 光标对不上”。本模块以「序列化记账」为桥梁建立双向映射：
+// 两个编辑器（ProseMirror / CodeMirror）位置坐标系不同，切换时不管光标就会跳回文档开头。
+// 做法是序列化时记账，留下文档位置与输出偏移的对应关系，查询时双向换算：
 //
 //   serialize(doc) → { text, anchorPm/anchorSrc, segPm/segSrc/segSrcEnd/segDoc,
 //     blkPm/blkSrc/blkAt, rowPm/rowPmEnd/rowSrc/rowSrcEnd }（见 editor-schema.js 的
-//     serializeMarkdownMapped）：anchors 记节点边界、segments 记文本段（两侧文本只差
-//     “插入字符”：转义反斜杠 / 行间定界 / 围栏前缀），blocks 记块首行、rows 记表格行。
-//     字符级对齐（charMap）只在查询时对命中那一处按需计算，不在序列化热路径上。
+//     serializeMarkdownMapped）：anchors 是节点边界，segments 是文本段，blocks 是块首行，
+//     rows 是表格行。segments 两侧文本只差转义反斜杠、行间定界、围栏前缀这些插入字符，
+//     字符级对齐只在查询时对命中那一处算，不在序列化路上。
 //
-// 两种精度：
-//   · 精确模式——展示的源码文本与序列化正文逐字节一致（模型改过 → 重新序列化；用户在
-//     源码里只敲了普通文字 → 往返一致）：文档位置 ↔ 源码偏移 字符级互换算。
-//   · 行级回退——展示的是原文字节（Typora/Obsidian 手写格式）或源码被大幅改过：按块
-//     在两边文本中找同一行（块签名匹配 + 顺序推进），块内按行差平移，落在正确行上。
+// 两档精度：
+//   · 源码文本与序列化正文逐字节一致时（模型改过会重新序列化；用户在源码里只敲普通文字
+//     也一致），文档位置与源码偏移按字符互换。
+//   · 源码是手写原文、或改得较多时，按块在两边文本里找同一行（块签名匹配 + 顺序推进），
+//     块内按行差平移。
 //
-// 坐标系约定：doc 位置以「正文」为准（frontmatter 已由调用方剥离，不进模型）；source 是
-// 含 frontmatter 的源码全文，base = 正文在 source 里的起始偏移。
+// doc 位置以正文为准，frontmatter 由调用方剥掉；source 是含 frontmatter 的源码全文，
+// base 是正文在 source 里的起始偏移。
 
 const SEARCH_WINDOW = 8 // 非区分度签名（纯符号行）的行搜索窗口
 
@@ -209,9 +208,9 @@ function alignBlocks(blkPm, blkSrc, blkAt, serText, serLines, srcLines) {
     const sigKeys = lineKeys(sig)
     const matched = srcLines[srcLine] != null && keysIntersect(sigKeys, lineKeys(srcLines[srcLine]))
     if (!matched) {
-      // 顺序猜的不对（源码里增删了行 / 块顺序不同，如脚注定义被序列化器移到文末）：
-      // 按签名重找。签名有区分度（含字母数字且够长）时全文找最近的一处——用户在源码里
-      // 增删的行可能很多，漂移不限大小；纯符号行（$$ / --- / 空）只在小窗口内找，避免误配。
+      // 顺序猜的不对（源码里增删了行，或块顺序不同，如脚注定义被序列化器移到文末）：
+      // 按签名重找。签名含字母数字且够长，就在全文找最近的一处，源码里增删的行数不限；
+      // 纯符号行（$$、---、空）只在小窗口内找，容易误配。
       let found = -1
       if (isDistinctive(sig)) {
         let fwd = -1
@@ -250,8 +249,8 @@ function alignBlocks(blkPm, blkSrc, blkAt, serText, serLines, srcLines) {
   return { blkPm: outPm, serLine: outSer, srcLine: outSrc }
 }
 
-// 签名是否有区分度：含字母/数字且去空白后够长。纯符号行（$$、---、>）不配全文搜索，
-// 否则一篇文档里任意一个同类符号行都可能被误当成目标。
+// 签名有没有区分度：含字母数字、去空白后够长。纯符号行不配全文搜索，否则文档里任意一个
+// 同类符号行都可能被当成目标。
 function isDistinctive(sig) {
   const t = sig.trim()
   return t.length >= 3 && /[\p{L}\p{N}]/u.test(t)

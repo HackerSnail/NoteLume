@@ -335,8 +335,8 @@ export function createEditor(opts) {
     if (srcChangeTimer) clearTimeout(srcChangeTimer)
     srcChangeTimer = setTimeout(() => { opts.onSourceTextChange && opts.onSourceTextChange(text) }, 200)
   }
-  // 当前 WYSIWYG 选区：以 DOM 选区为准。PM 的 state 选区靠 selectionchange 异步回同步，
-  // 快速连按（方向键后立刻 Ctrl+/）时可能还没跟上，用户看见的光标才是要映射的位置；
+  // 当前所见即所得选区，以 DOM 选区为准。PM 的 state 选区靠 selectionchange 异步回同步，
+  // 方向键之后立刻按 Ctrl+/ 时可能还没跟上，用户看见的光标才是要映射的位置；
   // DOM 选区不在编辑器内（焦点在别处）时才回退 state。
   function currentSel() {
     const sel = window.getSelection()
@@ -355,8 +355,7 @@ export function createEditor(opts) {
     const s = view.state.selection
     return { from: s.from, to: s.to }
   }
-  // 光标对齐辅助：映射失败（异常节点 / 极端文本）不阻断模式切换，退回旧行为
-  // （光标落文档开头）——编辑器可用性优先。
+  // 光标对齐：映射失败（异常节点、极端文本）不阻断切换，退回原来的行为（光标落文档开头）
   function mapSelToSource(text) {
     try {
       const mapper = createPosMapper({ doc: view.state.doc, serialize: serializeMarkdownMapped, source: text, base: bodyOffset(text) })
@@ -376,8 +375,9 @@ export function createEditor(opts) {
       return null
     }
   }
-  // 两个编辑器共用的外层滚动容器（.editor-pane）：CM/PM 自身的 scrollIntoView 一个被
-  // .cm-scroller{overflow:visible} 吃掉、一个依赖 DOM 选区已在编辑器内，长文档下都不牢靠
+  // 两个编辑器共用的外层滚动容器是 .editor-pane。CM 和 PM 自己的 scrollIntoView 在这里
+  // 都不可靠：CM 写的是 .cm-scroller（本应用 overflow:visible，不滚），PM 要求 DOM 选区
+  // 已经在编辑器内。
   function sourcePane() {
     return opts.sourceMountEl && opts.sourceMountEl.closest ? opts.sourceMountEl.closest('.editor-pane') : null
   }
@@ -437,10 +437,10 @@ export function createEditor(opts) {
     const range = mapSelToSource(text)
     if (range) src.setSelection(range[0], range[1])
     src.focus()
-    // CM 只渲染视口内的行，且它的 scrollIntoView 只作用于 .cm-scroller——而本应用把纵向滚动
-    // 交给了外层 .editor-pane（.nl-source .cm-scroller{overflow:visible}），CM 自己滚不动。
-    // 故等一帧让 CM 把光标所在行渲染出来，再按 DOM 选区的实际位置把外层容器滚到可见，
-    // 否则切过去只看见文件头、光标在屏幕外
+    // CM 只渲染视口内的行，它自己的 scrollIntoView 也只作用于 .cm-scroller，而本应用的纵向
+    // 滚动在外层 .editor-pane（.nl-source .cm-scroller{overflow:visible}），CM 滚不动。
+    // 等一帧，让 CM 在那一帧的 measure 里把光标所在行渲染出来，再按 DOM 选区把外层容器滚到
+    // 光标可见；不等的话切过去只看见文件头，光标在屏幕外。
     if (range) {
       await nextFrame()
       scrollDomSelectionIntoPane(opts.sourceMountEl, sourcePane(), 48)
@@ -465,12 +465,12 @@ export function createEditor(opts) {
     emitMeta(view, opts)
     opts.onFrontmatterChange && opts.onFrontmatterChange()
     if (sel) {
-      // 先把焦点交回 PM：PM 的 scrollToSelection 只在「DOM 选区已在编辑器内」时才滚动，
-      // 而此刻 DOM 选区还在 CodeMirror 里——先 focus 再 setSelection+scrollIntoView 才有效
-      // （顺序反了会整个跳过滚动，表现为退回来光标虽对、视图却停在文档开头）
+      // 先 focus 再 setSelection + scrollIntoView：PM 的 scrollToSelection 要求 DOM 选区已经
+      // 在编辑器内，此刻它还在 CodeMirror 里，顺序反了它直接返回、不滚动，表现是退回来光标
+      // 位置对但视图停在文档开头。
       view.focus()
       view.dispatch(view.state.tr.setSelection(sel).scrollIntoView())
-      // 兜底：PM 内部那条路仍可能因布局时序没滚成，按 caret 的 DOM 节点再补一次
+      // 再按光标的 DOM 节点补一次滚动，防止 PM 内部那条路因为布局时序没滚成。
       scrollElementIntoPane(caretElementOf(view, sel.head), editorPane(), 48)
     } else {
       view.focus()

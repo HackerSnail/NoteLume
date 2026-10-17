@@ -1099,21 +1099,21 @@ export function serializeMarkdown(doc) {
   return SERIALIZER.serialize(doc)
 }
 
-// —— 5. 位置记账序列化：源码模式 ⇄ 所见即所得 的光标互相对齐 ————————————————
-// 两个编辑器（CodeMirror / ProseMirror）位置坐标系不同，切换模式时若不管光标，两边都会
-// 跳回文档开头。这里复用同一个 SERIALIZER，只把内部 state 换成一个“记账子类”，渲染过程
-// 中顺手记录文档位置与输出偏移的对应关系，供 pos-map.js 做双向换算：
-//   · anchorPm/anchorSrc  所有节点起/止边界 → 输出偏移（双单调，可二分）
-//   · segPm/segSrc/segSrcEnd/segDoc  文本段：文档侧只存节点文本引用（不拷贝），输出侧只存
-//     起止偏移；两侧文本只差转义反斜杠、行间定界、围栏前缀等“插入字符”，查询时按需切片
-//     做字符级对齐（pos-map.js 的 charMap）
-//   · blkPm/blkSrc/blkAt  块记录：src = 渲染入口偏移（常落在上一行行尾），at = 本块第一次
-//     落字的位置（write() 钩子回填），那才是它所在行的起点；at = -1 表示空块
-//   · rowPm/rowPmEnd/rowSrc/rowSrcEnd  表格行锚点（含起止范围）：单元格文本不走文本段记账，
-//     光标落在单元格里时靠它落到所在行
-// 记账全部走平行数字数组（不建每段一个的对象、不拷贝字符串）：大文档下一次切换要过整个
-// 序列化器，对象/字符串分配会直接把 GC 打满（实测：记账时对输出串做 slice 反算落点，
-// 28 万字符文档要凭空多花 4 秒——长串 slice 是 O(n)，故首字符落点改由 write() 钩子回填）。
+// —— 5. 位置记账序列化：源码模式与所见即所得之间的光标对齐 ————————————————————————
+// 两个编辑器（CodeMirror / ProseMirror）位置坐标系不同，切换模式时不管光标，两边都会跳回
+// 文档开头。这里复用同一个 SERIALIZER，把内部 state 换成一个记账子类，渲染时顺手记录文档
+// 位置与输出偏移的对应关系，给 pos-map.js 做双向换算：
+//   · anchorPm/anchorSrc  节点起止边界 → 输出偏移（单调，可二分）
+//   · segPm/segSrc/segSrcEnd/segDoc  文本段。文档侧只存节点文本引用，不拷贝；输出侧只存
+//     起止偏移。两侧文本只差转义反斜杠、行间定界、围栏前缀这些插入字符，字符级对齐放在
+//     查询时按需做（pos-map.js 的 charMap）
+//   · blkPm/blkSrc/blkAt  块记录。src 是渲染入口偏移，常落在上一行行尾；at 是本块第一次
+//     落字的位置（write() 钩子回填），那才是它所在行的起点；at 为 -1 表示空块
+//   · rowPm/rowPmEnd/rowSrc/rowSrcEnd  表格行锚点。单元格文本不走文本段记账，光标落在
+//     单元格里时靠它落到所在行
+// 记账全部用平行数字数组，不建每段一个的对象、不拷贝字符串：一次切换要过整个序列化器，
+// 这些分配会拉高 GC 时间（实测对输出串 slice 反算落点，28 万字符文档多花 4 秒，长串
+// slice 是 O(n)，所以首字符落点改由 write() 钩子回填）。
 class MappedSerializerState extends MarkdownSerializerState {
   constructor(nodes, marks, options) {
     super(nodes, marks, options)

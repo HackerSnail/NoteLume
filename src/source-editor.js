@@ -165,8 +165,8 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
     getDoc() {
       return view.state.doc.toString()
     },
-    // 光标/选区落点：切换模式时由 editor-view 按位置映射设置（保留选区范围，
-    // scrollIntoView 让光标所在行滚入视口——否则整篇跳回开头）
+    // 光标/选区落点：切换模式时由 editor-view 按位置映射设置（保留选区范围）。CM 自己的
+    // scrollIntoView 只作用于 .cm-scroller，本应用的纵向滚动在 .editor-pane，由调用方处理。
     setSelection(from, to) {
       const len = view.state.doc.length
       const a = clampSel(Number(from), len)
