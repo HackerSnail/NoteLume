@@ -145,6 +145,20 @@ export function createTabs({ paneId, mountEl, onSwitch, onClose }) {
     return gone
   }
 
+  /**
+   * 标签条内重排（拖拽排序）：把 id 摘出来插到 index 处。
+   * index 越界夹到队尾；id 不存在返回 false。
+   */
+  function moveTo(id, index) {
+    const i = items.findIndex((x) => x.id === id)
+    if (i < 0) return false
+    const [it] = items.splice(i, 1)
+    const at = Math.min(Math.max(0, Number.isInteger(index) ? index : 0), Math.max(0, items.length))
+    items.splice(at, 0, it)
+    render()
+    return true
+  }
+
   /** 双击固定：清预览标记。已是固定标签则无事发生 */
   function pin(id) {
     const it = items.find((x) => x.id === id)
@@ -190,6 +204,8 @@ export function createTabs({ paneId, mountEl, onSwitch, onClose }) {
       return newId
     },
     remove,
+    /** 标签条内重排（拖拽落定）；序列化顺序即落盘顺序 */
+    moveTo,
     /** 清空全部标签：换知识库 / 换单文件根时，旧根的打开记录整体作废 */
     clear() {
       items.length = 0

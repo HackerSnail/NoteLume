@@ -231,5 +231,51 @@ t('serialize/restore 往返：预览不落盘、active 夹紧、空列记 -1', (
   assert.equal(dst.serialize().active, -1)
 })
 
+// —— 拖拽排序（pane-drag P1）——
+
+t('moveTo：前移与后移都按插入位置落定', () => {
+  const tabs = fresh()
+  tabs.open({ root: 'C:/vault', rel: 'a.md' })
+  tabs.open({ root: 'C:/vault', rel: 'b.md' })
+  tabs.open({ root: 'C:/vault', rel: 'c.md' })
+  const c = tabs.list()[2].id
+  assert.equal(tabs.moveTo(c, 0), true)
+  assert.deepEqual(tabs.list().map((x) => x.rel), ['c.md', 'a.md', 'b.md'])
+  assert.equal(tabs.moveTo(c, 2), true)
+  assert.deepEqual(tabs.list().map((x) => x.rel), ['a.md', 'b.md', 'c.md'])
+})
+
+t('moveTo：移到原位顺序不变，活动标签跟着走', () => {
+  const tabs = fresh()
+  tabs.open({ root: 'C:/vault', rel: 'a.md' })
+  tabs.open({ root: 'C:/vault', rel: 'b.md' })
+  const activeId = tabs.active().id
+  assert.equal(tabs.moveTo(activeId, 1), true)
+  assert.deepEqual(tabs.list().map((x) => x.rel), ['a.md', 'b.md'])
+  assert.equal(tabs.active().id, activeId)
+})
+
+t('moveTo：越界夹取，不存在的 id 返回 false', () => {
+  const tabs = fresh()
+  tabs.open({ root: 'C:/vault', rel: 'a.md' })
+  tabs.open({ root: 'C:/vault', rel: 'b.md' })
+  tabs.open({ root: 'C:/vault', rel: 'c.md' })
+  const a = tabs.list()[0].id
+  assert.equal(tabs.moveTo(a, 99), true)
+  assert.equal(tabs.list()[2].rel, 'a.md')
+  assert.equal(tabs.moveTo(a, -5), true)
+  assert.equal(tabs.list()[0].rel, 'a.md')
+  assert.equal(tabs.moveTo('不存在的 id', 0), false)
+})
+
+t('moveTo 后的顺序进序列化（落盘顺序 = 条内顺序）', () => {
+  const tabs = fresh()
+  tabs.open({ root: 'C:/vault', rel: 'a.md' })
+  tabs.open({ root: 'C:/vault', rel: 'b.md' })
+  tabs.open({ root: 'C:/vault', rel: 'c.md' })
+  tabs.moveTo(tabs.list()[0].id, 2)
+  assert.deepEqual(tabs.serialize().items.map((x) => x.rel), ['b.md', 'c.md', 'a.md'])
+})
+
 console.log('结果：' + pass + ' passed, ' + fail + ' failed')
 if (fail) process.exit(1)

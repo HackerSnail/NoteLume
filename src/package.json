@@ -27,7 +27,8 @@
     "test:tabs": "node tests/tabs.test.mjs",
     "test:pane-strip": "node tests/pane-strip.test.mjs",
     "test:vault-path": "node tests/vault-path.test.mjs",
-    "test:drop-open": "node tests/drop-open.test.mjs"
+    "test:drop-open": "node tests/drop-open.test.mjs",
+    "test:pane-drag": "node tests/pane-drag.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
