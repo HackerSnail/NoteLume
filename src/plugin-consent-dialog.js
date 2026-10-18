@@ -2,7 +2,8 @@
 // 用法：const agreed = await pluginConsentDialog({ items })；true=全部同意 / false=全部拒绝
 // items=[{ name, version, author, permissions:[...], added:[...] }]
 // 与 prompt-dialog 同构（自建 overlay，Tauri webview 下原生弹窗不可靠）。全部用 textContent，无 XSS 面。
-import { SCOPE_LABELS } from './plugin-manifest.js'
+import { scopeMeta } from './plugin-manifest.js'
+import { t } from './i18n.js'
 
 export function pluginConsentDialog({ items = [] } = {}) {
   return new Promise((resolve) => {
@@ -14,7 +15,7 @@ export function pluginConsentDialog({ items = [] } = {}) {
 
     const h = document.createElement('div')
     h.className = 'nl-consent-title'
-    h.textContent = '插件权限同意'
+    h.textContent = t('plugin.consentTitle')
 
     const body = document.createElement('div')
     body.className = 'nl-consent-body'
@@ -37,10 +38,10 @@ export function pluginConsentDialog({ items = [] } = {}) {
 
       const chips = document.createElement('div')
       chips.className = 'nl-plugin-perms'
-      chips.appendChild(makeChip('仅编辑器功能', false, false))
+      chips.appendChild(makeChip(t('plugin.editorOnly'), false, false))
       const added = new Set(it.added || [])
       for (const p of it.permissions || []) {
-        const meta = SCOPE_LABELS[p] || { label: p }
+        const meta = scopeMeta(p)
         chips.appendChild(makeChip(meta.label, !!meta.danger, added.has(p)))
       }
       row.appendChild(chips)
@@ -49,17 +50,16 @@ export function pluginConsentDialog({ items = [] } = {}) {
 
     const note = document.createElement('div')
     note.className = 'nl-consent-note'
-    note.textContent =
-      '注：主线程插件无法被强制阻止未授权行为，此同意用于知情与授权留档（技术拦截在后续版本）。'
+    note.textContent = t('plugin.consentNote')
 
     const btnRow = document.createElement('div')
     btnRow.className = 'nl-consent-row'
     const deny = document.createElement('button')
     deny.className = 'nl-prompt-btn'
-    deny.textContent = '全部拒绝'
+    deny.textContent = t('plugin.denyAll')
     const ok = document.createElement('button')
     ok.className = 'nl-prompt-btn primary'
-    ok.textContent = '全部同意'
+    ok.textContent = t('plugin.agreeAll')
     btnRow.append(deny, ok)
 
     box.append(h, body, note, btnRow)
@@ -90,6 +90,6 @@ export function pluginConsentDialog({ items = [] } = {}) {
 function makeChip(label, danger, added) {
   const s = document.createElement('span')
   s.className = 'nl-plugin-chip' + (danger ? ' danger' : '') + (added ? ' added' : '')
-  s.textContent = added ? label + '（新增）' : label
+  s.textContent = added ? label + t('plugin.addedSuffix') : label
   return s
 }

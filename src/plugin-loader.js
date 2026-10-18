@@ -9,8 +9,9 @@ import { setIcon } from './icons.js'
 import { keymap } from 'prosemirror-keymap'
 import { Plugin } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
-import { parseAndValidateManifest, needsConsent, newPerms, SCOPE_LABELS } from './plugin-manifest.js'
+import { parseAndValidateManifest, needsConsent, newPerms, scopeMeta } from './plugin-manifest.js'
 import { pluginConsentDialog } from './plugin-consent-dialog.js'
+import { t } from './i18n.js'
 
 const DISABLED_KEY = 'nl-disabled-plugins'
 const CONSENT_KEY = 'nl-plugin-consent'
@@ -70,7 +71,7 @@ export function createPluginManager(deps) {
         try {
           fn(ctx)
         } catch (e) {
-          setStatus('命令执行失败：' + ((e && e.message) || e))
+          setStatus(t('plugin.cmdFailed', { err: (e && e.message) || e }))
           console.error(e)
         }
       },
@@ -101,10 +102,10 @@ export function createPluginManager(deps) {
         acc.inputRules.push(fn)
       },
       registerNodeSpec() {
-        console.warn('[NoteLume] registerNodeSpec 暂不支持（schema 运行时不可变，属 F2）')
+        console.warn(t('plugin.warnNodeSpec'))
       },
       registerMarkSpec() {
-        console.warn('[NoteLume] registerMarkSpec 暂不支持（schema 运行时不可变，属 F2）')
+        console.warn(t('plugin.warnMarkSpec'))
       },
     }
   }
@@ -128,7 +129,7 @@ export function createPluginManager(deps) {
       const mod = await importFromSource(src)
       let plugin = mod && mod.default ? mod.default : mod
       if (typeof plugin === 'function') plugin = plugin()
-      if (!plugin || typeof plugin !== 'object') throw new Error('插件须 export default 一个对象')
+      if (!plugin || typeof plugin !== 'object') throw new Error(t('plugin.defaultExport'))
       rec.plugin = plugin
       rec.running = true
       acc.file = rec.name
@@ -175,7 +176,7 @@ export function createPluginManager(deps) {
         try {
           list = await listPlugins(vaultRoot)
         } catch (e) {
-          setStatus('插件目录读取失败：' + ((e && e.message) || e))
+          setStatus(t('plugin.dirReadFailed', { err: (e && e.message) || e }))
         }
       }
       legacyFlat = list.legacyFlat || []
@@ -219,7 +220,7 @@ export function createPluginManager(deps) {
         rec.enabled = !disabled.has(m.id)
         if (!rec.enabled) continue
         if (!pkg.mainExists) {
-          rec.error = '入口文件不存在（main.js / main.mjs）'
+          rec.error = t('plugin.mainMissing')
           continue
         }
         if (needsConsent(m.permissions, consent[m.id])) {
@@ -260,7 +261,7 @@ export function createPluginManager(deps) {
             try {
               return fn(state, dispatch, v)
             } catch (e) {
-              console.error('[NoteLume] keymap 处理异常', e)
+              console.error(t('plugin.warnKeymap'), e)
               return false
             }
           }
@@ -278,7 +279,7 @@ export function createPluginManager(deps) {
                 try {
                   if (fn(v, from, to, text)) return true
                 } catch (e) {
-                  console.error('[NoteLume] inputRule 异常', e)
+                  console.error(t('plugin.warnInputRule'), e)
                 }
               }
               return false
@@ -297,11 +298,11 @@ export function createPluginManager(deps) {
         try {
           fn(view, schema)
         } catch (e) {
-          console.error('[NoteLume] onEditorReady 异常', e)
+          console.error(t('plugin.warnEditorReady'), e)
         }
       }
       const runningCount = loaded.filter((r) => r.running).length
-      setStatus(`插件已加载：${runningCount}/${loaded.length} 运行`)
+      setStatus(t('plugin.loadedCount', { run: runningCount, total: loaded.length }))
     } finally {
       busy = false
       renderPanel()
@@ -314,7 +315,7 @@ export function createPluginManager(deps) {
       try {
         fn(doc, prev)
       } catch (e) {
-        console.error('[NoteLume] onDocChange 异常', e)
+        console.error(t('plugin.warnDocChange'), e)
       }
     }
   }
@@ -323,7 +324,7 @@ export function createPluginManager(deps) {
       try {
         fn(path, content)
       } catch (e) {
-        console.error('[NoteLume] onFileOpen 异常', e)
+        console.error(t('plugin.warnFileOpen'), e)
       }
     }
   }
@@ -332,7 +333,7 @@ export function createPluginManager(deps) {
       try {
         fn(path, content)
       } catch (e) {
-        console.error('[NoteLume] onSave 异常', e)
+        console.error(t('plugin.warnSave'), e)
       }
     }
   }
@@ -379,13 +380,13 @@ export function createPluginManager(deps) {
   function runCommand(name) {
     const entry = commands.get(name)
     if (!entry) {
-      setStatus('未知命令：' + name)
+      setStatus(t('plugin.unknownCmd', { name }))
       return
     }
     try {
       entry.fn(entry.ctx)
     } catch (e) {
-      setStatus('命令执行失败：' + ((e && e.message) || e))
+      setStatus(t('plugin.cmdFailed', { err: (e && e.message) || e }))
       console.error(e)
     }
   }
@@ -399,26 +400,26 @@ export function createPluginManager(deps) {
     head.className = 'plugin-head'
     const reloadBtn = document.createElement('button')
     reloadBtn.className = 'plugin-reload'
-    setIcon(reloadBtn, 'reload', '重新加载')
+    setIcon(reloadBtn, 'reload', t('plugin.reloadBtn'))
     reloadBtn.addEventListener('click', () => reload())
     head.appendChild(reloadBtn)
     const hint = document.createElement('span')
     hint.className = 'muted'
-    hint.textContent = '放入 .notelume-plugins/<id>/manifest.json'
+    hint.textContent = t('plugin.dropHint')
     head.appendChild(hint)
     panelEl.appendChild(head)
 
     if (legacyFlat.length) {
       const warn = document.createElement('div')
       warn.className = 'nl-plugin-legacy'
-      warn.textContent = `检测到旧版平铺插件：${legacyFlat.join('、')}，需改为文件夹化，已忽略`
+      warn.textContent = t('plugin.legacyWarn', { names: legacyFlat.join('、') })
       panelEl.appendChild(warn)
     }
 
     if (!loaded.length) {
       const empty = document.createElement('div')
       empty.className = 'link-empty'
-      empty.textContent = '未检测到插件'
+      empty.textContent = t('plugin.noneFound')
       panelEl.appendChild(empty)
       return
     }
@@ -430,7 +431,7 @@ export function createPluginManager(deps) {
       const chk = document.createElement('input')
       chk.type = 'checkbox'
       chk.checked = rec.enabled
-      chk.title = rec.enabled ? '点击禁用' : '点击启用'
+      chk.title = rec.enabled ? t('plugin.tipDisable') : t('plugin.tipEnable')
       chk.addEventListener('change', () => toggle(rec.id))
       row.appendChild(chk)
 
@@ -453,9 +454,9 @@ export function createPluginManager(deps) {
       if (!rec.manifestError) {
         const chips = document.createElement('div')
         chips.className = 'nl-plugin-perms'
-        chips.appendChild(chipEl('仅编辑器功能', false))
+        chips.appendChild(chipEl(t('plugin.editorOnly'), false))
         for (const p of rec.permissions) {
-          const meta = SCOPE_LABELS[p] || { label: p }
+          const meta = scopeMeta(p)
           chips.appendChild(chipEl(meta.label, !!meta.danger))
         }
         info.appendChild(chips)
@@ -470,17 +471,17 @@ export function createPluginManager(deps) {
         statusText = rec.manifestError
         statusIcon = 'warning'
       } else if (!rec.enabled) {
-        statusText = '已禁用'
+        statusText = t('plugin.stateDisabled')
       } else if (rec.error) {
         st.classList.add('err')
         statusText = rec.error
         statusIcon = 'warning'
       } else if (rec.consentRefused) {
-        statusText = '权限未授予'
+        statusText = t('plugin.stateNoConsent')
       } else if (rec.running) {
-        statusText = '已启用'
+        statusText = t('plugin.stateEnabled')
       } else {
-        statusText = '待同意'
+        statusText = t('plugin.statePending')
       }
       setIcon(st, statusIcon, statusText)
       st.title = rec.dirName
@@ -491,14 +492,14 @@ export function createPluginManager(deps) {
       if (rec.consentRefused && rec.enabled) {
         const g = document.createElement('button')
         g.className = 'plugin-cmd'
-        g.textContent = '授予权限'
+        g.textContent = t('plugin.grantBtn')
         g.addEventListener('click', () => regrant(rec.id))
         row.appendChild(g)
       } else if (rec.running) {
         const r = document.createElement('button')
         r.className = 'plugin-cmd'
-        r.textContent = '重设权限'
-        r.title = '撤销同意，下次加载重新征求'
+        r.textContent = t('plugin.resetBtn')
+        r.title = t('plugin.resetTip')
         r.addEventListener('click', () => resetConsent(rec.id))
         row.appendChild(r)
       }

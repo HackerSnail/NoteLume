@@ -29,6 +29,12 @@
 
 ### Added
 
+* **i18n：Git 面板 / 画布 / 插件三个整面板文案接入词条（新增 git.* / canvas.* / plugin.* 共 232 条，五种语言各一份）**：此前这三个面板完全没接 `t()`，文案中文写死在源码里，切语言只有主界面跟着变，面板不变。本次把用户可见文案全部抽进词条，渲染点调 `t()`；控制台类的 `[NoteLume]` 异常日志一并收了（Node 单测默认走 zh-CN，返回值与原文一致，既有断言不受影响）。
+  * `git-panel.js`（git.* 134 条）：徽标名、提交 / 同步 / 合并工具条、fetch / pull / push / merge 的确认与错误引导（host_unknown 一次性信任、non_fast_forward、no_upstream、hostkey_mismatch、network 各分支）、提交身份填写对话框、相对时间。`handleRemoteErr` / `credHint` / `parseErrCode` 的参数原名为 `t`，与导入的 `t` 撞名遮蔽，改为 `raw`。
+  * `canvas-view.js`（canvas.* 50 条）：右键菜单（背景 / 卡片 / 连线三类）、工具条按钮与 title、颜色 / 对齐 / 分布行、复制提示、JSON 解析失败错误。
+  * `plugin-loader.js` / `plugin-manifest.js` / `plugin-consent-dialog.js`（plugin.* 48 条）：manifest 校验错误、权限 scope 名、同意弹窗、面板状态与按钮。`SCOPE_LABELS` 常量改为 `scopeMeta(scope)`，label 词条键在渲染点经 `t()` 取，切语言后重渲染即换文案。
+  * 测试与验证：`plugin-manifest.test.mjs` 15 passed、`i18n.test.mjs` 10 passed（命令对齐断言补过 `cmd.app.about`）、其余测试文件全过（roundtrip 58、app-menu 26、keymap 23 等）；`npm run build` 无错。纯前端，刷新即生效。
+
 * **「关于」对话框 + 「更多」菜单入口**：应用此前没有「关于」入口，版本号、开源许可、仓库地址都没处看。本次在工具条「更多」菜单的「界面语言」之后加「关于 NoteLume」，同时注册 `app.about` 命令，命令面板可直接搜到；mac 仍走原生 About role，不重复挂入口。
   * 对话框（新增 `src/about-dialog.js`，复用 `.nl-prompt` 模态壳，Esc / 点遮罩关闭）：标题、产品名、版本、Slogan、补充说明、三个按钮、版权行。版本号从 `package.json` 的 `version` 取（Vite 构建时内联，与 `src-tauri/tauri.conf.json` 同源维护，不在两处各写一遍）；版权年份取运行时当前年。
   * 文案走词条：`about.*`（标题 / 版本 / Slogan / 说明 / 版权 / 三个按钮）五种语言各一份，命令标题 `cmd.app.about`；繁中用台湾正体习惯（開源授權、造訪官網），英文未直译中文。
