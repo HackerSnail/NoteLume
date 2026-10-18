@@ -1,7 +1,15 @@
 // prompt-dialog.js —— 应用内单行输入模态（Tauri webview 下 window.prompt 不可靠，故自建）
 // 用法：const v = await promptDialog({ title, defaultValue, placeholder })；确认返回字符串、取消返回 null。
+// 默认文案走 i18n，调用方不传用当前语言。
+import { t } from './i18n.js'
 
-export function promptDialog({ title = '输入', defaultValue = '', placeholder = '', confirmLabel = '确定', cancelLabel = '取消' } = {}) {
+export function promptDialog({
+  title = t('common.input'),
+  defaultValue = '',
+  placeholder = '',
+  confirmLabel = t('common.confirm'),
+  cancelLabel = t('common.cancel'),
+} = {}) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div')
     overlay.className = 'nl-prompt-overlay'

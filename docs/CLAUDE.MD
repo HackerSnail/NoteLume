@@ -175,6 +175,16 @@
 6. 优先保证编辑器流畅性，知识库索引不要阻塞UI（Rust后台扫描）
 7. 前端界面不用 emoji 与临时字形（✕ ✓ ▾ ↑ ↓ ⚠ • 之类），图标统一走 SVG sprite：`src/icons.js` 的 `setIcon(el, name, label)` / `iconHTML(name)`，图形数据只有 `index.html` 里 `<svg class="nl-sprite">` 那一份 `<symbol id="i-*">`。例外：键位图例（⌘ ⌥）、提示句里的 →、Git 状态字母徽标（M/N/D/R/C/?）
 
+## 界面多语言（i18n）
+
+内置五种语言：简体中文 `zh-CN`（默认）、繁體中文 `zh-Hant`、English `en-US`、Français `fr-FR`、Deutsch `de-DE`。
+
+- 词条在 `src/locales/`，一种语言一个文件，默认导出一个键值对象；新增语言在 `locales/index.js` 的 `LOCALES` 与 `MESSAGES` 各登记一行。
+- `src/i18n.js` 是唯一入口：`t(key, vars)`（`{name}` 占位符）、`setLocale` / `getLocale`、`applyStaticDom`（刷 `data-i18n` / `-title` / `-placeholder` / `-aria-label`）、`onLocaleChange`（动态 UI 重绘订阅）。缺词条回退 en-US，再缺回退键名本身。
+- 语言选择顺序：localStorage `nl-lang` → navigator.languages（按主语言匹配，zh 分简繁）→ 简体中文。切换入口在工具条「更多 → 界面语言」，mac 原生菜单与命令面板是五个 `app.lang.*` 命令（注册表驱动，标题与勾选态自动跟随）。
+- 命令标题的键名与命令 id 对齐：`cmd.<命令id>`（如 `cmd.app.save`、`cmd.editor.block.h1`）；斜杠菜单项是 `cmd.block.<id>`；静态界面 `ui.*` / `panel.*`；菜单里不在注册表的条目 `menu.*`；弹窗 `dlg.*`；状态与消息 `status.*` / `msg.*`。换语言后 main.js 重新注册命令表并 `applyStaticDom`，依赖运行期文案的模块自己在渲染点调 `t()` 或订阅 `onLocaleChange`。
+- 新文案一律进词条，不写死中文；中英标点各自惯例（中文全角、西文半角），法文注意省音符撇号（’）与窄空格习惯。
+
 ## 当前状态
 
 本地Rust已安装，tauri-cli已安装。

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NoteLume — Markdown 知识库编辑器</title>
+    <title data-i18n="ui.docTitle">NoteLume — Markdown 知识库编辑器</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -81,57 +81,57 @@
       <header class="toolbar">
         <span class="appbar-lead" data-tauri-drag-region>NoteLume</span>
         <div class="btn-group">
-          <button id="btn-open-file" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg><span class="btn-label">打开文件</span></button>
-          <button id="btn-open" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg><span class="btn-label">打开知识库</span></button>
-          <button id="btn-new-file" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg><span class="btn-label">新建</span></button>
-          <button id="btn-save" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg><span class="btn-label">保存</span></button>
-          <button id="btn-daily" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg><span class="btn-label">今日</span></button>
-          <button id="btn-source" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg><span class="btn-label">源码</span></button>
-          <button id="btn-more" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg><span class="btn-label">更多</span></button>
+          <button id="btn-open-file" data-i18n-title="ui.tipOpenFile" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg><span class="btn-label" data-i18n="ui.openFile">打开文件</span></button>
+          <button id="btn-open" data-i18n-title="ui.tipOpenVault" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg><span class="btn-label" data-i18n="ui.openVault">打开知识库</span></button>
+          <button id="btn-new-file" data-i18n-title="ui.tipNew" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg><span class="btn-label" data-i18n="ui.new">新建</span></button>
+          <button id="btn-save" data-i18n-title="ui.tipSave" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg><span class="btn-label" data-i18n="ui.save">保存</span></button>
+          <button id="btn-daily" data-i18n-title="ui.tipToday" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg><span class="btn-label" data-i18n="ui.today">今日</span></button>
+          <button id="btn-source" data-i18n-title="ui.tipSource" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg><span class="btn-label" data-i18n="ui.source">源码</span></button>
+          <button id="btn-more" data-i18n-title="ui.tipMore" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg><span class="btn-label" data-i18n="ui.more">更多</span></button>
         </div>
-        <span id="docstats" class="docstats" title="写作统计（点击设置字数目标）"></span>
-        <span id="filename" class="filename">未打开文档</span>
+        <span id="docstats" class="docstats" data-i18n-title="ui.tipDocstats" title="写作统计（点击设置字数目标）"></span>
+        <span id="filename" class="filename" data-i18n="ui.noDoc">未打开文档</span>
         <span class="spacer" data-tauri-drag-region></span>
-        <label class="autosave-toggle" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
-          <input type="checkbox" id="chk-autosave" /> 自动保存
+        <label class="autosave-toggle" data-i18n-title="ui.tipAutosave" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
+          <input type="checkbox" id="chk-autosave" /> <span data-i18n="ui.autosave">自动保存</span>
         </label>
-        <button id="btn-theme" title="切换主题"><svg class="nl-ico"><use href="#i-moon" /></svg>暗黑</button>
+        <button id="btn-theme" data-i18n-title="ui.tipTheme" title="切换主题"><svg class="nl-ico"><use href="#i-moon" /></svg><span data-i18n="ui.dark">暗黑</span></button>
         <div class="win-btns">
-          <button type="button" data-win="min" title="最小化" aria-label="最小化">
+          <button type="button" data-win="min" data-i18n-title="ui.winMin" data-i18n-aria-label="ui.winMin" title="最小化" aria-label="最小化">
             <svg class="nl-ico" aria-hidden="true"><use href="#i-win-min" /></svg>
           </button>
-          <button type="button" data-win="max" title="最大化 / 还原" aria-label="最大化 / 还原">
+          <button type="button" data-win="max" data-i18n-title="ui.winMaxTip" data-i18n-aria-label="ui.winMax" title="最大化 / 还原" aria-label="最大化">
             <svg class="nl-ico" aria-hidden="true"><use href="#i-win-max" /></svg>
           </button>
-          <button type="button" data-win="close" title="关闭" aria-label="关闭">
+          <button type="button" data-win="close" data-i18n-title="ui.winClose" data-i18n-aria-label="ui.winClose" title="关闭" aria-label="关闭">
             <svg class="nl-ico" aria-hidden="true"><use href="#i-close" /></svg>
           </button>
         </div>
       </header>
-      <div id="tabbar" class="tabbar hidden" role="tablist" aria-label="打开的文档"></div>
+      <div id="tabbar" class="tabbar hidden" role="tablist" data-i18n-aria-label="ui.tabAria" aria-label="打开的文档"></div>
 
       <div class="body">
         <div class="side-corner" role="group">
-          <button type="button" class="side-corner-btn" data-tab="files" title="文件"><svg class="nl-ico"><use href="#i-folder" /></svg></button>
-          <button type="button" class="side-corner-btn" data-tab="outline" title="大纲"><svg class="nl-ico"><use href="#i-list-bullet" /></svg></button>
-          <button type="button" class="side-corner-btn" id="btn-inspector" title="检查器"><svg class="nl-ico"><use href="#i-sliders" /></svg></button>
+          <button type="button" class="side-corner-btn" data-tab="files" data-i18n-title="ui.sideFiles" title="文件"><svg class="nl-ico"><use href="#i-folder" /></svg></button>
+          <button type="button" class="side-corner-btn" data-tab="outline" data-i18n-title="ui.sideOutline" title="大纲"><svg class="nl-ico"><use href="#i-list-bullet" /></svg></button>
+          <button type="button" class="side-corner-btn" id="btn-inspector" data-i18n-title="ui.sideInspector" title="检查器"><svg class="nl-ico"><use href="#i-sliders" /></svg></button>
         </div>
         <aside class="sidebar" id="sidebar">
           <section class="panel">
             <div class="side-tabs" role="tablist">
-              <button type="button" class="side-tab" data-tab="files" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-folder" /></svg>文件</button>
-              <button type="button" class="side-tab" data-tab="outline" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-list-bullet" /></svg>大纲</button>
+              <button type="button" class="side-tab" data-tab="files" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-folder" /></svg><span data-i18n="ui.sideFiles">文件</span></button>
+              <button type="button" class="side-tab" data-tab="outline" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-list-bullet" /></svg><span data-i18n="ui.sideOutline">大纲</span></button>
             </div>
             <div class="search-box">
               <svg class="nl-ico"><use href="#i-search" /></svg>
-              <input id="search-input" class="search-input" type="search" placeholder="标题 / 正文 / #标签" autocomplete="off" />
+              <input id="search-input" class="search-input" type="search" data-i18n-placeholder="ui.searchPh" placeholder="标题 / 正文 / #标签" autocomplete="off" />
             </div>
             <div id="search-results" class="search-results"></div>
             <div id="filetree" class="filetree"></div>
             <nav id="outline" class="outline hidden"></nav>
           </section>
         </aside>
-        <div class="nl-gutter" id="gutter-side" role="separator" aria-orientation="vertical" title="拖拽改变侧栏宽度"></div>
+        <div class="nl-gutter" id="gutter-side" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterSide" title="拖拽改变侧栏宽度"></div>
 
         <main class="editor-pane">
           <div id="editor" class="editor"></div>
@@ -139,34 +139,34 @@
           <div id="canvas-mount" class="hidden"></div>
         </main>
 
-        <div class="nl-gutter" id="gutter-insp" role="separator" aria-orientation="vertical" title="拖拽改变检查器宽度"></div>
+        <div class="nl-gutter" id="gutter-insp" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterInsp" title="拖拽改变检查器宽度"></div>
         <aside class="inspector" id="inspector">
           <details class="panel">
-            <summary><h2>文档属性</h2></summary>
+            <summary><h2 data-i18n="panel.docProps">文档属性</h2></summary>
             <div class="panel-body">
               <div id="frontmatter" class="frontmatter"></div>
             </div>
           </details>
           <details class="panel">
-            <summary><h2>标签</h2></summary>
+            <summary><h2 data-i18n="panel.tags">标签</h2></summary>
             <div class="panel-body">
               <div id="tags" class="tags"></div>
-              <div class="tags-sub">全局标签</div>
+              <div class="tags-sub" data-i18n="panel.tagsGlobal">全局标签</div>
               <div id="tags-global" class="tags tags-global"></div>
               <div id="tags-global-docs" class="tags-global-docs"></div>
             </div>
           </details>
           <details class="panel">
-            <summary><h2>双向链接</h2></summary>
+            <summary><h2 data-i18n="panel.backlinks">双向链接</h2></summary>
             <div class="panel-body">
-              <div class="bl-h3">引用本文档</div>
+              <div class="bl-h3" data-i18n="panel.citeThis">引用本文档</div>
               <div id="backlinks" class="link-list"></div>
-              <div class="bl-h3">本文档引用</div>
+              <div class="bl-h3" data-i18n="panel.cites">本文档引用</div>
               <div id="outgoing" class="link-list"></div>
             </div>
           </details>
           <section class="panel">
-            <h2><svg class="nl-ico"><use href="#i-box" /></svg>历史版本</h2>
+            <h2><svg class="nl-ico"><use href="#i-box" /></svg><span data-i18n="panel.snapshots">历史版本</span></h2>
             <div id="snapshots" class="snapshots"></div>
           </section>
           <section class="panel">
@@ -174,35 +174,35 @@
             <div id="git" class="git"></div>
           </section>
           <section class="panel">
-            <h2><svg class="nl-ico"><use href="#i-plug" /></svg>插件</h2>
+            <h2><svg class="nl-ico"><use href="#i-plug" /></svg><span data-i18n="panel.plugins">插件</span></h2>
             <div id="plugins" class="plugins"></div>
           </section>
         </aside>
       </div>
     </div>
 
-    <div id="graph-modal" class="graph-modal hidden" role="dialog" aria-label="知识图谱">
+    <div id="graph-modal" class="graph-modal hidden" role="dialog" data-i18n-aria-label="graph.aria" aria-label="知识图谱">
       <div class="graph-panel">
         <div class="graph-head">
-          <span class="graph-title"><svg class="nl-ico"><use href="#i-graph" /></svg>知识图谱</span>
+          <span class="graph-title"><svg class="nl-ico"><use href="#i-graph" /></svg><span data-i18n="graph.title">知识图谱</span></span>
           <span id="graph-info" class="graph-info"></span>
-          <button id="graph-close" class="graph-close" title="关闭 (Esc)"><svg class="nl-ico"><use href="#i-close" /></svg></button>
+          <button id="graph-close" class="graph-close" data-i18n-title="common.close" title="关闭 (Esc)"><svg class="nl-ico"><use href="#i-close" /></svg></button>
         </div>
         <canvas id="graph-canvas" class="graph-canvas"></canvas>
       </div>
     </div>
 
-    <div id="snapshot-modal" class="snapshot-modal hidden" role="dialog" aria-label="历史版本预览">
+    <div id="snapshot-modal" class="snapshot-modal hidden" role="dialog" data-i18n-aria-label="snapshot.aria" aria-label="历史版本预览">
       <div class="snapshot-panel">
         <div class="snapshot-head">
           <span class="snapshot-title"><svg class="nl-ico"><use href="#i-box" /></svg><span id="snapshot-label"></span></span>
-          <button id="snapshot-close" class="snapshot-close" title="关闭 (Esc)"><svg class="nl-ico"><use href="#i-close" /></svg></button>
+          <button id="snapshot-close" class="snapshot-close" data-i18n-title="common.close" title="关闭 (Esc)"><svg class="nl-ico"><use href="#i-close" /></svg></button>
         </div>
         <div id="snapshot-preview" class="snapshot-preview ProseMirror"></div>
         <div class="snapshot-foot">
           <span id="snapshot-meta" class="snapshot-meta"></span>
           <span class="spacer"></span>
-          <button id="snapshot-rollback" class="btn-primary"><svg class="nl-ico"><use href="#i-undo" /></svg>回滚到此版本</button>
+          <button id="snapshot-rollback" class="btn-primary"><svg class="nl-ico"><use href="#i-undo" /></svg><span data-i18n="snapshot.rollback">回滚到此版本</span></button>
         </div>
       </div>
     </div>

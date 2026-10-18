@@ -29,29 +29,55 @@ import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
 import { buildAnchorMap } from './anchor-link.js'
 import { findPlugin } from './find-in-doc.js'
+import { t } from './i18n.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
 // 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Shift-Enter（硬换行）、
 // Backspace（节点后向删除）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进注册表。
 // 默认键位按 Typora/Obsidian 主流习惯配（见 docs/CLUADE.MD「快捷键规范」）。
-export const EDITOR_COMMANDS = [
-  { id: 'editor.undo', title: '撤销', defaultKey: 'Mod-z' },
-  { id: 'editor.redo', title: '重做', defaultKey: 'Mod-y' },
-  { id: 'editor.bold', title: '加粗', defaultKey: 'Mod-b' },
-  { id: 'editor.italic', title: '斜体', defaultKey: 'Mod-i' },
-  { id: 'editor.code', title: '行内代码', defaultKey: 'Mod-`' },
-  { id: 'editor.strike', title: '删除线', defaultKey: 'Mod-Shift-x' },
-  { id: 'editor.mathInline', title: '行内公式', defaultKey: 'Mod-m' },
-  { id: 'editor.mathBlock', title: '块级公式', defaultKey: 'Mod-Shift-m' },
-  { id: 'editor.foldSection', title: '折叠 / 展开本节', defaultKey: 'Mod-Shift-h' },
+// 标题是词条键（titleKey），registration 时按当前语言取值；换语言由 main.js 重注册刷新。
+const EDITOR_COMMAND_DEFS = [
+  { id: 'editor.undo', titleKey: 'cmd.editor.undo', defaultKey: 'Mod-z' },
+  { id: 'editor.redo', titleKey: 'cmd.editor.redo', defaultKey: 'Mod-y' },
+  { id: 'editor.bold', titleKey: 'cmd.editor.bold', defaultKey: 'Mod-b' },
+  { id: 'editor.italic', titleKey: 'cmd.editor.italic', defaultKey: 'Mod-i' },
+  { id: 'editor.code', titleKey: 'cmd.editor.code', defaultKey: 'Mod-`' },
+  { id: 'editor.strike', titleKey: 'cmd.editor.strike', defaultKey: 'Mod-Shift-x' },
+  { id: 'editor.mathInline', titleKey: 'cmd.editor.mathInline', defaultKey: 'Mod-m' },
+  { id: 'editor.mathBlock', titleKey: 'cmd.editor.mathBlock', defaultKey: 'Mod-Shift-m' },
+  { id: 'editor.foldSection', titleKey: 'cmd.editor.foldSection', defaultKey: 'Mod-Shift-h' },
   // 插入 / 编辑链接：所见即所得里没有直接改 href 的入口，URL 经 main.js 注入的弹窗问
-  { id: 'editor.link', title: '插入 / 编辑链接', defaultKey: 'Mod-k' },
+  { id: 'editor.link', titleKey: 'cmd.editor.link', defaultKey: 'Mod-k' },
   // 删除当前行 / 段落（Typora 的 Ctrl+D）
-  { id: 'editor.deleteLine', title: '删除当前行 / 段落', defaultKey: 'Mod-d' },
+  { id: 'editor.deleteLine', titleKey: 'cmd.editor.deleteLine', defaultKey: 'Mod-d' },
   // 脚注（无默认键，命令面板可搜；Ctrl-Shift-F 已被「专注」占用）
-  { id: 'editor.footnote', title: '插入脚注', defaultKey: null },
-  { id: 'editor.footnoteDelete', title: '删除脚注', defaultKey: null },
+  { id: 'editor.footnote', titleKey: 'cmd.editor.footnote', defaultKey: null },
+  { id: 'editor.footnoteDelete', titleKey: 'cmd.editor.footnoteDelete', defaultKey: null },
+  // 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
+  { id: 'editor.headingUp', titleKey: 'cmd.editor.headingUp', defaultKey: 'Mod-]' },
+  { id: 'editor.headingDown', titleKey: 'cmd.editor.headingDown', defaultKey: 'Mod-[' },
 ]
+
+// 段落命令入同一张表：项表复用斜杠菜单（一份定义），公式块不在这里（已有 editor.mathBlock）。
+// 默认键位按 Typora 习惯：标题 Ctrl+1~6、代码块 Ctrl+Shift+K、引用 Ctrl+Shift+Q、
+// 任务列表 Ctrl+Shift+L、无序 / 有序列表 Ctrl+Shift+[ / ]、表格 Ctrl+T。
+// 无 defaultKey → 不占快捷键，只供面板与 mac 原生「段落」菜单调用。
+const BLOCK_DEFAULT_KEYS = {
+  h1: 'Mod-1', h2: 'Mod-2', h3: 'Mod-3', h4: 'Mod-4', h5: 'Mod-5', h6: 'Mod-6',
+  code: 'Mod-Shift-k', quote: 'Mod-Shift-q', task: 'Mod-Shift-l',
+  bullet: 'Mod-Shift-[', ordered: 'Mod-Shift-]', table: 'Mod-t',
+}
+const BLOCK_CMD_IDS = ['para', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'quote', 'code', 'bullet', 'ordered', 'task', 'hr', 'table', 'callout', 'mermaid']
+for (const id of BLOCK_CMD_IDS) {
+  EDITOR_COMMAND_DEFS.push({ id: 'editor.block.' + id, titleKey: 'cmd.editor.block.' + id, defaultKey: BLOCK_DEFAULT_KEYS[id] || null })
+}
+
+/** 注册用：按当前语言解析标题。语言切换后重新调用即可刷新注册表里的 title。 */
+export function editorCommandDefs() {
+  return EDITOR_COMMAND_DEFS.map((def) => ({ ...def, title: t(def.titleKey) }))
+}
+
+export const EDITOR_COMMANDS = EDITOR_COMMAND_DEFS
 
 const PM_COMMANDS = {
   'editor.undo': undo,
@@ -69,25 +95,9 @@ const PM_COMMANDS = {
   'editor.footnoteDelete': deleteFootnote,
 }
 
-// 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
-EDITOR_COMMANDS.push({ id: 'editor.headingUp', title: '段落：提升标题级别', defaultKey: 'Mod-]' })
-EDITOR_COMMANDS.push({ id: 'editor.headingDown', title: '段落：降低标题级别', defaultKey: 'Mod-[' })
 PM_COMMANDS['editor.headingUp'] = headingStep(-1)
 PM_COMMANDS['editor.headingDown'] = headingStep(1)
-
-// 段落命令入同一张表：项表复用斜杠菜单（一份定义），公式块不在这里（已有 editor.mathBlock）。
-// 默认键位按 Typora 习惯：标题 Ctrl+1~6、代码块 Ctrl+Shift+K、引用 Ctrl+Shift+Q、
-// 任务列表 Ctrl+Shift+L、无序 / 有序列表 Ctrl+Shift+[ / ]、表格 Ctrl+T。
-// 无 defaultKey → 不占快捷键，只供面板与 mac 原生「段落」菜单调用。
-const BLOCK_DEFAULT_KEYS = {
-  h1: 'Mod-1', h2: 'Mod-2', h3: 'Mod-3', h4: 'Mod-4', h5: 'Mod-5', h6: 'Mod-6',
-  code: 'Mod-Shift-k', quote: 'Mod-Shift-q', task: 'Mod-Shift-l',
-  bullet: 'Mod-Shift-[', ordered: 'Mod-Shift-]', table: 'Mod-t',
-}
-const BLOCK_CMD_IDS = ['para', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'quote', 'code', 'bullet', 'ordered', 'task', 'hr', 'table', 'callout', 'mermaid']
 for (const id of BLOCK_CMD_IDS) {
-  const item = SLASH_ITEMS.find((x) => x.id === id)
-  EDITOR_COMMANDS.push({ id: 'editor.block.' + id, title: '段落：' + item.label, defaultKey: BLOCK_DEFAULT_KEYS[id] || null })
   PM_COMMANDS['editor.block.' + id] = BLOCK_COMMANDS[id]
 }
 

@@ -3,12 +3,15 @@
 // Tauri 原生 confirm 只有「确定/取消」两键，无法表达「保存 / 不保存 / 留在原地」三态，故自建。
 // 用法：const choice = await confirm3Dialog({ title, message, confirmLabel, neutralLabel, cancelLabel })
 //   返回 'confirm' | 'neutral' | 'cancel'（Esc / 点遮罩空白 = 'cancel'）。
+// 默认按钮文案走 i18n；调用方不传就用当前语言。
+import { t } from './i18n.js'
+
 export function confirm3Dialog({
-  title = '未保存的更改',
+  title = t('dlg.unsavedTitle'),
   message = '',
-  confirmLabel = '保存',
-  neutralLabel = '不保存',
-  cancelLabel = '取消',
+  confirmLabel = t('common.save'),
+  neutralLabel = t('common.dontSave'),
+  cancelLabel = t('common.cancel'),
 } = {}) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div')

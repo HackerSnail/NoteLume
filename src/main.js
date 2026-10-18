@@ -1,7 +1,7 @@
 // main.js —— 应用装配：布局、知识库文件树、大纲、标签、主题、快捷键、打开/保存/跳转
 // P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
 // 自动保存 + 库内备份、HTML 导出、打印。
-import { createEditor, EDITOR_COMMANDS } from './editor-view.js'
+import { createEditor, editorCommandDefs } from './editor-view.js'
 import { createFindBar } from './find-in-doc.js'
 import { createFrontmatterPanel } from './frontmatter-panel.js'
 import { splitFrontmatter } from './frontmatter.js'
@@ -70,6 +70,8 @@ import { builtinVars, applyTemplate } from './template.js'
 import { toggleDailyCapture, configureDailyCapture } from './daily-capture.js'
 import { countWords, statsLabel } from './writing-stats.js'
 import { setIcon } from './icons.js'
+import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } from './i18n.js'
+import { LOCALES } from './locales/index.js'
 import { analyzeOutline, hiddenRows } from './outline-tree.js'
 import MarkdownIt from 'markdown-it'
 import { tempDir, join } from '@tauri-apps/api/path'
@@ -194,11 +196,11 @@ async function ensureSavedBeforeLeave() {
     return !state.dirty
   }
   const choice = await confirm3Dialog({
-    title: '未保存的更改',
-    message: '「' + (state.currentFile || '当前文档') + '」尚未保存，是否保存更改？',
-    confirmLabel: '保存',
-    neutralLabel: '不保存',
-    cancelLabel: '取消',
+    title: t('dlg.unsavedTitle'),
+    message: t('dlg.unsavedMsg', { name: state.currentFile || t('dlg.curDoc') }),
+    confirmLabel: t('common.save'),
+    neutralLabel: t('common.dontSave'),
+    cancelLabel: t('common.cancel'),
   })
   if (choice === 'cancel') return false
   if (choice === 'confirm') {
@@ -242,14 +244,14 @@ function toggleFocusMode() {
   const on = localStorage.getItem('nl-focus') !== '1'
   localStorage.setItem('nl-focus', on ? '1' : '0')
   if (editor) editor.setFocusMode(on)
-  setStatus(on ? '专注模式：开启' : '专注模式：关闭')
+  setStatus(on ? t('status.focusOn') : t('status.focusOff'))
 }
 
 function toggleTypewriterMode() {
   const on = localStorage.getItem('nl-typewriter') !== '1'
   localStorage.setItem('nl-typewriter', on ? '1' : '0')
   if (editor) editor.setTypewriterMode(on)
-  setStatus(on ? '打字机模式：开启' : '打字机模式：关闭')
+  setStatus(on ? t('status.typewriterOn') : t('status.typewriterOff'))
 }
 
 // 侧栏整栏收起/展开（编辑区随之铺满）；状态持久化
@@ -491,13 +493,13 @@ function setAutosave(on) {
   state.autosave.enabled = !!on
   localStorage.setItem('nl-autosave', on ? '1' : '0')
   if (els.chkAutosave) els.chkAutosave.checked = !!on
-  setStatus(on ? '自动保存已开启（2s 空闲）' : '自动保存已关闭')
+  setStatus(on ? t('status.autosaveOn') : t('status.autosaveOff'))
   if (on && state.dirty) scheduleAutosave()
 }
 
 async function setWordGoal() {
   const cur = localStorage.getItem('nl-word-goal') || '0'
-  const v = await promptDialog({ title: '当日字数目标', placeholder: '输入目标字数，0 表示清除', defaultValue: cur === '0' ? '500' : cur })
+  const v = await promptDialog({ title: t('dlg.wordGoalTitle'), placeholder: t('dlg.wordGoalPh'), defaultValue: cur === '0' ? '500' : cur })
   if (v == null) return
   const n = parseInt(String(v).replace(/[^0-9]/g, ''), 10)
   localStorage.setItem('nl-word-goal', n > 0 ? String(n) : '0')
@@ -507,24 +509,25 @@ async function setWordGoal() {
 async function toggleSourceMode() {
   if (!editor) return
   if (state.mode !== 'md') {
-    setStatus('源码模式仅用于 Markdown 文档')
+    setStatus(t('status.sourceOnlyMd'))
     return
   }
   const on = await editor.toggleSource()
   if (els.btnSource) els.btnSource.classList.toggle('active', on)
-  setStatus(on ? '源码模式：开启（保存即写回原文，不被重新格式化）' : '源码模式：关闭（回到所见即所得）')
+  setStatus(on ? t('status.sourceOn') : t('status.sourceOff'))
 }
 
 // —— 主题 ——（浅色 → 暗黑 → Dracula 三态循环；按钮显示当前主题名，与界面实际一致）
+// 主题名也走词条：按钮每次 applyTheme 时按当前语言重取，语言切换时整体刷一遍
 const THEMES = ['light', 'dark', 'vampire']
-const THEME_LABEL = { light: ['sun', '浅色'], dark: ['moon', '暗黑'], vampire: ['contrast', 'Dracula'] }
+const THEME_ICON = { light: 'sun', dark: 'moon', vampire: 'contrast' }
 function applyTheme(theme) {
   if (!THEMES.includes(theme)) theme = 'light'
   document.documentElement.setAttribute('data-theme', theme)
   // 深色族（暗黑 / 吸血鬼）共享一套派生样式，用 data-dark 统一命中
   document.documentElement.toggleAttribute('data-dark', theme === 'dark' || theme === 'vampire')
   localStorage.setItem('nl-theme', theme)
-  setIcon(els.btnTheme, THEME_LABEL[theme][0], THEME_LABEL[theme][1])
+  setIcon(els.btnTheme, THEME_ICON[theme], t('theme.' + theme))
   // 通知视图层按新主题重渲染依赖配色的部件（如 mermaid 图表）
   window.dispatchEvent(new Event('nl-theme-change'))
   if (editor) editor.setSourceTheme(theme)
@@ -1038,15 +1041,15 @@ function showTreeMenu(clientX, clientY, node) {
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
   if (node.type === 'file') {
-    menu.appendChild(makeMenuItem('打开', () => openFile(node.path)))
-    menu.appendChild(makeMenuItem('重命名 / 移动…', () => renameEntry(node.path, node.name, false)))
+    menu.appendChild(makeMenuItem(t('menu.open'), () => openFile(node.path)))
+    menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, false)))
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('移入回收站', () => deleteVaultFile(node.path, node.name), true))
+    menu.appendChild(makeMenuItem(t('menu.trash'), () => deleteVaultFile(node.path, node.name), true))
   } else {
-    menu.appendChild(makeMenuItem('新建文件…', () => newFileIn(node.path)))
-    menu.appendChild(makeMenuItem('新建文件夹…', () => newFolderIn(node.path)))
+    menu.appendChild(makeMenuItem(t('menu.newFileEllipsis'), () => newFileIn(node.path)))
+    menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn(node.path)))
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('重命名 / 移动…', () => renameEntry(node.path, node.name, true)))
+    menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, true)))
   }
   placeMenu(menu, clientX, clientY)
 }
@@ -1056,8 +1059,8 @@ function showTreeBgMenu(clientX, clientY) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
-  menu.appendChild(makeMenuItem('新建文件…', () => newFileIn('')))
-  menu.appendChild(makeMenuItem('新建文件夹…', () => newFolderIn('')))
+  menu.appendChild(makeMenuItem(t('menu.newFileEllipsis'), () => newFileIn('')))
+  menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn('')))
   placeMenu(menu, clientX, clientY)
 }
 
@@ -1082,8 +1085,8 @@ function errText(e) {
 async function newFileIn(dirRel) {
   if (!state.vaultRoot) return
   const name = await promptDialog({
-    title: '新建 Markdown 文件' + (dirRel ? '（于 ' + dirRel + '）' : '（库根）'),
-    placeholder: '文件名（可不带 .md）',
+    title: dirRel ? t('dlg.newFileTitle', { dir: dirRel }) : t('dlg.newFileTitleRoot'),
+    placeholder: t('dlg.newFilePh'),
   })
   if (!name) return
   let rel = joinRel(dirRel, name)
@@ -1094,9 +1097,9 @@ async function newFileIn(dirRel) {
     renderTree(await scanVault(state.vaultRoot))
     try { await updateIndexDoc(rel, seed) } catch (_) {}
     await openFile(rel)
-    setStatus('已新建：' + rel)
+    setStatus(t('msg.newFileOk', { rel }))
   } catch (e) {
-    await messageDialog('新建失败：' + errText(e))
+    await messageDialog(t('msg.newFileFailed', { err: errText(e) }))
   }
 }
 
@@ -1146,8 +1149,8 @@ async function newFromTemplate(tplRel) {
   if (!state.vaultRoot) return
   let tpl
   try { tpl = await readMdFile(state.vaultRoot, tplRel) }
-  catch (e) { await messageDialog('读取模板失败：' + errText(e)); return }
-  const name = await promptDialog({ title: '基于模板新建（' + baseName(tplRel) + '）', placeholder: '新文件名（可不带 .md）' })
+  catch (e) { await messageDialog(t('msg.readTplFailed', { err: errText(e) })); return }
+  const name = await promptDialog({ title: t('dlg.newTplTitle', { name: baseName(tplRel) }), placeholder: t('dlg.newTplPh') })
   if (!name) return
   const rel = /\.md$/i.test(name) ? name : name + '.md'
   const now = new Date()
@@ -1159,16 +1162,16 @@ async function newFromTemplate(tplRel) {
     renderTree(await scanVault(state.vaultRoot))
     try { await updateIndexDoc(rel, content) } catch (_) {}
     await openFile(rel)
-    setStatus('已从模板新建：' + rel)
+    setStatus(t('msg.newFromTplOk', { rel }))
   } catch (e) {
-    await messageDialog('新建失败：' + errText(e))
+    await messageDialog(t('msg.newFileFailed', { err: errText(e) }))
   }
 }
 
 // 新建一个空白模板（带示例变量），存于模板目录
 async function newBlankTemplate() {
-  if (!state.vaultRoot) { await messageDialog('请先打开知识库'); return }
-  const name = await promptDialog({ title: '新建模板（存于 ' + TEMPLATE_DIR() + '/）', placeholder: '模板文件名（可不带 .md）' })
+  if (!state.vaultRoot) { await messageDialog(t('msg.openVaultFirst')); return }
+  const name = await promptDialog({ title: t('dlg.newTplFileTitle', { dir: TEMPLATE_DIR() }), placeholder: t('dlg.tplFilePh') })
   if (!name) return
   const rel = joinRel(TEMPLATE_DIR(), /\.md$/i.test(name) ? name : name + '.md')
   const seed = '# {{title}}\n\n日期：{{date}} {{weekday}}　时间：{{time}}\n\n## 待办\n- [ ] \n'
@@ -1177,27 +1180,27 @@ async function newBlankTemplate() {
     await writeMdFile(state.vaultRoot, rel, seed)
     renderTree(await scanVault(state.vaultRoot))
     await openFile(rel)
-    setStatus('已新建模板：' + rel)
-  } catch (e) { await messageDialog('新建模板失败：' + errText(e)) }
+    setStatus(t('msg.newTplOk', { rel }))
+  } catch (e) { await messageDialog(t('msg.newTplFailed', { err: errText(e) })) }
 }
 
 // 工具条「模板」菜单：列模板 + 今日速记 + 新建模板 + 今日速记设置
 function openTemplateMenu(anchorEl) {
-  if (!state.vaultRoot) { messageDialog('请先打开知识库'); return }
+  if (!state.vaultRoot) { messageDialog(t('msg.openVaultFirst')); return }
   refreshTree().then(() => {
     closeTreeMenu()
     const menu = document.createElement('div')
     menu.className = 'cv-menu tree-menu'
     const tpls = listMdInDir(TEMPLATE_DIR())
     if (!tpls.length) {
-      menu.appendChild(makeMenuItem('（' + TEMPLATE_DIR() + '/ 暂无模板）', () => {}))
+      menu.appendChild(makeMenuItem(t('menu.noTemplatesInDir', { dir: TEMPLATE_DIR() }), () => {}))
     } else {
       tpls.forEach((p) => menu.appendChild(makeMenuItem(baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p), false, false, 'file')))
     }
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('今日速记（全局浮层，独立于知识库）', () => toggleDailyCapture(), false, false, 'calendar'))
-    menu.appendChild(makeMenuItem('新建空白模板…', () => newBlankTemplate(), false, false, 'plus'))
-    menu.appendChild(makeMenuItem('今日速记设置…', () => configureDailyCapture(), false, false, 'sliders'))
+    menu.appendChild(makeMenuItem(t('menu.dailyCaptureEntry'), () => toggleDailyCapture(), false, false, 'calendar'))
+    menu.appendChild(makeMenuItem(t('cmd.app.newTemplate'), () => newBlankTemplate(), false, false, 'plus'))
+    menu.appendChild(makeMenuItem(t('cmd.app.dailySettings'), () => configureDailyCapture(), false, false, 'sliders'))
     const r = anchorEl.getBoundingClientRect()
     placeMenu(menu, r.left, r.bottom + 4)
   })
@@ -1226,9 +1229,11 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.print', 'printer')
   addMenuCmd(menu, 'app.graph', 'graph')
   addMenuCmd(menu, 'app.newCanvas', 'board')
-  // 这两项是子菜单而非命令，注册表里没有对应条目，文案只能写在这里
-  menu.appendChild(makeMenuItem('最近打开', () => openRecentMenu(anchorEl), false, false, 'clock'))
-  menu.appendChild(makeMenuItem('模板 / 今日速记设置', () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
+  // 这两项是子菜单而非命令，注册表里没有对应条目，文案走词条
+  menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
+  menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
+  // 语言：子菜单列出全部语言，当前语言打勾
+  menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
   menu.appendChild(menuSep())
   addMenuCmd(menu, 'app.focusMode', 'target')
   addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
@@ -1270,7 +1275,7 @@ function openRecentMenu(anchorEl) {
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
   if (!list.length) {
-    menu.appendChild(makeMenuItem('（暂无最近打开记录）', () => {}))
+    menu.appendChild(makeMenuItem(t('menu.noRecent'), () => {}))
   } else {
     list.forEach((e) => {
       const it = makeMenuItem(e.name, () => reopenRecent(e), false, false, 'file')
@@ -1278,7 +1283,19 @@ function openRecentMenu(anchorEl) {
       menu.appendChild(it)
     })
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem('清空最近记录', () => saveRecents([]), false, false, 'eraser'))
+    menu.appendChild(makeMenuItem(t('cmd.app.clearRecents'), () => saveRecents([]), false, false, 'eraser'))
+  }
+  const r = anchorEl.getBoundingClientRect()
+  placeMenu(menu, r.left, r.bottom + 4)
+}
+
+// 语言子菜单：列 LOCALES 全部语言，当前项打勾；点选项即切换并整体刷新界面
+function openLangMenu(anchorEl) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  for (const l of LOCALES) {
+    menu.appendChild(makeMenuItem(l.name, () => switchLocale(l.id), false, getLocale() === l.id, 'globe'))
   }
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
@@ -1300,35 +1317,35 @@ async function reopenRecent(entry) {
   } catch (e) {
     // 目录可能已移动 / 删除：剔除该条并提示
     saveRecents(loadRecents().filter((x) => !(normVaultPath(x.root) === normVaultPath(entry.root) && x.rel === entry.rel)))
-    await messageDialog('打开最近文件失败（路径可能已变动）：' + ((e && e.message) || e))
+    await messageDialog(t('msg.recentOpenFailed', { err: (e && e.message) || e }))
   }
 }
 
 async function newFolderIn(dirRel) {
   if (!state.vaultRoot) return
   const name = await promptDialog({
-    title: '新建文件夹' + (dirRel ? '（于 ' + dirRel + '）' : '（库根）'),
-    placeholder: '文件夹名',
+    title: dirRel ? t('dlg.newFolderTitle', { dir: dirRel }) : t('dlg.newFolderTitleRoot'),
+    placeholder: t('dlg.newFolderPh'),
   })
   if (!name) return
   if (name.includes('/') || name.includes('\\')) {
-    await messageDialog('文件夹名不能包含路径分隔符')
+    await messageDialog(t('msg.folderSep'))
     return
   }
   const rel = joinRel(dirRel, name)
   try {
     await createDir(state.vaultRoot, rel)
     renderTree(await scanVault(state.vaultRoot))
-    setStatus('已新建文件夹：' + rel)
+    setStatus(t('msg.newFolderOk', { rel }))
   } catch (e) {
-    await messageDialog('新建文件夹失败：' + errText(e))
+    await messageDialog(t('msg.newFolderFailed', { err: errText(e) }))
   }
 }
 
 async function renameEntry(rel, name, isFolder) {
   if (!state.vaultRoot) return
   const input = await promptDialog({
-    title: isFolder ? '重命名 / 移动文件夹' : '重命名 / 移动文件',
+    title: t(isFolder ? 'dlg.renameFolder' : 'dlg.renameFile'),
     defaultValue: name,
   })
   if (input === null) return
@@ -1494,11 +1511,11 @@ async function closeTab(id) {
       if (!(await ensureSavedBeforeLeave())) return
       if (tab.scratch) {
         const choice = await confirm3Dialog({
-          title: '尚未选择保存位置',
-          message: `「${baseName(tab.rel)}」还没保存到正式位置，现在选吗？`,
-          confirmLabel: '选择位置',
-          neutralLabel: '直接关闭',
-          cancelLabel: '取消',
+          title: t('dlg.scratchTitle'),
+          message: t('dlg.scratchMsg', { name: baseName(tab.rel) }),
+          confirmLabel: t('dlg.scratchChoose'),
+          neutralLabel: t('dlg.scratchClose'),
+          cancelLabel: t('common.cancel'),
         })
         if (choice === 'cancel') return
         if (choice === 'confirm' && !(await saveScratchAs())) return
@@ -1870,9 +1887,9 @@ function renderOutlineToolbar(setMode) {
   const bar = document.createElement('div')
   bar.className = 'outline-toolbar'
   const btns = [
-    { key: '1', label: 'H1', title: '展开到 H1' },
-    { key: '2', label: 'H2', title: '展开到 H2' },
-    { key: '3', label: 'H3', title: '展开到 H3' },
+    { key: '1', label: 'H1', title: t('outline.expandTo', { level: 'H1' }) },
+    { key: '2', label: 'H2', title: t('outline.expandTo', { level: 'H2' }) },
+    { key: '3', label: 'H3', title: t('outline.expandTo', { level: 'H3' }) },
   ]
   for (const b of btns) {
     const el = document.createElement('button')
@@ -2262,49 +2279,49 @@ function rebuildKeymap() {
 }
 
 function registerAppCommands() {
-  const app = (id, title, defaultKey, run) =>
-    commandRegistry.register({ id, title, category: 'app', defaultKey, run })
-  app('app.save', '保存当前文件', 'Mod-s', () => saveCurrent(true))
-  app('app.openFile', '打开单个文件', 'Mod-o', () => openSingleFile())
-  app('app.openFolder', '打开知识库文件夹', 'Mod-Shift-o', () => openFolder())
+  const app = (id, defaultKey, run) =>
+    commandRegistry.register({ id, title: t('cmd.' + id), category: 'app', defaultKey, run })
+  app('app.save', 'Mod-s', () => saveCurrent(true))
+  app('app.openFile', 'Mod-o', () => openSingleFile())
+  app('app.openFolder', 'Mod-Shift-o', () => openFolder())
   // Ctrl+F = 当前文档内查找（Typora/Obsidian 语义）；全库搜索改到 Ctrl+Shift+F
-  app('app.findInDoc', '在本篇文档中查找', 'Mod-f', () => {
+  app('app.findInDoc', 'Mod-f', () => {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open()
   })
   // Ctrl+H：打开同一查找栏，但焦点落在替换框（替换行常显）
-  app('app.replace', '在本篇文档中查找并替换', 'Mod-h', () => {
+  app('app.replace', 'Mod-h', () => {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open('replace')
   })
-  app('app.search', '聚焦侧栏搜索', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
+  app('app.search', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
   // 新建文件（Ctrl+N）：建到系统临时目录，不要求先开知识库；Ctrl+S / 关闭时再选保存位置
-  app('app.newFile', '新建文件', 'Mod-n', () => newScratchFile())
+  app('app.newFile', 'Mod-n', () => newScratchFile())
   // 重命名当前文件（F2）：复用文件树右键那条（promptDialog + renameItem + 索引重建）
-  app('app.renameFile', '重命名当前文件', 'F2', () => {
+  app('app.renameFile', 'F2', () => {
     if (!state.currentFile) {
-      setStatus('没有打开的文件')
+      setStatus(t('status.noOpenFile'))
       return
     }
     renameEntry(state.currentFile, baseName(state.currentFile), false)
   })
   // 关闭当前标签页（Ctrl+W）：只剩一页时等同关闭文档，回到无文档态
-  app('app.closeFile', '关闭当前标签页', 'Mod-w', () => {
+  app('app.closeFile', 'Mod-w', () => {
     const act = tabs && tabs.active()
     if (!act) {
-      setStatus('没有打开的标签页')
+      setStatus(t('status.noTab'))
       return
     }
     closeTab(act.id)
   })
   // 标签页循环（Ctrl+Tab / Ctrl+Shift+Tab）：刻意用 Ctrl 而非 Mod——mac 上 Cmd+Tab 被系统切应用占用
-  app('app.nextTab', '切换下一个标签页', 'Ctrl-Tab', () => cycleTab(1))
-  app('app.prevTab', '切换上一个标签页', 'Ctrl-Shift-Tab', () => cycleTab(-1))
+  app('app.nextTab', 'Ctrl-Tab', () => cycleTab(1))
+  app('app.prevTab', 'Ctrl-Shift-Tab', () => cycleTab(-1))
   // 插入图片（Ctrl+Shift+I，Typora 习惯）：file input 选图后走落库路径
-  app('app.insertImage', '插入图片…', 'Mod-Shift-i', () => {
+  app('app.insertImage', 'Mod-Shift-i', () => {
     if (editor && state.mode === 'md') editor.pickAndInsertImages()
-    else setStatus('插入图片仅用于 Markdown 文档')
+    else setStatus(t('status.imgOnlyMd'))
   })
   // 粘贴为纯文本（Ctrl+Shift+V，Typora/Obsidian 习惯键）
-  app('app.pastePlain', '粘贴为纯文本', 'Ctrl-Shift-v', async () => {
+  app('app.pastePlain', 'Ctrl-Shift-v', async () => {
     // 焦点在输入框（查找栏 / 侧栏搜索 / 源码 CM）里时不抢，那边要的是带格式粘贴
     const el = document.activeElement
     if (el && el.closest && el.closest('input, textarea, .cm-content')) return
@@ -2312,52 +2329,62 @@ function registerAppCommands() {
     try {
       text = await navigator.clipboard.readText()
     } catch (e) {
-      setStatus('读取剪贴板失败：' + errText(e))
+      setStatus(t('status.clipFail', { err: errText(e) }))
       return
     }
     if (!text) {
-      setStatus('剪贴板里没有文本')
+      setStatus(t('status.clipEmpty'))
       return
     }
     if (editor && state.mode === 'md') editor.insertPlainText(text)
-    else setStatus('没有可粘贴的文档')
+    else setStatus(t('status.noPasteDoc'))
   })
   // Ctrl+E = 编辑 / 预览互切（Typora 语义，即源码 ⇄ 所见即所得）；Ctrl+/ 不再占默认键
-  app('app.sourceMode', 'Markdown 源码模式', 'Mod-e', () => toggleSourceMode())
+  app('app.sourceMode', 'Mod-e', () => toggleSourceMode())
   // 打印保留 Ctrl+P（用户明确要求）；命令面板回 Ctrl+Shift+P
-  app('app.print', '打印 / 另存 PDF', 'Mod-p', () => window.print())
-  app('app.palette', '命令面板', 'Mod-Shift-p', () => { if (palette) palette.open() })
-  app('app.graph', '打开知识图谱', 'Mod-g', () => openGraphModal())
-  app('app.dailyCapture', '今日速记', 'Mod-Shift-d', () => toggleDailyCapture())
+  app('app.print', 'Mod-p', () => window.print())
+  app('app.palette', 'Mod-Shift-p', () => { if (palette) palette.open() })
+  app('app.graph', 'Mod-g', () => openGraphModal())
+  app('app.dailyCapture', 'Mod-Shift-d', () => toggleDailyCapture())
   // 专注模式 Ctrl+Shift+`（Typora 习惯）；原 Ctrl+Shift+E 释放
-  app('app.focusMode', '专注模式', 'Mod-Shift-`', () => toggleFocusMode())
-  app('app.typewriterMode', '打字机模式', 'Mod-Shift-t', () => toggleTypewriterMode())
-  app('app.toggleSidebar', '隐藏 / 显示侧栏', 'Mod-Shift-s', () => toggleSidebar())
+  app('app.focusMode', 'Mod-Shift-`', () => toggleFocusMode())
+  app('app.typewriterMode', 'Mod-Shift-t', () => toggleTypewriterMode())
+  app('app.toggleSidebar', 'Mod-Shift-s', () => toggleSidebar())
   // 检查器改到 Ctrl+Shift+B：Ctrl+Shift+I 让给「插入图片」
-  app('app.toggleInspector', '隐藏 / 显示检查器', 'Mod-Shift-b', () => toggleInspector())
+  app('app.toggleInspector', 'Mod-Shift-b', () => toggleInspector())
   // 以下原先只挂在「更多」菜单里：入注册表后 mac 原生菜单可直接取用（一处定义，两处消费）
-  app('app.shortcuts', '快捷键设置…', null, () => { if (keySettings) keySettings.open() })
-  app('app.export', '导出为 HTML', null, () => exportHTML())
-  app('app.exportSite', '导出整站…', null, () => exportSiteFull())
-  app('app.importWord', '导入 Word(.docx)…', null, () => importWordViaDialog())
-  app('app.exportWord', '导出 Word(.docx)…', null, () => exportWordViaDialog())
-  app('app.newCanvas', '新画布 / 白板', null, () => newCanvas())
-  app('app.newTemplate', '新建空白模板…', null, () => newBlankTemplate())
-  app('app.dailySettings', '今日速记设置…', null, () => configureDailyCapture())
-  app('app.autosave', '自动保存', null, () => setAutosave(!state.autosave.enabled))
-  app('app.clearRecents', '清空最近记录', null, () => saveRecents([]))
+  app('app.shortcuts', null, () => { if (keySettings) keySettings.open() })
+  app('app.export', null, () => exportHTML())
+  app('app.exportSite', null, () => exportSiteFull())
+  app('app.importWord', null, () => importWordViaDialog())
+  app('app.exportWord', null, () => exportWordViaDialog())
+  app('app.newCanvas', null, () => newCanvas())
+  app('app.newTemplate', null, () => newBlankTemplate())
+  app('app.dailySettings', null, () => configureDailyCapture())
+  app('app.autosave', null, () => setAutosave(!state.autosave.enabled))
+  app('app.clearRecents', null, () => saveRecents([]))
+  // 界面语言：一种语言一条命令，标题按当前语言生成（各语言自称取自 LOCALES）；选中态由 MENU_CHECKED 给出
+  for (const l of LOCALES) {
+    commandRegistry.register({
+      id: 'app.lang.' + l.id,
+      title: t('cmd.app.lang', { name: l.name }),
+      category: 'app',
+      defaultKey: null,
+      run: () => switchLocale(l.id),
+    })
+  }
   // 批次 E（L）：本地 Git（无默认键，避免抢占既有快捷键；可在快捷键设置里自行绑定）
-  app('app.git.refresh', 'Git：刷新状态', null, () => { if (gitPanel) gitPanel.refresh() })
-  app('app.git.commit', 'Git：提交全部…', null, () => { if (gitPanel) gitPanel.commitAll() })
-  app('app.git.init', 'Git：初始化仓库', null, () => { if (gitPanel) gitPanel.init() })
+  app('app.git.refresh', null, () => { if (gitPanel) gitPanel.refresh() })
+  app('app.git.commit', null, () => { if (gitPanel) gitPanel.commitAll() })
+  app('app.git.init', null, () => { if (gitPanel) gitPanel.init() })
   // 批次 E（R1）：Git 远程（认证 + 快进 pull）——run 委托给面板暴露的方法；面板未就绪则无操作
-  app('app.git.fetch', 'Git：抓取远端', null, () => { if (gitPanel) gitPanel.fetch() })
-  app('app.git.pull', 'Git：拉取（仅快进）', null, () => { if (gitPanel) gitPanel.pull() })
+  app('app.git.fetch', null, () => { if (gitPanel) gitPanel.fetch() })
+  app('app.git.pull', null, () => { if (gitPanel) gitPanel.pull() })
   // 批次 E（R2）：Git push（当前分支 → upstream）
-  app('app.git.push', 'Git：推送到远端', null, () => { if (gitPanel) gitPanel.push() })
+  app('app.git.push', null, () => { if (gitPanel) gitPanel.push() })
     // 批次 E（R3）：合并拉取（非 ff-only，冲突交面板解决）
-    app('app.git.pullMerge', 'Git：拉取（合并）…', null, () => { if (gitPanel) gitPanel.merge() })
-  app('app.git.remote', 'Git：设置远端 origin…', null, () => { if (gitPanel) gitPanel.setupRemote() })
+    app('app.git.pullMerge', null, () => { if (gitPanel) gitPanel.merge() })
+  app('app.git.remote', null, () => { if (gitPanel) gitPanel.setupRemote() })
 }
 
 // 批次 E（R1）· pull 改动磁盘文件后的编辑器集成（spec §6.4）：
@@ -2398,7 +2425,7 @@ async function afterRemotePull() {
 // editor 命令入注册表：与 app 同一张表（面板可列、可重绑），但执行经 ctx.runEditorCommand 转给 PM
 // 注：全局分发器不跳 editor 类（已按 category 过滤），避免与 PM keymap 重复触发
 function registerEditorCommands() {
-  for (const def of EDITOR_COMMANDS) {
+  for (const def of editorCommandDefs()) {
     commandRegistry.register({
       id: def.id,
       title: def.title,
@@ -2408,6 +2435,20 @@ function registerEditorCommands() {
       run: (ctx) => ctx.runEditorCommand(def.id),
     })
   }
+}
+
+// —— 界面语言 ——
+// 切换后统一刷新：注册表标题（命令面板 / 快捷键设置 / mac 菜单的文案来源）、静态 DOM、
+// 主题按钮文字、词数统计。各面板自己订阅 onLocaleChange 重绘（见各面板模块）。
+function switchLocale(id) {
+  if (!setLocale(id)) return
+  registerAppCommands()
+  registerEditorCommands()
+  applyStaticDom(document)
+  applyTheme(document.documentElement.getAttribute('data-theme') || 'light')
+  updateDocStats()
+  scheduleMacChrome()
+  setStatus(t('status.langSwitched', { name: localeName(id) }))
 }
 
 // 传给 commandRegistry.run 的执行上下文
@@ -2453,6 +2494,10 @@ const MENU_CHECKED = {
   'app.autosave': () => state.autosave.enabled,
   'app.sourceMode': () => !!(editor && editor.isSourceMode()),
 }
+// 语言命令的勾：当前语言那一项打勾（注册表 title 按当前语言生成，勾用于「更多」菜单与 mac 菜单）
+for (const l of LOCALES) {
+  MENU_CHECKED['app.lang.' + l.id] = () => getLocale() === l.id
+}
 
 function menuEnabled(id) {
   if (MENU_NEEDS_DOC.has(id) && !state.currentFile) return false
@@ -2485,7 +2530,7 @@ function menuSpecCtx() {
     commands: menuCommands(),
     recents: loadRecents().map((e, i) => ({ id: 'recent:' + i, label: e.name })),
     templates: listMdInDir(TEMPLATE_DIR()).map((p) => ({ id: 'tpl:' + p, label: baseName(p).replace(/\.md$/i, '') })),
-    themes: THEMES.map((name) => ({ id: 'theme:' + name, label: THEME_LABEL[name][1], checked: name === theme })),
+    themes: THEMES.map((name) => ({ id: 'theme:' + name, label: t('theme.' + name), checked: name === theme })),
   }
 }
 
@@ -2636,6 +2681,10 @@ function bindShortcuts() {
 }
 
 async function boot() {
+  // 界面语言：i18n.js 导入时已按「本地记忆 → 系统语言 → 简体中文」定好 locale；
+  // 这里把 <html lang> 与静态文案对齐当前语言（默认词条也是中文，重复一遍无副作用）
+  document.documentElement.lang = getLocale()
+  applyStaticDom(document)
   initTitlebar()
   // 标签页先建：编辑器回调（onDirty → markDirty → tabs.setDirty）可能在装配过程中就触发
   tabs = createTabs({
@@ -2662,8 +2711,8 @@ async function boot() {
     // 返回 null = 取消，'' = 解除链接，其余为链接地址。
     onAskLinkUrl: async (current) => {
       const input = await promptDialog({
-        title: current ? '编辑链接' : '插入链接',
-        placeholder: '链接地址（URL）',
+        title: current ? t('dlg.linkEdit') : t('dlg.linkInsert'),
+        placeholder: t('dlg.linkPh'),
         defaultValue: current || '',
       })
       if (input === null) return null // 取消：不动文档

@@ -18,7 +18,8 @@
     "test:heading-anchor": "node tests/heading-anchor.test.mjs",
     "test:anchor-link": "node tests/anchor-link.test.mjs",
     "test:find-in-doc": "node tests/find-in-doc.test.mjs",
-    "test:pos-map": "node tests/pos-map.test.mjs"
+    "test:pos-map": "node tests/pos-map.test.mjs",
+    "test:i18n": "node tests/i18n.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

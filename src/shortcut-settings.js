@@ -5,8 +5,7 @@
 // 给出占用者提示）；否则写 localStorage['nl-keymap'] 并即时生效（saveOverrides 由 main.js 注入，
 // 内部会重算全局分发器 + 热重配编辑器 keymap）。结构性键无法被录成绑定（eventToBinding 返回 null 则继续等待）。
 import { formatBinding, eventToBinding, effectiveBindings } from './keymap.js'
-
-const CATEGORY_LABELS = { app: '应用', editor: '编辑器', plugin: '插件' }
+import { t } from './i18n.js'
 
 /**
  * @param {object} deps
@@ -45,12 +44,12 @@ export function createShortcutSettings(deps) {
     const hit = conflicts.find((c) => c.ids.includes(id))
     if (hit) {
       const others = hit.ids.filter((x) => x !== id).map(titleOf)
-      setStatus('冲突：' + formatBinding(hit.binding, isMac) + ' 已被「' + others.join('、') + '」占用，未保存')
+      setStatus(t('ks.conflict', { binding: formatBinding(hit.binding, isMac), names: others.join('、') }))
       render()
       return false
     }
     saveOverrides(ov)
-    setStatus('已保存快捷键')
+    setStatus(t('ks.saved'))
     render()
     return true
   }
@@ -99,16 +98,16 @@ export function createShortcutSettings(deps) {
 
     const key = document.createElement('span')
     key.className = 'nl-ks-key' + (recordingId === cmd.id ? ' recording' : '')
-    if (recordingId === cmd.id) key.textContent = '按下组合键…（Esc 取消）'
+    if (recordingId === cmd.id) key.textContent = t('ks.recording')
     else {
       const b = bindingOf(cmd.id)
-      key.textContent = b ? formatBinding(b, isMac) : '未设置'
+      key.textContent = b ? formatBinding(b, isMac) : t('ks.unset')
     }
     row.appendChild(key)
 
     const recBtn = document.createElement('button')
     recBtn.className = 'nl-ks-btn'
-    recBtn.textContent = recordingId === cmd.id ? '取消' : '录制'
+    recBtn.textContent = recordingId === cmd.id ? t('common.cancel') : t('ks.record')
     recBtn.addEventListener('click', () => startRecording(cmd.id))
     row.appendChild(recBtn)
 
@@ -116,14 +115,14 @@ export function createShortcutSettings(deps) {
     const cleared = Object.prototype.hasOwnProperty.call(ov, cmd.id) && ov[cmd.id] === ''
     const unBtn = document.createElement('button')
     unBtn.className = 'nl-ks-btn'
-    unBtn.textContent = '解绑'
+    unBtn.textContent = t('ks.unbind')
     unBtn.disabled = !bindingOf(cmd.id)
     unBtn.addEventListener('click', () => commit(cmd.id, ''))
     row.appendChild(unBtn)
 
     const rstBtn = document.createElement('button')
     rstBtn.className = 'nl-ks-btn'
-    rstBtn.textContent = '重置'
+    rstBtn.textContent = t('ks.reset')
     rstBtn.disabled = !Object.prototype.hasOwnProperty.call(ov, cmd.id) && !cleared
     rstBtn.addEventListener('click', () => commit(cmd.id, null))
     row.appendChild(rstBtn)
@@ -139,7 +138,7 @@ export function createShortcutSettings(deps) {
       if (!group.length) continue
       const head = document.createElement('div')
       head.className = 'nl-ks-head'
-      head.textContent = CATEGORY_LABELS[cat]
+      head.textContent = t('ks.cat' + cat[0].toUpperCase() + cat.slice(1))
       bodyEl.appendChild(head)
       for (const c of group) bodyEl.appendChild(makeRow(c))
     }
@@ -156,19 +155,19 @@ export function createShortcutSettings(deps) {
     head.className = 'nl-ks-top'
     const title = document.createElement('div')
     title.className = 'nl-prompt-title'
-    title.textContent = '快捷键设置'
+    title.textContent = t('ks.title')
     const resetAll = document.createElement('button')
     resetAll.className = 'nl-ks-btn'
-    resetAll.textContent = '重置全部'
+    resetAll.textContent = t('ks.resetAll')
     resetAll.addEventListener('click', () => {
       stopRecording()
       saveOverrides({})
-      setStatus('已重置全部快捷键为默认')
+      setStatus(t('ks.resetAllDone'))
       render()
     })
     const closeBtn = document.createElement('button')
     closeBtn.className = 'nl-ks-btn'
-    closeBtn.textContent = '关闭'
+    closeBtn.textContent = t('common.close')
     closeBtn.addEventListener('click', () => close())
     head.append(title, resetAll, closeBtn)
 

@@ -7,21 +7,24 @@
 
 // 系统预定义项的标题由我们给出：muda 只按文字建项、动作仍是原生 selector，
 // 不给标题就会留一手英文（mac 上「剪切/复制/退出」这类是约定俗成的固定译法）。
+// 文案走 i18n 词条，与语言切换保持一致。
+import { t } from './i18n.js'
+
 const ROLE_TEXT = {
-  About: (app) => '关于 ' + app,
-  Services: () => '服务',
-  Hide: (app) => '隐藏 ' + app,
-  HideOthers: () => '隐藏其他',
-  ShowAll: () => '全部显示',
-  Quit: (app) => '退出 ' + app,
-  CloseWindow: () => '关闭窗口',
-  Cut: () => '剪切',
-  Copy: () => '复制',
-  Paste: () => '粘贴',
-  SelectAll: () => '全选',
-  Minimize: () => '最小化',
-  Maximize: () => '缩放',
-  Fullscreen: () => '进入全屏幕',
+  About: (app) => t('menu.role.about', { app }),
+  Services: () => t('menu.role.services'),
+  Hide: (app) => t('menu.role.hide', { app }),
+  HideOthers: () => t('menu.role.hideOthers'),
+  ShowAll: () => t('menu.role.showAll'),
+  Quit: (app) => t('menu.role.quit', { app }),
+  CloseWindow: () => t('menu.role.closeWindow'),
+  Cut: () => t('menu.role.cut'),
+  Copy: () => t('menu.role.copy'),
+  Paste: () => t('menu.role.paste'),
+  SelectAll: () => t('menu.role.selectAll'),
+  Minimize: () => t('menu.role.minimize'),
+  Maximize: () => t('menu.role.maximize'),
+  Fullscreen: () => t('menu.role.fullscreen'),
 }
 
 const role = (name) => ({ type: 'role', role: name })
@@ -88,8 +91,8 @@ export function buildMacMenuSpec(ctx = {}) {
           }
         }
       }
-      if (entry.dynamic === 'recents') withTail(ctx.recents || [], '（暂无）')
-      else if (entry.dynamic === 'templates') withTail(ctx.templates || [], '（暂无模板）')
+      if (entry.dynamic === 'recents') withTail(ctx.recents || [], t('common.none'))
+      else if (entry.dynamic === 'templates') withTail(ctx.templates || [], t('menu.noTemplates'))
       else if (entry.dynamic === 'themes') {
         for (const r of ctx.themes || []) kids.push({ type: 'check', id: r.id, text: r.label, checked: !!r.checked })
       }
@@ -114,14 +117,14 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       role('Quit'),
     ]),
-    group('file', '文件', [
+    group('file', t('menu.group.file'), [
       'app.openFile',
       'app.openFolder',
       'app.newFile',
       'app.renameFile',
-      submenu('recent', '打开最近', 'recents', ['app.clearRecents']),
+      submenu('recent', t('menu.recentMac'), 'recents', ['app.clearRecents']),
       'app.newCanvas',
-      submenu('templates', '模板', 'templates', ['app.newTemplate', 'app.dailySettings']),
+      submenu('templates', t('menu.templatesMac'), 'templates', ['app.newTemplate', 'app.dailySettings']),
       'sep',
       'app.save',
       'app.export',
@@ -136,7 +139,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.closeFile',
       role('CloseWindow'),
     ]),
-    group('edit', '编辑', [
+    group('edit', t('menu.group.edit'), [
       'editor.undo',
       'editor.redo',
       'sep',
@@ -149,7 +152,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       'app.search',
     ]),
-    group('format', '格式', [
+    group('format', t('menu.group.format'), [
       'editor.bold',
       'editor.italic',
       'editor.code',
@@ -158,8 +161,8 @@ export function buildMacMenuSpec(ctx = {}) {
       'editor.mathInline',
       'editor.mathBlock',
     ]),
-    group('paragraph', '段落', [...blockIds, 'sep', 'editor.headingUp', 'editor.headingDown']),
-    group('view', '视图', [
+    group('paragraph', t('menu.group.paragraph'), [...blockIds, 'sep', 'editor.headingUp', 'editor.headingDown']),
+    group('view', t('menu.group.view'), [
       'app.sourceMode',
       'sep',
       'editor.foldSection',
@@ -171,9 +174,9 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       'app.graph',
       'app.palette',
-      submenu('theme', '主题', 'themes'),
+      submenu('theme', t('menu.theme'), 'themes'),
     ]),
-    group('window', '窗口', [
+    group('window', t('menu.group.window'), [
       'app.nextTab',
       'app.prevTab',
       role('Minimize'),
@@ -183,9 +186,13 @@ export function buildMacMenuSpec(ctx = {}) {
     ]),
   ].filter(Boolean)
 
-  // 「段落」组的注册表标题带「段落：」前缀（面板里便于归类），菜单里是多余的
+  // 「段落」组的注册表标题带当前语言的段落前缀（面板里便于归类），菜单里是多余的
   const para = groups.find((g) => g.id === 'paragraph')
-  if (para) for (const it of para.items) it.text = String(it.text).replace(/^段落：/, '')
+  if (para) {
+    const prefix = t('menu.paraPrefix')
+    const re = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    for (const it of para.items) it.text = String(it.text).replace(re, '')
+  }
 
   return { groups }
 }

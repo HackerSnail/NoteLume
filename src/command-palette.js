@@ -6,6 +6,7 @@
 // 面板本身是一条 app 命令（在 main.js 注册），其绑定仍走全局分发器；本模块只负责 UI 与选择。
 import { fuzzyMatch } from './keymap.js'
 import { setIcon } from './icons.js'
+import { t } from './i18n.js'
 
 /**
  * @param {object} deps
@@ -35,7 +36,7 @@ export function createPalette(deps) {
     input.type = 'text'
     input.className = 'nl-palette-input'
     input.spellcheck = false
-    input.placeholder = '搜索文档，或键入 > 运行命令'
+    input.placeholder = t('palette.placeholder')
 
     listEl = document.createElement('div')
     listEl.className = 'nl-palette-list'
@@ -76,7 +77,7 @@ export function createPalette(deps) {
     if (!items.length) {
       const empty = document.createElement('div')
       empty.className = 'nl-palette-empty'
-      empty.textContent = (input.value || '').trim() ? '无匹配项' : '开始输入以搜索…'
+      empty.textContent = (input.value || '').trim() ? t('palette.noMatch') : t('palette.emptyQuery')
       listEl.appendChild(empty)
       return
     }

@@ -374,6 +374,15 @@
 * **索引"构建超时"（实际已就绪）**：前端轮询用 `st.vaultRoot === state.vaultRoot` 判断索引就绪，但 Rust 存的是 `fs::canonicalize` 后的路径（Windows 带 `\\?\` verbatim 前缀、盘符大写），与对话框返回的原始路径永不相等 → 永远轮询到 60s 超时（后台索引其实早已建好，反查/搜索仍可用，仅误报）。新增 `normVaultPath` 规范化后比较（去 `\\?\` 前缀、统一分隔符、去尾部、忽大小写）
 * **打开/新建画布时节点跑到左上角被裁**：`openCanvas`/`newCanvas` 先调 `canvasView.open/newBlank`（内含 `fitView`/`centerWorld`）再 `setMode('canvas')`，此时容器仍 `display:none`，`getBoundingClientRect()` 返回 0×0 → fitView 算出负平移把节点甩出屏幕。改为先 `setMode('canvas')` 再开画布；并从根上加固：`fitView` 遇 0×0 时 `requestAnimationFrame` 下帧重试（不再用零尺寸算变换）；`newBlank` 初始卡片改为固定放世界原点 (0,0)、视图 tx/ty=80（不依赖 `centerWorld`，新画布卡片永不出屏）；"适应"最大缩放由 3× 改为 1×（单卡片不再被放大到 300%）
 
+### Added
+
+* **界面多语言（i18n）：五种语言，简体中文默认，切换即时生效**：此前界面文案全部硬编码中文，系统语言是英文 / 繁体 / 法文 / 德文的用户只能看中文。本次把用户可见文案收进词条，「更多 → 界面语言」里切换（mac 原生菜单与命令面板同样列出五个 `app.lang.*` 命令），选择记忆在 `localStorage` 的 `nl-lang`。
+  * ① 基础设施（新增 `src/i18n.js` 与 `src/locales/`）：`locales/index.js` 登记五种语言（zh-CN 简体 / zh-Hant 繁體 / en-US / fr-FR / de-DE），一种语言一个词条文件。`t(key, vars)` 取值，`{name}` 占位符插值；缺词条回退 en-US，再缺回退键名本身（漏翻在界面上直接可见）。语言选择顺序：`nl-lang` → `navigator.languages`（`zh-Hant-TW`、`fr` 之类按主语言落到内置 id，`zh` 下按 Hant 与否分简繁）→ 简体中文。
+  * ② 静态文案走 DOM 属性：`index.html` 里图标与文字混排的元素（工具条按钮、侧栏 tab、检查器面板标题、快照 / 图谱弹窗）把文字包一层 `span` 挂 `data-i18n`；`title` / `placeholder` / `aria-label` 分别挂 `data-i18n-title` / `-placeholder` / `-aria-label`，`applyStaticDom(document)` 统一刷新。用 `setIcon()` 在运行期重建子节点的按钮（主题按钮）不挂属性，改为每次 `applyTheme` 按当前语言取词条。
+  * ③ 动态文案在渲染点调 `t()`：命令注册表标题键名与命令 id 对齐（`cmd.app.save`、`cmd.editor.block.h1`…），`registerAppCommands` / `editorCommandDefs()` 注册时解析，切换语言后 main.js 重新注册两张表，命令面板、快捷键设置、mac 原生菜单（含 Cut / Copy / Quit 等系统预定义项的译法与「段落：」前缀剥离）跟着换语言；`slash-menu` 的项表改存 `labelKey`，每次渲染时取值，插件不用重建。
+  * ④ 本期已切换：工具条 / 侧栏 / 检查器静态区、命令面板、快捷键设置、confirm3 / prompt 两个通用弹窗的默认按钮、斜杠菜单、文件树与「更多」菜单各条目、模板菜单、新建 / 重命名 / 移动 / 字数目标 / 链接等弹窗及对应状态提示。需要整体重绘的面板订阅 `onLocaleChange`（接入点已留好，本期未用的订阅方在下一批处理）。
+  * ⑤ 测试与构建：新增 `tests/i18n.test.mjs` 10 条（语言登记、切换、回退链、插值、命令词条与 id 对齐、订阅退订）；`app-menu.test.mjs` 26 条、`keymap.test.mjs` 23 条、`roundtrip.test.mjs` 58 条仍全过；`npm run build` 通过。未覆盖（下一批）：git-panel、canvas-view、find-in-doc、docx 导入 / 导出 / 校对、site-export、snapshot-panel、frontmatter-panel、outline-tree、img-viewer、mermaid-preview、code-lang-picker、daily-capture、writing-stats、wiki-hover、graph-view 内的文案，以及 main.js 剩余约 90 处 `setStatus` / `messageDialog`（回收站确认、导出结果、拉取冲突等）——这些位置已确认可机械替换，不欠新机制。
+
 ## [0.3.0](https://gitee.com/hackerSnail/note-lume/compare/v0.2.0...v0.3.0) - 2026-10-13
 
 P2 首项落地：简易知识图谱（零外部依赖，基于现有索引，单文件 264 行）。

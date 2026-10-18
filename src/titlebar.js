@@ -2,6 +2,7 @@
 // 工具条即标题栏：.appbar-lead（左端应用名）与 .spacer（中部空白）是拖拽区，
 // .win-btns（右端）是最小化/最大化/关闭。mac 走原生 Overlay，这套默认隐藏、仅 win/linux 显示。
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { t } from './i18n.js'
 
 const inTauri = '__TAURI_INTERNALS__' in window
 
@@ -36,7 +37,7 @@ export function initTitlebar() {
     if (!use) return
     const max = await appWindow.isMaximized()
     use.setAttribute('href', max ? '#i-win-restore' : '#i-win-max')
-    btnMax.title = max ? '向下还原' : '最大化'
+    btnMax.title = max ? t('ui.winRestore') : t('ui.winMax')
   }
   refreshMax()
   appWindow.onResized(refreshMax)
