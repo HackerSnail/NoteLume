@@ -3080,6 +3080,52 @@ fn set_ui_lang(lang: String) -> bool {
     ui_lang::set_lang(&lang)
 }
 
+/// 应用设置文件路径：<app_config_dir>/settings.json。
+/// app_config_dir 在 Windows 是 %APPDATA%\<identifier>，macOS 是
+/// ~/Library/Application Support/<identifier>，由 Tauri 按 tauri.conf.json 的 identifier 定位。
+fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("定位应用配置目录失败：{e}"))?;
+    Ok(dir.join("settings.json"))
+}
+
+/// 读取 settings.json。文件不存在返回 Null（前端用代码里的默认值）；
+/// 内容损坏也返回 Null 并打日志——启动链路不能因为一份坏设置就起不来，
+/// 用户改回来的任何一次保存都会把坏内容覆盖掉。
+#[tauri::command]
+fn read_settings_json(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let p = settings_path(&app)?;
+    match fs::read_to_string(&p) {
+        Ok(text) => match serde_json::from_str(&text) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                eprintln!("NoteLume settings.json 解析失败，按默认值启动：{e}");
+                Ok(serde_json::Value::Null)
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(serde_json::Value::Null),
+        Err(e) => Err(format!("读取 settings.json 失败：{e}")),
+    }
+}
+
+/// 写入 settings.json。先写同目录临时文件再 rename：写一半崩溃不会留下
+/// 半截 JSON（下次启动 read 到坏内容只能整体回落默认值）。
+#[tauri::command]
+fn write_settings_json(app: tauri::AppHandle, settings: serde_json::Value) -> Result<(), String> {
+    let p = settings_path(&app)?;
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败：{e}"))?;
+    }
+    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let tmp = p.with_extension("json.tmp");
+    fs::write(&tmp, text).map_err(|e| format!("写入 settings.json 失败：{e}"))?;
+    fs::rename(&tmp, &p).map_err(|e| format!("替换 settings.json 失败：{e}"))?;
+    Ok(())
+}
+
 /// 前端在「最近文件」变化时调用，重建「打开最近」子菜单。非 mac 为空操作。
 #[tauri::command]
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
@@ -3196,7 +3242,10 @@ pub fn run() {
             // macOS 菜单栏状态图标：刷新「打开最近」子菜单
             tray_set_recent,
             // 界面多语言：前端上报当前语言，后端文案按语言取词
-            set_ui_lang
+            set_ui_lang,
+            // 应用设置（settings.json）：外观等跨会话状态，启动时前端先读回再装配界面
+            read_settings_json,
+            write_settings_json
         ])
         .on_menu_event(|app, event| {
             use tauri::Emitter;

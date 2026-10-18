@@ -72,6 +72,15 @@ import { toggleDailyCapture, configureDailyCapture } from './daily-capture.js'
 import { openAboutDialog } from './about-dialog.js'
 import { countWords, statsLabel } from './writing-stats.js'
 import { setIcon } from './icons.js'
+import {
+  createAppearanceSettings,
+  applyAppearance,
+  normalizeAppearance,
+  clampSidebarRatio,
+  THEME_CHOICES as THEMES,
+  THEME_ICON,
+} from './appearance-settings.js'
+import { createSettingsStore } from './settings-store.js'
 import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } from './i18n.js'
 import { LOCALES } from './locales/index.js'
 import { analyzeOutline, hiddenRows } from './outline-tree.js'
@@ -152,6 +161,8 @@ let findBar = null // 文档内查找栏控制器（boot 里 editor 装配后创
 let tabs = null // 标签页（文档 tabs）控制器，boot 里创建
 let palette = null
 let keySettings = null
+let apSettings = null // 「设置-外观」面板（appearance-settings.js）
+let settingsStore = null // settings.json 读写（boot 最开始装配）
 let gitPanel = null
 let snapshotPanel = null
 let frontmatterPanel = null
@@ -348,7 +359,16 @@ const COL_W_LABEL = { sidebar: () => t('col.sidebar'), inspector: () => t('col.i
 function clampColWidth(w) {
   return Math.max(COL_W_MIN, Math.min(COL_W_MAX, Math.round(w)))
 }
+// 侧栏宽度的两个来源：设置页的比例（settings.json，跨会话、随窗口尺寸折算）与
+// 分隔条拖出来的像素记忆（localStorage）。比例设过就优先；没设过走原来的逻辑。
 function colWidth(which) {
+  if (which === 'sidebar') {
+    const ratio = currentAppearance().sidebarRatio
+    if (ratio != null) {
+      const body = document.querySelector('.body')
+      if (body) return clampColWidth(Math.round(ratio * body.clientWidth))
+    }
+  }
   const n = Number(localStorage.getItem(COL_W_KEY[which]))
   return n >= COL_W_MIN && n <= COL_W_MAX ? n : COL_W_DEFAULT
 }
@@ -407,6 +427,11 @@ function bindColResizers() {
         const saved = clampColWidth(w)
         localStorage.setItem(COL_W_KEY[which], String(saved))
         applyColWidths()
+        if (which === 'sidebar') {
+          // 拖动结果折算成比例写进设置：窗口缩放后按比例重算，设置页的滑块也指着这里
+          const body = document.querySelector('.body')
+          if (body) persistAppearance({ sidebarRatio: clampSidebarRatio(saved / body.clientWidth) })
+        }
         setStatus(t('status.colWidth', { label, n: saved }))
       }
       window.addEventListener('pointermove', move)
@@ -415,6 +440,7 @@ function bindColResizers() {
     })
     g.addEventListener('dblclick', () => {
       localStorage.removeItem(COL_W_KEY[which])
+      if (which === 'sidebar') persistAppearance({ sidebarRatio: null }) // 比例一起清掉，回默认宽
       applyColWidths()
       setStatus(t('status.colWidthDefault', { label }))
     })
@@ -519,26 +545,65 @@ async function toggleSourceMode() {
   setStatus(on ? t('status.sourceOn') : t('status.sourceOff'))
 }
 
-// —— 主题 ——（浅色 → 暗黑 → Dracula 三态循环；按钮显示当前主题名，与界面实际一致）
-// 主题名也走词条：按钮每次 applyTheme 时按当前语言重取，语言切换时整体刷一遍
-const THEMES = ['light', 'dark', 'vampire']
-const THEME_ICON = { light: 'sun', dark: 'moon', vampire: 'contrast' }
-function applyTheme(theme) {
-  if (!THEMES.includes(theme)) theme = 'light'
-  document.documentElement.setAttribute('data-theme', theme)
+// —— 主题 ——（浅色 → 暗黑 → Dracula → 跟随系统 四态循环；按钮显示当前主题名，与界面实际一致）
+// data-theme 始终是「落地」的具体主题（CSS 取色、mermaid / docx 预览等都读它）；
+// data-theme-choice 记用户的选择，选 system 时落地主题随 OS 的 prefers-color-scheme 变。
+// 主题名也走词条：按钮每次 applyTheme 时按当前语言重取，语言切换时整体刷一遍。
+// THEMES / THEME_ICON 与设置页共用一份，定义在 appearance-settings.js。
+function systemPrefersDark() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+function resolveTheme(choice) {
+  if (!THEMES.includes(choice)) choice = 'light'
+  return choice === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : choice
+}
+function currentThemeChoice() {
+  return document.documentElement.getAttribute('data-theme-choice') || 'light'
+}
+function applyTheme(choice) {
+  const applied = resolveTheme(choice)
+  document.documentElement.setAttribute('data-theme', applied)
+  document.documentElement.setAttribute('data-theme-choice', choice)
   // 深色族（暗黑 / 吸血鬼）共享一套派生样式，用 data-dark 统一命中
-  document.documentElement.toggleAttribute('data-dark', theme === 'dark' || theme === 'vampire')
-  localStorage.setItem('nl-theme', theme)
-  setIcon(els.btnTheme, THEME_ICON[theme], t('theme.' + theme))
+  document.documentElement.toggleAttribute('data-dark', applied === 'dark' || applied === 'vampire')
+  setIcon(els.btnTheme, THEME_ICON[choice], t('theme.' + choice))
   // 通知视图层按新主题重渲染依赖配色的部件（如 mermaid 图表）
   window.dispatchEvent(new Event('nl-theme-change'))
-  if (editor) editor.setSourceTheme(theme)
+  if (editor) editor.setSourceTheme(applied)
   scheduleMacChrome() // 主题勾选项跟着走（mac 菜单）
+  persistAppearance({ theme: choice }) // 主题选择进 settings.json，重启后恢复
 }
 function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme') || 'light'
-  const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]
+  const next = THEMES[(THEMES.indexOf(currentThemeChoice()) + 1) % THEMES.length]
   applyTheme(next)
+}
+
+// —— 应用设置（settings.json）——
+// 外观状态（主题 / 颜色 / 字体 / 字号 / 行高 / 自动换行 / 侧栏比例）的唯一持久化通道。
+// boot 里 await settingsStore.load() 读回后，下面的 applyTheme + applyAppearance 把
+// 状态恢复到上次保存的样子；读不到（文件不存在 / 损坏）时 normalizeAppearance 给默认值。
+function currentAppearance() {
+  return normalizeAppearance(settingsStore ? settingsStore.get().appearance : null)
+}
+
+/** 合并改动进 settings.json 的 appearance 段（防抖写盘）；内容没变则不写 */
+function persistAppearance(patch) {
+  if (!settingsStore) return
+  const prev = currentAppearance()
+  const next = normalizeAppearance({ ...prev, ...patch })
+  if (JSON.stringify(next) === JSON.stringify(prev)) return
+  settingsStore.update({ appearance: next })
+}
+
+/** 设置面板的每次改动：主题切换 + 全量 CSS 变量 + 侧栏比例 → 像素，然后落盘 */
+function applyAppearanceChange(next) {
+  const ap = normalizeAppearance(next)
+  if (ap.theme !== currentThemeChoice()) applyTheme(ap.theme)
+  applyAppearance(document.documentElement.style, ap)
+  persistAppearance(ap) // 先更新内存里的设置
+  applyColWidths() // 再按新比例重算侧栏像素（clamp 在 colWidth 里）
+  setStatus(t('ap.saved'))
 }
 
 // —— 打开文件夹作为知识库 ——
@@ -1234,6 +1299,7 @@ function openMoreMenu(anchorEl) {
   menu.className = 'cv-menu tree-menu'
   addMenuCmd(menu, 'app.palette', 'terminal')
   addMenuCmd(menu, 'app.shortcuts', 'sliders')
+  addMenuCmd(menu, 'app.appearance', 'palette')
   addMenuCmd(menu, 'app.export', 'export')
   addMenuCmd(menu, 'app.exportSite', 'globe')
   addMenuCmd(menu, 'app.importWord', 'file')
@@ -2375,6 +2441,8 @@ function registerAppCommands() {
   app('app.toggleInspector', 'Mod-Shift-b', () => toggleInspector())
   // 以下原先只挂在「更多」菜单里：入注册表后 mac 原生菜单可直接取用（一处定义，两处消费）
   app('app.shortcuts', null, () => { if (keySettings) keySettings.open() })
+  // 外观设置：主题 / 颜色 / 字体 / 字号 / 行高 / 自动换行 / 侧栏比例，走 settings.json
+  app('app.appearance', null, () => { if (apSettings) apSettings.open() })
   app('app.export', null, () => exportHTML())
   app('app.exportSite', null, () => exportSiteFull())
   app('app.importWord', null, () => importWordViaDialog())
@@ -2469,7 +2537,7 @@ function switchLocale(id) {
   registerAppCommands()
   registerEditorCommands()
   applyStaticDom(document)
-  applyTheme(document.documentElement.getAttribute('data-theme') || 'light')
+  applyTheme(currentThemeChoice()) // 按「选择」重放：选 system 的不会被打回具体主题
   updateDocStats()
   scheduleMacChrome()
   // 后端文案跟随；托盘菜单要等 setUiLang 落好再重建才是新语言（scheduleMacChrome 只重建菜单栏）
@@ -2555,12 +2623,13 @@ function menuCommands() {
 }
 
 function menuSpecCtx() {
-  const theme = document.documentElement.getAttribute('data-theme') || 'light'
+  // 主题单选组的勾选态比的是「选择」而非落地主题：选 system 时打勾的也是 system
+  const choice = currentThemeChoice()
   return {
     commands: menuCommands(),
     recents: loadRecents().map((e, i) => ({ id: 'recent:' + i, label: e.name })),
     templates: listMdInDir(TEMPLATE_DIR()).map((p) => ({ id: 'tpl:' + p, label: baseName(p).replace(/\.md$/i, '') })),
-    themes: THEMES.map((name) => ({ id: 'theme:' + name, label: t('theme.' + name), checked: name === theme })),
+    themes: THEMES.map((name) => ({ id: 'theme:' + name, label: t('theme.' + name), checked: name === choice })),
   }
 }
 
@@ -2719,6 +2788,18 @@ async function boot() {
   applyStaticDom(document)
   // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
   if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
+  // 应用设置（settings.json）：先读回再装配界面。外观状态（主题 / 颜色 / 字体 /
+  // 字号 / 行高 / 自动换行 / 侧栏比例）恢复到上次保存的样子；文件不存在或损坏
+  // 时（load 内部静默处理）normalizeAppearance 给代码里的默认值。
+  settingsStore = createSettingsStore()
+  await settingsStore.load()
+  let ap = currentAppearance()
+  if (!settingsStore.get().appearance) {
+    // 老版本把主题记在 localStorage['nl-theme']：没有 settings.json 时认这个旧值，
+    // 之后的改动只写 settings.json
+    const legacy = localStorage.getItem('nl-theme')
+    if (legacy) ap = normalizeAppearance({ ...ap, theme: legacy })
+  }
   initTitlebar()
   // 标签页先建：编辑器回调（onDirty → markDirty → tabs.setDirty）可能在装配过程中就触发
   tabs = createTabs({
@@ -2768,10 +2849,19 @@ async function boot() {
 
   refreshGlobalTags() // 未开库时先显占位；开库并索引就绪后由 startIndexPolling 刷新
 
-  applyTheme(localStorage.getItem('nl-theme') || 'light')
+  applyTheme(ap.theme)
+  applyAppearance(document.documentElement.style, ap) // 颜色 / 字体 / 字号 / 行高 / 换行的行内变量
+  // OS 的浅色 / 深色偏好变化时，选了「跟随系统」就跟着落地主题一起换
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (currentThemeChoice() === 'system') applyTheme('system')
+    })
+  }
   setSidebar(localStorage.getItem('nl-sidebar') === 'hidden')
   bindSideTabs()
   bindColResizers()
+  // 窗口缩放时侧栏按设置里的比例重算像素（clamp 在 colWidth 里）
+  window.addEventListener('resize', applyColWidths)
 
   // P2 版本快照面板：列表 / 预览 / 回滚（依赖已装配的 editor 与导出用 markdown-it）
   snapshotPanel = createSnapshotPanel({
@@ -2859,6 +2949,13 @@ async function boot() {
     getOverrides: loadKeymapOverrides,
     saveOverrides: saveKeymapOverrides,
     isMac: IS_MAC,
+    setStatus,
+  })
+  // 「设置-外观」：每次改动经 applyAppearanceChange 生效并（防抖）写 settings.json
+  apSettings = createAppearanceSettings({
+    getAppearance: currentAppearance,
+    apply: applyAppearanceChange,
+    flush: () => settingsStore.flush(),
     setStatus,
   })
   bindShortcuts()

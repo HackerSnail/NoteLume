@@ -52,7 +52,7 @@ t('命令类词条与注册表 id 对齐（五个语言都有）', () => {
   const ids = [
     'cmd.app.save', 'cmd.app.git.pullMerge',
     'cmd.editor.headingUp', 'cmd.editor.block.mermaid', 'cmd.block.h1', 'cmd.block.mermaid',
-    'cmd.app.about',
+    'cmd.app.about', 'cmd.app.appearance',
   ]
   for (const id of ids) {
     for (const { id: loc } of LOCALES) {

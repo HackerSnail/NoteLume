@@ -388,6 +388,16 @@ export function traySetRecent(paths) {
   return invoke('tray_set_recent', { paths })
 }
 
+/** 读取应用设置（<app_config_dir>/settings.json）：文件不存在 / 损坏时后端返回 null，前端回落默认值 */
+export function readSettingsJson() {
+  return invoke('read_settings_json', {})
+}
+
+/** 写入应用设置（Rust 侧临时文件 + rename 原子替换，参数为整个设置文档） */
+export function writeSettingsJson(settings) {
+  return invoke('write_settings_json', { settings })
+}
+
 /** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。
  *  失败 reject，附 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
  *  hostkey_mismatch / host_unknown / git_error），同 handleRemoteErr 分派表。*/

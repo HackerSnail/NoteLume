@@ -108,6 +108,7 @@ export function buildMacMenuSpec(ctx = {}) {
       role('About'),
       'sep',
       'app.shortcuts',
+      'app.appearance',
       'sep',
       role('Services'),
       'sep',

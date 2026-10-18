@@ -29,6 +29,14 @@
 
 ### Added
 
+* **「设置-外观」面板：主题 / 自定义颜色 / 字体排版 / 侧栏比例 / 自动换行，全部走 settings.json 持久化**：外观状态原先散在多个 localStorage 键里（`nl-theme` / `nl-w-sidebar` 等），编辑器的字体、字号、行高硬编码在 `style.css`，用户改不了也存不住。新增「更多 → 外观设置…」入口（命令 `app.appearance`，命令面板与 mac 应用菜单同入口），每次改动即时生效并写入设置文件，重启后恢复到上次保存的样子。
+  * 存储：Rust 新增 `read_settings_json` / `write_settings_json` 两个命令，文件落在 `app_config_dir()/settings.json`（先写临时文件再 rename，写一半崩溃不留坏 JSON；读到的内容损坏时返回 Null 让前端回落默认值，启动不因此失败）。纯浏览器开发（vite 直开）回落 localStorage 的 `nl-settings` 键。`boot()` 最开始 `await` 读回再装配界面；写盘防抖 500ms，分栏滑块松手（change）与关闭面板时立即落盘。`src/settings-store.js` 管读写与订阅，后续 P5 的工作区 / 最近文件并进同一个文档。
+  * 颜色（p5plan §6.2 / §6.3）：`style.css` 三个主题块改成「源变量 + 别名」结构——`--bg-primary` / `--bg-secondary` / `--text-primary` / `--text-secondary` / `--border-color` / `--accent-color` 与六个文字颜色（`--text-editor` / `--text-heading` / `--text-code` / `--text-link` / `--text-quote` / `--text-list`）是设置可覆盖层，`--bg` / `--fg` / `--accent` 等旧名改为指向源的别名，全站既有引用不动；面板改色只写源变量的行内值，「重置」删掉行内值即回落主题默认。文字颜色六项接进 `.ProseMirror` 的正文 / 标题 / 行内代码 / 链接 / 引用 / 列表规则，面板内置预览区直接消费这些变量。打印样式同步覆盖文字颜色源变量（加 `!important`，否则用户的行内值会把暗色主题的浅色字打到白纸上）。
+  * 主题预设新增「跟随系统」：`data-theme` 保持落地的具体主题不变（mermaid、docx 预览等照旧读它），用户的选择记在新增的 `data-theme-choice` 上；选了 system 时监听 `prefers-color-scheme` 变化跟着换。工具条循环按钮与 mac 菜单主题单选组由三项扩到四项。
+  * 字体排版（p5plan §6.5）：编辑器 font-family / font-size / line-height 改走 `--editor-font-family` / `--editor-font-size` / `--editor-line-height` 变量，默认值与原硬编码一致；字体下拉给 7 个预设（默认正文栈 / 无衬线 / 微软雅黑 / JetBrains Mono·Fira Code / Consolas / 衬线 / 楷体），用 `document.fonts.check` 标注本机是否安装，另有手动输入框可填任意字体名或字体栈。自动换行开关切 `white-space: pre-wrap / pre`，关掉时长行在 `.ProseMirror` 内横向滚动（pre 不折叠空格，不影响 ProseMirror 的光标映射）。
+  * 侧栏比例：设置页滑块 15%–45% 拖动时实时改宽，存比例不存像素，窗口缩放按比例重算（clamp 沿用 180–520px）；分隔条拖出的宽度折算成比例写回设置，双击回默认宽时连比例一起清。老用户没有 settings.json 时，`localStorage['nl-theme']` 的旧主题值迁移认领一次。
+  * i18n 与测试：`ap.*` 46 条词条进五种语言；新增 `src/tests/appearance.test.mjs`（13 passed：归一化夹紧、坏颜色剔除、变量补丁、幂等性），`test:appearance` 脚本入 `src/package.json`；`cargo check` 与 `npm run build` 无错。
+
 * **i18n：后端用户可见文案全部接入词条（`src-tauri/src/ui_lang.rs` 五语言词表 + `set_ui_lang` 上报）**：此前 Rust 侧文案全部硬编码中文，切到英文 / 法文 / 德文界面后，命令失败弹窗、Word 导入警告、git 远程结果、mac 托盘菜单仍是中文。新增 `ui_lang` 模块放一张五语言词表（key → 五列模板，`{name}` 占位符），各处经 `ui_msg!("key", "name" => value)` 取词；缺词条回退 key、未知 id 回退 zh-CN，与前端 `t()` 的规则对齐。
   * 覆盖四类：`lib.rs` 的命令错误（路径越界 / 读写失败 / 回收站 / 备份 / 插件 / 导出 / 本地 git，40 余处）；`git_builtin.rs` System 与 Builtin 后端的错误与结果文本（`[code]` 前串保留原样——前端 `handleRemoteErr` 按前串分派，只本地化后面的说明；`MERGED` / `CONFLICTS` 协议行同理）；`docx_import.rs` / `docx_export.rs` 的 15 条导入警告与导出错误（警告 code 不变、message 本地化，校对弹窗直接跟着界面语言走）；mac 托盘菜单五项（显示主窗口 / 新建笔记 / 打开最近 / 暂无最近文件 / 退出）。
   * 前端接线三处：`tauri-bridge.js` 加 `setUiLang`；`main.js` 的 `boot` 与 `switchLocale` 各上报一次当前语言；mac 下切语言等 `setUiLang` 落好再重建托盘菜单，否则「打开最近」子菜单还是旧语言。`setupTrayMenu` 里同样先等语言上报再同步最近列表——boot 的点火式调用不保证顺序，不等的话托盘启动瞬间是 Rust 默认的简体中文，要等用户下次动语言才纠正。

@@ -1,44 +1,81 @@
 /* style.css —— 类 Typora 阅读排版 + 浅色/暗黑主题 */
 
+/* 三个主题块同构：带 -primary / -color 的是「源」变量（设置-外观可覆盖），
+   旧名（--bg / --fg / --accent…）是指向源的别名。面板改色只写源变量的行内值，
+   全站引用旧名的规则自动跟随；重置即删行内值，回落下面各主题的默认。
+   文字颜色一组（--text-editor 等）同属覆盖层，默认与预设主题取同色。 */
 :root[data-theme='light'] {
-  --bg: #ffffff;
-  --bg-panel: #f4f5f7;
-  --fg: #24292e;
-  --muted: #8a9099;
-  --border: #e4e6e9;
-  --accent: #2f6feb;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f5f7;
+  --text-primary: #24292e;
+  --text-secondary: #8a9099;
+  --border-color: #e4e6e9;
+  --accent-color: #2f6feb;
+  --bg: var(--bg-primary);
+  --bg-panel: var(--bg-secondary);
+  --fg: var(--text-primary);
+  --muted: var(--text-secondary);
+  --border: var(--border-color);
+  --accent: var(--accent-color);
   --code-bg: #eef0f3;
   --pre-bg: #f6f8fa;
-  --code-fg: #c0341d;
   --quote-bar: #d7dade;
   --hover: #eceef1;
+  --text-editor: #24292e;
+  --text-heading: #24292e;
+  --text-code: #c0341d;
+  --text-link: #2f6feb;
+  --text-quote: #8a9099;
+  --text-list: #24292e;
 }
 :root[data-theme='dark'] {
-  --bg: #1e2127;
-  --bg-panel: #171a1f;
-  --fg: #d8dee6;
-  --muted: #7b828d;
-  --border: #2b3038;
-  --accent: #5b8cff;
+  --bg-primary: #1e2127;
+  --bg-secondary: #171a1f;
+  --text-primary: #d8dee6;
+  --text-secondary: #7b828d;
+  --border-color: #2b3038;
+  --accent-color: #5b8cff;
+  --bg: var(--bg-primary);
+  --bg-panel: var(--bg-secondary);
+  --fg: var(--text-primary);
+  --muted: var(--text-secondary);
+  --border: var(--border-color);
+  --accent: var(--accent-color);
   --code-bg: #262b33;
   --pre-bg: #14161b;
-  --code-fg: #f38ba8;
   --quote-bar: #3a4048;
   --hover: #262b33;
+  --text-editor: #d8dee6;
+  --text-heading: #d8dee6;
+  --text-code: #f38ba8;
+  --text-link: #5b8cff;
+  --text-quote: #7b828d;
+  --text-list: #d8dee6;
 }
 /* 吸血鬼主题 = Dracula 官方配色 */
 :root[data-theme='vampire'] {
-  --bg: #282a36;
-  --bg-panel: #21222c;
-  --fg: #f8f8f2;
-  --muted: #6272a4;
-  --border: #44475a;
-  --accent: #bd93f9;
+  --bg-primary: #282a36;
+  --bg-secondary: #21222c;
+  --text-primary: #f8f8f2;
+  --text-secondary: #6272a4;
+  --border-color: #44475a;
+  --accent-color: #bd93f9;
+  --bg: var(--bg-primary);
+  --bg-panel: var(--bg-secondary);
+  --fg: var(--text-primary);
+  --muted: var(--text-secondary);
+  --border: var(--border-color);
+  --accent: var(--accent-color);
   --code-bg: #343746;
   --pre-bg: #1b1c26;
-  --code-fg: #ff79c6;
   --quote-bar: #6272a4;
   --hover: #44475a;
+  --text-editor: #f8f8f2;
+  --text-heading: #f8f8f2;
+  --text-code: #ff79c6;
+  --text-link: #bd93f9;
+  --text-quote: #6272a4;
+  --text-list: #f8f8f2;
 }
 /* 吸血鬼：Dracula 选中色 */
 :root[data-theme='vampire'] ::selection {
@@ -49,6 +86,12 @@
 /* 等宽字体令牌：三个主题共用（JetBrains Mono / Fira Code 未装时退回系统等宽） */
 :root {
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  /* 编辑器排版令牌（p5plan §6.5）：设置-外观写这几个的行内值，默认值即当前观感。
+     --editor-font-family 默认与 body 的字体栈一致；--editor-white-space 管自动换行。 */
+  --editor-font-family: 'Inter', 'HarmonyOS Sans', 'Noto Sans SC', -apple-system, 'Segoe UI', 'Microsoft YaHei', Roboto, Helvetica, Arial, sans-serif;
+  --editor-font-size: 17px;
+  --editor-line-height: 1.75;
+  --editor-white-space: pre-wrap;
 }
 
 * {
@@ -1352,6 +1395,163 @@ details.panel[open] > summary::before {
   cursor: default;
 }
 
+/* 外观设置（p5plan §6.2 / §6.3 / §6.5）：复用 .nl-prompt 模态壳与 .nl-ks-btn 按钮，
+   分组行式排布。面板自身也走 --bg / --fg 别名，改底色 / 文字色时对话框跟着变，
+   等于顺带做了实时预览。 */
+.nl-ap {
+  width: min(640px, 92vw);
+}
+.nl-ap-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nl-ap-top .nl-prompt-title {
+  flex: 1;
+}
+.nl-ap-body {
+  max-height: 62vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 4px;
+}
+.nl-ap-head {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 10px 0 2px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.nl-ap-body > .nl-ap-head:first-child {
+  margin-top: 0;
+}
+.nl-ap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 13px;
+}
+.nl-ap-label {
+  flex: 1;
+  min-width: 0;
+}
+.nl-ap-val {
+  flex: none;
+  min-width: 72px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.nl-ap-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+  padding: 0 2px 2px;
+}
+.nl-ap-themes {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+}
+.nl-ap-theme {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nl-ap-theme:hover {
+  border-color: var(--accent);
+}
+.nl-ap-theme.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.nl-ap-color {
+  flex: none;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+.nl-ap-color::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+.nl-ap-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+.nl-ap-select,
+.nl-ap-text {
+  flex: 1;
+  min-width: 0;
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.nl-ap-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+/* 预览区：直接消费那六个文字颜色变量与源底色，用户改色即时可见 */
+.nl-ap-preview {
+  margin: 4px 0 8px;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.nl-ap-preview h5 {
+  margin: 0 0 6px;
+  font-size: 1.05em;
+  color: var(--text-heading);
+}
+.nl-ap-preview p {
+  margin: 0 0 6px;
+  color: var(--text-editor);
+}
+.nl-ap-preview code {
+  font-family: var(--font-mono);
+  background: var(--code-bg);
+  color: var(--text-code);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.nl-ap-preview a {
+  color: var(--text-link);
+}
+.nl-ap-preview blockquote {
+  margin: 0 0 6px;
+  padding: 0.1em 1em;
+  border-left: 3px solid var(--quote-bar);
+  color: var(--text-quote);
+}
+.nl-ap-preview ul {
+  margin: 0;
+  padding-left: 1.4em;
+  color: var(--text-list);
+}
+
 /* 编辑区 */
 .editor-pane {
   flex: 1;
@@ -1364,8 +1564,10 @@ details.panel[open] > summary::before {
   width: 100%;
   max-width: 860px; /* 阅读宽度：同 Typora github 主题 */
   padding: 48px 30px 120px;
-  line-height: 1.75;
-  font-size: 17px;
+  /* 字体 / 字号 / 行高走变量：设置-外观改这三项时只写行内值，不动这里 */
+  font-family: var(--editor-font-family);
+  font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height);
 }
 /* 窗口越宽越放开（Typora github 主题同款断点），避免两侧留白随窗口拉大 */
 @media only screen and (min-width: 1400px) {
@@ -1381,12 +1583,16 @@ details.panel[open] > summary::before {
 .editor .ProseMirror {
   outline: none;
   min-height: 100%;
+  color: var(--text-editor);
   /* ProseMirror 官方要求：编辑区必须设 white-space: pre-wrap（自带 prosemirror.css 即如此）。
      缺省时浏览器会折叠连续空格，使 DOM 文本 ≠ 模型文本，PM 无法把浏览器原生光标位置
      映射回模型 → 空格密集文档（如 docx 导入的论文封面表单）出现「单击光标不定位、
-     但能打字/能拖动」；pre-wrap + 断词既修正映射又不撑破版心。 */
-  white-space: pre-wrap;
+     但能打字/能拖动」；pre-wrap + 断词既修正映射又不撑破版心。
+     自动换行开关只切 pre-wrap / pre：pre 同样不折叠空格，映射不受影响；
+     真正不能用的是 normal。关换行后长行在下面的 overflow-x 里横向滚。 */
+  white-space: var(--editor-white-space, pre-wrap);
   overflow-wrap: break-word;
+  overflow-x: auto;
 }
 /* —— 文档内查找（find-in-doc.js）：命中高亮为视图层装饰，不改文档内容 —— */
 .nl-find-match {
@@ -1992,6 +2198,15 @@ details.panel[open] > summary::before {
   margin: 1.6em 0 0.8em;
   font-weight: 650;
 }
+/* 标题文字色：默认与正文同色（各主题块已给值），设置-外观可逐项覆盖 */
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  color: var(--text-heading);
+}
 .ProseMirror > h1:first-child,
 .ProseMirror > h2:first-child,
 .ProseMirror > h3:first-child {
@@ -2019,7 +2234,7 @@ details.panel[open] > summary::before {
   border-left: 3px solid var(--quote-bar);
   margin: 0.8em 0;
   padding: 0.1em 1em;
-  color: var(--muted);
+  color: var(--text-quote);
 }
 /* Obsidian callout 卡片：分型配色，颜色用 color-mix 随 light/dark/vampire 自适应 */
 .ProseMirror .nl-callout {
@@ -2133,6 +2348,7 @@ details.panel[open] > summary::before {
 .ProseMirror ol {
   padding-left: 1.6em;
   margin: 0.6em 0;
+  color: var(--text-list);
 }
 .ProseMirror li {
   margin: 0.2em 0;
@@ -2181,7 +2397,7 @@ details.panel[open] > summary::before {
 .ProseMirror code {
   font-family: var(--font-mono);
   background: var(--code-bg);
-  color: var(--code-fg);
+  color: var(--text-code);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-size: 0.9em;
@@ -2462,7 +2678,7 @@ details.panel[open] > summary::before {
   min-width: 160px;
 }
 .ProseMirror a {
-  color: var(--accent);
+  color: var(--text-link);
 }
 
 /* wikilink / tag 行内样式 */
@@ -3995,8 +4211,16 @@ details.panel[open] > summary::before {
     --accent: #2f6feb;
     --code-bg: #eef0f3;
     --pre-bg: #f6f8fa;
-    --code-fg: #c0341d;
     --quote-bar: #d7dade;
     --hover: #eceef1;
+    /* 文字颜色源变量一并转纸上用：.ProseMirror 现在读 --text-editor 这些新名，
+       不覆盖的话暗色主题会把浅色字打到白纸上。加 !important 是因为用户在设置里
+       改过的颜色是 documentElement 的行内值，普通规则压不过行内。 */
+    --text-editor: #24292e !important;
+    --text-heading: #24292e !important;
+    --text-code: #c0341d !important;
+    --text-link: #2f6feb !important;
+    --text-quote: #6a737d !important;
+    --text-list: #24292e !important;
   }
 }
