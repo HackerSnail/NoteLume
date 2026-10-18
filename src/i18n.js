@@ -38,7 +38,10 @@ function detectLocale() {
     const saved = localStorage.getItem(LANG_KEY)
     if (saved && supported.has(saved)) return saved
   }
-  const nav = typeof navigator !== 'undefined' ? navigator.languages || [navigator.language] : []
+  // 只在真实浏览器里采信 navigator：Node ≥21 自带全局 navigator（language='en-US'），
+  // 无 window 的环境（单测）采信它会把默认语言判成英文，与「默认 zh-CN」相反
+  if (typeof window === 'undefined') return 'zh-CN'
+  const nav = navigator.languages || [navigator.language]
   for (const tag of nav) {
     const hit = matchLocale(tag)
     if (hit) return hit
