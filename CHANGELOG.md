@@ -36,6 +36,7 @@
   * 入口与外观：编辑区右上角与标签条右侧各一组「左右 / 上下拆分」按钮（命令 `app.splitH` / `app.splitV` 同行为，mac 窗口菜单同步挂两项）；每个窗格右上角一个关闭按钮，只剩一个窗格时隐藏。`.nl-resizer` hover / 拖动时显一条主题色细线，拖动期间全局禁选并锁光标。打印样式只打焦点窗格，分割条、拆分按钮、空态提示不上纸。
   * 持久化与恢复：树与比例进 settings.json 的 `panes` 段（拆分 / 关闭 / 拖拽结束都落盘，内容没变不写盘）；启动时 `normalizeTree` 校验恢复，坏数据退回单窗格。恢复出的树第一个叶子才是首窗格——上次会话可能把 p1 关了，所以画布挂载点（canvas-mount 单实例）记 `panes.canvasPane`，画布的打开 / 新建 / 保存都按它找窗格，不写死 id。
   * 无头 Edge 冒烟（CDP 驱动点击与合成指针事件载 `src/dist`）发现并修掉三个问题：① 第一子 flex-grow 没清零，50% 实际渲染成 75%，拖拽时指针位置与分割线位置对不上；② 拆分 / 关闭手术后按 ref 里缓存的旧子节点刷 inline 样式，刷到已搬走的元素上（嵌套拆分后第一子带着第二子的样式）；③ 画布打开 / 新建 / 保存三处写死 `'p1'`，恢复出的布局首窗格不是 p1 时画布上下文落到不存在的窗格。另修三处连带问题：编辑器滚动容器从 `.editor-pane` 改为所在 `.nl-pane`（分栏后每窗格各滚各的，CM 的光标滚动同样按窗格算）；`onMetaChange` 按焦点窗格过滤（非焦点窗格改文档不许刷掉大纲 / 标签面板），焦点切换补刷 frontmatter 面板；拖入打开按落点所在窗格切焦点。
+  * 提交后用户回归发现标签条整个不显示：给标签条加拆分按钮时把挂载点从 `#tabbar` 改成内层 `#tabs`，而 `tabs.js` 的 render() 切的是挂载点自己的 `hidden`——外层 `#tabbar` 出厂自带的 `hidden` 没人摘，开多少文档标签条都藏着。改为 `closest('.tabbar')` 切到最外层（挂载点直接就是 tabbar 时行为不变）。冒烟没抓到是因为无头环境开不了真实文档（invoke 无 web 回落），只验了按钮在 DOM 里、没验整条显隐；新增 `tests/tabs.test.mjs` 8 条（jsdom 复刻 index.html 的嵌套结构）盯这类层级回归。
   * 测试：`tests/split-pane.test.mjs` 12 passed（树操作、比例夹紧、normalizeTree、序列化往返、freshId 不撞已占用 id）；新增 `tests/split-pane-dom.test.mjs` 6 passed（jsdom 锁 DOM 手术后的树结构与 inline 样式，盯住上面 ①② 两类回归）；`app-menu.test.mjs` 补窗口组拆分命令位置断言，27 passed。全量 27 个测试文件通过，`npm run build` 无错。
   * i18n：`pn.*` 8 条（拆分 / 完成 / 关闭提示 / 空态引导 / 画布禁分栏）+ `cmd.app.splitH` / `cmd.app.splitV` + `dlg.unsavedMulti`，五种语言各一份。`docs/CLAUDE.MD` 新增「分栏设计」一节，取代此前「不做多文档并发编辑」的结论。
 

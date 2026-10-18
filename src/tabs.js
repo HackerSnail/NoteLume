@@ -20,7 +20,10 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
   function render() {
     if (!mountEl) return
     mountEl.textContent = ''
-    mountEl.classList.toggle('hidden', items.length === 0)
+    // 显隐要切在最外层 .tabbar 上：挂载点可能是它内部的滚动区（分栏后标签条里还有
+    // 拆分按钮区），只切滚动区的话外层 tabbar 的 hidden 没人摘，整条标签页不显示
+    const bar = mountEl.closest ? mountEl.closest('.tabbar') : null
+    ;(bar || mountEl).classList.toggle('hidden', items.length === 0)
     for (const tab of items) {
       const el = document.createElement('div')
       el.className = 'tab' + (tab.id === activeId ? ' active' : '') + (dirtyIds.has(tab.id) ? ' dirty' : '') + (tab.scratch ? ' scratch' : '')
