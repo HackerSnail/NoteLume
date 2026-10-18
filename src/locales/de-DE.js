@@ -44,6 +44,8 @@ export default {
   'cmd.app.toggleInspector': 'Inspektor ein-/ausblenden',
   'cmd.app.shortcuts': 'Tastenkürzel…',
   'cmd.app.appearance': 'Darstellung…',
+  'cmd.app.splitH': 'Ansicht links / rechts teilen',
+  'cmd.app.splitV': 'Ansicht oben / unten teilen',
   'cmd.app.export': 'Als HTML exportieren',
   'cmd.app.exportSite': 'Ganze Website exportieren…',
   'cmd.app.importWord': 'Word (.docx) importieren…',
@@ -287,6 +289,17 @@ export default {
   'ws.someSkipped': '{n} nicht unterstützte Datei(en) übersprungen',
   'ws.skippedOtherDir': '{name} liegt nicht im selben Ordner wie das aktuelle Dokument; nicht geöffnet',
   'ws.restoreFailed': 'Wiederherstellung des letzten Arbeitsbereichs fehlgeschlagen: {msg}',
+
+  // —— Geteilte Ansichten (p5plan §6.1) ——
+  'pn.splitH': 'Ansicht links / rechts teilen',
+  'pn.splitV': 'Ansicht oben / unten teilen',
+  'pn.splitHDone': 'Links / rechts geteilt',
+  'pn.splitVDone': 'Oben / unten geteilt',
+  'pn.closeTip': 'Diese Ansicht schließen',
+  'pn.closed': 'Ansicht geschlossen',
+  'pn.emptyHint': 'Leere Ansicht: Datei aus der Seitenleiste oder den Tabs wählen oder hierher ziehen',
+  'pn.canvasSplit': 'Canvas unterstützt noch keine geteilten Ansichten: zuerst die anderen schließen',
+  'dlg.unsavedMulti': '{n} Ansichten haben ungespeicherte Änderungen ({names}). Speichern?',
 
   // —— Slash-Menü ——
   'slash.head': 'Block einfügen',

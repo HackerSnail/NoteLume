@@ -28,6 +28,8 @@ const base = () => [
   C('app.closeFile', '关闭当前标签页', { accelerator: 'Cmd+W' }),
   C('app.nextTab', '切换下一个标签页', { accelerator: 'Ctrl+Tab' }),
   C('app.prevTab', '切换上一个标签页', { accelerator: 'Ctrl+Shift+Tab' }),
+  C('app.splitH', '向左 / 右拆分窗格'),
+  C('app.splitV', '向上 / 下拆分窗格'),
   C('app.newCanvas', '新画布 / 白板'),
   C('app.newTemplate', '新建空白模板…'),
   C('app.dailySettings', '今日速记设置…'),
@@ -94,6 +96,12 @@ t('Word 导入/导出落在「文件」组，紧跟导出整站', () => {
   const list = ids(group(specOf(), 'file'))
   const i = list.indexOf('app.exportSite')
   assert.deepEqual(list.slice(i, i + 4), ['app.exportSite', 'app.importWord', 'app.exportWord', 'app.print'])
+})
+
+t('拆分命令落在「窗口」组，跟在两个切页项之后', () => {
+  const list = ids(group(specOf(), 'window'))
+  const i = list.indexOf('app.prevTab')
+  assert.deepEqual(list.slice(i, i + 4), ['app.prevTab', 'sep', 'app.splitH', 'app.splitV'])
 })
 
 t('accelerator 原样透传；无键命令不带 accelerator', () => {

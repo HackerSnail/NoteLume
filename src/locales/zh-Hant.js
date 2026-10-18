@@ -44,6 +44,8 @@ export default {
   'cmd.app.toggleInspector': '隱藏 / 顯示檢查器',
   'cmd.app.shortcuts': '快捷鍵設定…',
   'cmd.app.appearance': '外觀設定…',
+  'cmd.app.splitH': '向左 / 右拆分窗格',
+  'cmd.app.splitV': '向上 / 下拆分窗格',
   'cmd.app.export': '匯出為 HTML',
   'cmd.app.exportSite': '匯出整站…',
   'cmd.app.importWord': '匯入 Word(.docx)…',
@@ -286,6 +288,17 @@ export default {
   'ws.someSkipped': '已跳過 {n} 個不支援的檔案',
   'ws.skippedOtherDir': '{name} 與目前文件不在同一目錄，未開啟',
   'ws.restoreFailed': '恢復上次工作區失敗：{msg}',
+
+  // —— 分欄（p5plan §6.1） ——
+  'pn.splitH': '左右拆分窗格',
+  'pn.splitV': '上下拆分窗格',
+  'pn.splitHDone': '已左右拆分窗格',
+  'pn.splitVDone': '已上下拆分窗格',
+  'pn.closeTip': '關閉此窗格',
+  'pn.closed': '已關閉窗格',
+  'pn.emptyHint': '空窗格：點左側檔案樹、標籤頁，或把檔案拖進來，在這裡開啟',
+  'pn.canvasSplit': '畫布暫不支持分欄：請先關閉其它窗格',
+  'dlg.unsavedMulti': '有 {n} 個窗格有未儲存的更改（{names}），是否儲存？',
 
   // —— 斜杠選單 ——
   'slash.head': '插入區塊',

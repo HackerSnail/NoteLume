@@ -111,7 +111,10 @@
           </button>
         </div>
       </header>
-      <div id="tabbar" class="tabbar hidden" role="tablist" data-i18n-aria-label="ui.tabAria" aria-label="打开的文档"></div>
+      <div id="tabbar" class="tabbar hidden">
+        <div id="tabs" class="tabs-scroll" role="tablist" data-i18n-aria-label="ui.tabAria" aria-label="打开的文档"></div>
+        <div id="tabs-split" class="tabs-split"></div>
+      </div>
 
       <div class="body">
         <div class="side-corner" role="group">
@@ -136,7 +139,7 @@
         </aside>
         <div class="nl-gutter" id="gutter-side" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterSide" title="拖拽改变侧栏宽度"></div>
 
-        <main class="editor-pane">
+        <main class="editor-pane" id="editor-pane">
           <div id="editor" class="editor"></div>
           <div id="source-mount" class="nl-source hidden"></div>
           <div id="canvas-mount" class="hidden"></div>

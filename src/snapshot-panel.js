@@ -23,12 +23,17 @@ export function createSnapshotPanel(deps) {
     closeBtn,
     getVaultRoot,
     getCurrentFile,
-    editor,
     renderMarkdown,
     escapeHtml,
     setStatus,
     onAfterRollback,
   } = deps
+  // 分栏后编辑器实例随焦点窗格变（P5 §6.1）：回滚写回的永远是焦点窗格
+  const editor = {
+    getMarkdown: () => deps.getEditor().getMarkdown(),
+    setMarkdown: (md) => deps.getEditor().setMarkdown(md),
+    markSaved: () => deps.getEditor().markSaved(),
+  }
 
   let pending = null // 当前预览中的快照 { entry, content }
 

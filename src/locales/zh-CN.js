@@ -44,6 +44,8 @@ export default {
   'cmd.app.toggleInspector': '隐藏 / 显示检查器',
   'cmd.app.shortcuts': '快捷键设置…',
   'cmd.app.appearance': '外观设置…',
+  'cmd.app.splitH': '向左 / 右拆分窗格',
+  'cmd.app.splitV': '向上 / 下拆分窗格',
   'cmd.app.export': '导出为 HTML',
   'cmd.app.exportSite': '导出整站…',
   'cmd.app.importWord': '导入 Word(.docx)…',
@@ -286,6 +288,17 @@ export default {
   'ws.someSkipped': '已跳过 {n} 个不支持的文件',
   'ws.skippedOtherDir': '{name} 与当前文档不在同一目录，未打开',
   'ws.restoreFailed': '恢复上次工作区失败：{msg}',
+
+  // —— 分栏（p5plan §6.1） ——
+  'pn.splitH': '左右拆分窗格',
+  'pn.splitV': '上下拆分窗格',
+  'pn.splitHDone': '已左右拆分窗格',
+  'pn.splitVDone': '已上下拆分窗格',
+  'pn.closeTip': '关闭此窗格',
+  'pn.closed': '已关闭窗格',
+  'pn.emptyHint': '空窗格：点左侧文件树、标签页，或把文件拖进来，在这里打开',
+  'pn.canvasSplit': '画布暂不支持分栏：请先关闭其它窗格',
+  'dlg.unsavedMulti': '有 {n} 个窗格有未保存的更改（{names}），是否保存？',
 
   // —— 斜杠菜单 ——
   'slash.head': '插入块',

@@ -49,7 +49,20 @@ async function importFromSource(src) {
 }
 
 export function createPluginManager(deps) {
-  const { view, panelEl, setStatus, getVaultRoot, commandRegistry } = deps
+  // 分栏后编辑器实例随焦点窗格变（P5 §6.1）：view 不缓存实例，经 getView 现取，
+  // 插件看到 / 操作的永远是焦点窗格
+  const { getView, panelEl, setStatus, getVaultRoot, commandRegistry } = deps
+  const view = {
+    get state() {
+      return getView().state
+    },
+    dispatch(tr) {
+      getView().dispatch(tr)
+    },
+    updateState(s) {
+      getView().updateState(s)
+    },
+  }
 
   let loaded = [] // 记录：每个插件包一项，见 reload 内字段
   let legacyFlat = [] // 顶层游离 .js/.mjs（旧版平铺，提示迁移）

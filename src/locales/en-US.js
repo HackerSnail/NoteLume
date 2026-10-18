@@ -44,6 +44,8 @@ export default {
   'cmd.app.toggleInspector': 'Toggle Inspector',
   'cmd.app.shortcuts': 'Keyboard Shortcuts…',
   'cmd.app.appearance': 'Appearance Settings…',
+  'cmd.app.splitH': 'Split Pane Left / Right',
+  'cmd.app.splitV': 'Split Pane Up / Down',
   'cmd.app.export': 'Export as HTML',
   'cmd.app.exportSite': 'Export Site…',
   'cmd.app.importWord': 'Import Word (.docx)…',
@@ -287,6 +289,17 @@ export default {
   'ws.someSkipped': 'Skipped {n} unsupported file(s)',
   'ws.skippedOtherDir': '{name} is not in the same folder as the current document; not opened',
   'ws.restoreFailed': 'Failed to restore the last workspace: {msg}',
+
+  // —— Split panes (p5plan §6.1) ——
+  'pn.splitH': 'Split pane left / right',
+  'pn.splitV': 'Split pane up / down',
+  'pn.splitHDone': 'Split left / right',
+  'pn.splitVDone': 'Split up / down',
+  'pn.closeTip': 'Close this pane',
+  'pn.closed': 'Pane closed',
+  'pn.emptyHint': 'Empty pane: pick a file from the sidebar or tabs, or drag one in, to open it here',
+  'pn.canvasSplit': 'Canvas does not support split panes yet: close the other panes first',
+  'dlg.unsavedMulti': '{n} panes have unsaved changes ({names}). Save them?',
 
   // —— Slash menu ——
   'slash.head': 'Insert Block',

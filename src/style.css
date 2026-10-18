@@ -375,6 +375,26 @@ body {
   overflow-y: hidden;
   flex: none;
 }
+/* 分栏后标签条内部再分：左边滚动区放标签，右边固定区放拆分按钮 */
+.tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.tabs-scroll::-webkit-scrollbar {
+  height: 0;
+}
+.tabs-split {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  background: var(--bg-panel);
+}
 .tabbar.hidden {
   display: none;
 }
@@ -1576,13 +1596,160 @@ details.panel[open] > summary::before {
   color: var(--text-list);
 }
 
-/* 编辑区 */
+/* 编辑区：分栏后本身不再滚动（P5 §6.1），滚动交给每个窗格 .nl-pane；
+   阅读宽度 / 内边距等规则原样留在 .editor 上 */
 .editor-pane {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+/* SplitPane 树：split 节点 = flex 容器（横 = row，竖 = column） */
+.nl-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.nl-split-horizontal {
+  flex-direction: row;
+}
+.nl-split-vertical {
+  flex-direction: column;
+}
+/* 叶子窗格：自己的滚动容器 + 定位层（查找栏 / 高亮工具栏 / 关闭按钮都钉在这一层） */
+.nl-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
   overflow-y: auto;
   display: flex;
   justify-content: center;
+}
+.nl-pane-body {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+/* 4px 分割条（p5plan §6.1）：hover / 拖动时显一条主题色细线 */
+.nl-resizer {
+  flex: 0 0 4px;
+  align-self: stretch;
   position: relative;
+  z-index: 4;
+  touch-action: none;
+  background: transparent;
+}
+.nl-resizer-horizontal {
+  cursor: col-resize;
+}
+.nl-resizer-vertical {
+  cursor: row-resize;
+}
+.nl-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: var(--accent);
+  opacity: 0;
+}
+.nl-resizer-horizontal:hover::after,
+.nl-resizer-horizontal:active::after {
+  opacity: 0.45;
+}
+.nl-resizer-vertical::after {
+  inset: 2px 0;
+}
+.nl-resizer-vertical:hover::after,
+.nl-resizer-vertical:active::after {
+  opacity: 0.45;
+}
+/* 拖拽期间全局禁选 + 光标锁定：指针已被分割条捕获，但文字选中仍会跟手 */
+html.nl-resizing,
+html.nl-resizing * {
+  user-select: none !important;
+}
+html.nl-resizing[data-resize-dir='horizontal'],
+html.nl-resizing[data-resize-dir='horizontal'] * {
+  cursor: col-resize !important;
+}
+html.nl-resizing[data-resize-dir='vertical'],
+html.nl-resizing[data-resize-dir='vertical'] * {
+  cursor: row-resize !important;
+}
+/* 拆分按钮（编辑区右上角） */
+.nl-split-btns {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 8;
+  display: flex;
+  gap: 4px;
+}
+.nl-split-btn {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.72;
+}
+.nl-split-btn:hover {
+  opacity: 1;
+  color: var(--fg);
+  border-color: var(--accent);
+}
+/* 窗格关闭按钮：只让焦点窗格的可见（多窗格时才显示） */
+.nl-pane-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 7;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.72;
+}
+.nl-pane-close:hover {
+  opacity: 1;
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.nl-pane-close.hidden {
+  display: none;
+}
+/* 空窗格提示：新拆分出来的窗格 / 关掉文档的窗格 */
+.nl-pane-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  pointer-events: none;
 }
 .editor {
   width: 100%;
@@ -4263,7 +4430,12 @@ details.panel[open] > summary::before {
   body > :not(#app),
   #app > :not(.body),
   .body > :not(.editor-pane),
-  .editor-pane > :not(.editor) {
+  .editor-pane > :not(.editor):not(.nl-split):not(.nl-pane),
+  /* 分栏只打焦点窗格（P5 §6.1）：多窗格同时上纸没有可读的版式 */
+  .nl-pane:not(.focused),
+  .nl-split-btns,
+  .nl-pane-close,
+  .nl-pane-empty {
     display: none !important;
   }
   /* 应用壳是定高滚动容器，纸上要按内容长高分页 */
@@ -4271,15 +4443,21 @@ details.panel[open] > summary::before {
   body,
   #app,
   .body,
-  .editor-pane {
+  .editor-pane,
+  .nl-pane {
     height: auto;
     min-height: 0;
     overflow: visible;
   }
   #app,
   .body,
-  .editor-pane {
+  .editor-pane,
+  .nl-split,
+  .nl-pane {
     display: block;
+  }
+  .nl-resizer {
+    display: none !important;
   }
   .editor {
     max-width: none;

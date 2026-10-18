@@ -29,6 +29,16 @@
 
 ### Added
 
+* **分栏引擎（p5plan §6.1）：编辑器区拆成 SplitPane 树，每个窗格各持一个编辑器实例**：此前编辑器区只有一个实例、一篇文章，切标签页就是换文档。现在左右 / 上下可无限嵌套拆分，每个窗格独立打开文档、独立保存，树结构与比例存 settings.json 的 `panes` 段，重启恢复。
+  * 引擎 `src/split-pane.js`：树模型两种节点（`{type:'split', orientation, ratio, children}` 与 `{type:'leaf', id}`），树操作（split / close / setRatio / normalizeTree）是纯函数可单测；DOM 只做定向手术——拆分 / 关闭各搬动一个元素，不整树重建，ProseMirror 的 DOM 与选中态不会连根拔起。分割条 4px，pointerdown 即 setPointerCapture，窗格里的文字选区、表格手柄抢不走；拖动只写 flex-basis 不重排 DOM，松手（pointerup）经 onRatioCommit 即时落盘（§8）。每侧最小 20%、最大 80%，双击分割条回默认比例。
+  * 窗格与标签页绑定（`main.js` 的 panes 表）：一个标签同时只在一个窗格显示（paneTabs / tabPane 双向表），点标签条把该标签挪到焦点窗格、原窗格留空；拆分时新窗格优先接管一个没人占的已开标签（同根优先），没有则空置并显示空态提示。脏状态按窗格各自记，`tabs.js` 的 setDirty 改按标签 id 记；离开时的未保存确认与自动保存遍历所有脏窗格，多窗格脏时一次问清「全部保存 / 全部不保存 / 取消」（新增 `dlg.unsavedMulti`）。重命名 / 另存为会改标签 id，绑定表跟着 rekey。
+  * 焦点窗格即全局镜像：`syncFocusedEditor` 把焦点窗格的根 / 文档 / 脏标记同步进全局 state，侧栏树、索引、大纲、标签、frontmatter、反链、git、快照面板全部跟着焦点窗格走；跨根焦点切换走既有跨库切页链路（重扫树、重建索引、重载插件）。查找栏与选区高亮工具栏按窗格各一个（`ensurePaneFindBar` / `ensurePaneHlBar`，工具栏跟着选区所在的窗格走）。
+  * 入口与外观：编辑区右上角与标签条右侧各一组「左右 / 上下拆分」按钮（命令 `app.splitH` / `app.splitV` 同行为，mac 窗口菜单同步挂两项）；每个窗格右上角一个关闭按钮，只剩一个窗格时隐藏。`.nl-resizer` hover / 拖动时显一条主题色细线，拖动期间全局禁选并锁光标。打印样式只打焦点窗格，分割条、拆分按钮、空态提示不上纸。
+  * 持久化与恢复：树与比例进 settings.json 的 `panes` 段（拆分 / 关闭 / 拖拽结束都落盘，内容没变不写盘）；启动时 `normalizeTree` 校验恢复，坏数据退回单窗格。恢复出的树第一个叶子才是首窗格——上次会话可能把 p1 关了，所以画布挂载点（canvas-mount 单实例）记 `panes.canvasPane`，画布的打开 / 新建 / 保存都按它找窗格，不写死 id。
+  * 无头 Edge 冒烟（CDP 驱动点击与合成指针事件载 `src/dist`）发现并修掉三个问题：① 第一子 flex-grow 没清零，50% 实际渲染成 75%，拖拽时指针位置与分割线位置对不上；② 拆分 / 关闭手术后按 ref 里缓存的旧子节点刷 inline 样式，刷到已搬走的元素上（嵌套拆分后第一子带着第二子的样式）；③ 画布打开 / 新建 / 保存三处写死 `'p1'`，恢复出的布局首窗格不是 p1 时画布上下文落到不存在的窗格。另修三处连带问题：编辑器滚动容器从 `.editor-pane` 改为所在 `.nl-pane`（分栏后每窗格各滚各的，CM 的光标滚动同样按窗格算）；`onMetaChange` 按焦点窗格过滤（非焦点窗格改文档不许刷掉大纲 / 标签面板），焦点切换补刷 frontmatter 面板；拖入打开按落点所在窗格切焦点。
+  * 测试：`tests/split-pane.test.mjs` 12 passed（树操作、比例夹紧、normalizeTree、序列化往返、freshId 不撞已占用 id）；新增 `tests/split-pane-dom.test.mjs` 6 passed（jsdom 锁 DOM 手术后的树结构与 inline 样式，盯住上面 ①② 两类回归）；`app-menu.test.mjs` 补窗口组拆分命令位置断言，27 passed。全量 27 个测试文件通过，`npm run build` 无错。
+  * i18n：`pn.*` 8 条（拆分 / 完成 / 关闭提示 / 空态引导 / 画布禁分栏）+ `cmd.app.splitH` / `cmd.app.splitV` + `dlg.unsavedMulti`，五种语言各一份。`docs/CLAUDE.MD` 新增「分栏设计」一节，取代此前「不做多文档并发编辑」的结论。
+
 * **选区高亮 / 填充做笔记（p5plan §6.4）**：选中正文文字后弹出浮动工具栏，四个预设色（黄 / 绿 / 蓝 / 粉，走 `--highlight-*` 变量跟主题换色）+ 自定义取色器 + 清除高亮；再点一次当前色即取消。工具栏贴选区上方，滚动时跟随重定位，上方贴边自动改到下方；按钮按下时 preventDefault 保住编辑器选区。落库用行内 HTML `<mark data-color="…">` 而不是私有语法——Typora / Obsidian 打开同一文件时高亮不丢，自定义色写六位 hex，预设色写颜色名。
   * 解析侧：`editor-schema.js` 加 `highlight` 标记（inclusive: false，边界接着打字不会吞字）与同名行内规则；`<mark>` 在 `html:false` 下默认被当转义文本，故与锚点规则同样自定义截获，闭标签按嵌套深度配对。嵌套交叉高亮（`<mark A>x <mark B>y</mark> z</mark>`）由 core 规则摊平成不交叉单层段——prosemirror-markdown 的 flat open/close 机制表达不了同类型交叉标记（closeMark 按类型整组移除，原来会把 z 段丢色、y 段只剩内层色），摊平按「最内层色优先」，与渲染器里内层盖外层的观感一致；编辑器自身不会产出交叉高亮（上色前先清选区内旧色），这条规则只兜手写 / 外部工具生成的文件。
   * 序列化侧：highlight 的 rank 排在 `code` 之前（`addBefore`）——行内代码在 PM 里是 `code` 标记，序列化按 rank 顺序包标签，排在 code 之后会把 `<mark>` 写进反引号里面，重载时整段变成代码文本，既丢高亮又污染内容。

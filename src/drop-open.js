@@ -59,7 +59,7 @@ export function collectDropPaths(dt) {
  * 绑定主区域拖放。
  * @param {object} deps
  * @param {HTMLElement} deps.rootEl 监听容器（.body）
- * @param {(targets:Array<{path:string,isDir:boolean}>) => Promise<void>} deps.onTargets 统一处理入口
+ * @param {(targets:Array<{path:string,isDir:boolean}>, ev:DragEvent) => Promise<void>} deps.onTargets 统一处理入口（第二个参数是 drop 事件，调用方按落点判断落在哪个窗格）
  */
 export function bindDropOpen(deps) {
   const { rootEl, onTargets } = deps
@@ -85,6 +85,6 @@ export function bindDropOpen(deps) {
     depth = 0
     rootEl.classList.remove('nl-drop-on')
     const targets = collectDropPaths(e.dataTransfer).filter((t) => t.path)
-    if (targets.length) await onTargets(targets)
+    if (targets.length) await onTargets(targets, e)
   })
 }

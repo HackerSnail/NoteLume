@@ -1,9 +1,9 @@
 // tabs.js —— 标签页：打开中的文档列表 + 工具条下方标签条的渲染与交互
 //
-// 设计约束：编辑器始终只有一个实例、一个活动文档（main.js 的 state.currentFile）。
-// 标签页只记录「打开中的文档」，切页 / 关页都走既有的打开文档链路（脏检查、重载树与索引）。
-// 由此推出一条不变式：非活动页一定是干净的——离开它时 ensureSavedBeforeLeave 已强制
-// 保存或放弃改动，所以关非活动页不需要再问。
+// 设计约束：标签页只记录「打开中的文档」，切页 / 关页都走既有的打开文档链路
+// （脏检查、重载树与索引）。分栏（P5 §6.1）后一条不变式改成按标签记：一个标签
+// 同时只在一个窗格显示，脏标记跟着标签走（哪个窗格在改它，哪个标签上的点亮），
+// 关任意标签前由 main.js 按它绑定的窗格问保存。
 //
 // 临时文件（新建未选保存位置）也是普通一页，只多一个 scratch 标记：关闭时要先问是否选位置。
 
@@ -15,7 +15,7 @@ const baseName = (rel) => String(rel || '').slice(Math.max(String(rel || '').las
 export function createTabs({ mountEl, onSwitch, onClose }) {
   const items = [] // [{ id, root, rel, canvas, scratch }]
   let activeId = null
-  let dirty = false
+  const dirtyIds = new Set() // 脏标记按标签记（分栏后不再是「只有活动页可能脏」）
 
   function render() {
     if (!mountEl) return
@@ -23,7 +23,7 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
     mountEl.classList.toggle('hidden', items.length === 0)
     for (const tab of items) {
       const el = document.createElement('div')
-      el.className = 'tab' + (tab.id === activeId ? ' active' : '') + (tab.id === activeId && dirty ? ' dirty' : '') + (tab.scratch ? ' scratch' : '')
+      el.className = 'tab' + (tab.id === activeId ? ' active' : '') + (dirtyIds.has(tab.id) ? ' dirty' : '') + (tab.scratch ? ' scratch' : '')
       el.dataset.id = tab.id
       el.title = joinTitle(tab)
       const name = document.createElement('span')
@@ -84,20 +84,25 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
       if (items.some((t) => t.id === id)) activeId = id
       render()
     },
-    /** 改一页的定位（重命名 / 另存为后 root 或 rel 变了） */
+    /** 改一页的定位（重命名 / 另存为后 root 或 rel 变了）。返回新 id——分栏后
+        main.js 的 tabPane 绑定表按 id 索引，旧 key 要跟着换 */
     update(id, patch) {
       const t = items.find((x) => x.id === id)
-      if (!t) return
+      if (!t) return null
       Object.assign(t, patch)
-      t.id = idOf(t.root, t.rel)
-      if (activeId === id) activeId = t.id
+      const newId = idOf(t.root, t.rel)
+      t.id = newId
+      if (activeId === id) activeId = newId
+      if (dirtyIds.delete(id) && newId !== id) dirtyIds.add(newId)
       render()
+      return newId
     },
     remove(id) {
       const i = items.findIndex((t) => t.id === id)
       if (i < 0) return null
       const [gone] = items.splice(i, 1)
       if (activeId === id) activeId = null
+      dirtyIds.delete(id)
       render()
       return gone
     },
@@ -105,7 +110,7 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
     clear() {
       items.length = 0
       activeId = null
-      dirty = false
+      dirtyIds.clear()
       render()
     },
     /** 关闭一页后该激活谁：先右后左；在 remove 之前调用，没有则 null（调用方走无文档态） */
@@ -115,10 +120,14 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
       if (i + 1 < items.length) return items[i + 1]
       return items[i - 1] || null
     },
-    /** 活动页的脏标记（只有活动页可能脏，见文件头不变式） */
-    setDirty(d) {
-      dirty = !!d
+    /** 指定标签的脏标记（分栏后每个标签各自记） */
+    setDirty(id, d) {
+      if (d) dirtyIds.add(id)
+      else dirtyIds.delete(id)
       render()
+    },
+    isDirty(id) {
+      return dirtyIds.has(id)
     },
     render,
   }

@@ -408,14 +408,14 @@ export function createEditor(opts) {
       return null
     }
   }
-  // 两个编辑器共用的外层滚动容器是 .editor-pane。CM 和 PM 自己的 scrollIntoView 在这里
-  // 都不可靠：CM 写的是 .cm-scroller（本应用 overflow:visible，不滚），PM 要求 DOM 选区
-  // 已经在编辑器内。
+  // 两个编辑器共用的外层滚动容器是所在窗格 .nl-pane（分栏后每个窗格各滚各的）。
+  // CM 和 PM 自己的 scrollIntoView 在这里都不可靠：CM 写的是 .cm-scroller
+  // （本应用 overflow:visible，不滚），PM 要求 DOM 选区已经在编辑器内。
   function sourcePane() {
-    return opts.sourceMountEl && opts.sourceMountEl.closest ? opts.sourceMountEl.closest('.editor-pane') : null
+    return opts.sourceMountEl && opts.sourceMountEl.closest ? opts.sourceMountEl.closest('.nl-pane') : null
   }
   function editorPane() {
-    return opts.mountEl && opts.mountEl.closest ? opts.mountEl.closest('.editor-pane') : null
+    return opts.mountEl && opts.mountEl.closest ? opts.mountEl.closest('.nl-pane') : null
   }
   // 把滚动容器滚到「el 可见」：上下各留 margin，已可见则不动（夹紧到合法滚动范围）
   function scrollElementIntoPane(el, pane, margin = 48) {
@@ -471,7 +471,7 @@ export function createEditor(opts) {
     if (range) src.setSelection(range[0], range[1])
     src.focus()
     // CM 只渲染视口内的行，它自己的 scrollIntoView 也只作用于 .cm-scroller，而本应用的纵向
-    // 滚动在外层 .editor-pane（.nl-source .cm-scroller{overflow:visible}），CM 滚不动。
+    // 滚动在外层窗格 .nl-pane（.nl-source .cm-scroller{overflow:visible}），CM 滚不动。
     // 等一帧，让 CM 在那一帧的 measure 里把光标所在行渲染出来，再按 DOM 选区把外层容器滚到
     // 光标可见；不等的话切过去只看见文件头，光标在屏幕外。
     if (range) {
@@ -576,6 +576,10 @@ export function createEditor(opts) {
     markSaved() {
       dirty = false
       opts.onDirty && opts.onDirty(false)
+    },
+    // 重发一次大纲 / 标签元数据（分栏后焦点切回本窗格时，面板要从这个实例重新取数）
+    refreshMeta() {
+      emitMeta(view, opts)
     },
     focus() {
       view.focus()

@@ -44,6 +44,8 @@ export default {
   'cmd.app.toggleInspector': 'Afficher / masquer l’inspecteur',
   'cmd.app.shortcuts': 'Raccourcis clavier…',
   'cmd.app.appearance': 'Apparence…',
+  'cmd.app.splitH': 'Fractionner le volet à gauche / à droite',
+  'cmd.app.splitV': 'Fractionner le volet en haut / en bas',
   'cmd.app.export': 'Exporter en HTML',
   'cmd.app.exportSite': 'Exporter le site…',
   'cmd.app.importWord': 'Importer Word (.docx)…',
@@ -287,6 +289,17 @@ export default {
   'ws.someSkipped': '{n} fichier(s) non pris en charge ignoré(s)',
   'ws.skippedOtherDir': '{name} n’est pas dans le même dossier que le document actuel ; non ouvert',
   'ws.restoreFailed': 'Échec de la restauration du dernier espace de travail : {msg}',
+
+  // —— Volets fractionnés (p5plan §6.1) ——
+  'pn.splitH': 'Fractionner le volet à gauche / à droite',
+  'pn.splitV': 'Fractionner le volet en haut / en bas',
+  'pn.splitHDone': 'Fractionné à gauche / à droite',
+  'pn.splitVDone': 'Fractionné en haut / en bas',
+  'pn.closeTip': 'Fermer ce volet',
+  'pn.closed': 'Volet fermé',
+  'pn.emptyHint': 'Volet vide : choisissez un fichier dans la barre latérale ou les onglets, ou glissez-en un ici',
+  'pn.canvasSplit': 'Le canvas ne prend pas encore en charge les volets : fermez d’abord les autres',
+  'dlg.unsavedMulti': '{n} volets ont des modifications non enregistrées ({names}). Les enregistrer ?',
 
   // —— Menu slash ——
   'slash.head': 'Insérer un bloc',

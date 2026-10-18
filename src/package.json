@@ -22,6 +22,8 @@
     "test:i18n": "node tests/i18n.test.mjs",
     "test:appearance": "node tests/appearance.test.mjs",
     "test:highlight": "node tests/highlight.test.mjs",
+    "test:split-pane": "node tests/split-pane.test.mjs",
+    "test:split-pane-dom": "node tests/split-pane-dom.test.mjs",
     "test:drop-open": "node tests/drop-open.test.mjs"
   },
   "dependencies": {

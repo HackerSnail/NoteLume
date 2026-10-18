@@ -180,6 +180,9 @@ export function buildMacMenuSpec(ctx = {}) {
     group('window', t('menu.group.window'), [
       'app.nextTab',
       'app.prevTab',
+      'sep',
+      'app.splitH',
+      'app.splitV',
       role('Minimize'),
       role('Maximize'),
       'sep',
