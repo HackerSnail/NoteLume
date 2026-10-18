@@ -398,6 +398,11 @@ export function writeSettingsJson(settings) {
   return invoke('write_settings_json', { settings })
 }
 
+/** P5 §6.6：取走启动参数（[{ path, isDir }]，取后即清）；无参数返回 [] */
+export function takeLaunchPaths() {
+  return invoke('take_launch_paths', {})
+}
+
 /** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。
  *  失败 reject，附 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
  *  hostkey_mismatch / host_unknown / git_error），同 handleRemoteErr 分派表。*/

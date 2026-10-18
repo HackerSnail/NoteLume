@@ -20,7 +20,9 @@
     "test:find-in-doc": "node tests/find-in-doc.test.mjs",
     "test:pos-map": "node tests/pos-map.test.mjs",
     "test:i18n": "node tests/i18n.test.mjs",
-    "test:appearance": "node tests/appearance.test.mjs"
+    "test:appearance": "node tests/appearance.test.mjs",
+    "test:highlight": "node tests/highlight.test.mjs",
+    "test:drop-open": "node tests/drop-open.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

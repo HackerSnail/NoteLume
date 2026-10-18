@@ -356,12 +356,47 @@ const extendedNodes = baseSchema.spec.nodes
     ],
   })
 
-const extendedMarks = baseSchema.spec.marks.addToEnd('strike', {
-  parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
-  toDOM() {
-    return ['s']
-  },
-})
+// 选区高亮（p5plan §6.4）：颜色存 attrs——四个预设名走 --highlight-* 变量（跟主题换色），
+// 自定义色是六位 hex，toDOM 直接写行内背景。inclusive: false：在标记边界接着打字不会
+// 把新高亮文字吞进来（Notion 式选区操作，不是连续输入格式）。
+// 用 addBefore('code', …) 而不是 addToEnd：序列化按 rank 顺序包标签，排在 code 之后
+// 会把 <mark> 写进行内代码的反引号里（`<mark>x</mark>` 在反引号内），重载时整段变成
+// 代码文本，高亮丢失还污染内容。排在 code 之前写出来是 <mark>`x`</mark>，能正常回吃。
+export const HL_PRESETS = ['yellow', 'green', 'blue', 'pink']
+
+/** 颜色入站校验：预设名或六位 hex 原样收（hex 转小写），其余回落 yellow */
+export function normalizeHlColor(v) {
+  const s = String(v == null ? '' : v).trim()
+  if (HL_PRESETS.includes(s)) return s
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase()
+  return 'yellow'
+}
+
+const extendedMarks = baseSchema.spec.marks
+  .addToEnd('strike', {
+    parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }, { style: 'strike-through' }],
+    toDOM() {
+      return ['s']
+    },
+  })
+  .addBefore('code', 'highlight', {
+    attrs: { color: { default: 'yellow' } },
+    inclusive: false,
+    parseDOM: [
+      {
+        tag: 'mark.nl-hl',
+        getAttrs(dom) {
+          return { color: normalizeHlColor(dom.getAttribute('data-color')) }
+        },
+      },
+    ],
+    toDOM(mark) {
+      const color = normalizeHlColor(mark.attrs.color)
+      // 预设色不写行内样式：交给 CSS 按 data-color 取 --highlight-* 变量，主题切换即跟随
+      const style = HL_PRESETS.includes(color) ? null : `background-color:${color}`
+      return ['mark', { class: 'nl-hl', 'data-color': color, style }]
+    },
+  })
 
 export const schema = new Schema({ nodes: extendedNodes, marks: extendedMarks })
 
@@ -502,6 +537,116 @@ tokenizer.inline.ruler.push('anchor', (state, silent) => {
   }
   state.pos = pos + m[0].length
   return true
+})
+
+// <mark data-color="…">…</mark> 选区高亮（§6.4）：html:false 下 <mark> 默认会被当转义文本，
+// 故与 anchor 同样自定义行内规则截获。写成 HTML 标签而不是私有语法，是为了让 Typora /
+// Obsidian 打开同一文件时高亮不丢；颜色只收预设名或六位 hex，不合法的当普通文本。
+// 内层内容过一遍完整 inline 规则（加粗 / 链接 / 标签 / 再嵌套高亮都能嵌），
+// 与 markdown-it 的 link 同构。
+const HL_OPEN_RE = /^<mark\s+data-color="([^"]*)"\s*>/i
+// 配对闭标签要数嵌套深度：直接 indexOf 会把内层 <mark> 的闭标签当成自己的
+const HL_TAG_RE = /<mark\s+data-color="[^"]*"\s*>|<\/mark\s*>/gi
+function findHlClose(src, from, limit) {
+  let depth = 1
+  HL_TAG_RE.lastIndex = from
+  for (let m = HL_TAG_RE.exec(src); m; m = HL_TAG_RE.exec(src)) {
+    if (m.index >= limit) break
+    if (m[0][1] === '/') {
+      depth--
+      if (depth === 0) return m.index
+    } else {
+      depth++
+    }
+  }
+  return -1
+}
+tokenizer.inline.ruler.push('highlight', (state, silent) => {
+  const pos = state.pos
+  const max = state.posMax
+  const src = state.src
+  if (src.charCodeAt(pos) !== 0x3c /* < */) return false
+  const m = HL_OPEN_RE.exec(src.slice(pos))
+  if (!m) return false
+  const color = normalizeHlColor(m[1])
+  const openEnd = pos + m[0].length
+  const closeIdx = findHlClose(src, openEnd, max)
+  if (closeIdx < 0 || closeIdx > max) return false
+  if (src.slice(openEnd, closeIdx).length === 0) return false
+  if (!silent) {
+    const open = state.push('highlight_open', 'mark', 1)
+    open.attrSet('color', color)
+    // 只 tokenize 开标签到闭标签之间的内容，完事还原外层边界（link 规则的同一手法）
+    state.pos = openEnd
+    state.posMax = closeIdx
+    state.md.inline.tokenize(state)
+    state.push('highlight_close', 'mark', -1)
+  }
+  state.pos = closeIdx + '</mark>'.length
+  state.posMax = max
+  return true
+})
+
+// 嵌套 <mark> 摊平：prosemirror-markdown 的标记机制是 flat 的 open/close 对，
+// closeMark 按类型整组移除——`<mark A>x <mark B>y</mark> z</mark>` 这类交叉高亮
+// 解析后内层色会污染整段（原来的 bug：z 丢色、y 只剩内层色）。
+// 这里在 inline 解析完成后把 token 流改成不交叉的单层段：每段文字取其「最内层」
+// 打开的高亮色，与任何渲染器里内层 <mark> 盖住外层的观感一致。
+// 本应用的编辑器不会产出交叉高亮（上色前先清掉选区内旧色），这条规则只兜住
+// 手写或外部工具生成的文件；摊平后写回即固化，不会反复变形。
+const HL_CLOSE_TOK = { type: 'highlight_close', tag: 'mark', nesting: -1, attrs: null }
+function flattenHlLevel(toks) {
+  let has = false
+  for (const t of toks) {
+    if (t.type === 'highlight_open' || t.type === 'highlight_close') {
+      has = true
+      break
+    }
+  }
+  if (!has) return
+  const out = []
+  const stack = [] // 当前打开的高亮 open token（最后一个 = 最内层）
+  let cur = null // 当前段：{ openTok|null, items[] }
+  const flush = () => {
+    if (!cur) return
+    if (cur.openTok) {
+      out.push(cur.openTok)
+      for (const it of cur.items) out.push(it)
+      out.push(HL_CLOSE_TOK)
+    } else {
+      for (const it of cur.items) out.push(it)
+    }
+    cur = null
+  }
+  for (const t of toks) {
+    if (t.type === 'highlight_open') {
+      stack.push(t)
+      continue
+    }
+    if (t.type === 'highlight_close') {
+      stack.pop()
+      continue
+    }
+    const top = stack.length ? stack[stack.length - 1] : null
+    const color = top ? top.attrGet('color') : null
+    if (cur && cur.color === color) cur.items.push(t)
+    else {
+      flush()
+      cur = { color, openTok: top, items: [t] }
+    }
+  }
+  flush()
+  toks.length = 0
+  toks.push(...out)
+}
+tokenizer.core.ruler.after('inline', 'nl_hl_flatten', (state) => {
+  const walk = (toks) => {
+    for (const t of toks) {
+      if (t.type === 'inline' && t.children) walk(t.children)
+    }
+    flattenHlLevel(toks)
+  }
+  walk(state.tokens)
 })
 
 // $...$ 行内数学（KaTeX）。规则：
@@ -649,6 +794,9 @@ const parserTokens = {
   },
   tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
   anchor: { node: 'anchor', getAttrs: (tok) => ({ id: tok.attrGet('id') || '' }) },
+  // 选区高亮（§6.4）：open/close 成对；attr color 经 getAttrs 落到标记属性
+  // （不写 getAttrs 时 prosemirror-markdown 只认 spec.attrs 里列的名字，颜色会丢）
+  highlight: { mark: 'highlight', getAttrs: (tok) => ({ color: normalizeHlColor(tok.attrGet('color')) }) },
   math_inline: { node: 'math_inline', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   math_block: { node: 'math_block', getAttrs: (tok) => ({ latex: tok.latex || '' }) },
   callout: {
@@ -1086,6 +1234,14 @@ const serializerNodes = {
 const serializerMarks = {
   ...defaultMarkdownSerializer.marks,
   strike: { open: '~~', close: '~~', mixable: true, expelEnclosingWhitespace: true },
+  // 选区高亮（§6.4）：写回 <mark data-color> 而非私有语法，颜色随标签走，重载不丢；
+  // Typora / Obsidian 打开时按行内 HTML 透传，不至于把高亮变成乱码文本。
+  // 不设 mixable：HTML 标签要严格嵌套，mixable 的重排逻辑会把嵌套高亮拆出乱序的闭标签。
+  highlight: {
+    open: (state, mark) => `<mark data-color="${mark.attrs.color}">`,
+    close: '</mark>',
+    expelEnclosingWhitespace: true,
+  },
 }
 
 const SERIALIZER = new MarkdownSerializer(serializerNodes, serializerMarks, {

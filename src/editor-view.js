@@ -29,6 +29,7 @@ import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
 import { buildAnchorMap } from './anchor-link.js'
 import { findPlugin } from './find-in-doc.js'
+import { setHighlightMark, selectionHasHighlight, highlightColorAt } from './highlight-mark.js'
 import { t } from './i18n.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
@@ -53,6 +54,9 @@ const EDITOR_COMMAND_DEFS = [
   // 脚注（无默认键，命令面板可搜；Ctrl-Shift-F 已被「专注」占用）
   { id: 'editor.footnote', titleKey: 'cmd.editor.footnote', defaultKey: null },
   { id: 'editor.footnoteDelete', titleKey: 'cmd.editor.footnoteDelete', defaultKey: null },
+  // 选区高亮（p5plan §6.4）：无默认键——主入口是选中文字后弹出的浮动工具栏，
+  // 命令面板可搜到（默认黄色，与工具栏第一色一致）
+  { id: 'editor.highlight', titleKey: 'cmd.editor.highlight', defaultKey: null },
   // 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
   { id: 'editor.headingUp', titleKey: 'cmd.editor.headingUp', defaultKey: 'Mod-]' },
   { id: 'editor.headingDown', titleKey: 'cmd.editor.headingDown', defaultKey: 'Mod-[' },
@@ -93,6 +97,9 @@ const PM_COMMANDS = {
   'editor.deleteLine': deleteLine,
   'editor.footnote': insertFootnote,
   'editor.footnoteDelete': deleteFootnote,
+  // 选区高亮（p5plan §6.4）：命令面板 / 快捷键入口，默认黄色（与工具栏第一色一致）。
+  // 增删改语义在 highlight-mark.js：整段已是黄色则取消，异色则替换。
+  'editor.highlight': (state, dispatch) => setHighlightMark(state, dispatch, 'yellow'),
 }
 
 PM_COMMANDS['editor.headingUp'] = headingStep(-1)
@@ -572,6 +579,32 @@ export function createEditor(opts) {
     },
     focus() {
       view.focus()
+    },
+    // —— 选区高亮（p5plan §6.4）：浮动工具栏的取数口与动作口 ——
+    // 一次拿全：DOM 选区的 PM 区间不直接给工具栏，位置用视口矩形、现状用 marks 判定。
+    // 选区不在编辑器内（焦点在侧栏 / 对话框）或已折叠 → null，工具栏据此隐藏。
+    currentSelectionRect() {
+      const sel = window.getSelection()
+      if (!sel || !sel.rangeCount) return null
+      const r = sel.getRangeAt(0)
+      if (!r || r.collapsed) return null
+      if (!view.dom.contains(r.commonAncestorContainer)) return null
+      const rect = r.getBoundingClientRect()
+      if (!rect || (rect.width === 0 && rect.height === 0)) return null
+      const { from, to } = currentSel()
+      if (to <= from) return null
+      const doc = view.state.doc
+      return { rect, has: selectionHasHighlight(doc, from, to), color: highlightColorAt(doc, from) }
+    },
+    // 应用 / 取消高亮：整段已是该色则取消，异色先清后上（不会两种底色叠着）
+    applyHighlightColor(color) {
+      return setHighlightMark(view.state, (tr) => view.dispatch(tr), color)
+    },
+    clearHighlight() {
+      const { from, to } = view.state.selection
+      if (view.state.selection.empty || !selectionHasHighlight(view.state.doc, from, to)) return false
+      view.dispatch(view.state.tr.removeMark(from, to, schema.marks.highlight).scrollIntoView())
+      return true
     },
     // 热重配编辑器 keymap：原地替换 __nlKeymap 插件（保留其它插件与顺序），令重绑即时生效
     setKeymapOverrides(overrides) {

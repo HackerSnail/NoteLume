@@ -27,6 +27,11 @@
   --text-link: #2f6feb;
   --text-quote: #8a9099;
   --text-list: #24292e;
+  /* 选区高亮预设色（p5plan §6.4）：半透明底，文字保持可读；荧光笔观感 */
+  --highlight-yellow: rgba(255, 205, 0, 0.38);
+  --highlight-green: rgba(64, 192, 87, 0.32);
+  --highlight-blue: rgba(51, 154, 240, 0.32);
+  --highlight-pink: rgba(240, 101, 149, 0.32);
 }
 :root[data-theme='dark'] {
   --bg-primary: #1e2127;
@@ -51,6 +56,10 @@
   --text-link: #5b8cff;
   --text-quote: #7b828d;
   --text-list: #d8dee6;
+  --highlight-yellow: rgba(255, 205, 0, 0.26);
+  --highlight-green: rgba(64, 192, 87, 0.26);
+  --highlight-blue: rgba(51, 154, 240, 0.28);
+  --highlight-pink: rgba(240, 101, 149, 0.28);
 }
 /* 吸血鬼主题 = Dracula 官方配色 */
 :root[data-theme='vampire'] {
@@ -76,6 +85,11 @@
   --text-link: #bd93f9;
   --text-quote: #6272a4;
   --text-list: #f8f8f2;
+  /* Dracula 调色板同色系压透明度：与主题整体气质对齐 */
+  --highlight-yellow: rgba(241, 250, 140, 0.3);
+  --highlight-green: rgba(80, 250, 123, 0.26);
+  --highlight-blue: rgba(139, 233, 253, 0.28);
+  --highlight-pink: rgba(255, 121, 198, 0.28);
 }
 /* 吸血鬼：Dracula 选中色 */
 :root[data-theme='vampire'] ::selection {
@@ -472,6 +486,16 @@ body {
   flex: 1;
   display: flex;
   min-height: 0;
+}
+/* 拖入打开（P5 §6.6）：文件拖到主区域上方时给一圈虚线提示，drop 即消失 */
+.body.nl-drop-on::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 5;
 }
 /* 侧栏外部常驻图标（Typora 右上角式）：整栏收起后仍可见可点，点已激活项即收起整栏 */
 .side-corner {
@@ -1622,6 +1646,72 @@ details.panel[open] > summary::before {
 .nl-find-bar.show {
   display: flex;
 }
+
+/* 选区高亮浮动工具栏（p5plan §6.4）：贴选区上方，与查找栏同一绝对定位层 */
+.nl-hl-bar {
+  display: none;
+  position: absolute;
+  z-index: 31;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.nl-hl-bar.show {
+  display: flex;
+}
+.nl-hl-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.nl-hl-swatch:hover {
+  border-color: var(--accent);
+}
+.nl-hl-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.nl-hl-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.nl-hl-sep {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 1px;
+  background: var(--border);
+}
+.nl-hl-custom {
+  flex: none;
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+.nl-hl-custom::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+.nl-hl-custom::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
 .nl-find-row {
   display: flex;
   align-items: center;
@@ -2679,6 +2769,24 @@ details.panel[open] > summary::before {
 }
 .ProseMirror a {
   color: var(--text-link);
+}
+/* 选区高亮（p5plan §6.4）：预设四色按 data-color 取 --highlight-* 变量（跟主题换色），
+   自定义色由 schema toDOM 写的行内背景承载。上下留一点内边距，观感接近荧光笔 */
+.ProseMirror mark.nl-hl {
+  border-radius: 2px;
+  padding: 0.05em 0;
+}
+.ProseMirror mark.nl-hl[data-color='yellow'] {
+  background-color: var(--highlight-yellow);
+}
+.ProseMirror mark.nl-hl[data-color='green'] {
+  background-color: var(--highlight-green);
+}
+.ProseMirror mark.nl-hl[data-color='blue'] {
+  background-color: var(--highlight-blue);
+}
+.ProseMirror mark.nl-hl[data-color='pink'] {
+  background-color: var(--highlight-pink);
 }
 
 /* wikilink / tag 行内样式 */

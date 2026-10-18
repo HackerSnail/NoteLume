@@ -77,6 +77,7 @@ export default {
   'cmd.editor.deleteLine': 'Delete Line / Paragraph',
   'cmd.editor.footnote': 'Insert Footnote',
   'cmd.editor.footnoteDelete': 'Delete Footnote',
+  'cmd.editor.highlight': 'Highlight Selection',
   'cmd.editor.headingUp': 'Increase Heading Level',
   'cmd.editor.headingDown': 'Decrease Heading Level',
 
@@ -271,6 +272,21 @@ export default {
   'ap.splitValue': '{n}% (about {px} px)',
   'ap.splitHint': 'Ratio between sidebar and editor; dragging the splitter in the window updates this too',
   'ap.saved': 'Appearance settings saved',
+
+  // —— Selection highlight floating toolbar (p5plan §6.4) ——
+  'hl.bar': 'Highlight selection',
+  'hl.yellow': 'Yellow highlight',
+  'hl.green': 'Green highlight',
+  'hl.blue': 'Blue highlight',
+  'hl.pink': 'Pink highlight',
+  'hl.custom': 'Custom highlight color',
+  'hl.clear': 'Clear highlight',
+
+  // —— File opening chain (p5plan §6.6: launch args / single instance / drag-in / workspace restore) ——
+  'ws.openAsPlain': '"{name}" is not a Markdown or canvas file. Open it as plain text?',
+  'ws.someSkipped': 'Skipped {n} unsupported file(s)',
+  'ws.skippedOtherDir': '{name} is not in the same folder as the current document; not opened',
+  'ws.restoreFailed': 'Failed to restore the last workspace: {msg}',
 
   // —— Slash menu ——
   'slash.head': 'Insert Block',

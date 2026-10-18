@@ -77,6 +77,7 @@ export default {
   'cmd.editor.deleteLine': '刪除當前行 / 段落',
   'cmd.editor.footnote': '插入腳註',
   'cmd.editor.footnoteDelete': '刪除腳註',
+  'cmd.editor.highlight': '高亮選取文字',
   'cmd.editor.headingUp': '提升標題層級',
   'cmd.editor.headingDown': '降低標題層級',
 
@@ -270,6 +271,21 @@ export default {
   'ap.splitValue': '{n}%（約 {px} px）',
   'ap.splitHint': '設定側欄與編輯區的寬度比例；直接拖動視窗裡的分隔條也會更新這裡',
   'ap.saved': '外觀設定已儲存',
+
+  // —— 選取高亮浮動工具列（p5plan §6.4） ——
+  'hl.bar': '選取高亮',
+  'hl.yellow': '黃色高亮',
+  'hl.green': '綠色高亮',
+  'hl.blue': '藍色高亮',
+  'hl.pink': '粉色高亮',
+  'hl.custom': '自訂高亮色',
+  'hl.clear': '清除高亮',
+
+  // —— 檔案開啟鏈路（p5plan §6.6：啟動參數 / 單實例 / 拖入 / 工作區恢復） ——
+  'ws.openAsPlain': '「{name}」不是 Markdown 或畫布檔案，按純文字開啟嗎？',
+  'ws.someSkipped': '已跳過 {n} 個不支援的檔案',
+  'ws.skippedOtherDir': '{name} 與目前文件不在同一目錄，未開啟',
+  'ws.restoreFailed': '恢復上次工作區失敗：{msg}',
 
   // —— 斜杠選單 ——
   'slash.head': '插入區塊',

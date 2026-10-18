@@ -33,6 +33,20 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "NoteLume Markdown",
+        "description": "Markdown 文档",
+        "role": "Editor"
+      },
+      {
+        "ext": ["canvas"],
+        "name": "NoteLume Canvas",
+        "description": "NoteLume 画布 / 白板",
+        "role": "Editor"
+      }
+    ],
     "macOS": {
       "infoPlist": "Info.macOS.plist"
     },

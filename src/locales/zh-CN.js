@@ -77,6 +77,7 @@ export default {
   'cmd.editor.deleteLine': '删除当前行 / 段落',
   'cmd.editor.footnote': '插入脚注',
   'cmd.editor.footnoteDelete': '删除脚注',
+  'cmd.editor.highlight': '高亮选中文字',
   'cmd.editor.headingUp': '提升标题级别',
   'cmd.editor.headingDown': '降低标题级别',
 
@@ -270,6 +271,21 @@ export default {
   'ap.splitValue': '{n}%（约 {px} px）',
   'ap.splitHint': '设置侧栏与编辑区的宽度比例；直接拖动窗口里的分隔条也会更新这里',
   'ap.saved': '外观设置已保存',
+
+  // —— 选区高亮浮动工具栏（p5plan §6.4） ——
+  'hl.bar': '选区高亮',
+  'hl.yellow': '黄色高亮',
+  'hl.green': '绿色高亮',
+  'hl.blue': '蓝色高亮',
+  'hl.pink': '粉色高亮',
+  'hl.custom': '自定义高亮色',
+  'hl.clear': '清除高亮',
+
+  // —— 文件打开链路（p5plan §6.6：启动参数 / 单实例 / 拖入 / 工作区恢复） ——
+  'ws.openAsPlain': '「{name}」不是 Markdown 或画布文件，按纯文本打开吗？',
+  'ws.someSkipped': '已跳过 {n} 个不支持的文件',
+  'ws.skippedOtherDir': '{name} 与当前文档不在同一目录，未打开',
+  'ws.restoreFailed': '恢复上次工作区失败：{msg}',
 
   // —— 斜杠菜单 ——
   'slash.head': '插入块',

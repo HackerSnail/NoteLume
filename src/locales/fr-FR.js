@@ -77,6 +77,7 @@ export default {
   'cmd.editor.deleteLine': 'Supprimer la ligne / le paragraphe',
   'cmd.editor.footnote': 'Insérer une note de bas de page',
   'cmd.editor.footnoteDelete': 'Supprimer la note de bas de page',
+  'cmd.editor.highlight': 'Surligner la sélection',
   'cmd.editor.headingUp': 'Augmenter le niveau de titre',
   'cmd.editor.headingDown': 'Diminuer le niveau de titre',
 
@@ -271,6 +272,21 @@ export default {
   'ap.splitValue': '{n} % (environ {px} px)',
   'ap.splitHint': 'Proportion entre barre latérale et zone d’édition ; glisser le séparateur de la fenêtre met aussi à jour cette valeur',
   'ap.saved': 'Réglages d’apparence enregistrés',
+
+  // —— Barre flottante de surlignement de la sélection (p5plan §6.4) ——
+  'hl.bar': 'Surligner la sélection',
+  'hl.yellow': 'Surlignage jaune',
+  'hl.green': 'Surlignage vert',
+  'hl.blue': 'Surlignage bleu',
+  'hl.pink': 'Surlignage rose',
+  'hl.custom': 'Couleur de surlignage personnalisée',
+  'hl.clear': 'Effacer le surlignage',
+
+  // —— Chaîne d’ouverture de fichiers (p5plan §6.6 : arguments de lancement / instance unique / glisser / restauration) ——
+  'ws.openAsPlain': '« {name} » n’est pas un fichier Markdown ou canvas. L’ouvrir en texte brut ?',
+  'ws.someSkipped': '{n} fichier(s) non pris en charge ignoré(s)',
+  'ws.skippedOtherDir': '{name} n’est pas dans le même dossier que le document actuel ; non ouvert',
+  'ws.restoreFailed': 'Échec de la restauration du dernier espace de travail : {msg}',
 
   // —— Menu slash ——
   'slash.head': 'Insérer un bloc',

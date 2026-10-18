@@ -3080,6 +3080,67 @@ fn set_ui_lang(lang: String) -> bool {
     ui_lang::set_lang(&lang)
 }
 
+// ==================== P5 §6.6 文件打开链路 ====================
+//
+// 三条入口汇到同一处：
+//  · 启动参数（双击 .md、`note.exe x.md`）：setup 前收进 LaunchPaths，前端 boot 时
+//    经 take_launch_paths 取走。这里不用事件推是防竞态——setup 执行时页面 JS 还没
+//    跑起来，emit 出去没人听；拉取式没有时序问题。
+//  · 单实例二次唤起：应用已在运行、前端监听已就绪，那边用 emit("file-opened") 推。
+//  · 拖入打开：纯前端（DataTransfer 拿路径后走同一套 openAbsPath），不经 Rust。
+
+/// 启动 / 二次唤起的参数里挑出真实存在的文件或目录。exe 自身按路径比对剔除
+/// （不按位置 skip：std::env::args 与单实例插件的 argv 首元素是否 exe 并不保证）；
+/// `-` 开头的是 CLI 开关，不要。
+fn launch_targets<I: IntoIterator<Item = String>>(argv: I) -> Vec<LaunchTarget> {
+    let exe = std::env::current_exe().ok().map(|p| p.to_string_lossy().to_string());
+    argv.into_iter()
+        .filter(|a| !a.is_empty() && !a.starts_with('-'))
+        .filter(|a| exe.as_deref().map_or(true, |e| !same_path(e, a)))
+        .filter_map(|a| {
+            let p = Path::new(&a);
+            // 只收普通文件与目录：存在但既不是文件也不是目录的（管道等）跳过
+            if p.is_dir() {
+                Some(LaunchTarget { path: a, is_dir: true })
+            } else if p.is_file() {
+                Some(LaunchTarget { path: a, is_dir: false })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// 仅用于剔除 exe 自身：容分隔符与大小写（Windows 路径大小写不敏感）之差
+fn same_path(a: &str, b: &str) -> bool {
+    let na = a.replace('\\', "/");
+    let nb = b.replace('\\', "/");
+    #[cfg(target_os = "windows")]
+    let (na, nb) = (na.to_lowercase(), nb.to_lowercase());
+    na == nb
+}
+
+/// 打开目标：文件按文档开，目录按知识库开（is_dir 让前端不必再查一次文件系统）
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LaunchTarget {
+    path: String,
+    is_dir: bool,
+}
+
+#[derive(Default)]
+struct LaunchPaths(std::sync::Mutex<Vec<LaunchTarget>>);
+
+/// 前端 boot 时取走启动参数（取后即清：刷新页面不会重复打开同一文件）
+#[tauri::command]
+fn take_launch_paths(app: tauri::AppHandle) -> Vec<LaunchTarget> {
+    use tauri::Manager;
+    match app.try_state::<LaunchPaths>() {
+        Some(s) => s.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default(),
+        None => Vec::new(),
+    }
+}
+
 /// 应用设置文件路径：<app_config_dir>/settings.json。
 /// app_config_dir 在 Windows 是 %APPDATA%\<identifier>，macOS 是
 /// ~/Library/Application Support/<identifier>，由 Tauri 按 tauri.conf.json 的 identifier 定位。
@@ -3144,8 +3205,19 @@ fn tray_set_recent(app: tauri::AppHandle, paths: Vec<String>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 启动参数先于窗口装配收好（P5 §6.6）：exe 路径本身已被 launch_targets 剔除
+    let launch = launch_targets(std::env::args());
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 单实例（P5 §6.6）：第二个进程把新文件路径经本回调交给第一个进程。
+        // 走到这里说明前端已在运行、监听就绪，用事件推；冷启动那次走 LaunchPaths 拉取。
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            use tauri::Emitter;
+            for t in launch_targets(argv) {
+                let _ = app.emit("file-opened", t);
+            }
+        }))
+        .manage(LaunchPaths(std::sync::Mutex::new(launch)))
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
         .setup(|app| {
             // 非 macOS：去掉原生标题栏，改由前端 .titlebar 顶替。
@@ -3245,7 +3317,9 @@ pub fn run() {
             set_ui_lang,
             // 应用设置（settings.json）：外观等跨会话状态，启动时前端先读回再装配界面
             read_settings_json,
-            write_settings_json
+            write_settings_json,
+            // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
+            take_launch_paths
         ])
         .on_menu_event(|app, event| {
             use tauri::Emitter;
@@ -3253,4 +3327,47 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+
+    #[test]
+    fn drops_flags_empty_and_missing_paths() {
+        let argv = vec![
+            "notelume".to_string(), // 不是真实 exe 路径：exists 直接滤掉
+            "-v".to_string(),
+            String::new(),
+            "/no/such/file.md".to_string(),
+        ];
+        assert!(launch_targets(argv).is_empty());
+    }
+
+    #[test]
+    fn keeps_existing_file_and_dir_verbatim() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("notelume-launch-test.md");
+        std::fs::write(&file, "x").unwrap();
+        let argv = vec![
+            "notelume".to_string(),
+            file.to_string_lossy().to_string(),
+            dir.to_string_lossy().to_string(),
+        ];
+        let got = launch_targets(argv);
+        assert_eq!(got.len(), 2);
+        assert!(got[0].path.ends_with("notelume-launch-test.md"));
+        assert!(!got[0].is_dir);
+        assert_eq!(got[1].path, dir.to_string_lossy());
+        assert!(got[1].is_dir);
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[test]
+    fn same_path_normalizes_separators_and_windows_case() {
+        assert!(same_path("/a/b/x", "\\a\\b\\x"));
+        #[cfg(target_os = "windows")]
+        assert!(same_path("C:\\A\\X", "c:/a/x"));
+        assert!(!same_path("/a/b/x", "/a/b/y"));
+    }
 }

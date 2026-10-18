@@ -45,6 +45,7 @@ import {
   relocateImport,
   exportDocx,
   fileToBase64,
+  takeLaunchPaths,
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages } from './site-export.js'
 import { docToIR } from './docx-export.js'
@@ -52,6 +53,8 @@ import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import
 import { openDocxReview } from './docx-review.js'
 import { createPalette } from './command-palette.js'
 import { createShortcutSettings } from './shortcut-settings.js'
+import { createHighlightToolbar } from './highlight-toolbar.js'
+import { bindDropOpen, isDroppableName } from './drop-open.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
 import { initTitlebar } from './titlebar.js'
@@ -161,6 +164,7 @@ let findBar = null // 文档内查找栏控制器（boot 里 editor 装配后创
 let tabs = null // 标签页（文档 tabs）控制器，boot 里创建
 let palette = null
 let keySettings = null
+let hlBar = null // 选区高亮浮动工具栏（p5plan §6.4）
 let apSettings = null // 「设置-外观」面板（appearance-settings.js）
 let settingsStore = null // settings.json 读写（boot 最开始装配）
 let gitPanel = null
@@ -677,42 +681,157 @@ function splitAbs(p) {
 }
 
 async function openSingleFile() {
+  if (!(await ensureSavedBeforeLeave())) return
+  const abs = await pickFile()
+  if (!abs) return
   try {
-    if (!(await ensureSavedBeforeLeave())) return
-    const abs = await pickFile()
-    if (!abs) return
-    const { dir, name } = splitAbs(abs)
-    leaveCurrentVault(dir) // 跨目录打开：旧根的标签页与文档态作废，避免还指着上一个库
-    state.vaultRoot = dir
-    state.tempImportRoot = ''
-    if (isCanvasPath(name)) {
-      renderSingleFileTree(name)
-      await openCanvas(name)
-      startIndexPolling()
-      return
-    }
-    const md = await readMdFile(dir, name)
-    state.currentFile = name
-    state.scratch = false
-    setMode('md')
-    editor.setMarkdown(md)
-    updateDocStats() // setMode 里的刷新发生在换文档之前，这里按新内容补一次
-    els.filename.textContent = abs
-    renderSingleFileTree(name)
-    setStatus(t('status.fileOpened', { abs }))
-    recordRecent(dir, name)
-    editor.focus()
-    // 单文件也后台索引：库根就是同目录，反查更方便
-    startIndexPolling()
-    if (snapshotPanel) snapshotPanel.refresh()
-    if (pluginManager) pluginManager.reload()
-    if (gitPanel) gitPanel.refresh()
-    if (tabs) tabs.open({ root: dir, rel: name })
+    await openAbsPath(abs)
   } catch (e) {
     const msg = (e && e.message) || e
     setStatus(t('msg.openFileFailedDlg', { msg }))
     await messageDialog(t('msg.openFileFailedDlg', { msg }))
   }
+}
+
+// 按绝对路径打开单个文档（P5 §6.6：选择器 / 双击关联 / 单实例转发 / 拖入共用）。
+// 把文件所在目录作为工作根——保存 / 图片 / wikilink 都依赖一个根。
+// 出错直接抛：调用方按场景决定弹窗（选择器来的）还是静默（启动恢复）。
+async function openAbsPath(abs) {
+  const { dir, name } = splitAbs(abs)
+  leaveCurrentVault(dir) // 跨目录打开：旧根的标签页与文档态作废，避免还指着上一个库
+  state.vaultRoot = dir
+  state.tempImportRoot = ''
+  if (isCanvasPath(name)) {
+    renderSingleFileTree(name)
+    await openCanvas(name)
+    startIndexPolling()
+    persistWorkspace()
+    return
+  }
+  const md = await readMdFile(dir, name)
+  state.currentFile = name
+  state.scratch = false
+  setMode('md')
+  editor.setMarkdown(md)
+  updateDocStats() // setMode 里的刷新发生在换文档之前，这里按新内容补一次
+  els.filename.textContent = abs
+  renderSingleFileTree(name)
+  setStatus(t('status.fileOpened', { abs }))
+  recordRecent(dir, name)
+  editor.focus()
+  // 单文件也后台索引：库根就是同目录，反查更方便
+  startIndexPolling()
+  if (snapshotPanel) snapshotPanel.refresh()
+  if (pluginManager) pluginManager.reload()
+  if (gitPanel) gitPanel.refresh()
+  if (tabs) tabs.open({ root: dir, rel: name })
+  persistWorkspace()
+}
+
+// —— P5 §6.6 文件打开链路：启动参数 / 单实例二次唤起 / 拖入打开 ——
+// 工作区记忆（settings.json 的 workspace 段）：下次启动无参数时恢复上次的库与文档。
+// 内容没变不写盘（JSON 比对）：点文件不触发一次设置落盘。
+function persistWorkspace() {
+  if (!settingsStore) return
+  const cur = settingsStore.get().workspace || {}
+  const next = { ...cur, lastVault: state.vaultRoot || null, lastFile: state.currentFile || null }
+  if (JSON.stringify(next) === JSON.stringify(cur)) return
+  settingsStore.update({ workspace: next })
+}
+
+// 按路径打开知识库（无对话框）：启动恢复、拖入文件夹、启动参数里的目录共用。
+// 出错抛给调用方：选择器来的要弹窗，启动恢复的只留状态栏（上次的库可能已被移走）。
+async function openVaultPath(root, rel) {
+  if (!root) return
+  if (normVaultPath(root) === normVaultPath(state.vaultRoot)) {
+    // 就是当前库：不重扫不重建，只补开指定文档
+    if (rel) await openFile(rel, true)
+    persistWorkspace()
+    return
+  }
+  leaveCurrentVault(root)
+  state.vaultRoot = root
+  state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
+  const tree = await scanVault(root)
+  renderTree(tree)
+  setStatus(t('status.vaultLoaded', { root }))
+  startIndexPolling()
+  // 面板按新库重取：反链 / 全局标签 / 快照列表都不许残留旧库内容
+  refreshLinkPanels()
+  refreshGlobalTags()
+  if (snapshotPanel) snapshotPanel.refresh()
+  if (pluginManager) pluginManager.reload()
+  if (gitPanel) gitPanel.refresh()
+  if (rel) await openFile(rel, true)
+  persistWorkspace()
+}
+
+// 启动参数 / 单实例转发 / 拖入的统一入口。
+// 目录 → 知识库；可识别文档（md / markdown / canvas）→ 打开文件：第一个建立工作根，
+// 同目录的其余进标签页；混目录的其余只提示（标签页的根跟着当前文档走，混根多开
+// 没有明确语义）。交互场景（拖入 / 二次唤起）遇到不可识别文件弹一次「按纯文本打开」；
+// 启动场景静默忽略——参数里混进安装器开关之类的东西不该弹窗。
+async function handleOpenTargets(targets, { interactive = false } = {}) {
+  const list = (targets || []).filter((t) => t && t.path)
+  if (!list.length) return
+  const dirs = list.filter((t) => t.isDir)
+  const files = list.filter((t) => !t.isDir && isDroppableName(splitAbs(t.path).name))
+  const others = list.filter((t) => !t.isDir && !isDroppableName(splitAbs(t.path).name))
+
+  if (!files.length && !dirs.length && others.length) {
+    if (!interactive) return
+    const name = splitAbs(others[0].path).name
+    if (!(await confirmDialog(t('ws.openAsPlain', { name })))) return
+    if (!(await ensureSavedBeforeLeave())) return
+    try {
+      await openAbsPath(others[0].path)
+    } catch (e) {
+      await messageDialog(t('msg.openFileFailedDlg', { msg: (e && e.message) || e }))
+    }
+    return
+  }
+
+  if (others.length && interactive) setStatus(t('ws.someSkipped', { n: others.length }))
+  if (!(await ensureSavedBeforeLeave())) return
+  try {
+    if (dirs.length) await openVaultPath(dirs[0].path)
+    if (files.length) {
+      await openAbsPath(files[0].path)
+      for (const f of files.slice(1)) {
+        if (normVaultPath(splitAbs(f.path).dir) !== normVaultPath(state.vaultRoot)) {
+          setStatus(t('ws.skippedOtherDir', { name: splitAbs(f.path).name }))
+          continue
+        }
+        await openFile(splitAbs(f.path).name, true)
+      }
+    }
+  } catch (e) {
+    if (interactive) await messageDialog(t('msg.openFileFailedDlg', { msg: (e && e.message) || e }))
+    else setStatus(t('ws.restoreFailed', { msg: (e && e.message) || e }))
+  }
+}
+
+// 启动：取走启动参数；无参数则恢复上次工作区（p5plan §6.6「无参数则恢复上次工作区」）
+async function handleLaunchArgs() {
+  let targets = []
+  try {
+    targets = await takeLaunchPaths()
+  } catch (e) {
+    console.warn('[launch] 取启动参数失败', e)
+  }
+  if (!targets.length) {
+    const ws = settingsStore ? settingsStore.get().workspace : null
+    if (ws && ws.lastVault) {
+      try {
+        await openVaultPath(ws.lastVault, ws.lastFile || null)
+      } catch (e) {
+        // 上次的库可能已被移动 / 删除：不打断启动，状态栏留一句
+        setStatus(t('ws.restoreFailed', { msg: (e && e.message) || e }))
+      }
+    }
+    return
+  }
+  await handleOpenTargets(targets)
 }
 
 // 单文件模式：侧栏只列当前这一个文件（不铺开整个目录）
@@ -1733,6 +1852,7 @@ async function openFile(rel, skipDirtyConfirm) {
     // 临时文件不进「最近打开」：它的归宿是另存为那一刻的正式路径（saveScratchAs 里记）
     if (!state.scratch) recordRecent(state.vaultRoot, rel)
     if (tabs) tabs.open({ root: state.vaultRoot, rel, scratch: state.scratch })
+    persistWorkspace() // 记住这次打开的库与文档，下次启动恢复
   } catch (e) {
     await messageDialog(t('status.openFailed', { msg: e }))
   }
@@ -2538,6 +2658,7 @@ function switchLocale(id) {
   registerEditorCommands()
   applyStaticDom(document)
   applyTheme(currentThemeChoice()) // 按「选择」重放：选 system 的不会被打回具体主题
+  if (hlBar) hlBar.relabel() // 高亮工具栏文案跟随界面语言
   updateDocStats()
   scheduleMacChrome()
   // 后端文案跟随；托盘菜单要等 setUiLang 落好再重建才是新语言（scheduleMacChrome 只重建菜单栏）
@@ -2821,7 +2942,7 @@ async function boot() {
     sourceMountEl: els.sourceMount,
     onSourceTextChange: () => { updateDocStats(); if (frontmatterPanel) frontmatterPanel.refresh() },
     onDocChange: (doc, prev) => { updateDocStats(); if (pluginManager) pluginManager.fireDocChange(doc, prev) },
-    onSelectionChange: () => scheduleMacChrome(),
+    onSelectionChange: () => { scheduleMacChrome(); if (hlBar) hlBar.sync() },
     // Ctrl+K 的 URL 询问：所见即所得里没有直接改 href 的入口，只能弹窗问。
     // 返回 null = 取消，'' = 解除链接，其余为链接地址。
     onAskLinkUrl: async (current) => {
@@ -2837,6 +2958,15 @@ async function boot() {
 
   // 文档内查找栏：挂到编辑区容器（.editor-pane，relative 且为滚动容器），命令式驱动 find 插件
   findBar = createFindBar({ view: editor.view, paneEl: els.editor.parentElement })
+
+  // 选区高亮浮动工具栏（p5plan §6.4）：与查找栏同容器；readState 返回 null（选区折叠 /
+  // 不在编辑器内 / 源码态）时工具栏隐藏
+  hlBar = createHighlightToolbar({
+    paneEl: els.editor.parentElement,
+    readState: () => (state.mode === 'md' && editor ? editor.currentSelectionRect() : null),
+    applyColor: (color) => editor.applyHighlightColor(color),
+    clear: () => editor.clearHighlight(),
+  })
 
   // 文档属性（frontmatter）面板：查看 / 编辑当前 md 文档的 YAML 头
   frontmatterPanel = createFrontmatterPanel({
@@ -2958,6 +3088,17 @@ async function boot() {
     flush: () => settingsStore.flush(),
     setStatus,
   })
+  // P5 §6.6 文件打开链路：拖入打开（主区域）与单实例二次唤起（Rust 转发 file-opened
+  // 事件）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次工作区
+  bindDropOpen({
+    rootEl: document.querySelector('.body'),
+    onTargets: (targets) => handleOpenTargets(targets, { interactive: true }),
+  })
+  listen('file-opened', (e) => {
+    const p = e && e.payload
+    if (p && p.path) handleOpenTargets([{ path: p.path, isDir: !!p.isDir }], { interactive: true })
+  }).catch(() => {}) // 纯 web 构建没有事件通道，忽略
+  await handleLaunchArgs()
   bindShortcuts()
   setupCloseGuard()
   setupMacMenu()

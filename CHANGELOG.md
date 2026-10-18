@@ -29,6 +29,20 @@
 
 ### Added
 
+* **选区高亮 / 填充做笔记（p5plan §6.4）**：选中正文文字后弹出浮动工具栏，四个预设色（黄 / 绿 / 蓝 / 粉，走 `--highlight-*` 变量跟主题换色）+ 自定义取色器 + 清除高亮；再点一次当前色即取消。工具栏贴选区上方，滚动时跟随重定位，上方贴边自动改到下方；按钮按下时 preventDefault 保住编辑器选区。落库用行内 HTML `<mark data-color="…">` 而不是私有语法——Typora / Obsidian 打开同一文件时高亮不丢，自定义色写六位 hex，预设色写颜色名。
+  * 解析侧：`editor-schema.js` 加 `highlight` 标记（inclusive: false，边界接着打字不会吞字）与同名行内规则；`<mark>` 在 `html:false` 下默认被当转义文本，故与锚点规则同样自定义截获，闭标签按嵌套深度配对。嵌套交叉高亮（`<mark A>x <mark B>y</mark> z</mark>`）由 core 规则摊平成不交叉单层段——prosemirror-markdown 的 flat open/close 机制表达不了同类型交叉标记（closeMark 按类型整组移除，原来会把 z 段丢色、y 段只剩内层色），摊平按「最内层色优先」，与渲染器里内层盖外层的观感一致；编辑器自身不会产出交叉高亮（上色前先清选区内旧色），这条规则只兜手写 / 外部工具生成的文件。
+  * 序列化侧：highlight 的 rank 排在 `code` 之前（`addBefore`）——行内代码在 PM 里是 `code` 标记，序列化按 rank 顺序包标签，排在 code 之后会把 `<mark>` 写进反引号里面，重载时整段变成代码文本，既丢高亮又污染内容。
+  * 增删改逻辑在 `src/highlight-mark.js`（纯函数，可单测）：整段已是该色 → 取消，异色 → 先清后上。没用 prosemirror-commands 的 `toggleMark`——它按「类型在不在」决定增删，在绿色上点蓝色只会把高亮整个删掉，换不了色。命令面板入口 `editor.highlight`（默认黄色，无默认键）。
+  * 测试：`tests/highlight.test.mjs` 11 passed（颜色归一、toDOM、嵌套摊平、往返、空白挤出、增删改语义）；roundtrip 58 passed 无回归。
+
+* **文件打开完整链路（p5plan §6.6）**：文件关联、启动参数、单实例二次唤起、拖入打开、工作区恢复五条入口齐了。
+  * 文件关联：`tauri.conf.json` 的 `bundle.fileAssociations` 注册 `.md` / `.markdown` / `.canvas`。平台差异：Windows 走注册表（NSIS / WiX 安装时写），macOS 走 Info.plist（role: Editor），Linux 走 .desktop；`tauri dev` 下双击关联不生效，要打包出的安装包才能验。
+  * 启动参数：Rust `launch_targets` 从 argv 里挑出真实存在的文件 / 目录（exe 自身按路径比对剔除，不按位置 skip；`-` 开关不要），收进 `LaunchPaths` 由前端 boot 时经 `take_launch_paths` 取走。用拉取而不用事件推是防竞态——setup 执行时页面 JS 还没跑起来，emit 出去没人听。3 条 Rust 单测（cargo test 125 passed）。
+  * 单实例二次唤起：新增 `tauri-plugin-single-instance` 依赖，第二个进程把新路径经回调 emit `file-opened` 给已在运行的窗口（此时前端监听已就绪，推是安全的），加入标签页。空路径 / 多文件 / 含空格中文路径都由前端的 `handleOpenTargets` 统一处理。
+  * 拖入打开：主区域（`.body`）监听 dragover / drop（`src/drop-open.js`），文档按打开文件处理、文件夹按打开知识库处理、非 Markdown 弹一次「按纯文本打开」的降级确认；拖动经过时主区域出一圈虚线提示。路径从 `DataTransferItem.webkitGetAsEntry()` 拿（只有它能给文件夹 entry，Windows 的 fullPath 带前导斜杠，剥掉），files 的 path 属性兜底。
+  * 工作区恢复：当前库与文档记进 settings.json 的 `workspace` 段（内容没变不写盘），启动无参数时恢复上次的库并重开上次的文档；库已被移走只留状态栏，不打断启动。
+  * 测试：`tests/drop-open.test.mjs` 6 passed（路径归一、扩展名判定、DataTransfer 两条来源与容错）。
+
 * **「设置-外观」面板：主题 / 自定义颜色 / 字体排版 / 侧栏比例 / 自动换行，全部走 settings.json 持久化**：外观状态原先散在多个 localStorage 键里（`nl-theme` / `nl-w-sidebar` 等），编辑器的字体、字号、行高硬编码在 `style.css`，用户改不了也存不住。新增「更多 → 外观设置…」入口（命令 `app.appearance`，命令面板与 mac 应用菜单同入口），每次改动即时生效并写入设置文件，重启后恢复到上次保存的样子。
   * 存储：Rust 新增 `read_settings_json` / `write_settings_json` 两个命令，文件落在 `app_config_dir()/settings.json`（先写临时文件再 rename，写一半崩溃不留坏 JSON；读到的内容损坏时返回 Null 让前端回落默认值，启动不因此失败）。纯浏览器开发（vite 直开）回落 localStorage 的 `nl-settings` 键。`boot()` 最开始 `await` 读回再装配界面；写盘防抖 500ms，分栏滑块松手（change）与关闭面板时立即落盘。`src/settings-store.js` 管读写与订阅，后续 P5 的工作区 / 最近文件并进同一个文档。
   * 颜色（p5plan §6.2 / §6.3）：`style.css` 三个主题块改成「源变量 + 别名」结构——`--bg-primary` / `--bg-secondary` / `--text-primary` / `--text-secondary` / `--border-color` / `--accent-color` 与六个文字颜色（`--text-editor` / `--text-heading` / `--text-code` / `--text-link` / `--text-quote` / `--text-list`）是设置可覆盖层，`--bg` / `--fg` / `--accent` 等旧名改为指向源的别名，全站既有引用不动；面板改色只写源变量的行内值，「重置」删掉行内值即回落主题默认。文字颜色六项接进 `.ProseMirror` 的正文 / 标题 / 行内代码 / 链接 / 引用 / 列表规则，面板内置预览区直接消费这些变量。打印样式同步覆盖文字颜色源变量（加 `!important`，否则用户的行内值会把暗色主题的浅色字打到白纸上）。

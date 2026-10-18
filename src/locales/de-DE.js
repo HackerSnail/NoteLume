@@ -77,6 +77,7 @@ export default {
   'cmd.editor.deleteLine': 'Zeile / Absatz löschen',
   'cmd.editor.footnote': 'Fußnote einfügen',
   'cmd.editor.footnoteDelete': 'Fußnote löschen',
+  'cmd.editor.highlight': 'Auswahl markieren',
   'cmd.editor.headingUp': 'Überschriftenebene erhöhen',
   'cmd.editor.headingDown': 'Überschriftenebene verringern',
 
@@ -271,6 +272,21 @@ export default {
   'ap.splitValue': '{n} % (ca. {px} px)',
   'ap.splitHint': 'Verhältnis von Seitenleiste zu Editor; das Ziehen des Trenners im Fenster aktualisiert diesen Wert ebenfalls',
   'ap.saved': 'Darstellungseinstellungen gespeichert',
+
+  // —— Schwebende Markierungsleiste für die Auswahl (p5plan §6.4) ——
+  'hl.bar': 'Auswahl markieren',
+  'hl.yellow': 'Gelbe Markierung',
+  'hl.green': 'Grüne Markierung',
+  'hl.blue': 'Blaue Markierung',
+  'hl.pink': 'Rosa Markierung',
+  'hl.custom': 'Eigene Markierungsfarbe',
+  'hl.clear': 'Markierung entfernen',
+
+  // —— Kette zum Öffnen von Dateien (p5plan §6.6: Startargumente / Einzelinstanz / Drag-and-Drop / Arbeitsbereich) ——
+  'ws.openAsPlain': '„{name}“ ist keine Markdown- oder Canvas-Datei. Als reinen Text öffnen?',
+  'ws.someSkipped': '{n} nicht unterstützte Datei(en) übersprungen',
+  'ws.skippedOtherDir': '{name} liegt nicht im selben Ordner wie das aktuelle Dokument; nicht geöffnet',
+  'ws.restoreFailed': 'Wiederherstellung des letzten Arbeitsbereichs fehlgeschlagen: {msg}',
 
   // —— Slash-Menü ——
   'slash.head': 'Block einfügen',
