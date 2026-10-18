@@ -1684,6 +1684,46 @@ html.nl-resizing[data-resize-dir='vertical'],
 html.nl-resizing[data-resize-dir='vertical'] * {
   cursor: row-resize !important;
 }
+/* 拖拽标签 / 文件树项（pane-drag.js）：幽灵标签与落区高亮都用 fixed，
+   不进 .nl-pane 的滚动流（窗格是滚动容器，absolute 会跟着滚） */
+.nl-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 80;
+  max-width: 240px;
+  padding: 3px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  opacity: 0.92;
+  pointer-events: none;
+}
+.nl-drop-hint {
+  position: fixed;
+  z-index: 70;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.nl-drop-hint.hidden {
+  display: none;
+}
+html.nl-dragging,
+html.nl-dragging * {
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+.tab.dragging {
+  opacity: 0.45;
+}
 /* 拆分 / 关窗格按钮（完整分栏后住在各窗格标签条右侧，VS Code 组工具栏布局） */
 .nl-split-btn {
   width: 26px;
@@ -4428,6 +4468,11 @@ html.nl-resizing[data-resize-dir='vertical'] * {
     display: block;
   }
   .nl-resizer {
+    display: none !important;
+  }
+  /* 拖拽期间的幽灵标签与落区高亮不上纸 */
+  .nl-drag-ghost,
+  .nl-drop-hint {
     display: none !important;
   }
   .editor {
