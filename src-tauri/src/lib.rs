@@ -16,6 +16,10 @@ mod docx_import;
 // 批次 F ①：Markdown → Word(.docx) 结构导出（前端产 Docx-IR，本模块用 docx-rs 组装 OOXML 落盘）。
 mod docx_export;
 
+// 界面多语言：后端用户可见文案（命令错误 / docx 警告 / git 结果 / 托盘菜单）按当前界面语言取词。
+// 词表与五种语言见 ui_lang.rs；前端启动与切换语言时调 set_ui_lang 上报。
+mod ui_lang;
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
@@ -74,11 +78,11 @@ fn is_image(name: &str) -> bool {
 /// 拒绝越出库根的恶意路径（`..` 逃逸等）；root 与 target 均已 canonicalize
 fn ensure_inside_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
     let target = fs::canonicalize(target)
-        .map_err(|e| format!("路径解析失败 {}：{}", target.display(), e))?;
+        .map_err(|e| ui_msg!("pathResolveFailed", "path" => target.display(), "err" => e))?;
     if target.starts_with(root) {
         Ok(target)
     } else {
-        Err("非法路径：目标不在知识库根目录内".into())
+        Err(ui_msg!("pathOutsideVault"))
     }
 }
 
@@ -88,7 +92,7 @@ pub(crate) fn abs_in_vault(vault_root: &str, rel: &str) -> Result<PathBuf, Strin
     let mut p = root.clone();
     for seg in rel.split('/').filter(|s| !s.is_empty()) {
         if seg == ".." {
-            return Err("非法路径：不允许跳出知识库根目录".into());
+            return Err(ui_msg!("pathEscapeVault"));
         }
         p.push(seg);
     }
@@ -101,7 +105,7 @@ pub(crate) fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let mut p = root.to_path_buf();
     for seg in rel.split('/').filter(|s| !s.is_empty()) {
         if seg == ".." {
-            return Err("非法路径：不允许跳出知识库根目录".into());
+            return Err(ui_msg!("pathEscapeVault"));
         }
         p.push(seg);
     }
@@ -146,9 +150,9 @@ fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
 /// 打开文件夹作为知识库：扫描 md 文件树
 #[tauri::command]
 fn scan_vault(vault_root: String) -> Result<Vec<TreeNode>, String> {
-    let root = fs::canonicalize(&vault_root).map_err(|e| format!("知识库路径无效：{}", e))?;
+    let root = fs::canonicalize(&vault_root).map_err(|e| ui_msg!("vaultPathInvalid", "err" => e))?;
     if !root.is_dir() {
-        return Err("知识库路径不是目录".into());
+        return Err(ui_msg!("vaultNotDir"));
     }
     Ok(scan_dir(&root, "", 0))
 }
@@ -157,7 +161,7 @@ fn scan_vault(vault_root: String) -> Result<Vec<TreeNode>, String> {
 #[tauri::command]
 fn read_md_file(vault_root: String, path: String) -> Result<String, String> {
     let abs = abs_in_vault(&vault_root, &path)?;
-    fs::read_to_string(&abs).map_err(|e| format!("读取失败：{}", e))
+    fs::read_to_string(&abs).map_err(|e| ui_msg!("readFailed", "err" => e))
 }
 
 /// 写回库内 md 文件（UTF-8，标准 GFM，不引入任何私有格式）
@@ -167,20 +171,20 @@ fn write_md_file(vault_root: String, path: String, content: String) -> Result<()
     let mut abs = root.clone();
     for seg in path.split('/').filter(|s| !s.is_empty()) {
         if seg == ".." {
-            return Err("非法路径：不允许跳出知识库根目录".into());
+            return Err(ui_msg!("pathEscapeVault"));
         }
         abs.push(seg);
     }
     if let Some(parent) = abs.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{}", e))?;
+        fs::create_dir_all(parent).map_err(|e| ui_msg!("createDirFailed", "err" => e))?;
     }
     // 越界校验：文件路径的父目录必须位于库根内
-    let parent = fs::canonicalize(abs.parent().ok_or("非法文件路径")?)
+    let parent = fs::canonicalize(abs.parent().ok_or_else(|| ui_msg!("badFilePath"))?)
         .map_err(|e| e.to_string())?;
     if !parent.starts_with(&root) {
-        return Err("非法路径：目标不在知识库根目录内".into());
+        return Err(ui_msg!("pathOutsideVault"));
     }
-    fs::write(&abs, content).map_err(|e| format!("保存失败：{}", e))
+    fs::write(&abs, content).map_err(|e| ui_msg!("saveFailed", "err" => e))
 }
 
 /// 在库根按文件名查找 md（wikilink 解析），命中返回相对路径
@@ -256,7 +260,7 @@ pub struct CreateDocArgs {
 fn create_md_file(vault_root: String, args: CreateDocArgs) -> Result<String, String> {
     let mut rel = args.path.trim().replace('\\', "/");
     if rel.is_empty() {
-        return Err("文件名不能为空".into());
+        return Err(ui_msg!("emptyFileName"));
     }
     if !rel.to_ascii_lowercase().ends_with(".md") {
         rel.push_str(".md");
@@ -270,9 +274,9 @@ fn create_md_file(vault_root: String, args: CreateDocArgs) -> Result<String, Str
 fn delete_file(vault_root: String, path: String) -> Result<(), String> {
     let abs = abs_in_vault(&vault_root, &path)?;
     if abs.is_dir() {
-        return Err("不支持删除文件夹".into());
+        return Err(ui_msg!("noFolderDelete"));
     }
-    trash::delete(&abs).map_err(|e| format!("移入回收站失败：{}", e))?;
+    trash::delete(&abs).map_err(|e| ui_msg!("trashFailed", "err" => e))?;
     Ok(())
 }
 
@@ -282,19 +286,19 @@ fn create_dir(vault_root: String, path: String) -> Result<(), String> {
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
     let rel = path.trim().replace('\\', "/");
     if rel.is_empty() {
-        return Err("文件夹名不能为空".into());
+        return Err(ui_msg!("emptyFolderName"));
     }
     let abs = vault_join(&root, &rel)?;
     if abs.exists() {
-        return Err("目标已存在".into());
+        return Err(ui_msg!("targetExists"));
     }
-    let parent = abs.parent().ok_or_else(|| "非法路径".to_string())?;
+    let parent = abs.parent().ok_or_else(|| ui_msg!("badPath"))?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let pc = fs::canonicalize(parent).map_err(|e| e.to_string())?;
     if !pc.starts_with(&root) {
-        return Err("非法路径：目标不在知识库根目录内".into());
+        return Err(ui_msg!("pathOutsideVault"));
     }
-    fs::create_dir(&abs).map_err(|e| format!("创建文件夹失败：{}", e))?;
+    fs::create_dir(&abs).map_err(|e| ui_msg!("createDirFailed", "err" => e))?;
     Ok(())
 }
 
@@ -306,22 +310,22 @@ fn rename_item(vault_root: String, from: String, to: String) -> Result<(), Strin
     let abs_from = abs_in_vault(&vault_root, &from)?;
     let rel_to = to.trim().replace('\\', "/");
     if rel_to.is_empty() {
-        return Err("新名称不能为空".into());
+        return Err(ui_msg!("newNameEmpty"));
     }
     let abs_to = vault_join(&root, &rel_to)?;
     if abs_to.exists() {
-        return Err("目标已存在，无法重命名 / 移动".into());
+        return Err(ui_msg!("renameExists"));
     }
-    let parent = abs_to.parent().ok_or_else(|| "非法路径".to_string())?;
-    let pc = fs::canonicalize(parent).map_err(|e| format!("目标目录不存在：{}", e))?;
+    let parent = abs_to.parent().ok_or_else(|| ui_msg!("badPath"))?;
+    let pc = fs::canonicalize(parent).map_err(|e| ui_msg!("targetDirMissing", "err" => e))?;
     if !pc.starts_with(&root) {
-        return Err("非法路径：目标不在知识库根目录内".into());
+        return Err(ui_msg!("pathOutsideVault"));
     }
     // 不允许把文件夹移动到它自身或自己的子目录下
     if abs_from.is_dir() && abs_to.starts_with(&abs_from) {
-        return Err("不能把文件夹移动到自身内部".into());
+        return Err(ui_msg!("moveIntoSelf"));
     }
-    fs::rename(&abs_from, &abs_to).map_err(|e| format!("重命名失败：{}", e))?;
+    fs::rename(&abs_from, &abs_to).map_err(|e| ui_msg!("renameFailed", "err" => e))?;
     Ok(())
 }
 
@@ -336,7 +340,7 @@ pub(crate) fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
         if ch == '=' {
             break;
         }
-        let v = TBL.iter().position(|c| *c as char == ch).ok_or("非法 base64 字符")? as u32;
+        let v = TBL.iter().position(|c| *c as char == ch).ok_or(ui_msg!("badBase64"))? as u32;
         buf = (buf << 6) | v;
         bits += 6;
         if bits >= 8 {
@@ -365,11 +369,11 @@ fn import_vault_file(vault_root: String, args: ImportArgs) -> Result<String, Str
     fs::create_dir_all(&abs_dir).map_err(|e| e.to_string())?;
     let dc = fs::canonicalize(&abs_dir).map_err(|e| e.to_string())?;
     if !dc.starts_with(&root) {
-        return Err("非法路径：目标不在知识库根目录内".into());
+        return Err(ui_msg!("pathOutsideVault"));
     }
     let base = args.name.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("").trim().to_string();
     if base.is_empty() || base == "." || base == ".." {
-        return Err("非法文件名".into());
+        return Err(ui_msg!("badImportFileName"));
     }
     let bytes = b64_decode(&args.data_base64)?;
     let stem = base.rsplit_once('.').map_or(base.as_str(), |(s, _)| s).to_string();
@@ -388,7 +392,7 @@ fn import_vault_file(vault_root: String, args: ImportArgs) -> Result<String, Str
         }
     }
     if !dest.exists() {
-        fs::write(&dest, &bytes).map_err(|e| format!("导入失败：{}", e))?;
+        fs::write(&dest, &bytes).map_err(|e| ui_msg!("importFailed", "err" => e))?;
     }
     let rel = if ndir.is_empty() { file_name } else { format!("{}/{}", ndir, file_name) };
     Ok(rel)
@@ -409,12 +413,12 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<String, String> {
     let src = PathBuf::from(&path);
     if !src.exists() {
-        return Err(format!("源文件不存在：{}", path));
+        return Err(ui_msg!("srcNotExists", "path" => path));
     }
     let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let ext = src.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if !IMG_EXTS.contains(&ext.as_str()) {
-        return Err(format!("不支持的图片类型：{}", ext));
+        return Err(ui_msg!("unsupportedImgType", "ext" => ext));
     }
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
     let base_dir = match md_rel.rsplit_once('/') {
@@ -426,7 +430,7 @@ fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<
     let assets_dir = md_dir.join("assets");
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
-    let bytes = fs::read(&src).map_err(|e| format!("读取图片失败：{}", e))?;
+    let bytes = fs::read(&src).map_err(|e| ui_msg!("readImgFailed", "err" => e))?;
     let stem = name.rsplit_once('.').map_or(name.as_str(), |(s, _)| s).to_string();
     let mut file_name = name.clone();
     let mut dest = assets_dir.join(&file_name);
@@ -438,7 +442,7 @@ fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<
         }
     }
     if !dest.exists() {
-        fs::copy(&src, &dest).map_err(|e| format!("复制图片失败：{}", e))?;
+        fs::copy(&src, &dest).map_err(|e| ui_msg!("copyImgFailed", "err" => e))?;
     }
     Ok(format!("./assets/{}", file_name))
 }
@@ -455,7 +459,7 @@ pub struct SaveAssetArgs {
 fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> Result<String, String> {
     let ext = args.ext.to_ascii_lowercase().trim_start_matches('.').to_string();
     if !IMG_EXTS.contains(&ext.as_str()) {
-        return Err(format!("不支持的图片类型：{}", ext));
+        return Err(ui_msg!("unsupportedImgType", "ext" => ext));
     }
     let table: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
         .chars().collect();
@@ -467,7 +471,7 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
         if ch == '=' {
             break;
         }
-        let v = table.iter().position(|c| *c == ch).ok_or("非法 base64 字符")? as u32;
+        let v = table.iter().position(|c| *c == ch).ok_or(ui_msg!("badBase64"))? as u32;
         acc = (acc << 6) | v;
         bits += 6;
         if bits >= 8 {
@@ -485,7 +489,7 @@ fn save_image_bytes(vault_root: String, md_rel: String, args: SaveAssetArgs) -> 
     let assets_dir = md_dir.join("assets");
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
     let file_name = format!("pasted-{:x}.{}", fnv1a(&buf), ext);
-    fs::write(assets_dir.join(&file_name), &buf).map_err(|e| format!("写入图片失败：{}", e))?;
+    fs::write(assets_dir.join(&file_name), &buf).map_err(|e| ui_msg!("writeImgFailed", "err" => e))?;
     Ok(format!("./assets/{}", file_name))
 }
 
@@ -608,7 +612,7 @@ fn read_image_data_uri(vault_root: String, md_rel: String, src: String) -> Resul
             let base = decoded.rsplit(['/', '\\']).next().unwrap_or(&decoded);
             let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
             find_asset_by_name(&root, base, 0)
-                .ok_or_else(|| format!("找不到图片：{}", src))?
+                .ok_or_else(|| ui_msg!("imgNotFound", "src" => src))?
         }
     };
     let ext = abs
@@ -616,9 +620,9 @@ fn read_image_data_uri(vault_root: String, md_rel: String, src: String) -> Resul
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     if !IMG_EXTS.contains(&ext.as_str()) {
-        return Err(format!("不支持的图片类型：{}", ext));
+        return Err(ui_msg!("unsupportedImgType", "ext" => ext));
     }
-    let bytes = fs::read(&abs).map_err(|e| format!("读取图片失败：{}", e))?;
+    let bytes = fs::read(&abs).map_err(|e| ui_msg!("readImgFailed", "err" => e))?;
     Ok(format!("data:{};base64,{}", mime_for_ext(&ext), b64_encode(&bytes)))
 }
 
@@ -1283,7 +1287,7 @@ fn backup_write(vault_root: String, args: BackupArgs) -> Result<String, String> 
     if let Some(p) = abs.parent() {
         fs::create_dir_all(p).map_err(|e| e.to_string())?;
     }
-    fs::write(&abs, args.content).map_err(|e| format!("写入备份失败：{}", e))?;
+    fs::write(&abs, args.content).map_err(|e| ui_msg!("writeBackupFailed", "err" => e))?;
     Ok(file_rel)
 }
 
@@ -1347,10 +1351,10 @@ fn list_backups(vault_root: String, doc_rel: Option<String>) -> Result<Vec<Backu
 fn read_backup(vault_root: String, backup_rel: String) -> Result<String, String> {
     let norm = backup_rel.replace('\\', "/");
     if !norm.starts_with(".notelume-backup/") {
-        return Err("非法路径：只能读取备份目录内的快照".into());
+        return Err(ui_msg!("backupOnly"));
     }
     let abs = abs_in_vault(&vault_root, &norm)?;
-    fs::read_to_string(&abs).map_err(|e| format!("读取备份失败：{}", e))
+    fs::read_to_string(&abs).map_err(|e| ui_msg!("readBackupFailed", "err" => e))
 }
 
 /// 插件包条目（批次 F1：文件夹化安装包）
@@ -1421,10 +1425,10 @@ fn list_plugins(vault_root: String) -> Result<PluginList, String> {
 fn read_plugin(vault_root: String, plugin_rel: String) -> Result<String, String> {
     let norm = plugin_rel.replace('\\', "/");
     if !norm.starts_with(".notelume-plugins/") {
-        return Err("非法路径：只能读取插件目录内的文件".into());
+        return Err(ui_msg!("pluginOnly"));
     }
     let abs = abs_in_vault(&vault_root, &norm)?;
-    fs::read_to_string(&abs).map_err(|e| format!("读取插件失败：{}", e))
+    fs::read_to_string(&abs).map_err(|e| ui_msg!("readPluginFailed", "err" => e))
 }
 
 /// 导出 HTML 到库外任意路径；仅接受由原生保存对话框返回的绝对路径
@@ -1439,9 +1443,9 @@ pub struct ExportArgs {
 fn export_file(args: ExportArgs) -> Result<(), String> {
     let p = PathBuf::from(&args.abs_path);
     if let Some(parent) = p.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{}", e))?;
+        fs::create_dir_all(parent).map_err(|e| ui_msg!("createDirFailed", "err" => e))?;
     }
-    fs::write(&p, args.content).map_err(|e| format!("导出失败：{}", e))
+    fs::write(&p, args.content).map_err(|e| ui_msg!("exportFailed", "err" => e))
 }
 
 /// 从当前索引抽取知识图谱数据：只保留已解析的链接，同一对文档合并为一条边（权重=反向两个方向链接次数之和）。
@@ -1510,7 +1514,7 @@ fn get_graph_data(
     state: tauri::State<'_, IndexState>,
 ) -> Result<GraphData, String> {
     let _ = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
-    let guard = state.0.lock().map_err(|_| "索引状态锁 poisoned".to_string())?;
+    let guard = state.0.lock().map_err(|_| ui_msg!("indexLockPoisoned"))?;
     Ok(extract_graph(&guard))
 }
 
@@ -1545,9 +1549,9 @@ pub struct SiteGraph {
 /// 复用 extract_wikilinks + resolve_one，链接解析与编辑器点击跳转完全一致。
 #[tauri::command]
 fn build_site_graph(vault_root: String) -> Result<SiteGraph, String> {
-    let root = fs::canonicalize(&vault_root).map_err(|e| format!("知识库路径无效：{}", e))?;
+    let root = fs::canonicalize(&vault_root).map_err(|e| ui_msg!("vaultPathInvalid", "err" => e))?;
     if !root.is_dir() {
-        return Err("知识库路径不是目录".into());
+        return Err(ui_msg!("vaultNotDir"));
     }
     let mut paths: Vec<String> = Vec::new();
     collect_md_paths(&root, "", 0, &mut paths);
@@ -1586,7 +1590,7 @@ pub struct CopyAssetsArgs {
 #[tauri::command]
 fn copy_vault_assets(vault_root: String, args: CopyAssetsArgs) -> Result<(), String> {
     let out_root = PathBuf::from(&args.out_dir);
-    fs::create_dir_all(&out_root).map_err(|e| format!("创建输出目录失败：{}", e))?;
+    fs::create_dir_all(&out_root).map_err(|e| ui_msg!("createOutDirFailed", "err" => e))?;
     for rel in &args.rels {
         let src = match abs_in_vault(&vault_root, rel) {
             Ok(s) => s,
@@ -1597,9 +1601,9 @@ fn copy_vault_assets(vault_root: String, args: CopyAssetsArgs) -> Result<(), Str
         }
         let dest = vault_join(&out_root, rel)?;
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{}", e))?;
+            fs::create_dir_all(parent).map_err(|e| ui_msg!("createDirFailed", "err" => e))?;
         }
-        fs::copy(&src, &dest).map_err(|e| format!("复制失败 {}：{}", rel, e))?;
+        fs::copy(&src, &dest).map_err(|e| ui_msg!("copyFailedRel", "rel" => rel, "err" => e))?;
     }
     Ok(())
 }
@@ -1656,7 +1660,7 @@ pub struct DiffFileArgs {
 
 /// 打开库根所在仓库；失败统一映射成可读错误
 fn open_repo(vault_root: &str) -> Result<git2::Repository, String> {
-    git2::Repository::open(vault_root).map_err(|e| format!("打开仓库失败：{}", e))
+    git2::Repository::open(vault_root).map_err(|e| ui_msg!("gitOpenRepoFailed", "err" => e))
 }
 
 /// 把 Repository 收敛成 GitRepoInfo（多处复用）
@@ -1779,9 +1783,9 @@ fn git_diff_file(vault_root: String, args: DiffFileArgs) -> Result<String, Strin
     {
         let abs = repo
             .workdir()
-            .ok_or("仓库无工作目录")?
+            .ok_or(ui_msg!("gitNoWorkdir"))?
             .join(Path::new(&args.path));
-        let bytes = fs::read(&abs).map_err(|e| format!("读取文件失败：{}", e))?;
+        let bytes = fs::read(&abs).map_err(|e| ui_msg!("readFileFailed", "path" => abs.display(), "err" => e))?;
         return Ok(synthesize_added_patch(&args.path, &bytes));
     }
 
@@ -1943,10 +1947,10 @@ fn git_config_identity(vault_root: String) -> Result<Option<Identity>, String> {
 #[tauri::command]
 fn git_init(vault_root: String) -> Result<GitRepoInfo, String> {
     let repo =
-        git2::Repository::init(&vault_root).map_err(|e| format!("初始化仓库失败：{}", e))?;
+        git2::Repository::init(&vault_root).map_err(|e| ui_msg!("gitInitFailed", "err" => e))?;
     let gi = Path::new(&vault_root).join(".gitignore");
     if !gi.exists() {
-        fs::write(&gi, ".notelume-backup/\n").map_err(|e| format!("写 .gitignore 失败：{}", e))?;
+        fs::write(&gi, ".notelume-backup/\n").map_err(|e| ui_msg!("gitignoreWriteFailed", "err" => e))?;
     }
     Ok(repo_info(&repo))
 }
@@ -1966,7 +1970,7 @@ fn resolve_identity(
         .or_else(|| from_cfg.as_ref().map(|i| i.email.clone()));
     match (n, e) {
         (Some(n), Some(e)) if !n.trim().is_empty() && !e.trim().is_empty() => Ok((n, e)),
-        _ => Err("缺少提交身份：请配置 git user.name / user.email".into()),
+        _ => Err(ui_msg!("gitIdentityMissing")),
     }
 }
 
@@ -1977,7 +1981,7 @@ fn git_commit_all(vault_root: String, args: CommitArgs) -> Result<GitCommitResul
     let repo = open_repo(&vault_root)?;
     let message = args.message.trim_end();
     if message.trim().is_empty() {
-        return Err("提交信息不能为空".into());
+        return Err(ui_msg!("gitCommitMsgEmpty"));
     }
     let (name, email) = resolve_identity(&repo, args.name.as_deref(), args.email.as_deref())?;
 
@@ -1998,7 +2002,7 @@ fn git_commit_all(vault_root: String, args: CommitArgs) -> Result<GitCommitResul
     // 无改动可提交：树与 HEAD 相同则拒
     if let Some(hct) = parent_commit.as_ref().and_then(|c| c.tree().ok()) {
         if hct.id() == tree_id {
-            return Err("没有需要提交的改动".into());
+            return Err(ui_msg!("gitNothingToCommit"));
         }
     }
 
@@ -2269,7 +2273,7 @@ fn predefined_item(
         "SelectAll" => PredefinedMenuItem::select_all(app, text).map(|i| i.kind()),
         "Undo" => PredefinedMenuItem::undo(app, text).map(|i| i.kind()),
         "Redo" => PredefinedMenuItem::redo(app, text).map(|i| i.kind()),
-        other => return Err(format!("未知的系统菜单项：{}", other)),
+        other => return Err(ui_msg!("unknownMenuRole", "role" => other)),
     };
     built.map_err(|e| e.to_string())
 }
@@ -2325,7 +2329,7 @@ fn install_app_menu(app: &tauri::AppHandle, spec: MenuSpec) -> Result<(), String
         tops.push(b.build().map(|s| s.kind()).map_err(|e| e.to_string())?);
     }
     if tops.is_empty() {
-        return Err("菜单组为空".into());
+        return Err(ui_msg!("emptyMenuGroups"));
     }
     let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = tops.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
     let menu = MenuBuilder::new(app)
@@ -2983,12 +2987,12 @@ fn build_tray_menu(
     recent: &[String],
 ) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
-    let show = MenuItemBuilder::with_id("show", "显示主窗口").build(app).map_err(|e| e.to_string())?;
-    let new_note = MenuItemBuilder::with_id("new", "新建笔记").build(app).map_err(|e| e.to_string())?;
+    let show = MenuItemBuilder::with_id("show", ui_msg!("trayShow")).build(app).map_err(|e| e.to_string())?;
+    let new_note = MenuItemBuilder::with_id("new", ui_msg!("trayNewNote")).build(app).map_err(|e| e.to_string())?;
 
-    let mut sub = SubmenuBuilder::new(app, "打开最近");
+    let mut sub = SubmenuBuilder::new(app, ui_msg!("trayOpenRecent"));
     if recent.is_empty() {
-        let none = MenuItemBuilder::with_id("recent:none", "（暂无最近文件）")
+        let none = MenuItemBuilder::with_id("recent:none", ui_msg!("trayNoRecent"))
             .enabled(false)
             .build(app)
             .map_err(|e| e.to_string())?;
@@ -3005,7 +3009,7 @@ fn build_tray_menu(
     }
     let recent_sub = sub.build().map_err(|e| e.to_string())?;
     let sep = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
-    let quit = MenuItemBuilder::with_id("quit", "退出 NoteLume").build(app).map_err(|e| e.to_string())?;
+    let quit = MenuItemBuilder::with_id("quit", ui_msg!("trayQuit")).build(app).map_err(|e| e.to_string())?;
 
     MenuBuilder::new(app)
         .items(&[&show, &new_note, &recent_sub, &sep, &quit])
@@ -3067,6 +3071,13 @@ fn build_tray(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     app.manage(tray);
     Ok(())
+}
+
+/// 前端上报当前界面语言（启动与切换语言时调用）。词表见 ui_lang.rs，
+/// 未知 id 返回 false（前端传入的总是 LOCALES 里的 id）。
+#[tauri::command]
+fn set_ui_lang(lang: String) -> bool {
+    ui_lang::set_lang(&lang)
 }
 
 /// 前端在「最近文件」变化时调用，重建「打开最近」子菜单。非 mac 为空操作。
@@ -3183,7 +3194,9 @@ pub fn run() {
             // macOS 原生菜单（前端算 spec，Rust 落原生对象）
             set_mac_menu,
             // macOS 菜单栏状态图标：刷新「打开最近」子菜单
-            tray_set_recent
+            tray_set_recent,
+            // 界面多语言：前端上报当前语言，后端文案按语言取词
+            set_ui_lang
         ])
         .on_menu_event(|app, event| {
             use tauri::Emitter;

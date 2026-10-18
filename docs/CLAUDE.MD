@@ -184,6 +184,7 @@
 - 语言选择顺序：localStorage `nl-lang` → navigator.languages（按主语言匹配，zh 分简繁）→ 简体中文。切换入口在工具条「更多 → 界面语言」，mac 原生菜单与命令面板是五个 `app.lang.*` 命令（注册表驱动，标题与勾选态自动跟随）。
 - 命令标题的键名与命令 id 对齐：`cmd.<命令id>`（如 `cmd.app.save`、`cmd.editor.block.h1`）；斜杠菜单项是 `cmd.block.<id>`；静态界面 `ui.*` / `panel.*`；菜单里不在注册表的条目 `menu.*`；弹窗 `dlg.*`；状态与消息 `status.*` / `msg.*`。换语言后 main.js 重新注册命令表并 `applyStaticDom`，依赖运行期文案的模块自己在渲染点调 `t()` 或订阅 `onLocaleChange`。
 - 新文案一律进词条，不写死中文；中英标点各自惯例（中文全角、西文半角），法文注意省音符撇号（’）与窄空格习惯。
+- 后端同理：`src-tauri/src/ui_lang.rs` 放五语言词表，Rust 各处 `ui_msg!("key", "name" => value)` 取词；前端启动与切语言时经 `set_ui_lang` 上报（tauri-bridge.js 的 `setUiLang`），未上报默认 zh-CN。带 `[code]` 前串的 git 错误与 `MERGED` / `CONFLICTS` 协议行只本地化前串之后的说明（前端按前串分派解析）；docx 导入警告的 code 不变、message 本地化。
 
 ## 当前状态
 

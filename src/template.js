@@ -6,7 +6,7 @@
 //    未知 token 原样保留（避免误伤 Obsidian Templater 之类插件的 {{...}}）。
 //  · 替换结果仍是普通 markdown，写盘即标准文件，不引入私有语法。
 
-const WEEKDAYS_ZH = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+import { t } from './i18n.js'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -42,7 +42,7 @@ export function builtinVars({ title = '', filename = '', now = new Date() } = {}
     year: String(now.getFullYear()),
     month: pad2(now.getMonth() + 1),
     day: pad2(now.getDate()),
-    weekday: WEEKDAYS_ZH[now.getDay()],
+    weekday: t('tpl.weekday.' + now.getDay()),
   }
 }
 

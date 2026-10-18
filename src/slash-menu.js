@@ -15,27 +15,27 @@ const para = () => N.paragraph.create()
 // 项表对外可见：mac 原生「段落」菜单与 editor 命令注册共用同一份标签（不另写一套文案）。
 // label 是词条键，渲染时按当前语言取值（slashLabel），切换语言即刻生效，不必重建插件。
 export const SLASH_ITEMS = [
-  { id: 'para', icon: 'pilcrow', labelKey: 'cmd.block.para', kw: 'text plain 正文 段落', build: () => para() },
-  { id: 'h1', text: 'H1', labelKey: 'cmd.block.h1', kw: 'h1 heading 标题', build: () => N.heading.create({ level: 1 }) },
-  { id: 'h2', text: 'H2', labelKey: 'cmd.block.h2', kw: 'h2 heading 标题', build: () => N.heading.create({ level: 2 }) },
-  { id: 'h3', text: 'H3', labelKey: 'cmd.block.h3', kw: 'h3 heading 标题', build: () => N.heading.create({ level: 3 }) },
-  { id: 'h4', text: 'H4', labelKey: 'cmd.block.h4', kw: 'h4 heading 标题', build: () => N.heading.create({ level: 4 }) },
-  { id: 'h5', text: 'H5', labelKey: 'cmd.block.h5', kw: 'h5 heading 标题', build: () => N.heading.create({ level: 5 }) },
-  { id: 'h6', text: 'H6', labelKey: 'cmd.block.h6', kw: 'h6 heading 标题', build: () => N.heading.create({ level: 6 }) },
-  { id: 'bullet', icon: 'list-bullet', labelKey: 'cmd.block.bullet', kw: 'ul bullet list 列表', build: () => N.bullet_list.create(null, N.list_item.create(null, para())) },
-  { id: 'ordered', text: '1.', labelKey: 'cmd.block.ordered', kw: 'ol ordered list 列表 有序', build: () => N.ordered_list.create(null, N.list_item.create(null, para())) },
-  { id: 'task', icon: 'task', labelKey: 'cmd.block.task', kw: 'task todo checkbox 任务 待办', build: () => N.bullet_list.create(null, N.list_item.create({ checked: false }, para())) },
-  { id: 'code', icon: 'code', labelKey: 'cmd.block.code', kw: 'code codeblock 代码', build: () => N.code_block.create({ params: '' }) },
-  { id: 'quote', icon: 'quote', labelKey: 'cmd.block.quote', kw: 'quote blockquote 引用', build: () => N.blockquote.create(null, para()) },
-  { id: 'hr', icon: 'hr', labelKey: 'cmd.block.hr', kw: 'hr divider rule 分割线 分隔', build: () => [N.horizontal_rule.create(), para()] },
-  { id: 'table', icon: 'table', labelKey: 'cmd.block.table', kw: 'table 表格', build: () =>
+  { id: 'para', icon: 'pilcrow', labelKey: 'cmd.block.para', kwKey: 'slash.kw.para', build: () => para() },
+  { id: 'h1', text: 'H1', labelKey: 'cmd.block.h1', kwKey: 'slash.kw.h1', build: () => N.heading.create({ level: 1 }) },
+  { id: 'h2', text: 'H2', labelKey: 'cmd.block.h2', kwKey: 'slash.kw.h2', build: () => N.heading.create({ level: 2 }) },
+  { id: 'h3', text: 'H3', labelKey: 'cmd.block.h3', kwKey: 'slash.kw.h3', build: () => N.heading.create({ level: 3 }) },
+  { id: 'h4', text: 'H4', labelKey: 'cmd.block.h4', kwKey: 'slash.kw.h4', build: () => N.heading.create({ level: 4 }) },
+  { id: 'h5', text: 'H5', labelKey: 'cmd.block.h5', kwKey: 'slash.kw.h5', build: () => N.heading.create({ level: 5 }) },
+  { id: 'h6', text: 'H6', labelKey: 'cmd.block.h6', kwKey: 'slash.kw.h6', build: () => N.heading.create({ level: 6 }) },
+  { id: 'bullet', icon: 'list-bullet', labelKey: 'cmd.block.bullet', kwKey: 'slash.kw.bullet', build: () => N.bullet_list.create(null, N.list_item.create(null, para())) },
+  { id: 'ordered', text: '1.', labelKey: 'cmd.block.ordered', kwKey: 'slash.kw.ordered', build: () => N.ordered_list.create(null, N.list_item.create(null, para())) },
+  { id: 'task', icon: 'task', labelKey: 'cmd.block.task', kwKey: 'slash.kw.task', build: () => N.bullet_list.create(null, N.list_item.create({ checked: false }, para())) },
+  { id: 'code', icon: 'code', labelKey: 'cmd.block.code', kwKey: 'slash.kw.code', build: () => N.code_block.create({ params: '' }) },
+  { id: 'quote', icon: 'quote', labelKey: 'cmd.block.quote', kwKey: 'slash.kw.quote', build: () => N.blockquote.create(null, para()) },
+  { id: 'hr', icon: 'hr', labelKey: 'cmd.block.hr', kwKey: 'slash.kw.hr', build: () => [N.horizontal_rule.create(), para()] },
+  { id: 'table', icon: 'table', labelKey: 'cmd.block.table', kwKey: 'slash.kw.table', build: () =>
     N.table.create(null, [
       N.table_row.create(null, [N.table_header.create(null, []), N.table_header.create(null, [])]),
       N.table_row.create(null, [N.table_cell.create(null, []), N.table_cell.create(null, [])]),
     ]) },
-  { id: 'callout', icon: 'lightbulb', labelKey: 'cmd.block.callout', kw: 'callout note tip info 提示 标注', build: () => N.callout.create({ type: 'note', title: 'NOTE' }, para()) },
-  { id: 'math', icon: 'math', labelKey: 'cmd.block.math', kw: 'math formula latex 公式', build: () => N.math_block.create({ latex: '' }) },
-  { id: 'mermaid', icon: 'diagram', labelKey: 'cmd.block.mermaid', kw: 'mermaid diagram chart 图表 流程图', build: () => N.code_block.create({ params: 'mermaid' }) },
+  { id: 'callout', icon: 'lightbulb', labelKey: 'cmd.block.callout', kwKey: 'slash.kw.callout', build: () => N.callout.create({ type: 'note', title: 'NOTE' }, para()) },
+  { id: 'math', icon: 'math', labelKey: 'cmd.block.math', kwKey: 'slash.kw.math', build: () => N.math_block.create({ latex: '' }) },
+  { id: 'mermaid', icon: 'diagram', labelKey: 'cmd.block.mermaid', kwKey: 'slash.kw.mermaid', build: () => N.code_block.create({ params: 'mermaid' }) },
 ]
 
 export function slashLabel(item) {
@@ -52,7 +52,7 @@ export function createSlashMenuPlugin() {
     if (!q) return SLASH_ITEMS.slice()
     const scored = []
     for (const it of SLASH_ITEMS) {
-      const hay = (slashLabel(it) + ' ' + it.kw).toLowerCase()
+      const hay = (slashLabel(it) + ' ' + t(it.kwKey)).toLowerCase()
       if (hay.includes(q)) scored.push({ it, pref: slashLabel(it).toLowerCase().startsWith(q) || it.id.startsWith(q) ? 0 : 1 })
     }
     scored.sort((a, b) => a.pref - b.pref)

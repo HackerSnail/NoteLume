@@ -797,7 +797,7 @@ function loadImgSrc(img, host, src, getVault) {
       const hint = document.createElement('span')
       hint.className = 'nl-img-hint'
       hint.setAttribute('contenteditable', 'false')
-      hint.textContent = '未找到图片：' + src
+      hint.textContent = t('msg.imgNotFound', { src })
       hint.title = src
       host.appendChild(hint)
     })
@@ -851,7 +851,7 @@ async function insertImageFiles(view, pos, files, opts) {
       const at = Math.min(pos, view.state.doc.content.size)
       view.dispatch(view.state.tr.insert(at, node).scrollIntoView())
     } catch (err) {
-      console.error('保存图片失败', err)
+      console.error(t('msg.imgSaveFailed'), err)
     }
   }
 }
@@ -894,22 +894,22 @@ function applyLinkUrl(view, from, to, empty, url) {
   const cur = view.state
   const size = cur.doc.content.size
   const f = Math.max(0, Math.min(from, size))
-  const t = Math.max(f, Math.min(to, size))
+  const to2 = Math.max(f, Math.min(to, size)) // 局部名避开 i18n 的 t
   const type = schema.marks.link
   const tr = cur.tr
   if (url === '') {
-    tr.removeMark(f, t, type)
+    tr.removeMark(f, to2, type)
     view.dispatch(tr.scrollIntoView())
     view.focus()
     return
   }
   if (empty) {
-    const text = '链接文字'
+    const text = t('editor.linkText')
     tr.insertText(text, f)
     tr.addMark(f, f + text.length, type.create({ href: url, title: null }))
     tr.setSelection(TextSelection.create(tr.doc, f, f + text.length))
   } else {
-    tr.addMark(f, t, type.create({ href: url, title: null }))
+    tr.addMark(f, to2, type.create({ href: url, title: null }))
   }
   view.dispatch(tr.scrollIntoView())
   view.focus()

@@ -93,7 +93,7 @@ export function setLocale(id) {
       try {
         fn(id)
       } catch (e) {
-        console.warn('[i18n] 订阅方处理语言切换失败', e)
+        console.warn(t('i18n.listenerFailed'), e)
       }
     }
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('nl:locale-change', { detail: { locale: id } }))

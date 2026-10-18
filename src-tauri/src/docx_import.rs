@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::Read as IoRead;
 use std::path::Path;
 
-use crate::{b64_decode, b64_encode, vault_join};
+use crate::{b64_decode, b64_encode, ui_msg, vault_join};
 
 // ==================== OOXML 命名空间 ====================
 // 约定：document.xml/styles.xml/numbering.xml/footnotes.xml 里的元素与属性均带 `w:`/`r:` 前缀、
@@ -476,7 +476,7 @@ fn push_children_blocks(parent: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec
             push_table(node, ctx, blocks);
         } else if is_el(node, "sdt") {
             if is_toc_sdt(node) {
-                ctx.warn("toc", "目录域已按可见文本降级（域码不执行）", "sdt");
+                ctx.warn("toc", &ui_msg!("warnTocSdt"), "sdt");
             }
             if let Some(c) = child(node, "sdtContent") {
                 push_children_blocks(c, ctx, blocks);
@@ -667,7 +667,7 @@ fn push_paragraph(p: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
                 }
             }
         }
-        ctx.warn("textbox", "文本框内容已按顺序段落输出（位置/浮动信息丢失）", "txbxContent");
+        ctx.warn("textbox", &ui_msg!("warnTextbox"), "txbxContent");
         return;
     }
 
@@ -932,7 +932,7 @@ fn omml_node_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
             match accent_cmd(&chr) {
                 Some(cmd) => format!("{}{{{}}}", cmd, e),
                 None => {
-                    ctx.warn("math", &format!("未知重音字符 {:?}，已原样前置", chr), "acc");
+                    ctx.warn("math", &ui_msg!("warnUnknownAccent", "chr" => chr), "acc");
                     format!("{}{}", chr, e)
                 }
             }
@@ -987,7 +987,7 @@ fn omml_node_to_latex(n: roxmltree::Node, ctx: &mut Ctx) -> String {
             format!("\\boxed{{{}}}", e)
         }
         other => {
-            ctx.warn("math", &format!("OMML 构造 m:{} 未支持，已降级为内容拼接", other), other);
+            ctx.warn("math", &ui_msg!("warnOmmlUnsupported", "tag" => other), other);
             omml_contents(n, ctx)
         }
     }
@@ -1274,7 +1274,7 @@ fn finalize_xref(instr: &str, text: &str, ctx: &mut Ctx) -> String {
         }
         // 目标书签正文中不存在（既未命中标题、也无被登记的 bookmarkStart）：降级为可见文本 + 告警
         ctx.stats.xref_degraded += 1;
-        ctx.warn("xref", "交叉引用目标书签未找到，已降级为可见文本", instr);
+        ctx.warn("xref", &ui_msg!("warnXrefMissing"), instr);
     }
     text.to_string()
 }
@@ -1385,7 +1385,7 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
             flush_pending(&mut pending, out);
             let instr = wattr(node, "instr").unwrap_or("").to_string();
             if instr.to_ascii_uppercase().contains("TOC") {
-                ctx.warn("toc", "目录域已按可见文本降级", "fldSimple");
+                ctx.warn("toc", &ui_msg!("warnTocFldSimple"), "fldSimple");
             }
             let mut inner = String::new();
             map_inline_children(node, ctx, &mut inner);
@@ -1412,7 +1412,7 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
                 out.push('$');
                 out.push_str(&collapse_ws(&latex));
                 out.push('$');
-                ctx.warn("math", "显示公式与正文混排，已内联为 $..$", "oMathPara");
+                ctx.warn("math", &ui_msg!("warnOMathPara"), "oMathPara");
             }
         } else if is_el(node, "bookmarkStart") {
             // 被交叉引用命中的非标题书签目标：在书签起始处发一个字面 `<a id="…"></a>`（GFM 行内 HTML），
@@ -1430,7 +1430,7 @@ fn map_inline_children(parent: roxmltree::Node, ctx: &mut Ctx, out: &mut String)
             }
         } else if is_el(node, "del") {
             flush_pending(&mut pending, out);
-            ctx.warn("unknown_style", "已忽略删除痕迹（tracked deletion）内的文本", "del");
+            ctx.warn("unknown_style", &ui_msg!("warnTrackedDel"), "del");
         }
     }
     flush_pending(&mut pending, out);
@@ -1521,7 +1521,7 @@ fn map_run(r: roxmltree::Node, ctx: &mut Ctx) -> String {
             if !id.is_empty() {
                 ctx.referenced.push(id.clone());
                 ctx.stats.footnotes += 1;
-                ctx.warn("footnote", "脚注/尾注引用已降为 [^id] + 文末定义", "footnoteReference");
+                ctx.warn("footnote", &ui_msg!("warnFootnoteRef"), "footnoteReference");
                 trailing.push_str(&format!("[^{}]", id));
             }
         } else if is_el(node, "drawing") || is_el(node, "pict") {
@@ -1548,11 +1548,11 @@ fn map_run(r: roxmltree::Node, ctx: &mut Ctx) -> String {
         if val("vertAlign").as_deref() == Some("superscript") {
             // 上标：GFM 无对应语法，用 `^` 前缀降级（比 `<sup>` 干净，如参考文献 `^[22]`）。
             s = format!("^{}", s);
-            ctx.warn("unknown_style", "上标 GFM 无对应语法，已降级为 ^ 前缀", "vertAlign");
+            ctx.warn("unknown_style", &ui_msg!("warnSuperscript"), "vertAlign");
         } else if val("vertAlign").as_deref() == Some("subscript") {
             // 下标：与上标对称，GFM 无对应语法，用 `~` 前缀降级（如 `~i`）。
             s = format!("~{}", s);
-            ctx.warn("unknown_style", "下标 GFM 无对应语法，已降级为 ~ 前缀", "vertAlign");
+            ctx.warn("unknown_style", &ui_msg!("warnSubscript"), "vertAlign");
         }
         if is("strike") {
             s = format!("~~{}~~", s);
@@ -1597,7 +1597,7 @@ fn push_image(bytes: &[u8], target: &str, alt: &str, ctx: &mut Ctx) -> String {
     let fname = format!("{}.{}", &sha[..12.min(sha.len())], ext);
 
     if bytes.len() as u64 > ctx.max_image_bytes {
-        ctx.warn("image_skipped", &format!("图片超过 max_image_bytes（{} 字节）已跳过", bytes.len()), target);
+        ctx.warn("image_skipped", &ui_msg!("warnImgTooLarge", "bytes" => bytes.len()), target);
         return format!("<!--img skipped: too large: {}-->", alt);
     }
 
@@ -1691,11 +1691,7 @@ fn is_layout_table(tbl: roxmltree::Node) -> bool {
 fn push_table(tbl: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
     // 版式表格：按文档顺序线性化为普通块（保留格子内标题/列表/段落），不当作数据表拍平。
     if is_layout_table(tbl) {
-        ctx.warn(
-            "layout_table",
-            "检测到版式表格（单元格含多段/嵌套表），已按文档顺序展开为普通块（标题/列表/段落保留）",
-            "tbl",
-        );
+        ctx.warn("layout_table", &ui_msg!("warnLayoutTable"), "tbl");
         for tr in tbl.children().filter(|n| is_el(*n, "tr")) {
             for tc in tr.children().filter(|n| is_el(*n, "tc")) {
                 push_children_blocks(tc, ctx, blocks);
@@ -1751,7 +1747,7 @@ fn push_table(tbl: roxmltree::Node, ctx: &mut Ctx, blocks: &mut Vec<Block>) {
 
     if merged {
         ctx.stats.merged_tables += 1;
-        ctx.warn("merged_table", "合并单元格 GFM 无法表达，已输出原样 <table> HTML", "tbl");
+        ctx.warn("merged_table", &ui_msg!("warnMergedTable"), "tbl");
         blocks.push(Block::TableHtml(table_to_html(&rows)));
     } else {
         blocks.push(Block::TableHtml(gfm_or_html_table(&rows)));
@@ -1939,14 +1935,14 @@ struct ZipContent {
 
 fn read_zip(data: &[u8]) -> Result<ZipContent, String> {
     let cursor = std::io::Cursor::new(data);
-    let mut z = zip::ZipArchive::new(cursor).map_err(|e| format!("打开 docx（ZIP）失败：{}", e))?;
+    let mut z = zip::ZipArchive::new(cursor).map_err(|e| ui_msg!("docxZipOpenFailed", "err" => e))?;
     let get_text = |z: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, name: &str| -> Option<String> {
         let mut f = z.by_name(name).ok()?;
         let mut buf = String::new();
         f.read_to_string(&mut buf).ok()?;
         Some(buf)
     };
-    let document = get_text(&mut z, "word/document.xml").ok_or("非有效 .docx（缺 word/document.xml）")?;
+    let document = get_text(&mut z, "word/document.xml").ok_or_else(|| ui_msg!("docxInvalid"))?;
     let rels = get_text(&mut z, "word/_rels/document.xml.rels").unwrap_or_default();
     let numbering = get_text(&mut z, "word/numbering.xml");
     let styles = get_text(&mut z, "word/styles.xml");
@@ -2051,7 +2047,7 @@ fn sanitize_rel(rel: &str) -> Result<String, String> {
     let mut segs: Vec<&str> = Vec::new();
     for s in norm.split('/').filter(|s| !s.is_empty() && *s != ".") {
         if s == ".." {
-            return Err("非法路径：不允许跳出知识库根目录".into());
+            return Err(ui_msg!("pathEscapeVault"));
         }
         segs.push(s);
     }
@@ -2110,7 +2106,7 @@ pub fn docx_preview(args: DocxPreviewArgs) -> Result<DocxPreview, String> {
     let rels = parse_rels(&content.rels);
     let numbering = parse_numbering(content.numbering.as_deref());
     let styles = parse_styles(content.styles.as_deref());
-    let doc = roxmltree::Document::parse(&content.document).map_err(|e| format!("document.xml 解析失败：{}", e))?;
+    let doc = roxmltree::Document::parse(&content.document).map_err(|e| ui_msg!("docxXmlParseFailed", "err" => e))?;
 
     // 标题：override → 首个标题样式段落 → 文件名主干
     let stem = src_name.rsplit_once('.').map(|(s, _)| s.to_string()).unwrap_or_else(|| src_name.clone());
@@ -2185,7 +2181,7 @@ pub fn docx_commit(args: DocxCommitArgs) -> Result<DocxCommitResult, String> {
         rel = if dir.is_empty() { format!("{}.md", slug) } else { format!("{}/{}.md", dir, slug) };
     }
     if rel.is_empty() || !rel.to_ascii_lowercase().ends_with(".md") {
-        return Err("非法 doc_rel：须为 .md 库内相对路径".into());
+        return Err(ui_msg!("docxBadRel"));
     }
     let final_rel = resolve_conflict(&root, &rel);
     let doc_dir = split_dir_file(&final_rel).0;
@@ -2193,7 +2189,7 @@ pub fn docx_commit(args: DocxCommitArgs) -> Result<DocxCommitResult, String> {
     // 写 .md
     let md_abs = vault_join(&root, &final_rel)?;
     if !md_abs.starts_with(&root) {
-        return Err("非法路径：目标不在知识库根目录内".into());
+        return Err(ui_msg!("pathOutsideVault"));
     }
     if let Some(parent) = md_abs.parent() {
         fs_create_dir_all(parent)?;
@@ -2242,7 +2238,7 @@ pub fn docx_commit(args: DocxCommitArgs) -> Result<DocxCommitResult, String> {
         }
         let abs = vault_join(&root, &irel)?;
         if !abs.starts_with(&root) {
-            return Err("非法路径：图片目标不在知识库根目录内".into());
+            return Err(ui_msg!("docxImgOutsideVault"));
         }
         if let Some(parent) = abs.parent() {
             fs_create_dir_all(parent)?;
@@ -2294,7 +2290,7 @@ pub fn relocate_import(from_root: String, to_root: String) -> Result<(), String>
 }
 
 fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
-    for entry in std::fs::read_dir(src).map_err(|e| format!("读取目录失败 {}：{}", src.display(), e))? {
+    for entry in std::fs::read_dir(src).map_err(|e| ui_msg!("readDirFailed", "path" => src.display(), "err" => e))? {
         let entry = entry.map_err(|e| e.to_string())?;
         let ft = entry.file_type().map_err(|e| e.to_string())?;
         let target = dst.join(entry.file_name());
@@ -2303,7 +2299,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
             copy_tree(&entry.path(), &target)?;
         } else if ft.is_file() {
             std::fs::copy(&entry.path(), &target)
-                .map_err(|e| format!("复制失败 {}→{}：{}", entry.path().display(), target.display(), e))?;
+                .map_err(|e| ui_msg!("copyFailed", "src" => entry.path().display(), "dst" => target.display(), "err" => e))?;
         }
         // 符号链接等其他类型：忽略（temp 导入目录里不会出现）
     }
@@ -2313,16 +2309,16 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
 // ==================== fs 薄封装（集中错误串，便于跨平台） ====================
 
 fn fs_read(p: &str) -> Result<Vec<u8>, String> {
-    std::fs::read(p).map_err(|e| format!("读取文件失败 {}：{}", p, e))
+    std::fs::read(p).map_err(|e| ui_msg!("readFileFailed", "path" => p, "err" => e))
 }
 fn fs_canonicalize(p: &str) -> Result<std::path::PathBuf, String> {
     std::fs::canonicalize(p).map_err(|e| e.to_string())
 }
 fn fs_create_dir_all(p: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(p).map_err(|e| format!("创建目录失败：{}", e))
+    std::fs::create_dir_all(p).map_err(|e| ui_msg!("createDirFailed", "err" => e))
 }
 fn fs_write(p: &Path, data: &[u8]) -> Result<(), String> {
-    std::fs::write(p, data).map_err(|e| format!("写入失败 {}：{}", p.display(), e))
+    std::fs::write(p, data).map_err(|e| ui_msg!("writeFailed", "path" => p.display(), "err" => e))
 }
 fn file_name(p: &str) -> String {
     Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| p.to_string())

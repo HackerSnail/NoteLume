@@ -8,6 +8,7 @@
 // 关键坑（Phase 0 spike 实测）：docx-rs 默认 styles.xml 的 Heading1 不含 outlineLvl，导入侧认不出标题层级；
 // 故本模块显式写入带 outlineLvl + 名称 "heading N" 的标题样式（NLH1..NLH6）。
 
+use crate::ui_msg;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -238,12 +239,12 @@ pub fn export_docx(args: ExportDocxArgs) -> Result<ExportDocx, String> {
 
     // 落盘：build() 得 XMLDocx（原始部件）→ pack 写 zip。
     let file = std::fs::File::create(&args.out_path)
-        .map_err(|e| format!("创建输出文件失败：{}", e))?;
-    docx.build().pack(file).map_err(|e| format!("打包 docx 失败：{}", e))?;
+        .map_err(|e| ui_msg!("createOutFileFailed", "err" => e))?;
+    docx.build().pack(file).map_err(|e| ui_msg!("docxPackFailed", "err" => e))?;
 
     if !ctx.missing_images.is_empty() {
         let list = ctx.missing_images.join(", ");
-        ctx.warn("missing_image", &format!("以下图片在库内未找到，已跳过：{}", list));
+        ctx.warn("missing_image", &ui_msg!("warnMissingImage", "list" => list));
     }
 
     Ok(ExportDocx {
@@ -284,7 +285,7 @@ fn push_inline(p: docx_rs::Paragraph, it: &IRInline, ctx: &mut ExCtx) -> docx_rs
                     return p.add_run(Run::new().add_image(pic));
                 }
                 Err(_) => {
-                    ctx.warn("bad_image", &format!("图片无法解码，已跳过：{}", img.rel));
+                    ctx.warn("bad_image", &ui_msg!("warnBadImage", "rel" => img.rel.as_str()));
                     return p;
                 }
             }

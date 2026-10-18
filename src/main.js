@@ -36,6 +36,7 @@ import {
   buildSiteGraph,
   copyVaultAssets,
   setMacMenu,
+  setUiLang,
   traySetRecent,
   pickDocxFiles,
   docxPreview,
@@ -235,7 +236,7 @@ function updateDocStats() {
   const goal = parseInt(localStorage.getItem('nl-word-goal') || '0', 10)
   if (goal > 0) {
     const pct = Math.min(100, Math.round((words / goal) * 100))
-    label += ' · 目标 ' + goal + '（' + pct + '%）'
+    label += t('stats.goal', { goal, pct })
   }
   els.docstats.textContent = ''
   setIcon(els.docstats, 'pen', label)
@@ -270,7 +271,7 @@ function setSidebar(hidden) {
 function toggleSidebar() {
   const hidden = localStorage.getItem('nl-sidebar') !== 'hidden'
   setSidebar(hidden)
-  setStatus(hidden ? '侧栏：已收起' : '侧栏：已展开')
+  setStatus(hidden ? t('status.colHidden', { label: t('col.sidebar') }) : t('status.colShown', { label: t('col.sidebar') }))
 }
 
 // —— 侧栏「文件 / 大纲」共用一块区域：两 tab 互斥（Typora 式），tab 态持久化 ——
@@ -332,7 +333,7 @@ function setInspector(hidden) {
 function toggleInspector() {
   const hidden = !inspectorHidden()
   setInspector(hidden)
-  setStatus(hidden ? '检查器：已收起' : '检查器：已展开')
+  setStatus(hidden ? t('status.colHidden', { label: t('col.inspector') }) : t('status.colShown', { label: t('col.inspector') }))
 }
 
 // —— 左右栏宽度：按住分隔条直接拖；拖到不足 COL_W_COLLAPSE 就整栏收起，反向再拖回来（Typora 式）。
@@ -343,7 +344,7 @@ const COL_W_MIN = 180
 const COL_W_MAX = 520
 const COL_W_DEFAULT = 280
 const COL_W_COLLAPSE = 90
-const COL_W_LABEL = { sidebar: '侧栏', inspector: '检查器' }
+const COL_W_LABEL = { sidebar: () => t('col.sidebar'), inspector: () => t('col.inspector') }
 function clampColWidth(w) {
   return Math.max(COL_W_MIN, Math.min(COL_W_MAX, Math.round(w)))
 }
@@ -376,7 +377,7 @@ function bindColResizers() {
     const g = document.getElementById(which === 'sidebar' ? 'gutter-side' : 'gutter-insp')
     const col = els[which]
     if (!g || !col) continue
-    const label = COL_W_LABEL[which]
+    const label = COL_W_LABEL[which]()
     g.addEventListener('pointerdown', (e) => {
       e.preventDefault()
       g.classList.add('dragging')
@@ -400,13 +401,13 @@ function bindColResizers() {
         col.classList.remove('is-resizing')
         if (w < COL_W_COLLAPSE) {
           applyColWidths() // 拖没的这次不记账：变量回到记住的宽度，下次展开即恢复
-          setStatus(label + '：已收起')
+          setStatus(t('status.colHidden', { label }))
           return
         }
         const saved = clampColWidth(w)
         localStorage.setItem(COL_W_KEY[which], String(saved))
         applyColWidths()
-        setStatus(label + '宽度：' + saved + 'px')
+        setStatus(t('status.colWidth', { label, n: saved }))
       }
       window.addEventListener('pointermove', move)
       window.addEventListener('pointerup', up)
@@ -415,7 +416,7 @@ function bindColResizers() {
     g.addEventListener('dblclick', () => {
       localStorage.removeItem(COL_W_KEY[which])
       applyColWidths()
-      setStatus(label + '宽度：默认')
+      setStatus(t('status.colWidthDefault', { label }))
     })
   }
 }
@@ -460,7 +461,7 @@ function renderOutline() {
       const caret = document.createElement('button')
       caret.type = 'button'
       caret.className = 'outline-caret' + (folded ? ' folded' : '')
-      caret.title = folded ? '展开' : '收起'
+      caret.title = folded ? t('common.expand') : t('common.collapse')
       setIcon(caret, 'chevron-down', '')
       caret.addEventListener('click', (e) => {
         e.preventDefault()
@@ -477,7 +478,7 @@ function renderOutline() {
     }
     const a = document.createElement('a')
     a.className = 'outline-item'
-    a.textContent = item.text || '（空标题）'
+    a.textContent = item.text || t('outline.emptyTitle')
     a.href = '#'
     a.addEventListener('click', (e) => {
       e.preventDefault()
@@ -549,14 +550,14 @@ async function openFolder() {
     if (!root) return
     if (!leaveCurrentVault(root)) {
       // 挑的就是当前库：什么都不动（也顺带保护已打开的标签页不被清掉）
-      setStatus('已在当前知识库：' + root)
+      setStatus(t('status.inVault', { root }))
       return
     }
     state.vaultRoot = root
     state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
     const tree = await scanVault(root)
     renderTree(tree)
-    setStatus('知识库已加载：' + root + '（索引构建中…）')
+    setStatus(t('status.vaultLoaded', { root }))
     startIndexPolling()
     // 面板按新库重取：反链 / 全局标签 / 快照列表都不许残留旧库内容
     refreshLinkPanels()
@@ -566,8 +567,8 @@ async function openFolder() {
     if (gitPanel) gitPanel.refresh()
   } catch (e) {
     const msg = (e && e.message) || e
-    setStatus('打开失败：' + msg)
-    await messageDialog('打开知识库失败：' + msg)
+    setStatus(t('status.openFailed', { msg }))
+    await messageDialog(t('msg.openVaultFailed', { msg }))
   }
 }
 
@@ -583,14 +584,14 @@ function normVaultPath(p) {
 // —— 触发后台重建，前端 500ms 轮询 status.ready，就绪后刷新当前文档的双链面板 ——
 function startIndexPolling() {
   state.indexReady = false
-  rebuildIndex(state.vaultRoot).catch((e) => console.warn('rebuild_index 失败', e))
+  rebuildIndex(state.vaultRoot).catch((e) => console.warn(t('msg.rebuildIndexFailed'), e))
   const started = Date.now()
   const tick = async () => {
     try {
       const st = await getIndexStatus()
       if (st.ready && normVaultPath(st.vaultRoot) === normVaultPath(state.vaultRoot)) {
         state.indexReady = true
-        setStatus('索引就绪：' + st.docs + ' 篇文档')
+        setStatus(t('status.indexReady', { n: st.docs }))
         refreshLinkPanels()
         refreshGlobalTags()
         return
@@ -599,7 +600,7 @@ function startIndexPolling() {
       /* ignore transient */
     }
     if (Date.now() - started < 60_000) setTimeout(tick, 500)
-    else setStatus('索引构建超时，稍后可重新打开知识库重试')
+    else setStatus(t('status.indexTimeout'))
   }
   setTimeout(tick, 400)
 }
@@ -633,7 +634,7 @@ async function openSingleFile() {
     updateDocStats() // setMode 里的刷新发生在换文档之前，这里按新内容补一次
     els.filename.textContent = abs
     renderSingleFileTree(name)
-    setStatus('已打开文件：' + abs)
+    setStatus(t('status.fileOpened', { abs }))
     recordRecent(dir, name)
     editor.focus()
     // 单文件也后台索引：库根就是同目录，反查更方便
@@ -644,8 +645,8 @@ async function openSingleFile() {
     if (tabs) tabs.open({ root: dir, rel: name })
   } catch (e) {
     const msg = (e && e.message) || e
-    setStatus('打开文件失败：' + msg)
-    await messageDialog('打开文件失败：' + msg)
+    setStatus(t('msg.openFileFailedDlg', { msg }))
+    await messageDialog(t('msg.openFileFailedDlg', { msg }))
   }
 }
 
@@ -776,15 +777,15 @@ async function doMove(srcRel, isFolder, destDir) {
     remapCurrentAfterRename(srcRel, newRel, isFolder)
     renderTree(await scanVault(state.vaultRoot))
     startIndexPolling()
-    setStatus('已移动：' + srcRel + ' → ' + newRel)
+    setStatus(t('status.moved', { from: srcRel, to: newRel }))
   } catch (e) {
-    await messageDialog('移动失败：' + errText(e))
+    await messageDialog(t('msg.moveFailed', { err: errText(e) }))
   }
 }
 
 async function importDroppedFiles(files, destDir) {
   if (!state.vaultRoot) {
-    setStatus('请先打开知识库文件夹')
+    setStatus(t('status.needVaultFolder'))
     return
   }
   const list = Array.from(files || [])
@@ -798,13 +799,13 @@ async function importDroppedFiles(files, destDir) {
       try {
         sources.push({ srcB64: await fileToBase64(f), displayName: f.name })
       } catch (e) {
-        await messageDialog('读取失败 ' + f.name + '：' + errText(e))
+        await messageDialog(t('status.readFailed', { name: f.name, err: errText(e) }))
       }
     }
     if (sources.length) await importWordFlow(sources, destDir)
   }
   if (!ok.length) {
-    if (bad.length) await messageDialog('不支持导入的文件类型：' + bad.map((f) => f.name).join(', '))
+    if (bad.length) await messageDialog(t('msg.importTypeBad', { names: bad.map((f) => f.name).join(', ') }))
     return
   }
   const imported = []
@@ -813,13 +814,13 @@ async function importDroppedFiles(files, destDir) {
       const rel = await importVaultFileFrom(state.vaultRoot, destDir, f)
       imported.push(rel)
     } catch (e) {
-      await messageDialog('导入失败 ' + f.name + '：' + errText(e))
+      await messageDialog(t('msg.importFailed', { name: f.name, err: errText(e) }))
     }
   }
   if (imported.length) {
     renderTree(await scanVault(state.vaultRoot))
     startIndexPolling()
-    setStatus('已导入 ' + imported.length + ' 个文件')
+    setStatus(t('status.imported', { n: imported.length }))
   }
 }
 
@@ -853,7 +854,7 @@ async function importWordFlow(sources, destDir = '', target = {}) {
   const intoVault = target.intoVault !== false
   const vaultRoot = intoVault ? state.vaultRoot : ''
   if (intoVault && !vaultRoot) {
-    setStatus('请先打开知识库文件夹')
+    setStatus(t('status.needVaultFolder'))
     return
   }
   let tempRoot = '' // 独立模式：首次落盘时在系统 temp 建的一次性目录
@@ -899,7 +900,7 @@ async function importWordFlow(sources, destDir = '', target = {}) {
       opts: { vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
     })
     const { committed, skipped, failed, total } = res.stats
-    const tail = (skipped ? `，${skipped} 跳过` : '') + (failed ? `，${failed} 失败` : '')
+    const tail = (skipped ? t('msg.tailSkipped', { n: skipped }) : '') + (failed ? t('msg.tailFailed', { n: failed }) : '')
     if (committedRels.length) {
       // 立即回显：独立模式先把 temp 一次性目录作为工作根打开（侧栏树列出全部导入篇、可点），再打开首篇
       if (!intoVault && tempRoot) {
@@ -912,13 +913,23 @@ async function importWordFlow(sources, destDir = '', target = {}) {
         if (gitPanel) gitPanel.refresh()
       }
       await openFile(committedRels[0])
-      setStatus(`Word 导入完成：${committed}/${total} 篇` + (intoVault ? '入库' : '（临时目录，可自行保存）') + tail)
+      setStatus(t('status.wordImportDone', {
+        done: committed,
+        total,
+        where: intoVault ? t('doc.importWhereVault') : t('doc.importWhereTemp'),
+        tail,
+      }))
     } else {
-      await messageDialog(`Word 导入：${committed}/${total} 篇` + (intoVault ? '入库' : '') + (skipped ? `，${skipped} 跳过/未接受` : '') + (failed ? `，${failed} 失败` : ''), 'info')
+      await messageDialog(t('msg.wordImportDone', {
+        done: committed,
+        total,
+        where: intoVault ? t('doc.importWhereVault') : '',
+        tail: (skipped ? t('msg.skippedUnaccepted', { n: skipped }) : '') + (failed ? t('msg.tailFailed', { n: failed }) : ''),
+      }), 'info')
     }
   } catch (e) {
-    await messageDialog('Word 导入失败：' + errText(e))
-    setStatus('Word 导入失败')
+    await messageDialog(t('msg.wordImportFailedDlg', { err: errText(e) }))
+    setStatus(t('status.wordImportFailed'))
   }
 }
 
@@ -1175,7 +1186,7 @@ async function newBlankTemplate() {
   const name = await promptDialog({ title: t('dlg.newTplFileTitle', { dir: TEMPLATE_DIR() }), placeholder: t('dlg.tplFilePh') })
   if (!name) return
   const rel = joinRel(TEMPLATE_DIR(), /\.md$/i.test(name) ? name : name + '.md')
-  const seed = '# {{title}}\n\n日期：{{date}} {{weekday}}　时间：{{time}}\n\n## 待办\n- [ ] \n'
+  const seed = t('tpl.blankSeed')
   try {
     await ensureDir(TEMPLATE_DIR())
     await writeMdFile(state.vaultRoot, rel, seed)
@@ -1364,9 +1375,9 @@ async function renameEntry(rel, name, isFolder) {
     remapCurrentAfterRename(rel, to, isFolder)
     renderTree(await scanVault(state.vaultRoot))
     startIndexPolling() // 索引重建，反映改名 / 移动后的新路径
-    setStatus('已重命名 / 移动：' + rel + ' → ' + to)
+    setStatus(t('status.renamed', { from: rel, to }))
   } catch (e) {
-    await messageDialog('重命名失败：' + errText(e))
+    await messageDialog(t('msg.renameFailed', { err: errText(e) }))
   }
 }
 
@@ -1386,7 +1397,7 @@ function remapCurrentAfterRename(from, to, isFolder) {
 
 async function deleteVaultFile(rel, name) {
   if (!state.vaultRoot) return
-  const ok = await confirmDialog(`确定把「${name}」移入系统回收站？（可从回收站恢复）`, '移入回收站')
+  const ok = await confirmDialog(t('msg.trashConfirm', { name }), t('msg.trashTitle'))
   if (!ok) return
   try {
     await deleteFile(state.vaultRoot, rel)
@@ -1400,7 +1411,7 @@ async function deleteVaultFile(rel, name) {
       setMode('md')
       editor.setMarkdown('')
       updateDocStats() // 清空后统计归零，不沿用被删文档的字数
-      els.filename.textContent = '（无打开文档）'
+      els.filename.textContent = t('ui.noDocOpen')
       els.filename.classList.remove('dirty')
       refreshLinkPanels()
       if (snapshotPanel) snapshotPanel.refresh()
@@ -1412,9 +1423,9 @@ async function deleteVaultFile(rel, name) {
       }
     }
     renderTree(await scanVault(state.vaultRoot))
-    setStatus('已移入回收站：' + rel)
+    setStatus(t('status.trashed', { rel }))
   } catch (e) {
-    await messageDialog('删除失败：' + ((e && e.message) || e))
+    await messageDialog(t('msg.deleteFailed', { err: (e && e.message) || e }))
   }
 }
 
@@ -1456,13 +1467,13 @@ async function newScratchFile() {
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
   try {
     const root = await ensureScratchDir()
-    const rel = `未命名-${stamp}.md`
-    await writeMdFile(root, rel, '# 未命名\n\n')
+    const rel = t('doc.untitled') + '-' + stamp + '.md'
+    await writeMdFile(root, rel, '# ' + t('doc.untitled') + '\n\n')
     await openTabDoc({ root, rel, scratch: true })
-    setStatus('已新建（临时文件，Ctrl+S 或关闭时再选保存位置）')
+    setStatus(t('status.createdScratch'))
     editor.focus()
   } catch (e) {
-    await messageDialog('新建失败：' + errText(e))
+    await messageDialog(t('msg.newFileFailed', { err: errText(e) }))
   }
 }
 
@@ -1550,7 +1561,7 @@ function resetToNoDoc() {
   setMode('md')
   editor.setMarkdown('')
   updateDocStats() // setMode 里的刷新发生在清空之前，这里补一次归零
-  els.filename.textContent = '（无打开文档）'
+  els.filename.textContent = t('ui.noDocOpen')
   els.filename.classList.remove('dirty')
 }
 
@@ -1573,7 +1584,7 @@ async function cycleTab(dir) {
   if (!tabs) return
   const list = tabs.list()
   if (list.length < 2) {
-    setStatus(list.length ? '只有一个标签页' : '没有打开的标签页')
+    setStatus(list.length ? t('status.oneTab') : t('status.noTab'))
     return
   }
   const i = list.findIndex((t) => t.id === (tabs.active() || {}).id)
@@ -1585,9 +1596,9 @@ async function cycleTab(dir) {
 async function saveScratchAs() {
   try {
     const md = editor.getMarkdown()
-    const abs = await pickSaveAs(state.currentFile || '未命名.md')
+    const abs = await pickSaveAs(state.currentFile || t('doc.untitledMd'))
     if (!abs) {
-      setStatus('已取消保存（文件仍在临时目录）')
+      setStatus(t('status.saveCanceled'))
       return false
     }
     const { dir, name } = splitAbs(abs)
@@ -1612,10 +1623,10 @@ async function saveScratchAs() {
     if (snapshotPanel) snapshotPanel.refresh()
     if (gitPanel) gitPanel.refresh()
     if (pluginManager) pluginManager.reload()
-    setStatus('已保存到：' + abs)
+    setStatus(t('status.savedTo', { abs }))
     return true
   } catch (e) {
-    await messageDialog('保存失败：' + errText(e))
+    await messageDialog(t('msg.saveFailedDlg', { err: errText(e) }))
     return false
   }
 }
@@ -1647,7 +1658,7 @@ async function openFile(rel, skipDirtyConfirm) {
     updateDocStats() // setMode 里的刷新发生在换文档之前（切标签时编辑器还是上一个文档），这里补一次
     els.filename.textContent = state.scratch ? await joinPath(state.vaultRoot, rel) : rel
     highlightActiveFile()
-    setStatus('已打开：' + rel)
+    setStatus(t('status.opened', { rel }))
     editor.focus()
     refreshLinkPanels()
     if (snapshotPanel) snapshotPanel.refresh()
@@ -1657,7 +1668,7 @@ async function openFile(rel, skipDirtyConfirm) {
     if (!state.scratch) recordRecent(state.vaultRoot, rel)
     if (tabs) tabs.open({ root: state.vaultRoot, rel, scratch: state.scratch })
   } catch (e) {
-    await messageDialog('打开失败：' + e)
+    await messageDialog(t('status.openFailed', { msg: e }))
   }
 }
 
@@ -1701,26 +1712,26 @@ async function openCanvas(path) {
     state.scratch = isScratchRoot(state.vaultRoot)
     els.filename.textContent = path
     highlightActiveFile()
-    setStatus('已打开画布：' + path)
+    setStatus(t('status.canvasOpened', { path }))
     resetBackupTimer()
     recordRecent(state.vaultRoot, path)
     if (tabs) tabs.open({ root: state.vaultRoot, rel: path, canvas: true, scratch: state.scratch })
   } catch (e) {
-    await messageDialog('打开画布失败：' + ((e && e.message) || e))
+    await messageDialog(t('msg.canvasOpenFailed', { err: (e && e.message) || e }))
   }
 }
 
 async function newCanvas() {
   if (!state.vaultRoot) {
-    setStatus('请先打开知识库文件夹')
-    await messageDialog('新建画布前请先打开一个知识库文件夹（画布会保存为库内的 .canvas 文件）。', 'info')
+    setStatus(t('status.needVaultFolder'))
+    await messageDialog(t('msg.canvasNeedVault'), 'info')
     return
   }
   if (!(await ensureSavedBeforeLeave())) return
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
-  const name = `画布-${stamp}.canvas`
+  const name = t('doc.canvasName') + '-' + stamp + '.canvas'
   try {
     setMode('canvas') // 先显示容器，newBlank 里 centerWorld 才能拿到真实尺寸
     state.currentFile = name
@@ -1729,17 +1740,17 @@ async function newCanvas() {
     await canvasView.newBlank(name)
     await canvasView.save() // 先落盘一个空画布，使其出现在文件树
     renderTree(await scanVault(state.vaultRoot))
-    setStatus('新建画布：' + name)
+    setStatus(t('status.canvasCreated', { name }))
     if (tabs) tabs.open({ root: state.vaultRoot, rel: name, canvas: true })
   } catch (e) {
-    await messageDialog('新建画布失败：' + ((e && e.message) || e))
+    await messageDialog(t('msg.canvasCreateFailed', { err: (e && e.message) || e }))
   }
 }
 
 // —— 保存到原文件（含索引增量更新 + 可选备份）——
 async function saveCurrent(manual = true) {
   if (!state.currentFile || !state.vaultRoot) {
-    if (manual) setStatus('没有可保存的文档')
+    if (manual) setStatus(t('status.nothingToSave'))
     return
   }
   // 新建未定落的临时文件：手动保存 = 选正式位置（另存为），自动保存仍写临时目录保命
@@ -1751,28 +1762,32 @@ async function saveCurrent(manual = true) {
   try {
     if (state.mode === 'canvas') {
       await canvasView.save()
-      setStatus((manual ? '已保存：' : '自动保存：') + state.currentFile + ' · ' + timeStr())
+      setStatus(manual
+        ? t('status.saved', { name: state.currentFile, time: timeStr() })
+        : t('status.autoSaved', { name: state.currentFile, time: timeStr() }))
       return
     }
     const md = editor.getMarkdown()
     await writeMdFile(state.vaultRoot, state.currentFile, md)
     editor.markSaved()
     if (pluginManager) pluginManager.fireSave(state.currentFile, md)
-    setStatus((manual ? '已保存：' : '自动保存：') + state.currentFile + ' · ' + timeStr())
+    setStatus(manual
+      ? t('status.saved', { name: state.currentFile, time: timeStr() })
+      : t('status.autoSaved', { name: state.currentFile, time: timeStr() }))
     // 索引增量：无需重扫全库
     try {
       await updateIndexDoc(state.currentFile, md)
       refreshLinkPanels()
     } catch (e) {
-      console.warn('索引更新失败', e)
+      console.warn(t('msg.indexUpdateFailed'), e)
     }
     // 备份：手动保存一定做一次；自动保存受间隔约束（在 scheduleAutosave 里）
     await maybeBackup(md, manual)
     if (snapshotPanel && manual) snapshotPanel.refresh()
     if (gitPanel && manual) gitPanel.refresh()
   } catch (e) {
-    if (manual) await messageDialog('保存失败：' + e)
-    else console.warn('自动保存失败', e)
+    if (manual) await messageDialog(t('msg.saveFailedDlg', { err: e }))
+    else console.warn(t('msg.autosaveFailed'), e)
   }
 }
 
@@ -1794,7 +1809,7 @@ async function saveTempAsFormal() {
     // 2) 选目标目录
     const target = await pickFolder()
     if (!target) {
-      setStatus('已保存到临时目录（未选择保存位置）')
+      setStatus(t('status.savedTemp'))
       return
     }
     // 3) 递归拷贝整棵 temp → target（覆写同名，保留相对路径）
@@ -1808,10 +1823,10 @@ async function saveTempAsFormal() {
     startIndexPolling()
     if (pluginManager) pluginManager.reload()
     if (gitPanel) gitPanel.refresh()
-    setStatus('已另存为：' + target)
+    setStatus(t('status.savedAs', { target }))
   } catch (e) {
-    await messageDialog('另存为失败：' + ((e && e.message) || e))
-    setStatus('另存为失败')
+    await messageDialog(t('msg.saveAsFailed', { err: (e && e.message) || e }))
+    setStatus(t('status.saveAsFailed'))
   }
 }
 
@@ -1823,7 +1838,7 @@ async function maybeBackup(md, force) {
     await backupWrite(state.vaultRoot, state.currentFile, md)
     state.autosave.lastBackupAt = now
   } catch (e) {
-    console.warn('备份失败', e)
+    console.warn(t('msg.backupFailed'), e)
   }
 }
 
@@ -1849,7 +1864,7 @@ function timeStr() {
 // —— [[wikilink]] 点击：跳转或新建 ——
 async function onOpenWiki(name) {
   if (!state.vaultRoot) {
-    setStatus('请先打开知识库文件夹')
+    setStatus(t('status.needVaultFolder'))
     return
   }
   try {
@@ -1858,7 +1873,7 @@ async function onOpenWiki(name) {
       await openFile(res.path)
       return
     }
-    const create = await confirmDialog(`文档 "${name}" 不存在，是否在知识库中新建？`, '新建文档')
+    const create = await confirmDialog(t('dlg.wikiMissingDoc', { name }), t('dlg.wikiNewDocTitle'))
     if (!create) return
     const rel = await createMdFile(state.vaultRoot, name, `# ${name}\n\n`)
     renderTree(await scanVault(state.vaultRoot))
@@ -1868,7 +1883,7 @@ async function onOpenWiki(name) {
     // 让索引立刻感知新文档
     try { await updateIndexDoc(rel, `# ${name}\n\n`) } catch (_) {}
   } catch (e) {
-    await messageDialog('操作失败：' + e)
+    await messageDialog(t('msg.opFailed', { err: e }))
   }
 }
 
@@ -1913,18 +1928,18 @@ function onMetaChange({ outline, tags }) {
 
   const tw = els.tags
   tw.innerHTML = ''
-  tags.forEach((t) => {
+  tags.forEach((tag) => {
     const chip = document.createElement('span')
     chip.className = 'tag-chip'
-    chip.textContent = '#' + t
-    chip.title = '在库内搜索此标签'
+    chip.textContent = '#' + tag
+    chip.title = t('tags.searchInVault')
     chip.addEventListener('click', () => {
       els.searchInput.value = '#' + t
       runSearch('#' + t)
     })
     tw.appendChild(chip)
   })
-  if (!tags.length) tw.innerHTML = '<div class="muted">本文档暂无标签</div>'
+  if (!tags.length) tw.innerHTML = '<div class="muted">' + t('tags.docEmpty') + '</div>'
 
   scheduleAutosave()
 }
@@ -1941,19 +1956,19 @@ async function refreshGlobalTags() {
     docBox.classList.remove('show')
   }
   if (!state.vaultRoot || !state.indexReady) {
-    box.innerHTML = '<div class="muted">' + (state.vaultRoot ? '索引构建中…' : '打开知识库后显示') + '</div>'
+    box.innerHTML = '<div class="muted">' + (state.vaultRoot ? t('common.indexBuilding') : t('tags.vaultHint')) + '</div>'
     return
   }
   let tags = []
   try {
     tags = await listAllTags()
   } catch (_) {
-    box.innerHTML = '<div class="muted">标签加载失败</div>'
+    box.innerHTML = '<div class="muted">' + t('tags.loadFailed') + '</div>'
     return
   }
   state.tagNames = (tags || []).map((t) => t.tag)
   if (!tags.length) {
-    box.innerHTML = '<div class="muted">暂无标签</div>'
+    box.innerHTML = '<div class="muted">' + t('tags.empty') + '</div>'
     return
   }
   box.innerHTML = ''
@@ -1965,7 +1980,7 @@ async function refreshGlobalTags() {
     c.className = 'tag-count'
     c.textContent = String(count)
     chip.appendChild(c)
-    chip.title = '查看含 #' + tag + ' 的文档'
+    chip.title = t('tags.viewDocs', { tag })
     chip.addEventListener('click', () => toggleTagDocs(tag, chip))
     box.appendChild(chip)
   })
@@ -1982,7 +1997,7 @@ async function toggleTagDocs(tag, chip) {
   }
   activeGlobalTag = tag
   if (chip) chip.classList.add('active')
-  docBox.innerHTML = '<div class="muted">加载中…</div>'
+  docBox.innerHTML = '<div class="muted">' + t('common.loading') + '</div>'
   docBox.classList.add('show')
   let docs = []
   try {
@@ -1993,12 +2008,12 @@ async function toggleTagDocs(tag, chip) {
   docBox.innerHTML = ''
   const head = document.createElement('div')
   head.className = 'tag-docs-head'
-  head.textContent = '#' + tag + ' · ' + docs.length + ' 篇'
+  head.textContent = t('tags.docCount', { tag, n: docs.length })
   docBox.appendChild(head)
   if (!docs.length) {
     const empty = document.createElement('div')
     empty.className = 'muted'
-    empty.textContent = '无文档'
+    empty.textContent = t('tags.noDocs')
     docBox.appendChild(empty)
     return
   }
@@ -2015,16 +2030,16 @@ async function toggleTagDocs(tag, chip) {
 // —— P1#1 双向链接面板 ——
 async function refreshLinkPanels() {
   if (!state.currentFile || !state.indexReady) {
-    els.backlinks.innerHTML = '<div class="link-empty">' + (state.indexReady ? '暂无' : '索引构建中…') + '</div>'
-    els.outgoing.innerHTML = '<div class="link-empty">' + (state.indexReady ? '暂无' : '索引构建中…') + '</div>'
+    els.backlinks.innerHTML = '<div class="link-empty">' + (state.indexReady ? t('links.empty') : t('common.indexBuilding')) + '</div>'
+    els.outgoing.innerHTML = '<div class="link-empty">' + (state.indexReady ? t('links.empty') : t('common.indexBuilding')) + '</div>'
     return
   }
   try {
     const [bl, og] = await Promise.all([queryBacklinks(state.currentFile), queryOutgoing(state.currentFile)])
-    renderLinkList(els.backlinks, bl, '暂无反向链接')
-    renderLinkList(els.outgoing, og, '本文档暂无指向其他文档的链接')
+    renderLinkList(els.backlinks, bl, t('links.noBacklinks'))
+    renderLinkList(els.outgoing, og, t('links.noOutgoing'))
   } catch (e) {
-    console.warn('反查链接失败', e)
+    console.warn(t('msg.backlinksFailed'), e)
   }
 }
 
@@ -2060,15 +2075,15 @@ async function runSearch(q) {
     const hits = await searchVault(query, 40)
     els.searchResults.innerHTML = ''
     if (!hits.length) {
-      els.searchResults.innerHTML = '<div class="search-empty">无匹配</div>'
+      els.searchResults.innerHTML = '<div class="search-empty">' + t('search.noMatch') + '</div>'
       return
     }
     hits.forEach((h) => {
       const card = document.createElement('div')
       card.className = 'search-hit'
       const badge =
-        h.matchedBy === 'title' ? '<span class="search-hit-badge">标题</span>'
-        : h.matchedBy === 'tag' ? '<span class="search-hit-badge">标签</span>'
+        h.matchedBy === 'title' ? '<span class="search-hit-badge">' + t('search.badgeTitle') + '</span>'
+        : h.matchedBy === 'tag' ? '<span class="search-hit-badge">' + t('search.badgeTag') + '</span>'
         : ''
       card.innerHTML =
         '<div class="search-hit-title">' + escapeHtml(h.title) + badge + '</div>' +
@@ -2078,7 +2093,7 @@ async function runSearch(q) {
       els.searchResults.appendChild(card)
     })
   } catch (e) {
-    console.warn('搜索失败', e)
+    console.warn(t('search.failed'), e)
   }
 }
 
@@ -2089,11 +2104,11 @@ function escapeHtml(s) {
 // —— P1#6 导出 HTML ——
 async function exportHTML() {
   if (!state.currentFile) {
-    setStatus('请先打开一个文档')
+    setStatus(t('status.openDocFirst'))
     return
   }
   if (state.mode === 'canvas') {
-    setStatus('画布不支持导出 HTML')
+    setStatus(t('status.canvasNoHtml'))
     return
   }
   try {
@@ -2107,9 +2122,9 @@ async function exportHTML() {
     const abs = await pickSaveAs(defaultName)
     if (!abs) return
     await exportFile(abs, html)
-    setStatus('已导出 HTML：' + abs)
+    setStatus(t('status.exportedHtml', { abs }))
   } catch (e) {
-    await messageDialog('导出失败：' + ((e && e.message) || e))
+    await messageDialog(t('msg.exportFailed', { err: (e && e.message) || e }))
   }
 }
 
@@ -2140,11 +2155,11 @@ async function exportWordViaDialog() {
   if (!editor) return
   // 菜单已按「有 md 文档」置灰，这里兜住命令面板那条路：空文档导出一份空 Word 不如直接拒
   if (!state.currentFile) {
-    setStatus('没有可导出的文档')
+    setStatus(t('status.noDocToExport'))
     return
   }
   if (state.mode === 'canvas') {
-    setStatus('画布不支持导出 Word')
+    setStatus(t('status.canvasNoWord'))
     return
   }
   try {
@@ -2165,24 +2180,24 @@ async function exportWordViaDialog() {
     const abs = await pickSaveAs(base + '.docx')
     if (!abs) return
     const r = await exportDocx({ ir, vaultRoot: state.vaultRoot || '', outPath: String(abs) })
-    setStatus('已导出 Word：' + abs)
+    setStatus(t('status.exportedWord', { abs }))
     if (r && r.warnings && r.warnings.length) {
-      await messageDialog('导出完成（含提示）：\n' + r.warnings.map((w) => '· ' + w.message).join('\n'), 'info')
+      await messageDialog(t('msg.exportWordDone', { warnings: r.warnings.map((w) => '· ' + w.message).join('\n') }), 'info')
     }
   } catch (e) {
-    await messageDialog('导出失败：' + ((e && e.message) || e))
+    await messageDialog(t('msg.exportFailed', { err: (e && e.message) || e }))
   }
 }
 
 // —— 批次 C：导出整站为静态 HTML ——
 async function exportSiteFull() {
   if (!state.vaultRoot) {
-    setStatus('需先打开知识库文件夹才能导出整站')
+    setStatus(t('status.siteNeedVault'))
     return
   }
   const outDir = await pickFolder()
   if (!outDir) return
-  setStatus('开始导出整站…')
+  setStatus(t('status.siteExportStart'))
   try {
     const io = {
       buildGraph: (vr) => buildSiteGraph(vr),
@@ -2192,10 +2207,14 @@ async function exportSiteFull() {
       copyAssets: (vr, rels, od) => copyVaultAssets(vr, rels, od),
     }
     const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus })
-    await messageDialog(`整站导出完成：${r.ok} 篇成功` + (r.failed ? `，${r.failed} 篇跳过` : '') + '\n输出目录：' + outDir, 'info')
+    await messageDialog(t('msg.siteExportDone', {
+      ok: r.ok,
+      failed: r.failed ? t('msg.siteSkipped', { n: r.failed }) : '',
+      dir: outDir,
+    }), 'info')
   } catch (e) {
-    await messageDialog('整站导出失败：' + ((e && e.message) || e))
-    setStatus('整站导出失败')
+    await messageDialog(t('msg.siteExportFailedDlg', { err: (e && e.message) || e }))
+    setStatus(t('status.siteExportFailed'))
   }
 }
 
@@ -2235,11 +2254,11 @@ let graphHandle = null
 async function openGraphModal() {
   if (graphHandle) return
   if (!state.vaultRoot) {
-    setStatus('需先打开知识库文件夹才能看图')
+    setStatus(t('status.graphNeedVault'))
     return
   }
   if (!state.indexReady) {
-    setStatus('索引尚未就绪，稍候再试')
+    setStatus(t('status.graphIndexNotReady'))
     return
   }
   try {
@@ -2251,7 +2270,7 @@ async function openGraphModal() {
     })
   } catch (e) {
     graphHandle = null
-    setStatus('图谱打开失败：' + (e?.message || e))
+    setStatus(t('status.graphFailed', { err: e?.message || e }))
   }
 }
 
@@ -2419,7 +2438,7 @@ async function afterRemotePull() {
       }
     }
     if (state.dirty) {
-      const ok = await confirmDialog('远端可能更新了当前文档，是否放弃本地未保存改动并重新加载？', '拉取冲突')
+      const ok = await confirmDialog(t('msg.pullConflict'), t('msg.pullConflictTitle'))
       if (ok) await reload()
     } else {
       await reload()
@@ -2453,6 +2472,12 @@ function switchLocale(id) {
   applyTheme(document.documentElement.getAttribute('data-theme') || 'light')
   updateDocStats()
   scheduleMacChrome()
+  // 后端文案跟随；托盘菜单要等 setUiLang 落好再重建才是新语言（scheduleMacChrome 只重建菜单栏）
+  if (IS_MAC && window.__TAURI_INTERNALS__) {
+    setUiLang(id).then(() => syncTrayRecents()).catch(() => {})
+  } else if (window.__TAURI_INTERNALS__) {
+    setUiLang(id).catch(() => {})
+  }
   setStatus(t('status.langSwitched', { name: localeName(id) }))
 }
 
@@ -2569,7 +2594,7 @@ function runViaShortcut(id) {
   try {
     commandRegistry.run(id, commandCtx())
   } catch (err) {
-    setStatus('命令执行失败：' + ((err && err.message) || err))
+    setStatus(t('status.cmdFailed', { err: (err && err.message) || err }))
   }
   scheduleMacChrome()
 }
@@ -2586,7 +2611,7 @@ async function syncMacChrome() {
   try {
     await pushMacMenu()
   } catch (e) {
-    console.warn('原生菜单重建失败', e)
+    console.warn(t('msg.macMenuRebuildFailed'), e)
   }
 }
 
@@ -2641,7 +2666,7 @@ async function setupMacMenu() {
     await listen('nl:menu-select', (e) => onMenuSelect(e.payload))
     await pushMacMenu()
   } catch (e) {
-    setStatus('mac 原生菜单不可用，已保留窗口内工具条：' + ((e && e.message) || e))
+    setStatus(t('msg.macMenuUnavailable', { err: (e && e.message) || e }))
     return
   }
   macMenuOn = true
@@ -2660,7 +2685,7 @@ function saveKeymapOverrides(overrides) {
   try {
     localStorage.setItem('nl-keymap', JSON.stringify(ov))
   } catch (e) {
-    setStatus('保存快捷键失败：' + ((e && e.message) || e))
+    setStatus(t('msg.saveKeymapFailed', { err: (e && e.message) || e }))
     return
   }
   rebuildKeymap()
@@ -2690,6 +2715,8 @@ async function boot() {
   // 这里把 <html lang> 与静态文案对齐当前语言（默认词条也是中文，重复一遍无副作用）
   document.documentElement.lang = getLocale()
   applyStaticDom(document)
+  // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
+  if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
   initTitlebar()
   // 标签页先建：编辑器回调（onDirty → markDirty → tabs.setDirty）可能在装配过程中就触发
   tabs = createTabs({
@@ -2819,7 +2846,7 @@ async function boot() {
       try {
         commandRegistry.run(id, commandCtx())
       } catch (e) {
-        setStatus('命令执行失败：' + ((e && e.message) || e))
+        setStatus(t('status.cmdFailed', { err: (e && e.message) || e }))
       }
     },
     openFile: (rel) => openFile(rel),
@@ -2845,5 +2872,5 @@ async function boot() {
 
 boot().catch((e) => {
   console.error(e)
-  if (window.__nlError) window.__nlError('初始化失败：' + ((e && e.message) || e))
+  if (window.__nlError) window.__nlError(t('status.initFailed', { err: (e && e.message) || e }))
 })

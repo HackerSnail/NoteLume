@@ -418,6 +418,7 @@ pub mod system {
         format_known_hosts_line, AheadBehind, CommitMergeArgs, GitSyncInfo, Remote, RemoteArgs,
         ResolveArgs, TrustHostArgs,
     };
+    use crate::ui_msg;
 
     /// 一次 git 进程调用的收敛结果
     pub struct GitRun {
@@ -436,7 +437,7 @@ pub mod system {
         if !so.is_empty() {
             return so.to_string();
         }
-        format!("git 退出码 {}", run.code)
+        ui_msg!("gitExitCode", "code" => run.code)
     }
 
     /// 统一的 git 进程调用：current_dir=vault_root、非交互 env（禁终端提示 / SSH BatchMode）。
@@ -449,7 +450,7 @@ pub mod system {
                 .env("GIT_TERMINAL_PROMPT", "0")
                 .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
                 .output()
-                .map_err(|e| format!("调用系统 git 失败：{}（请确认已安装并在 PATH 中）", e))?;
+                .map_err(|e| ui_msg!("gitSpawnFailed", "err" => e))?;
             Ok(GitRun {
                 code: out.status.code().unwrap_or(-1),
                 stdout: String::from_utf8_lossy(&out.stdout).to_string(),
@@ -457,7 +458,7 @@ pub mod system {
             })
         })
         .await
-        .map_err(|e| format!("git 任务调度失败：{}", e))?
+        .map_err(|e| ui_msg!("gitTaskFailed", "err" => e))?
     }
 
     /// 纯函数：解析 `git remote -v`。留 fetch 行、去 push。
@@ -715,7 +716,7 @@ pub mod system {
         let flag = match args.side.as_str() {
             "ours" => "--ours",
             "theirs" => "--theirs",
-            _ => return Err("[git_error]side 必须是 ours 或 theirs".into()),
+            _ => return Err(format!("[git_error]{}", ui_msg!("gitSideInvalid"))),
         };
         let r1 = git_run(
             vault_root.clone(),
@@ -775,24 +776,24 @@ pub mod system {
             let home = std::env::var_os("HOME")
                 .or_else(|| std::env::var_os("USERPROFILE"))
                 .map(std::path::PathBuf::from)
-                .ok_or("无法定位 HOME/USERPROFILE，不能写 ~/.ssh/known_hosts")?;
+                .ok_or(ui_msg!("gitKnownHostsHome"))?;
             let ssh = home.join(".ssh");
             std::fs::create_dir_all(&ssh)
-                .map_err(|e| format!("创建 ~/.ssh 失败：{}", e))?;
+                .map_err(|e| ui_msg!("gitKnownHostsCreate", "err" => e))?;
             let p = ssh.join("known_hosts");
             use std::io::Write;
             let mut f = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&p)
-                .map_err(|e| format!("打开 ~/.ssh/known_hosts 失败：{}", e))?;
+                .map_err(|e| ui_msg!("gitKnownHostsOpen", "err" => e))?;
             let line = format_known_hosts_line(&args.host, &args.key_type, &args.key_b64);
             writeln!(f, "{}", line)
-                .map_err(|e| format!("写 ~/.ssh/known_hosts 失败：{}", e))?;
+                .map_err(|e| ui_msg!("gitKnownHostsWrite", "err" => e))?;
             Ok(())
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// Phase 4：向上报当前引擎。System 下 git_version 从前置一次性探测的结果射。
@@ -864,6 +865,7 @@ pub mod system {
 /// 验证时将 **私库 + 用户 dotfile** 合并，已有条目直接命中、零摩擦；首次陌生 host 走“一次性信任”。
 pub mod known_hosts_store {
     use super::{format_known_hosts_line, parse_known_hosts, KnownHostEntry};
+    use crate::ui_msg;
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -911,17 +913,17 @@ pub mod known_hosts_store {
 
     /// 向私库追加一行。自动 mkdir。失败 → Err 回显。
     pub fn append(host: &str, key_type: &str, key_b64: &str) -> Result<(), String> {
-        let p = app_path().ok_or("无法定位 APPDATA/XDG_CONFIG_HOME/HOME，不能写 known_hosts 私库")?;
+        let p = app_path().ok_or(ui_msg!("gitKnownHostsStoreHome"))?;
         if let Some(dir) = p.parent() {
-            fs::create_dir_all(dir).map_err(|e| format!("创建私库目录失败：{}", e))?;
+            fs::create_dir_all(dir).map_err(|e| ui_msg!("gitKnownHostsStoreDir", "err" => e))?;
         }
         let mut f = fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&p)
-            .map_err(|e| format!("打开私库失败：{}", e))?;
+            .map_err(|e| ui_msg!("gitKnownHostsStoreOpen", "err" => e))?;
         let line = format_known_hosts_line(host, key_type, key_b64);
-        writeln!(f, "{}", line).map_err(|e| format!("写私库失败：{}", e))?;
+        writeln!(f, "{}", line).map_err(|e| ui_msg!("gitKnownHostsStoreWrite", "err" => e))?;
         Ok(())
     }
 }
@@ -938,6 +940,7 @@ pub mod builtin {
         AheadBehind, BuiltinErrCode, CommitMergeArgs, GitSyncInfo, HostUnknownPayload,
         KnownHostEntry, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
     };
+    use crate::ui_msg;
     use git2::{
         build::CheckoutBuilder, cert::Cert, CertificateCheckStatus, Cred, CredentialType,
         Error as GError, ErrorClass, FetchOptions, MergeOptions, ObjectType, PushOptions,
@@ -951,7 +954,7 @@ pub mod builtin {
     // ---------- 小 helper ----------
 
     fn open_repo(vault_root: &str) -> Result<Repository, String> {
-        Repository::open(vault_root).map_err(|e| format!("[git_error]打开仓库失败：{}", e))
+        Repository::open(vault_root).map_err(|e| format!("[git_error]{}", ui_msg!("gitOpenRepoFailed", "err" => e)))
     }
 
     fn home_dir() -> Option<std::path::PathBuf> {
@@ -1088,20 +1091,20 @@ pub mod builtin {
     fn read_head_info(repo: &Repository) -> Result<HeadInfo, String> {
         let head = repo
             .head()
-            .map_err(|_| "[git_error]无 HEAD（仓库可能为空）".to_string())?;
+            .map_err(|_| format!("[git_error]{}", ui_msg!("gitNoHead")))?;
         if !head.is_branch() {
-            return Err("[git_error]内置 pull 需要 HEAD 在分支上（当前 detached）".into());
+            return Err(format!("[git_error]{}", ui_msg!("gitDetachedPull")).into());
         }
         let branch = head
             .shorthand()
-            .ok_or_else(|| "[git_error]无分支名".to_string())?
+            .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitNoBranchName")))?
             .to_string();
         let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
-            "[auth]当前分支无上游；先安装系统 git 运行 `git branch --set-upstream-to=origin/<br>`、或在面板里配置".to_string()
+            format!("[auth]{}", ui_msg!("gitNoUpstreamBuiltin"))
         })?;
         let up_full = up_refname_buf
             .as_str()
-            .ok_or_else(|| "[git_error]上游 refname 非 UTF8".to_string())?
+            .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitUpstreamNotUtf8")))?
             .to_string();
         let up_short = up_full
             .strip_prefix("refs/remotes/")
@@ -1110,7 +1113,7 @@ pub mod builtin {
         let remote_name = up_short
             .split('/')
             .next()
-            .ok_or_else(|| "[git_error]无法解析 remote 名".to_string())?
+            .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitRemoteNameUnresolved")))?
             .to_string();
         Ok(HeadInfo { up_short, remote_name })
     }
@@ -1137,7 +1140,7 @@ pub mod builtin {
             Ok(out)
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     pub async fn remote_add(vault_root: String, args: RemoteArgs) -> Result<(), String> {
@@ -1147,7 +1150,7 @@ pub mod builtin {
             Ok(())
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     pub async fn remote_set_url(vault_root: String, args: RemoteArgs) -> Result<(), String> {
@@ -1157,7 +1160,7 @@ pub mod builtin {
             Ok(())
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     pub async fn fetch(vault_root: String, remote: Option<String>) -> Result<String, String> {
@@ -1199,7 +1202,7 @@ pub mod builtin {
             Ok(summary)
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     pub async fn upstream(vault_root: String) -> Result<Option<String>, String> {
@@ -1211,7 +1214,7 @@ pub mod builtin {
             }
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     pub async fn ahead_behind(vault_root: String) -> Result<Option<AheadBehind>, String> {
@@ -1245,7 +1248,7 @@ pub mod builtin {
             }))
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     pub async fn pull_ff(vault_root: String) -> Result<String, String> {
@@ -1278,15 +1281,15 @@ pub mod builtin {
 
             // 3) 同 oid → AlreadyUp
             if local_oid == up_oid {
-                return Ok("已经是最新\n".into());
+                return Ok(format!("{}\n", ui_msg!("gitAlreadyUp")));
             }
             let (ahead, behind) =
                 repo.graph_ahead_behind(local_oid, up_oid).map_err(map_err)?;
             let dec = super::ff_decision(ahead, behind, false);
             if dec == super::FfDecision::Divergent {
                 return Err(format!(
-                    "[non_fast_forward]分叉：ahead={} behind={}；本 R1-B 不自动 merge/rebase，请用系统 git 工作流或批次 L 快照手动处理",
-                    ahead, behind
+                    "[non_fast_forward]{}",
+                    ui_msg!("gitNonFfDivergent", "ahead" => ahead, "behind" => behind)
                 ));
             }
 
@@ -1316,13 +1319,12 @@ pub mod builtin {
 
             let short = |o: git2::Oid| -> String { o.to_string().chars().take(7).collect() };
             Ok(format!(
-                "Fast-forward {} -> {}\n",
-                short(local_oid),
-                short(up_oid)
+                "{}\n",
+                ui_msg!("gitFastForward", "from" => short(local_oid), "to" => short(up_oid))
             ))
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// R2：内置 `Remote::push`。推当前分支→ upstream 同名分支（固定 refspec，不靠 push.default）。
@@ -1334,20 +1336,20 @@ pub mod builtin {
             let repo = open_repo(&vault_root)?;
             let head = repo
                 .head()
-                .map_err(|_| "[git_error]无 HEAD（仓库可能为空）".to_string())?;
+                .map_err(|_| format!("[git_error]{}", ui_msg!("gitNoHead")))?;
             if !head.is_branch() {
-                return Err("[git_error]内置 push 需要 HEAD 在分支上（当前 detached）".into());
+                return Err(format!("[git_error]{}", ui_msg!("gitDetachedPush")).into());
             }
             let branch = head
                 .shorthand()
-                .ok_or_else(|| "[git_error]无分支名".to_string())?
+                .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitNoBranchName")))?
                 .to_string();
             let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
-                "[no_upstream]当前分支无上游，无法推——先安装系统 git 跑一次 `git push -u origin <branch>`、或在面板里配置".to_string()
+                format!("[no_upstream]{}", ui_msg!("gitNoUpstreamPush"))
             })?;
             let up_full = up_refname_buf
                 .as_str()
-                .ok_or_else(|| "[git_error]上游 refname 非 UTF8".to_string())?
+                .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitUpstreamNotUtf8")))?
                 .to_string();
             let up_short = up_full
                 .strip_prefix("refs/remotes/")
@@ -1355,7 +1357,7 @@ pub mod builtin {
                 .to_string();
             let (remote_name, remote_branch) = match up_short.split_once('/') {
                 Some((r, b)) => (r.to_string(), b.to_string()),
-                None => return Err(format!("[git_error]无法解析 upstream：{}", up_short)),
+                None => return Err(format!("[git_error]{}", ui_msg!("gitUpstreamUnresolved", "up" => up_short))),
             };
             let refspec = format!("refs/heads/{}:refs/heads/{}", branch, remote_branch);
 
@@ -1401,19 +1403,19 @@ pub mod builtin {
                         } else {
                             "git_error"
                         };
-                        return Err(format!("[{}]push 被远端拒绝：{}", code, reason));
+                        return Err(format!("[{}]{}", code, ui_msg!("gitPushRejected", "reason" => reason)));
                     }
                 }
                 // 次优：侧信道 host_unknown；否则 map_err 默认
                 return Err(map_err_with_side(e, &side));
             }
             Ok(format!(
-                "已推 refs/heads/{} -> {}/{}\n",
-                branch, remote_name, remote_branch
+                "{}\n",
+                ui_msg!("gitPushedRefs", "branch" => branch, "remote" => remote_name, "remoteBranch" => remote_branch)
             ))
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     // ---------- R3：合并拉取 + 冲突解决（git2 merge API） ----------
@@ -1448,10 +1450,10 @@ pub mod builtin {
             // 3) merge_analysis
             let (analysis, _pref) = repo.merge_analysis(&[&up_annotated]).map_err(map_err)?;
             if analysis.is_up_to_date() {
-                return Ok("MERGED\n已经是最新\n".into());
+                return Ok(format!("MERGED\n{}\n", ui_msg!("gitAlreadyUp")));
             }
             if !(analysis.is_normal() || analysis.is_fast_forward()) {
-                return Err("[git_error]无法执行合并（非正常 merge 场景）".into());
+                return Err(format!("[git_error]{}", ui_msg!("gitMergeImpossible")).into());
             }
 
             // 4) merge
@@ -1462,13 +1464,13 @@ pub mod builtin {
             // 5) 检冲突
             let idx = repo.index().map_err(map_err)?;
             if idx.has_conflicts() {
-                Ok("CONFLICTS\n合并产生了冲突，请在面板解决\n".into())
+                Ok(format!("CONFLICTS\n{}\n", ui_msg!("gitMergeConflicts")))
             } else {
-                Ok("MERGED\n合并成功\n".into())
+                Ok(format!("MERGED\n{}\n", ui_msg!("gitMergeOk")))
             }
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// R3：列冲突文件（index stage>0 的唯一路径）。
@@ -1493,7 +1495,7 @@ pub mod builtin {
             Ok(out)
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// R3：解决单个冲突文件（选 ours/theirs + 写工作区 + resolve index）。
@@ -1518,25 +1520,25 @@ pub mod builtin {
                 let side_entry = match args.side.as_str() {
                     "ours" => c.our.as_ref(),
                     "theirs" => c.their.as_ref(),
-                    _ => return Err("[git_error]side 必须是 ours 或 theirs".into()),
+                    _ => return Err(format!("[git_error]{}", ui_msg!("gitSideInvalid"))),
                 };
                 match side_entry {
                     Some(e) => chosen = Some(e.id),
                     None => {
-                        return Err(format!("[git_error]{} 无 {} 版本", args.path, args.side))
+                        return Err(format!("[git_error]{}", ui_msg!("gitNoSideVersion", "path" => args.path.as_str(), "side" => args.side.as_str())))
                     }
                 }
                 break;
             }
-            let oid = chosen.ok_or_else(|| format!("[git_error]{} 不在冲突状态", args.path))?;
+            let oid = chosen.ok_or_else(|| format!("[git_error]{}", ui_msg!("gitNotConflicted", "path" => args.path.as_str())))?;
             // 取该 blob 写工作区
             let blob = repo.find_blob(oid).map_err(map_err)?;
             let workdir = repo
                 .workdir()
-                .ok_or("[git_error]裸仓库无工作区")?
+                .ok_or(format!("[git_error]{}", ui_msg!("gitBareNoWorkdir")))?
                 .join(&args.path);
             std::fs::write(&workdir, blob.content())
-                .map_err(|e| format!("写工作区失败：{}", e))?;
+                .map_err(|e| ui_msg!("gitWriteWorkdirFailed", "err" => e))?;
             // stage 到 0（同时清除该路径的冲突阶段），落盘 index
             idx.add_path(std::path::Path::new(&args.path))
                 .map_err(map_err)?;
@@ -1544,7 +1546,7 @@ pub mod builtin {
             Ok(())
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// R3：检 merge-in-progress（repo.state() == Merge）。
@@ -1554,7 +1556,7 @@ pub mod builtin {
             Ok(repo.state() == RepositoryState::Merge)
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// R3：中止合并—— hard reset 回 HEAD + 清 MERGE_HEAD。
@@ -1574,7 +1576,7 @@ pub mod builtin {
             Ok(())
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// R3：提交合并（index → tree → commit with two parents）。
@@ -1592,7 +1594,7 @@ pub mod builtin {
             // 读 MERGE_HEAD 作第二父
             let mh_content =
                 std::fs::read_to_string(repo.path().join("MERGE_HEAD")).map_err(|_| {
-                    "[git_error]无 MERGE_HEAD，不在合并状态".to_string()
+                    format!("[git_error]{}", ui_msg!("gitNoMergeHead"))
                 })?;
             let mh_oid =
                 git2::Oid::from_str(mh_content.trim()).map_err(|e| format!("[git_error]{}", e))?;
@@ -1614,7 +1616,7 @@ pub mod builtin {
             Ok(())
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// Phase 4：一次性信任陌生 host——写入应用私库（不污染 ~/.ssh）。
@@ -1623,7 +1625,7 @@ pub mod builtin {
             known_hosts_store::append(&args.host, &args.key_type, &args.key_b64)
         })
         .await
-        .map_err(|e| format!("spawn_blocking 失败：{}", e))?
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
     /// Phase 4：向上报当前引擎。Builtin 下 git_version 永远 None（不依赖系统 git）。

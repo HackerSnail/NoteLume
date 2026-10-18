@@ -378,6 +378,11 @@ export function setMacMenu(spec) {
   return invoke('set_mac_menu', { spec })
 }
 
+/** 界面语言上报：后端命令错误 / docx 警告 / git 结果 / 托盘菜单按这个语言取词。boot 与切换语言时各调一次 */
+export function setUiLang(lang) {
+  return invoke('set_ui_lang', { lang })
+}
+
 /** macOS 菜单栏状态图标：把「最近打开」列表（rel 路径数组）同步到状态栏「打开最近」子菜单；非 mac 为空操作 */
 export function traySetRecent(paths) {
   return invoke('tray_set_recent', { paths })

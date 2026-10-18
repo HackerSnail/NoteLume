@@ -21,6 +21,7 @@ import {
 import MarkdownIt from 'markdown-it'
 import footnote from 'markdown-it-footnote'
 import { tableNodes } from 'prosemirror-tables'
+import { t } from './i18n.js'
 
 // —— 1. 扩展 schema ————————————————————————————————————————————————
 // 复用默认 schema 的 OrderedMap，追加/覆写节点与标记，避免重写 DOM 规格。
@@ -109,7 +110,7 @@ const extendedNodes = baseSchema.spec.nodes
           class: 'nl-wiki',
           'data-target': node.attrs.target,
           contenteditable: 'false',
-          title: '跳转到文档：' + node.attrs.target,
+          title: t('schema.wikiTitle', { target: node.attrs.target }),
         },
         label,
       ]
@@ -131,7 +132,7 @@ const extendedNodes = baseSchema.spec.nodes
     toDOM(node) {
       return [
         'span',
-        { class: 'nl-tag', 'data-tag': node.attrs.tag, contenteditable: 'false', title: '标签：' + node.attrs.tag },
+        { class: 'nl-tag', 'data-tag': node.attrs.tag, contenteditable: 'false', title: t('schema.tagTitle', { tag: node.attrs.tag }) },
         '#' + node.attrs.tag,
       ]
     },
@@ -172,7 +173,7 @@ const extendedNodes = baseSchema.spec.nodes
           class: 'nl-math nl-math-inline',
           'data-latex': node.attrs.latex,
           contenteditable: 'false',
-          title: '公式：' + node.attrs.latex,
+          title: t('schema.mathTitle', { latex: node.attrs.latex }),
         },
         '$' + node.attrs.latex + '$',
       ]

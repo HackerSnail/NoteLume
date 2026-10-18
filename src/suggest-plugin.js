@@ -4,6 +4,7 @@
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
+import { t } from './i18n.js'
 
 export const suggestKey = new PluginKey('nl-suggest')
 
@@ -114,7 +115,7 @@ export function createSuggestPlugin({ getDocs, getTags }) {
     el.innerHTML = ''
     const head = document.createElement('div')
     head.className = 'nl-suggest-head'
-    head.textContent = spec.kind === 'wiki' ? '链接到文档' : '已有标签'
+    head.textContent = spec.kind === 'wiki' ? t('suggest.wikiHead') : t('suggest.tagHead')
     el.appendChild(head)
     spec.items.forEach((value, i) => {
       const item = document.createElement('div')

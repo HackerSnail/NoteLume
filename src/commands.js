@@ -7,6 +7,8 @@
 // 具体 run 由调用方注入闭包（app 命令在 main.js 注册、editor 命令经 ctx.runEditorCommand、
 // plugin 命令包一层 runCommand）。本模块只管登记/查询/分派，不含任何应用逻辑，故可纯 Node 单测。
 
+import { t } from './i18n.js'
+
 export const RESERVED_PREFIXES = ['app.', 'editor.'] // 内置命名空间，插件不得占用
 const CATEGORIES = new Set(['app', 'editor', 'plugin'])
 
@@ -14,11 +16,11 @@ export function createRegistry() {
   const byId = new Map()
 
   function validate(cmd) {
-    if (!cmd || typeof cmd.id !== 'string' || !cmd.id) return '命令缺少合法 id'
-    if (typeof cmd.title !== 'string' || !cmd.title) return `命令 ${cmd.id} 缺少 title`
-    if (!CATEGORIES.has(cmd.category)) return `命令 ${cmd.id} 的 category 非法：${cmd.category}`
-    if (typeof cmd.run !== 'function') return `命令 ${cmd.id} 的 run 不是函数`
-    if (cmd.defaultKey != null && typeof cmd.defaultKey !== 'string') return `命令 ${cmd.id} 的 defaultKey 非法`
+    if (!cmd || typeof cmd.id !== 'string' || !cmd.id) return t('cmd.err.noId')
+    if (typeof cmd.title !== 'string' || !cmd.title) return t('cmd.err.noTitle', { id: cmd.id })
+    if (!CATEGORIES.has(cmd.category)) return t('cmd.err.badCategory', { id: cmd.id, category: cmd.category })
+    if (typeof cmd.run !== 'function') return t('cmd.err.badRun', { id: cmd.id })
+    if (cmd.defaultKey != null && typeof cmd.defaultKey !== 'string') return t('cmd.err.badKey', { id: cmd.id })
     return null
   }
 
@@ -27,12 +29,12 @@ export function createRegistry() {
     register(cmd) {
       const err = validate(cmd)
       if (err) {
-        console.warn('[NoteLume] 命令注册被拒：', err)
+        console.warn(t('cmd.err.rejected'), err)
         return false
       }
       const prev = byId.get(cmd.id)
       if (prev && prev.category !== 'plugin' && cmd.category === 'plugin') {
-        console.warn(`[NoteLume] 插件命令不得覆盖内置 ${cmd.id}`)
+        console.warn(t('cmd.err.noOverride', { id: cmd.id }))
         return false
       }
       byId.set(cmd.id, { when: 'always', ...cmd })
