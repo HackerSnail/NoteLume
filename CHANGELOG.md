@@ -29,6 +29,17 @@
 
 ### Added
 
+* **编辑器区改完整分栏模式：每个窗格一条自己的标签条，窗格内多文档，预览模式（对标 VS Code 编辑器组）**：此前是一窗格一文档 + 屏幕顶部一条全局标签栏，看第二篇就要把第一篇换掉。现在左右 / 上下拆分后每个窗格各有自己的标签条，可开多篇文档点击切换，各窗格的根 / 脏状态 / 保存各自独立。
+  * 模型：`tabs.js` 从全局单例改为每窗格一个实例，标签 id 三要素 `paneId + root + rel`——同一文档可在多个窗格各开一份（后保存的覆盖先保存的，不合并，与 VS Code 一致）。删掉 `paneTabs` / `tabPane` 两张绑定表与全局标签栏；`main.js` 删全局 `tabs` 变量，改 `ftabs()` 取焦点窗格的条子。
+  * 标签条（新 `src/pane-strip.js`）：每个 `.nl-pane` 顶部一条 sticky `.nl-pane-strip`，左边标签滚动区，右边拆分（横 / 竖）与关窗格三个按钮；关窗格按钮只在多窗格时显示。`.nl-pane` 仍是滚动容器（不套嵌套滚动），查找栏的 top 偏移加上条子高度（30px）避让。打印样式只打焦点窗格，条子不上纸。
+  * 打开落定（`openDocInPane`，spec §5.1 四步）：文件树单击 / 拖入打开 / 单实例二次唤起 = 预览入口，开斜体的预览标签，同窗格再开预览时替换旧的（旧预览有未保存改动先问）；文件树双击 / wikilink / 搜索 / 命令面板 / 最近 / 模板 / 新建 / docx 落库 / 启动参数 = 固定入口，永不被预览替换。双击预览标签 = 固定。同窗格同路径只一个标签。
+  * 快捷键与拆分：Ctrl+W 关焦点窗格的活动标签（关完激活右邻再左邻，没有就窗格空态）；Ctrl+Tab / Ctrl+Shift+Tab 与 mac 菜单 nextTab/prevTab 改为焦点窗格内循环（命令标题五种语言同步改为「当前窗格的…」）。点「拆分」时新窗格复制焦点窗格的当前文档（VS Code 行为），焦点窗格空态或当前是画布时新窗格空置。
+  * 性能：打开链路加根变化门控（新 `src/vault-path.js` 的 `rootChanged`，从 main.js 提出可单测）——根没变只刷高亮与面板，根变了才 `scanVault` + 重建索引 + 重载插件。此前每次打开都全库重扫 + 重建索引，预览浏览点几十个文件会卡。
+  * 持久化：settings.json 的 `panes` 段从裸树改为 `{tree, focused, tabs}`（各窗格标签列，预览与脏标记不落盘）；`normalizeTree` 认新旧两种形状，旧格式（裸树）迁移时首窗格按 `workspace.lastFile` 建一个固定标签，坏数据退回单窗格空布局。启动时每个窗格只读活动标签的内容，其余点击时再读；恢复出的文档已被移走则摘掉该标签留空态。
+  * 硬限制（与设计一致，非回归）：一个窗格一个编辑器实例，窗格内切标签前必须先处理当前文档的未保存改动，切走的标签内容不驻留；VS Code 的后台脏标签要实例池，项目已否决。
+  * 测试：`tabs.test.mjs` 16 passed（预览替换 / pin / 序列化往返 / paneId 隔离）；新 `pane-strip.test.mjs` 7 passed（条子 DOM / 按钮派发 / setMulti）；新 `vault-path.test.mjs` 3 passed；`split-pane.test.mjs` 15 passed（normalizeTree 新形状 + 旧格式迁移）；全量 30 个测试文件通过，`npm run build` 无错。无头 Edge CDP 冒烟（预置两窗格布局）：boot 零 page error、每窗格条子与三按钮就位、sticky 与列布局实测（条子贴窗格顶、正文紧随其下）、关窗格后剩单窗格且按钮隐藏、拆分后条子重建。
+  * 未手验（需 `tauri dev` 开真实库）：预览替换的交互细节、拆分复制文档、重启恢复多窗格多标签、旧 settings.json 迁移。
+
 * **分栏引擎（p5plan §6.1）：编辑器区拆成 SplitPane 树，每个窗格各持一个编辑器实例**：此前编辑器区只有一个实例、一篇文章，切标签页就是换文档。现在左右 / 上下可无限嵌套拆分，每个窗格独立打开文档、独立保存，树结构与比例存 settings.json 的 `panes` 段，重启恢复。
   * 引擎 `src/split-pane.js`：树模型两种节点（`{type:'split', orientation, ratio, children}` 与 `{type:'leaf', id}`），树操作（split / close / setRatio / normalizeTree）是纯函数可单测；DOM 只做定向手术——拆分 / 关闭各搬动一个元素，不整树重建，ProseMirror 的 DOM 与选中态不会连根拔起。分割条 4px，pointerdown 即 setPointerCapture，窗格里的文字选区、表格手柄抢不走；拖动只写 flex-basis 不重排 DOM，松手（pointerup）经 onRatioCommit 即时落盘（§8）。每侧最小 20%、最大 80%，双击分割条回默认比例。
   * 窗格与标签页绑定（`main.js` 的 panes 表）：一个标签同时只在一个窗格显示（paneTabs / tabPane 双向表），点标签条把该标签挪到焦点窗格、原窗格留空；拆分时新窗格优先接管一个没人占的已开标签（同根优先），没有则空置并显示空态提示。脏状态按窗格各自记，`tabs.js` 的 setDirty 改按标签 id 记；离开时的未保存确认与自动保存遍历所有脏窗格，多窗格脏时一次问清「全部保存 / 全部不保存 / 取消」（新增 `dlg.unsavedMulti`）。重命名 / 另存为会改标签 id，绑定表跟着 rekey。
