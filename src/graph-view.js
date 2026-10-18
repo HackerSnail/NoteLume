@@ -2,6 +2,7 @@
 // 零外部依赖；数据来自 Rust get_graph_data()，节点=文档，边=已解析的双链（无向归一 + 权重）。
 // 目标：轻量优先，节点数 ≤ 800 流畅；超过时降级为静态预布局并停止每帧迭代。
 import { getGraphData } from './tauri-bridge.js'
+import { t } from './i18n.js'
 
 const CFG = {
   MAX_DYNAMIC_NODES: 800,       // 超过则收敛后停动画
@@ -164,7 +165,7 @@ export async function openGraph({ vaultRoot, currentPath, onNodeClick, onClose }
     }
     ctx.restore()
     // 信息条
-    infoEl.textContent = `${nodes.length} 个文档 · ${edges.length} 条链接 · 滚轮缩放 / 拖拽平移 / 拖节点重定位 / 点击节点跳文档`
+    infoEl.textContent = t('graph.stats', { n: nodes.length, m: edges.length })
   }
 
   function loop() {

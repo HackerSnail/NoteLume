@@ -90,7 +90,7 @@ function makeWidget(source, view, getPos) {
     wrap.innerHTML = cached
     return wrap
   }
-  wrap.textContent = 'Mermaid 渲染中…'
+  wrap.textContent = t('mermaid.rendering')
   renderSvg(source)
     .then((svg) => {
       // 元素仍在文档内、且主题未变才写入（避免过期异步回调串图）
@@ -99,7 +99,7 @@ function makeWidget(source, view, getPos) {
     .catch((err) => {
       if (document.contains(wrap)) {
         wrap.className = 'nl-mermaid nl-mermaid-error'
-        wrap.textContent = 'Mermaid 渲染失败：' + (err && err.message ? err.message : String(err))
+        wrap.textContent = t('mermaid.renderFailed', { err: err && err.message ? err.message : String(err) })
       }
     })
   return wrap

@@ -7,6 +7,7 @@
 //  · 纯 DOM 浮层，复用 .nl-suggest 的观感与交互（↑/↓/Enter/Esc + 输入过滤），零新依赖。
 
 import hljs from 'highlight.js/lib/common'
+import { t } from './i18n.js'
 
 // 常用语言置顶（仅保留 hljs 实际注册的那些，其余按字母序补在后面）
 const PREFERRED = [
@@ -54,7 +55,7 @@ export function attachCodeLangPicker(view) {
     const regSet = new Set(reg)
     const head = PREFERRED.filter((l) => regSet.has(l))
     const rest = reg.filter((l) => !head.includes(l)).sort()
-    const opts = [{ label: '纯文本（无）', value: '' }]
+    const opts = [{ label: t('codelang.plainText'), value: '' }]
     for (const l of [...head, ...rest]) {
       if (!q || l.includes(q)) opts.push({ label: l, value: l })
     }
@@ -98,7 +99,7 @@ export function attachCodeLangPicker(view) {
     const input = document.createElement('input')
     input.className = 'nl-codelang-filter'
     input.type = 'text'
-    input.placeholder = '搜索语言…'
+    input.placeholder = t('codelang.searchPh')
     const list = document.createElement('div')
     list.className = 'nl-codelang-list'
     el.appendChild(input)

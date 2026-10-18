@@ -528,7 +528,7 @@ export default {
   'git.commitFailed': '提交失败：{err}',
   'git.initialized': '已初始化 Git 仓库',
   'git.initFailed': '初始化失败：{err}',
-  'git.unknownErr': '未知错误',
+
 
   // —— 画布（canvas-view.js） ——
   'canvas.emptyFile': '（空文件）',
@@ -747,4 +747,25 @@ export default {
   'hover.clickToJump': '单击跳转',
   'hover.docMissing': '{name}（文档不存在）',
   'hover.clickToCreate': '点击可新建该文档',
+
+  // —— 零碎：系统对话框 / KaTeX / 语言选择 / Mermaid / 图谱 / 标签页 / 统计 / 导入 ——
+  'common.unknownErr': '未知错误',
+  'dlg.pickFolder': '选择知识库文件夹',
+  'dlg.pickFile': '选择 Markdown / 画布文件',
+  'dlg.pickDocx': '选择 Word (.docx) 文件',
+  'dlg.saveFile': '保存文件',
+  'math.renderFailed': 'KaTeX 渲染失败：{err}',
+  'math.editPrompt': '编辑 LaTeX 公式',
+  'math.dblClickEdit': '双击编辑公式',
+  'codelang.plainText': '纯文本（无）',
+  'codelang.searchPh': '搜索语言…',
+  'mermaid.rendering': 'Mermaid 渲染中…',
+  'mermaid.renderFailed': 'Mermaid 渲染失败：{err}',
+  'graph.stats': '{n} 个文档 · {m} 条链接 · 滚轮缩放 / 拖拽平移 / 拖节点重定位 / 点击节点跳文档',
+  'tab.scratchSuffix': '（未选择保存位置）',
+  'stats.zero': '0 字',
+  'stats.under1min': '{n} 字 · 不到 1 分钟',
+  'stats.minutes': '{n} 字 · 约 {min} 分钟',
+  'docx.importProgress': '导入 {i}/{total}',
+  'docx.previewEmpty': '预览返回空',
 }

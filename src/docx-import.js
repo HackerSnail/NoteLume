@@ -10,6 +10,8 @@
 //   io.onCommitted()  → 刷树 renderTree + startIndexPolling
 //   review(entry, ctx)→ 打开校对模态，返回 { action:'accept'|'skip', md, newTitle }
 
+import { t } from './i18n.js'
+
 export const IMG_INDEX_KEY = 'nl-img-index'
 export const DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB：超此图片占位 + warning（I spec §7）
 
@@ -102,7 +104,7 @@ export async function runImport({ sources, io, review, onProgress = () => {}, op
 
   for (let k = 0; k < queue.length; k++) {
     const entry = queue[k]
-    say(`导入 ${k + 1}/${queue.length}`)
+    say(t('docx.importProgress', { i: k + 1, total: queue.length }))
 
     // ---- 预览 ----
     let preview
@@ -111,7 +113,7 @@ export async function runImport({ sources, io, review, onProgress = () => {}, op
       const src = normalizeSource(entry.source)
       preview = await io.preview(previewArgsFor(src, { ...opts, dedupIndex: index }))
       entry.preview = preview
-      if (!preview || typeof preview.md !== 'string') throw new Error('预览返回空')
+      if (!preview || typeof preview.md !== 'string') throw new Error(t('docx.previewEmpty'))
     } catch (e) {
       entry.status = 'failed'
       entry.error = errText(e)
@@ -193,7 +195,7 @@ async function safeLoadIndex(io) {
 }
 
 function errText(e) {
-  if (!e) return '未知错误'
+  if (!e) return t('common.unknownErr')
   if (typeof e === 'string') return e
   return e.message || String(e)
 }

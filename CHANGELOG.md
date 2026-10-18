@@ -29,6 +29,14 @@
 
 ### Added
 
+* **i18n：系统对话框 / KaTeX / 语言选择 / Mermaid / 图谱 / 标签页 / 写作统计 / Word 导入的零碎文案接入词条（19 条，五种语言）**：清掉剩在中小组件里的硬编码。新增 `common.unknownErr` 作为通用「未知错误」，`git-panel.js` 与 `docx-import.js` 的 `errText` 一并改用，删掉上一批临时加的 `git.unknownErr`。
+  * `tauri-bridge.js`（dlg.* 4 条）：知识库文件夹 / Markdown·画布 / Word 三个选择器标题与另存为标题。
+  * `math-nodeviews.js`（math.* 3 条）：KaTeX 渲染失败 title、编辑公式 prompt、双击编辑提示。
+  * `code-lang-picker.js`（codelang.* 2 条）：纯文本选项、语言搜索占位。
+  * `mermaid-preview.js`（mermaid.* 2 条）、`graph-view.js`（graph.stats 1 条）、`tabs.js`（tab.scratchSuffix 1 条，关闭按钮复用 `common.close`）、`writing-stats.js`（stats.* 3 条）、`docx-import.js`（docx.* 2 条）。
+  * 两处 `t` 撞名顺手修掉：`tabs.js` 的渲染循环变量与 `joinTitle` 形参、`writing-stats.js` 的 `countWords` 局部变量，均改名（`tab` / `s`），否则导入的 `t` 被遮蔽、`t('common.close')` 会直接抛错。
+  * 测试与验证：全部 22 个测试文件通过（writing-stats 的 `statsLabel` 中文断言不受影响——Node 下 `t()` 默认 zh-CN 返回原串）；八个文件零中文残留、lint 干净；`npm run build` 无错。纯前端，刷新即生效。
+
 * **i18n：静态站导出 / 历史版本 / Word 校对 / 图片查看器 / 链接悬浮预览文案接入词条（site.* / snapshot.* / docx.* / imgv.* / hover.* 共 45 条，五种语言）**：把上一批漏掉的输出型与浮层文案清掉。导出的静态站从此跟随当前界面语言（页面骨架文案与 `<html lang>` 都取运行期语言）；`main.js` 传给校对模态的接受按钮文案也换成既有词条 `dlg.docxAcceptVault` / `dlg.docxAccept`，不再硬编码。
   * `site-export.js`（site.* 14 条）：首页/搜索页骨架、工具栏、侧栏标题、反向链接区标题、搜索页内联脚本的加载与无结果提示、导出进度与完成统计。`site-export.test.mjs` 断言的中文原值不受影响——Node 下 `t()` 默认 zh-CN，返回原串，24 passed。
   * `snapshot-panel.js`（snapshot.* 10 条）：空态、来源行、回滚确认（含快照时间标签插值）、回滚状态与失败。

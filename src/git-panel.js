@@ -965,7 +965,7 @@ function el(tag, cls, text) {
 }
 
 function errText(e) {
-  return (e && (e.message || e)) || t('git.unknownErr')
+  return (e && (e.message || e)) || t('common.unknownErr')
 }
 
 // R3：变更行内的小按钮（阻止冒泡，避免触发行本身的 diff 点击）。

@@ -529,7 +529,6 @@ export default {
   'git.commitFailed': 'Échec du commit : {err}',
   'git.initialized': 'Dépôt Git initialisé',
   'git.initFailed': 'Échec de l’initialisation : {err}',
-  'git.unknownErr': 'Erreur inconnue',
 
   // —— Canevas (canvas-view.js) ——
   'canvas.emptyFile': '(aucun fichier)',
@@ -748,4 +747,25 @@ export default {
   'hover.clickToJump': 'Cliquer pour ouvrir',
   'hover.docMissing': '{name} (document inexistant)',
   'hover.clickToCreate': 'Cliquer pour créer ce document',
+
+  // —— Divers : dialogues système / KaTeX / sélecteur de langage / Mermaid / graphe / onglets / stats / import ——
+  'common.unknownErr': 'Erreur inconnue',
+  'dlg.pickFolder': 'Choisir un dossier de coffre',
+  'dlg.pickFile': 'Choisir un fichier Markdown / canevas',
+  'dlg.pickDocx': 'Choisir un fichier Word (.docx)',
+  'dlg.saveFile': 'Enregistrer le fichier',
+  'math.renderFailed': 'Échec du rendu KaTeX : {err}',
+  'math.editPrompt': 'Modifier la formule LaTeX',
+  'math.dblClickEdit': 'Double-clic pour modifier la formule',
+  'codelang.plainText': 'Texte brut (aucun)',
+  'codelang.searchPh': 'Rechercher un langage…',
+  'mermaid.rendering': 'Rendu Mermaid en cours…',
+  'mermaid.renderFailed': 'Échec du rendu Mermaid : {err}',
+  'graph.stats': '{n} documents · {m} liens · molette pour zoomer / glisser pour déplacer / glisser un nœud pour le repositionner / clic pour ouvrir',
+  'tab.scratchSuffix': ' (aucun emplacement de sauvegarde choisi)',
+  'stats.zero': '0 mot',
+  'stats.under1min': '{n} mots · moins d’une minute',
+  'stats.minutes': '{n} mots · environ {min} minutes',
+  'docx.importProgress': 'Import {i}/{total}',
+  'docx.previewEmpty': 'L’aperçu est revenu vide',
 }

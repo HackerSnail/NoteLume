@@ -7,6 +7,8 @@
 //
 // 临时文件（新建未选保存位置）也是普通一页，只多一个 scratch 标记：关闭时要先问是否选位置。
 
+import { t } from './i18n.js'
+
 const idOf = (root, rel) => String(root || '') + '\u0000' + String(rel || '')
 const baseName = (rel) => String(rel || '').slice(Math.max(String(rel || '').lastIndexOf('/'), String(rel || '').lastIndexOf('\\')) + 1)
 
@@ -19,41 +21,43 @@ export function createTabs({ mountEl, onSwitch, onClose }) {
     if (!mountEl) return
     mountEl.textContent = ''
     mountEl.classList.toggle('hidden', items.length === 0)
-    for (const t of items) {
+    for (const tab of items) {
       const el = document.createElement('div')
-      el.className = 'tab' + (t.id === activeId ? ' active' : '') + (t.id === activeId && dirty ? ' dirty' : '') + (t.scratch ? ' scratch' : '')
-      el.dataset.id = t.id
-      el.title = joinTitle(t)
+      el.className = 'tab' + (tab.id === activeId ? ' active' : '') + (tab.id === activeId && dirty ? ' dirty' : '') + (tab.scratch ? ' scratch' : '')
+      el.dataset.id = tab.id
+      el.title = joinTitle(tab)
       const name = document.createElement('span')
       name.className = 'tab-name'
-      name.textContent = baseName(t.rel)
+      name.textContent = baseName(tab.rel)
       const dot = document.createElement('span')
       dot.className = 'tab-dot'
       dot.setAttribute('aria-hidden', 'true')
       const x = document.createElement('button')
       x.type = 'button'
       x.className = 'tab-x'
-      x.title = '关闭'
-      x.setAttribute('aria-label', '关闭')
+      x.title = t('common.close')
+      x.setAttribute('aria-label', t('common.close'))
       x.textContent = '×'
       x.addEventListener('click', (e) => {
         e.stopPropagation()
-        onClose && onClose(t.id)
+        onClose && onClose(tab.id)
       })
       el.appendChild(name)
       el.appendChild(dot)
       el.appendChild(x)
-      el.addEventListener('click', () => { if (t.id !== activeId) onSwitch && onSwitch(t.id) })
+      el.addEventListener('click', () => { if (tab.id !== activeId) onSwitch && onSwitch(tab.id) })
       // 中键点击 = 关闭（浏览器标签页习惯）
-      el.addEventListener('mousedown', (e) => { if (e.button === 1) { e.preventDefault(); onClose && onClose(t.id) } })
+      el.addEventListener('mousedown', (e) => { if (e.button === 1) { e.preventDefault(); onClose && onClose(tab.id) } })
       mountEl.appendChild(el)
     }
   }
 
-  function joinTitle(t) {
-    if (!t.root) return t.rel + (t.scratch ? '（未选择保存位置）' : '')
-    const sep = /[\\/]$/.test(t.root) ? '' : '/'
-    return t.root + sep + t.rel + (t.scratch ? '（未选择保存位置）' : '')
+  // 形参名用 tab 不用 t：避开与 i18n 的 t 撞名
+  function joinTitle(tab) {
+    const suffix = tab.scratch ? t('tab.scratchSuffix') : ''
+    if (!tab.root) return tab.rel + suffix
+    const sep = /[\\/]$/.test(tab.root) ? '' : '/'
+    return tab.root + sep + tab.rel + suffix
   }
 
   render() // 建好就画一次：无标签时挂上 hidden

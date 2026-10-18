@@ -529,7 +529,6 @@ export default {
   'git.commitFailed': 'Commit failed: {err}',
   'git.initialized': 'Git repository initialized',
   'git.initFailed': 'Initialization failed: {err}',
-  'git.unknownErr': 'Unknown error',
 
   // —— Canvas (canvas-view.js) ——
   'canvas.emptyFile': '(no file)',
@@ -748,4 +747,25 @@ export default {
   'hover.clickToJump': 'Click to open',
   'hover.docMissing': '{name} (document does not exist)',
   'hover.clickToCreate': 'Click to create this document',
+
+  // —— Loose ends: system dialogs / KaTeX / language picker / Mermaid / graph / tabs / stats / import ——
+  'common.unknownErr': 'Unknown error',
+  'dlg.pickFolder': 'Select Vault Folder',
+  'dlg.pickFile': 'Select Markdown / Canvas File',
+  'dlg.pickDocx': 'Select Word (.docx) File',
+  'dlg.saveFile': 'Save File',
+  'math.renderFailed': 'KaTeX render failed: {err}',
+  'math.editPrompt': 'Edit LaTeX formula',
+  'math.dblClickEdit': 'Double-click to edit the formula',
+  'codelang.plainText': 'Plain text (none)',
+  'codelang.searchPh': 'Search languages…',
+  'mermaid.rendering': 'Rendering Mermaid…',
+  'mermaid.renderFailed': 'Mermaid render failed: {err}',
+  'graph.stats': '{n} documents · {m} links · scroll to zoom / drag to pan / drag a node to reposition / click a node to open',
+  'tab.scratchSuffix': ' (no save location chosen)',
+  'stats.zero': '0 words',
+  'stats.under1min': '{n} words · under 1 minute',
+  'stats.minutes': '{n} words · about {min} minutes',
+  'docx.importProgress': 'Importing {i}/{total}',
+  'docx.previewEmpty': 'Preview returned empty',
 }

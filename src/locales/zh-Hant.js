@@ -528,7 +528,6 @@ export default {
   'git.commitFailed': '提交失敗：{err}',
   'git.initialized': '已初始化 Git 倉庫',
   'git.initFailed': '初始化失敗：{err}',
-  'git.unknownErr': '未知錯誤',
 
   // —— 畫布（canvas-view.js） ——
   'canvas.emptyFile': '（空檔案）',
@@ -747,4 +746,25 @@ export default {
   'hover.clickToJump': '點擊跳轉',
   'hover.docMissing': '{name}（文件不存在）',
   'hover.clickToCreate': '點擊可新增該文件',
+
+  // —— 零碎：系統對話框 / KaTeX / 語言選擇 / Mermaid / 圖譜 / 標籤頁 / 統計 / 匯入 ——
+  'common.unknownErr': '未知錯誤',
+  'dlg.pickFolder': '選擇知識庫資料夾',
+  'dlg.pickFile': '選擇 Markdown / 畫布檔案',
+  'dlg.pickDocx': '選擇 Word (.docx) 檔案',
+  'dlg.saveFile': '儲存檔案',
+  'math.renderFailed': 'KaTeX 渲染失敗：{err}',
+  'math.editPrompt': '編輯 LaTeX 公式',
+  'math.dblClickEdit': '點兩下編輯公式',
+  'codelang.plainText': '純文字（無）',
+  'codelang.searchPh': '搜尋語言…',
+  'mermaid.rendering': 'Mermaid 渲染中…',
+  'mermaid.renderFailed': 'Mermaid 渲染失敗：{err}',
+  'graph.stats': '{n} 個文件 · {m} 條連結 · 滾輪縮放 / 拖曳平移 / 拖節點重定位 / 點擊節點跳文件',
+  'tab.scratchSuffix': '（未選擇儲存位置）',
+  'stats.zero': '0 字',
+  'stats.under1min': '{n} 字 · 不到 1 分鐘',
+  'stats.minutes': '{n} 字 · 約 {min} 分鐘',
+  'docx.importProgress': '匯入 {i}/{total}',
+  'docx.previewEmpty': '預覽傳回空值',
 }

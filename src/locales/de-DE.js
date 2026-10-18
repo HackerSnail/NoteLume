@@ -529,7 +529,6 @@ export default {
   'git.commitFailed': 'Commit fehlgeschlagen: {err}',
   'git.initialized': 'Git-Repository initialisiert',
   'git.initFailed': 'Initialisierung fehlgeschlagen: {err}',
-  'git.unknownErr': 'Unbekannter Fehler',
 
   // —— Leinwand (canvas-view.js) ——
   'canvas.emptyFile': '(keine Datei)',
@@ -748,4 +747,25 @@ export default {
   'hover.clickToJump': 'Klick öffnet',
   'hover.docMissing': '{name} (Dokument existiert nicht)',
   'hover.clickToCreate': 'Klick erstellt dieses Dokument',
+
+  // —— Kleinkram: Systemdialoge / KaTeX / Sprachauswahl / Mermaid / Graph / Tabs / Statistik / Import ——
+  'common.unknownErr': 'Unbekannter Fehler',
+  'dlg.pickFolder': 'Vault-Ordner wählen',
+  'dlg.pickFile': 'Markdown- / Canvas-Datei wählen',
+  'dlg.pickDocx': 'Word-Datei (.docx) wählen',
+  'dlg.saveFile': 'Datei speichern',
+  'math.renderFailed': 'KaTeX-Rendering fehlgeschlagen: {err}',
+  'math.editPrompt': 'LaTeX-Formel bearbeiten',
+  'math.dblClickEdit': 'Doppelklick bearbeitet die Formel',
+  'codelang.plainText': 'Reiner Text (keiner)',
+  'codelang.searchPh': 'Sprachen suchen…',
+  'mermaid.rendering': 'Mermaid wird gerendert…',
+  'mermaid.renderFailed': 'Mermaid-Rendering fehlgeschlagen: {err}',
+  'graph.stats': '{n} Dokumente · {m} Links · Scrollrad zoomt / Ziehen verschiebt / Knoten ziehen verschiebt sie / Klick öffnet',
+  'tab.scratchSuffix': ' (kein Speicherort gewählt)',
+  'stats.zero': '0 Wörter',
+  'stats.under1min': '{n} Wörter · unter 1 Minute',
+  'stats.minutes': '{n} Wörter · etwa {min} Minuten',
+  'docx.importProgress': 'Import {i}/{total}',
+  'docx.previewEmpty': 'Vorschau leer zurückgegeben',
 }

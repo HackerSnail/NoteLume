@@ -3,10 +3,11 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { open, save, confirm as dialogConfirm, message as dialogMessage } from '@tauri-apps/plugin-dialog'
+import { t } from './i18n.js'
 
 /** 打开文件夹选择器，返回选中的知识库根目录（取消返回 null） */
 export async function pickFolder() {
-  const picked = await open({ directory: true, multiple: false, title: '选择知识库文件夹' })
+  const picked = await open({ directory: true, multiple: false, title: t('dlg.pickFolder') })
   return typeof picked === 'string' ? picked : null
 }
 
@@ -15,7 +16,7 @@ export async function pickFile() {
   const picked = await open({
     directory: false,
     multiple: false,
-    title: '选择 Markdown / 画布文件',
+    title: t('dlg.pickFile'),
     filters: [{ name: 'Markdown / Canvas', extensions: ['md', 'markdown', 'canvas'] }],
   })
   return typeof picked === 'string' ? picked : null
@@ -26,7 +27,7 @@ export async function pickDocxFiles() {
   const picked = await open({
     directory: false,
     multiple: true,
-    title: '选择 Word (.docx) 文件',
+    title: t('dlg.pickDocx'),
     filters: [{ name: 'Word', extensions: ['docx'] }],
   })
   if (!picked) return []
@@ -60,7 +61,7 @@ export function relocateImport(fromRoot, toRoot) {
 
 /** 另存为对话框（导出用，P1） */
 export async function pickSaveAs(defaultPath) {
-  return await save({ defaultPath, title: '保存文件' })
+  return await save({ defaultPath, title: t('dlg.saveFile') })
 }
 
 /** 原生确认框（Tauri webview 下比 window.confirm 更可靠） */

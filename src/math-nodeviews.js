@@ -4,19 +4,20 @@
 
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
+import { t } from './i18n.js'
 
 function renderKatex(latex, el, displayMode) {
   try {
     katex.render(latex, el, { throwOnError: false, displayMode })
   } catch (e) {
     el.textContent = (displayMode ? '$$\n' : '$') + latex + (displayMode ? '\n$$' : '$')
-    el.setAttribute('title', 'KaTeX 渲染失败：' + e.message)
+    el.setAttribute('title', t('math.renderFailed', { err: e.message }))
   }
 }
 
 function editLatex(current, apply) {
   // 简单可靠：window.prompt；后续 P2 可以换成更好的编辑器
-  const next = window.prompt('编辑 LaTeX 公式', current)
+  const next = window.prompt(t('math.editPrompt'), current)
   if (next == null) return
   if (next === current) return
   apply(next)
@@ -28,7 +29,7 @@ export function mathInlineView(node, view, getPos) {
   dom.className = 'nl-math nl-math-inline'
   dom.setAttribute('contenteditable', 'false')
   dom.setAttribute('data-latex', cur.attrs.latex)
-  dom.title = '双击编辑公式'
+  dom.title = t('math.dblClickEdit')
   renderKatex(cur.attrs.latex, dom, false)
   dom.addEventListener('dblclick', () => {
     editLatex(cur.attrs.latex, (next) => {
@@ -68,7 +69,7 @@ export function mathBlockView(node, view, getPos) {
   dom.className = 'nl-math nl-math-block'
   dom.setAttribute('contenteditable', 'false')
   dom.setAttribute('data-latex', cur.attrs.latex)
-  dom.title = '双击编辑公式'
+  dom.title = t('math.dblClickEdit')
   renderKatex(cur.attrs.latex, dom, true)
   dom.addEventListener('dblclick', () => {
     editLatex(cur.attrs.latex, (next) => {
