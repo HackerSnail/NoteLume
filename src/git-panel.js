@@ -34,29 +34,32 @@ import {
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
 import { setIcon, iconHTML } from './icons.js'
+import { t } from './i18n.js'
 
-// kind → [徽标字符, 中文短名]（对齐 Rust classify_status 的取值域）
+// kind → 徽标字符（对齐 Rust classify_status 的取值域）；中文短名走词条 git.kind.<kind>
 const KIND_BADGE = {
-  modified: ['M', '修改'],
-  new: ['N', '新增'],
-  deleted: ['D', '删除'],
-  renamed: ['R', '重命名'],
-  untracked: ['?', '未跟踪'],
-  conflicted: ['C', '冲突'],
-  ignored: ['·', '忽略'],
+  modified: 'M',
+  new: 'N',
+  deleted: 'D',
+  renamed: 'R',
+  untracked: '?',
+  conflicted: 'C',
+  ignored: '·',
 }
+
+const kindLabel = (kind) => t('git.kind.' + kind)
 
 // Unix 秒 → 相对时间（近则分钟/小时，远则日期）
 function relTime(sec) {
   const then = sec * 1000
   const diff = Date.now() - then
   const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
+  if (min < 1) return t('git.time.justNow')
+  if (min < 60) return t('git.time.minAgo', { min })
   const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr} 小时前`
+  if (hr < 24) return t('git.time.hourAgo', { hr })
   const day = Math.floor(hr / 24)
-  if (day < 30) return `${day} 天前`
+  if (day < 30) return t('git.time.dayAgo', { day })
   const d = new Date(then)
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
@@ -88,11 +91,11 @@ export function createGitPanel(deps) {
     if (!info.isRepo) {
       const tip = document.createElement('span')
       tip.className = 'nl-git-branch nl-git-muted'
-      tip.textContent = '未检测到 Git 仓库'
+      tip.textContent = t('git.noRepo')
       const btn = document.createElement('button')
       btn.className = 'nl-git-btn'
-      btn.textContent = '初始化仓库'
-      btn.title = '在当前库根 git init，并按需写排除 .notelume-backup/ 的 .gitignore'
+      btn.textContent = t('git.initBtn')
+      btn.title = t('git.initTip')
       btn.addEventListener('click', () => init())
       const actions = document.createElement('span')
       actions.className = 'nl-git-actions'
@@ -103,25 +106,25 @@ export function createGitPanel(deps) {
 
     const left = document.createElement('span')
     left.className = 'nl-git-branch'
-    const branch = info.branch || (info.hasHead ? '(分离 HEAD)' : '(无提交)')
+    const branch = info.branch || (info.hasHead ? t('git.detachedHead') : t('git.noHead'))
     setIcon(left, 'branch', branch)
     left.title = curRepoPath || ''
 
     const count = document.createElement('span')
     count.className = 'nl-git-count'
-    count.textContent = changeCount > 0 ? `${changeCount} 项改动` : '工作树干净'
+    count.textContent = changeCount > 0 ? t('git.changesCount', { n: changeCount }) : t('git.cleanTree')
 
     const actions = document.createElement('span')
     actions.className = 'nl-git-actions'
     const refreshBtn = document.createElement('button')
     refreshBtn.className = 'nl-git-btn'
     setIcon(refreshBtn, 'reload')
-    refreshBtn.title = '刷新状态'
+    refreshBtn.title = t('git.refreshTip')
     refreshBtn.addEventListener('click', () => refresh())
     const commitBtn = document.createElement('button')
     commitBtn.className = 'nl-git-btn nl-git-btn-primary'
-    commitBtn.textContent = '提交全部'
-    commitBtn.title = 'git add -A + commit（尊重 .gitignore）'
+    commitBtn.textContent = t('git.commitAllBtn')
+    commitBtn.title = t('git.commitAllTip')
     commitBtn.disabled = changeCount === 0
     commitBtn.addEventListener('click', () => commitAll())
     actions.append(refreshBtn, commitBtn)
@@ -135,20 +138,21 @@ export function createGitPanel(deps) {
     sec.className = 'nl-git-section'
     const title = document.createElement('div')
     title.className = 'nl-git-section-title'
-    title.textContent = '变更'
+    title.textContent = t('git.sectionChanges')
     sec.appendChild(title)
 
     const list = document.createElement('div')
     list.className = 'nl-git-list'
     if (!items.length) {
-      list.innerHTML = '<div class="nl-git-empty-inline">没有改动</div>'
+      list.innerHTML = '<div class="nl-git-empty-inline">' + t('git.noChanges') + '</div>'
     } else {
       items.forEach((it) => {
-        const [badge, label] = KIND_BADGE[it.kind] || ['•', it.kind]
+        const badge = KIND_BADGE[it.kind] || '•'
+        const label = kindLabel(it.kind) || it.kind
         const conflicted = it.kind === 'conflicted'
         const row = document.createElement('div')
         row.className = 'nl-git-item' + (conflicted ? ' nl-git-conflict' : '')
-        row.title = it.path + (it.staged ? '（已暂存）' : '')
+        row.title = it.path + (it.staged ? t('git.staged') : '')
         const b = document.createElement('span')
         b.className = 'nl-git-badge nl-git-badge-' + it.kind
         b.textContent = badge
@@ -160,9 +164,9 @@ export function createGitPanel(deps) {
           const tools = document.createElement('span')
           tools.className = 'nl-git-conflict-tools'
           tools.append(
-            miniBtn('用本地', () => resolveConf(it.path, 'ours')),
-            miniBtn('用远端', () => resolveConf(it.path, 'theirs')),
-            miniBtn('编辑', () => editConflict(it.path)),
+            miniBtn(t('git.useOurs'), () => resolveConf(it.path, 'ours')),
+            miniBtn(t('git.useTheirs'), () => resolveConf(it.path, 'theirs')),
+            miniBtn(t('git.edit'), () => editConflict(it.path)),
           )
           row.appendChild(tools)
         } else {
@@ -173,7 +177,7 @@ export function createGitPanel(deps) {
       if (items.length >= 1000) {
         const more = document.createElement('div')
         more.className = 'nl-git-empty-inline'
-        more.textContent = '改动过多，仅显示前 1000 项'
+        more.textContent = t('git.tooManyChanges', { n: 1000 })
         list.appendChild(more)
       }
     }
@@ -187,13 +191,13 @@ export function createGitPanel(deps) {
     sec.className = 'nl-git-section'
     const title = document.createElement('div')
     title.className = 'nl-git-section-title'
-    title.textContent = '历史'
+    title.textContent = t('git.sectionHistory')
     sec.appendChild(title)
 
     const list = document.createElement('div')
     list.className = 'nl-git-list'
     if (!commits.length) {
-      list.innerHTML = '<div class="nl-git-empty-inline">尚无提交</div>'
+      list.innerHTML = '<div class="nl-git-empty-inline">' + t('git.historyEmpty') + '</div>'
     } else {
       commits.forEach((c) => {
         const row = document.createElement('div')
@@ -228,7 +232,7 @@ export function createGitPanel(deps) {
     diffBox.innerHTML =
       '<div class="nl-git-diff-head"><span>' +
       escapeHtml(headText) +
-      '</span><button class="nl-git-diff-close" title="关闭">' + iconHTML('close') + '</button></div>' +
+      '</span><button class="nl-git-diff-close" title="' + t('common.close') + '">' + iconHTML('close') + '</button></div>' +
       diffHtml
     const close = diffBox.querySelector('.nl-git-diff-close')
     close.addEventListener('click', () => diffBox.classList.add('hidden'))
@@ -236,7 +240,7 @@ export function createGitPanel(deps) {
 
   // 按行前缀着色：+ 新增 / - 删除 / @@ 块头 / diff 头
   function colorizeDiff(text) {
-    if (!text) return '<div class="nl-git-empty-inline">无差异</div>'
+    if (!text) return '<div class="nl-git-empty-inline">' + t('git.noDiff') + '</div>'
     const lines = text.split('\n')
     const out = lines.map((ln) => {
       const esc = escapeHtml(ln)
@@ -256,7 +260,7 @@ export function createGitPanel(deps) {
       const diff = await gitDiffFile(vaultRoot, path, against)
       showDiffInBox(headText, colorizeDiff(diff))
     } catch (e) {
-      await messageDialog('读取 diff 失败：' + errText(e))
+      await messageDialog(t('git.diffReadFailed', { err: errText(e) }))
     }
   }
 
@@ -265,22 +269,22 @@ export function createGitPanel(deps) {
   function showCommit(c) {
     const detail =
       '<div class="nl-git-commit-detail">' +
-      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">提交</span><span class="nl-git-detail-v mono">' +
+      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.detailCommit') + '</span><span class="nl-git-detail-v mono">' +
       escapeHtml(c.id) +
       '</span></div>' +
-      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">摘要</span><span class="nl-git-detail-v">' +
-      escapeHtml(c.summary || '(无摘要)') +
+      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.detailSummary') + '</span><span class="nl-git-detail-v">' +
+      escapeHtml(c.summary || t('git.detailNoSummary')) +
       '</span></div>' +
-      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">作者</span><span class="nl-git-detail-v">' +
+      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.detailAuthor') + '</span><span class="nl-git-detail-v">' +
       escapeHtml(c.authorName) +
       ' &lt;' +
       escapeHtml(c.authorEmail) +
       '&gt;</span></div>' +
-      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">时间</span><span class="nl-git-detail-v">' +
+      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.detailTime') + '</span><span class="nl-git-detail-v">' +
       escapeHtml(relTime(c.time)) +
       '</span></div>' +
       '</div>'
-    showDiffInBox('提交 ' + c.idShort, detail)
+    showDiffInBox(t('git.commitTitle', { id: c.idShort }), detail)
   }
 
   function renderBody(items, commits, merging) {
@@ -303,20 +307,20 @@ export function createGitPanel(deps) {
     const msg = document.createElement('span')
     msg.className = 'nl-git-merge-msg' + (conflictCount ? ' nl-git-sync-behind' : '')
     msg.textContent = conflictCount
-      ? `合并进行中 · ${conflictCount} 个冲突待解决`
-      : '合并进行中 · 冲突已全部解决，可提交合并'
+      ? t('git.mergeOngoing', { n: conflictCount })
+      : t('git.mergeResolved')
     const actions = document.createElement('span')
     actions.className = 'nl-git-actions'
     const okBtn = document.createElement('button')
     okBtn.className = 'nl-git-btn nl-git-btn-primary'
-    setIcon(okBtn, 'check', '提交合并')
+    setIcon(okBtn, 'check', t('git.mergeCommitBtn'))
     okBtn.disabled = conflictCount > 0
-    okBtn.title = conflictCount > 0 ? '请先解决所有冲突' : '生成 merge commit'
+    okBtn.title = conflictCount > 0 ? t('git.mergeResolveFirst') : t('git.mergeCommitTip')
     okBtn.addEventListener('click', () => doCommitMerge())
     const abortBtn = document.createElement('button')
     abortBtn.className = 'nl-git-btn'
-    setIcon(abortBtn, 'close', '中止合并')
-    abortBtn.title = '回到合并前状态（merge --abort）'
+    setIcon(abortBtn, 'close', t('git.mergeAbortBtn'))
+    abortBtn.title = t('git.mergeAbortTip')
     abortBtn.addEventListener('click', () => doAbortMerge())
     actions.append(okBtn, abortBtn)
     sec.append(msg, actions)
@@ -330,27 +334,27 @@ export function createGitPanel(deps) {
     sec.className = 'nl-git-section nl-git-sync-sec'
     const title = document.createElement('div')
     title.className = 'nl-git-section-title'
-    title.textContent = '同步'
+    title.textContent = t('git.sectionSync')
     const inner = document.createElement('div')
     inner.className = 'nl-git-sync'
-    inner.innerHTML = '<div class="nl-git-empty-inline">检测远程能力…</div>'
+    inner.innerHTML = '<div class="nl-git-empty-inline">' + t('git.syncProbing') + '</div>'
     sec.append(title, inner)
     return { sec, inner }
   }
 
   // 凭据类错误的一句通用引导（命中关键字则附）
-  function credHint(t) {
-    if (/terminal prompts disabled|could not read|Authentication|permission denied|invalid username|password|ssh|BatchMode/i.test(t)) {
-      return '\n\n提示：应用不代持凭据，请在系统终端配好 git 凭据助手 / ssh-agent（HTTPS 可用 Personal Access Token，SSH 需加载密钥到 agent）后重试。'
+  function credHint(raw) {
+    if (/terminal prompts disabled|could not read|Authentication|permission denied|invalid username|password|ssh|BatchMode/i.test(raw)) {
+      return t('git.credHint')
     }
     return ''
   }
 
   // Phase 4：拆解 `[code]body` 前串。System 引擎旧格式无 → code=null（回关键字判定）。
   // [host_unknown]<json> 额外 JSON.parse body → payload（前端一次性信任弹框需）。
-  function parseErrCode(t) {
-    const m = /^\[([a-z_]+)\]([\s\S]*)$/.exec(t || '')
-    if (!m) return { code: null, body: t || '', payload: null }
+  function parseErrCode(raw) {
+    const m = /^\[([a-z_]+)\]([\s\S]*)$/.exec(raw || '')
+    if (!m) return { code: null, body: raw || '', payload: null }
     const code = m[1]
     const body = m[2]
     let payload = null
@@ -369,20 +373,18 @@ export function createGitPanel(deps) {
   // 2) non_fast_forward / 无 code 但命中 NONFF_RE → 分叉引导
   // 3) local_changes / hostkey_mismatch / network / auth → 对应引导
   // 4) 其余 → 原文 + credHint
-  async function handleRemoteErr(t, opName, retryFn) {
-    const { code, body, payload } = parseErrCode(t)
+  async function handleRemoteErr(raw, opName, retryFn) {
+    const { code, body, payload } = parseErrCode(raw)
     if (code === 'host_unknown' && payload && payload.host) {
-      const msg =
-        '首次连接 SSH 主机：' +
-        payload.host +
-        '\n密钥类型：' +
-        (payload.keyType || 'unknown') +
-        (payload.fingerprint ? '\n指纹：' + payload.fingerprint : '') +
-        '\n\n与官方公告核对无误后选「信任」，下次同 host 将自动放行。\n' +
-        '若并非首次连接且已看到 mismatch 提示，请拒绝并在终端手工核对。'
-      const ok = await confirmDialog(msg, '信任此主机？')
+      let msg = t('git.hostUnknownHead', {
+        host: payload.host,
+        keyType: payload.keyType || t('git.unknownErr'),
+      })
+      if (payload.fingerprint) msg += '\n' + t('git.hostFingerprint', { fingerprint: payload.fingerprint })
+      msg += t('git.hostUnknownTail')
+      const ok = await confirmDialog(msg, t('git.trustHost'))
       if (!ok) {
-        await messageDialog('已取消' + opName + '：' + body)
+        await messageDialog(t('git.canceledOp', { op: opName, body }))
         return
       }
       try {
@@ -392,51 +394,44 @@ export function createGitPanel(deps) {
           keyB64: payload.keyB64,
         })
       } catch (e) {
-        await messageDialog('写 known_hosts 失败：' + errText(e))
+        await messageDialog(t('git.knownHostsWriteFailed', { err: errText(e) }))
         return
       }
       try {
         if (typeof retryFn === 'function') await retryFn()
       } catch (e2) {
-        const t2 = errText(e2)
-        await messageDialog(opName + '仍失败：' + t2 + credHint(t2))
+        const raw2 = errText(e2)
+        await messageDialog(t('git.opStillFailed', { op: opName, err: raw2, hint: credHint(raw2) }))
       }
       return
     }
-    if (code === 'non_fast_forward' || (!code && NONFF_RE.test(t))) {
+    if (code === 'non_fast_forward' || (!code && NONFF_RE.test(raw))) {
       await messageDialog(
-        opName +
-          '被拒（本地与远端已分叉，无法快进）：\n' +
-          (body || t) +
-          '\n\n可用「同步」区的『Pull（合并）』按钮，或命令面板『Git：拉取（合并）』改走合并拉取；\n产生的冲突会在「变更」列表逐行列出，可选用本地 / 用远端 / 手动编辑，全部解决后提交合并。',
+        t('git.nonFfMsg', { op: opName, body: body || raw }),
       )
       return
     }
     if (code === 'local_changes') {
-      await messageDialog('本地未提交修改会阻挡快进：\n' + body + '\n\n请先提交或 stash。')
+      await messageDialog(t('git.localChangesMsg', { body }))
       return
     }
     if (code === 'no_upstream') {
       await messageDialog(
-        '当前分支无上游，无法推：\n' +
-          (body || t) +
-          '\n\n内置引擎不自动设 upstream（避免默默创远程新分支）。\n请一次性安装系统 git 跑 `git push -u origin <当前分支>`，或手动配好后重试。',
+        t('git.noUpstreamMsg', { body: body || raw }),
       )
       return
     }
     if (code === 'hostkey_mismatch') {
       await messageDialog(
-        '主机密钥与已存 known_hosts 不匹配：可能是中间人攻击或服务器重新生成密钥。\n\n' +
-          body +
-          '\n\n请在官方渠道核对指纹后，手动删除对应 known_hosts 条目并重试。',
+        t('git.hostKeyMismatch', { body }),
       )
       return
     }
     if (code === 'network') {
-      await messageDialog(body + '\n\n提示：请检查网络 / 代理 / 防火墙。')
+      await messageDialog(t('git.networkMsg', { body }))
       return
     }
-    await messageDialog(opName + '失败：' + t + credHint(t))
+    await messageDialog(t('git.opFailed', { op: opName, err: raw, hint: credHint(raw) }))
   }
 
   // 刷新领先/落后徽标（fetch / pull 后调用）
@@ -446,13 +441,13 @@ export function createGitPanel(deps) {
     try {
       const ab = await gitRAheadBehind(vaultRoot)
       if (!ab) {
-        badge.textContent = '未设置上游'
+        badge.textContent = t('git.noUpstream')
         badge.className = 'nl-git-sync-badge nl-git-muted'
       } else {
-        setIcon(badge, ab.behind > 0 ? 'arrow-down' : 'arrow-up', `领先 ${ab.ahead} · 落后 ${ab.behind}`)
+        setIcon(badge, ab.behind > 0 ? 'arrow-down' : 'arrow-up', t('git.aheadBehind', { ahead: ab.ahead, behind: ab.behind }))
         badge.className =
           'nl-git-sync-badge' + (ab.behind > 0 ? ' nl-git-sync-behind' : '')
-        badge.title = '上游：' + ab.upstream
+        badge.title = t('git.upstream', { name: ab.upstream })
       }
     } catch (_) {
       badge.textContent = ''
@@ -463,7 +458,7 @@ export function createGitPanel(deps) {
   async function populateSync(inner) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) {
-      inner.innerHTML = '<div class="nl-git-empty-inline">打开知识库后可用</div>'
+      inner.innerHTML = '<div class="nl-git-empty-inline">' + t('git.needVault') + '</div>'
       return
     }
     let info = null
@@ -475,7 +470,7 @@ export function createGitPanel(deps) {
     if (!inner.isConnected) return
     if (!info || !info.builtinReady) {
       inner.innerHTML =
-        '<div class="nl-git-empty-inline">远程同步不可用（内置引擎未就绪）。</div>'
+        '<div class="nl-git-empty-inline">' + t('git.syncUnavailable') + '</div>'
       return
     }
   
@@ -501,51 +496,51 @@ export function createGitPanel(deps) {
     setIcon(
       engBadge,
       isSys ? 'terminal' : 'box',
-      isSys ? '系统 git · ' + (info.gitVersion || '') : '内置引擎（无系统 git 也可用）',
+      isSys ? t('git.engineSystem', { version: info.gitVersion || '' }) : t('git.engineBuiltin'),
     )
     engBadge.title = isSys
-      ? '当前使用系统安装的 git（shell-out），凭据走 GCM / ssh-agent。'
-      : '当前使用内置 libgit2（本 R1-B）：认证靠 ssh-agent / env token / 无口令私钥；SSH 首次连陌生 host 会弹一次性信任。'
+      ? t('git.engineSystemTip')
+      : t('git.engineBuiltinTip')
     engineRow.append(engBadge)
-  
+
     // —— 远端行 ——
     const remoteRow = document.createElement('div')
     remoteRow.className = 'nl-git-sync-row'
     const remoteLabel = document.createElement('span')
     remoteLabel.className = 'nl-git-sync-remote' + (origin ? '' : ' nl-git-muted')
-    remoteLabel.textContent = origin ? `${origin.name} · ${origin.url}` : '未配置远端'
+    remoteLabel.textContent = origin ? `${origin.name} · ${origin.url}` : t('git.noRemote')
     if (origin) remoteLabel.title = origin.url
     const remoteBtn = document.createElement('button')
     remoteBtn.className = 'nl-git-btn nl-git-btn-sm'
-    setIcon(remoteBtn, origin ? '' : 'plus', origin ? '改地址' : '添加远端')
-    remoteBtn.title = origin ? 'git remote set-url ' + origin.name : 'git remote add origin <url>'
+    setIcon(remoteBtn, origin ? '' : 'plus', origin ? t('git.remoteEdit') : t('git.remoteAdd'))
+    remoteBtn.title = origin ? t('git.remoteSetUrlTip', { name: origin.name }) : t('git.remoteAddTip')
     remoteRow.append(remoteLabel, remoteBtn)
-  
+
     // —— 动作行：Fetch / Pull + 徽标 ——
     const actRow = document.createElement('div')
     actRow.className = 'nl-git-sync-row nl-git-sync-actions'
     const fetchBtn = document.createElement('button')
     fetchBtn.className = 'nl-git-btn'
-    setIcon(fetchBtn, 'reload', 'Fetch')
+    setIcon(fetchBtn, 'reload', t('git.btnFetch'))
     fetchBtn.title = isSys
-      ? 'git fetch --prune（非交互，凭据交系统 git）'
-      : '内置 fetch（非交互）：SSH 先试 ssh-agent → 无口令私钥；HTTPS 先试 env token'
+      ? t('git.fetchTipSys')
+      : t('git.fetchTipBuiltin')
     const pullBtn = document.createElement('button')
     pullBtn.className = 'nl-git-btn nl-git-btn-primary'
-    setIcon(pullBtn, 'arrow-down', 'Pull（快进）')
-    pullBtn.title = '仅快进拉取；分叉不自动合并'
+    setIcon(pullBtn, 'arrow-down', t('git.btnPullFf'))
+    pullBtn.title = t('git.pullFfTip')
     const pushBtn = document.createElement('button')
     pushBtn.className = 'nl-git-btn'
-    setIcon(pushBtn, 'arrow-up', 'Push')
+    setIcon(pushBtn, 'arrow-up', t('git.btnPush'))
     pushBtn.title = isSys
-      ? 'git push（非交互，凭据交系统 git）'
-      : '内置 push（非交互）：当前分支 → upstream 同名分支；凭据同 fetch'
+      ? t('git.pushTipSys')
+      : t('git.pushTipBuiltin')
     const mergeBtn = document.createElement('button')
     mergeBtn.className = 'nl-git-btn'
-    setIcon(mergeBtn, 'branch', 'Pull（合并）')
+    setIcon(mergeBtn, 'branch', t('git.btnPullMerge'))
     mergeBtn.title = isSys
-      ? 'git pull（合并方式，非 ff-only）：分叉时产生冲突，可在变更列表逐个解决'
-      : '内置合并拉取：分叉时产生冲突，可在变更列表逐个解决'
+      ? t('git.mergeTipSys')
+      : t('git.mergeTipBuiltin')
     const badge = document.createElement('span')
     badge.className = 'nl-git-sync-badge nl-git-muted'
     badge.textContent = origin ? '—' : ''
@@ -576,20 +571,20 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     const url = await promptDialog({
-      title: origin ? `修改 ${origin.name} 地址` : '添加远端 origin',
-      placeholder: 'https://… 或 git@…:…/…',
+      title: origin ? t('git.remoteEditTitle', { name: origin.name }) : t('git.remoteAddTitle'),
+      placeholder: t('git.remoteUrlPh'),
       defaultValue: origin ? origin.url : '',
-      confirmLabel: '确定',
+      confirmLabel: t('common.confirm'),
     })
     if (url == null || !url.trim()) return
     busy = true
     try {
       if (origin) await gitRRemoteSetUrl(vaultRoot, origin.name, url.trim())
       else await gitRRemoteAdd(vaultRoot, 'origin', url.trim())
-      setStatus('远端已保存')
+      setStatus(t('git.remoteSaved'))
       await populateSync(inner)
     } catch (e) {
-      await messageDialog('设置远端失败：' + errText(e))
+      await messageDialog(t('git.remoteSetFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -601,18 +596,18 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     busy = true
-    setStatus('抓取远端中…')
+    setStatus(t('git.fetching'))
     const retry = async () => {
       await gitRFetch(vaultRoot, origin ? origin.name : undefined)
       await updateBadge(badge)
-      setStatus('已抓取远端')
+      setStatus(t('git.fetched'))
     }
     try {
       await retry()
     } catch (e) {
-      const t = errText(e)
-      setStatus('抓取失败')
-      await handleRemoteErr(t, '抓取', retry)
+      const raw = errText(e)
+      setStatus(t('git.fetchFailed'))
+      await handleRemoteErr(raw, t('git.opFetch'), retry)
     } finally {
       busy = false
     }
@@ -629,8 +624,8 @@ export function createGitPanel(deps) {
       const items = await gitStatus(vaultRoot)
       if (items && items.length) {
         const ok = await confirmDialog(
-          '有未提交改动，快进可能被拒或产生冲突（冲突处理尚未支持，属后续版本），建议先提交。仍要拉取？',
-          '拉取（快进）',
+          t('git.pullConfirm'),
+          t('git.btnPullFf'),
         )
         if (!ok) return
       }
@@ -638,19 +633,19 @@ export function createGitPanel(deps) {
       /* status 读失败不阻断，交由 git 定夺 */
     }
     busy = true
-    setStatus('快进拉取中…')
+    setStatus(t('git.pulling'))
     const retry = async () => {
       await gitRPullFf(vaultRoot)
-      setStatus('已快进拉取')
+      setStatus(t('git.pulled'))
       if (typeof onPullDone === 'function') await onPullDone()
       await updateBadge(badge)
     }
     try {
       await retry()
     } catch (e) {
-      const t = errText(e)
-      setStatus('拉取失败')
-      await handleRemoteErr(t, '拉取', retry)
+      const raw = errText(e)
+      setStatus(t('git.pullFailed'))
+      await handleRemoteErr(raw, t('git.opPull'), retry)
     } finally {
       busy = false
     }
@@ -662,18 +657,18 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     busy = true
-    setStatus('推送中…')
+    setStatus(t('git.pushing'))
     const retry = async () => {
       await gitRPush(vaultRoot)
-      setStatus('已推送到远端')
+      setStatus(t('git.pushed'))
       await updateBadge(badge)
     }
     try {
       await retry()
     } catch (e) {
-      const t = errText(e)
-      setStatus('推送失败')
-      await handleRemoteErr(t, '推送', retry)
+      const raw = errText(e)
+      setStatus(t('git.pushFailed'))
+      await handleRemoteErr(raw, t('git.opPush'), retry)
     } finally {
       busy = false
     }
@@ -688,8 +683,8 @@ export function createGitPanel(deps) {
       const items = await gitStatus(vaultRoot)
       if (items && items.length) {
         const ok = await confirmDialog(
-          '有未提交改动，合并可能失败或加深冲突，建议先提交。仍要合并拉取？',
-          '拉取（合并）',
+          t('git.mergePullConfirm'),
+          t('git.btnPullMerge'),
         )
         if (!ok) return
       }
@@ -697,14 +692,14 @@ export function createGitPanel(deps) {
       /* status 读失败不阻断，交由合并定夺 */
     }
     busy = true
-    setStatus('合并拉取中…')
+    setStatus(t('git.merging'))
     const retry = async () => {
       const r = await gitRPullMerge(vaultRoot)
       const first = (r || '').split('\n')[0].trim()
       if (first === 'CONFLICTS') {
-        setStatus('有冲突待解决')
+        setStatus(t('git.conflictsPending'))
       } else {
-        setStatus('已合并拉取')
+        setStatus(t('git.merged'))
         if (typeof onPullDone === 'function') await onPullDone()
         await updateBadge(badge)
       }
@@ -712,9 +707,9 @@ export function createGitPanel(deps) {
     try {
       await retry()
     } catch (e) {
-      const t = errText(e)
-      setStatus('合并拉取失败')
-      await handleRemoteErr(t, '合并拉取', retry)
+      const raw = errText(e)
+      setStatus(t('git.mergeFailed'))
+      await handleRemoteErr(raw, t('git.opMerge'), retry)
     } finally {
       busy = false
       await refresh()
@@ -729,10 +724,10 @@ export function createGitPanel(deps) {
     busy = true
     try {
       await gitRResolve(vaultRoot, { path, side })
-      setStatus('已解决：' + path)
+      setStatus(t('git.resolved', { path }))
       await load()
     } catch (e) {
-      await messageDialog('解决冲突失败：' + errText(e))
+      await messageDialog(t('git.resolveFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -743,7 +738,7 @@ export function createGitPanel(deps) {
     if (typeof openFile === 'function') openFile(path)
     else
       messageDialog(
-        '请手动打开「' + path + '」解决冲突标记（<<<<<<< / ======= / >>>>>>>），保存后回来点「提交合并」。',
+        t('git.editConflictMsg', { path }),
       )
   }
 
@@ -753,20 +748,20 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     const message = await promptDialog({
-      title: '提交合并',
-      placeholder: '合并提交信息',
+      title: t('git.mergeCommitTitle'),
+      placeholder: t('git.mergeCommitPh'),
       defaultValue: 'Merge remote-tracking branch',
-      confirmLabel: '提交合并',
+      confirmLabel: t('git.mergeCommitBtn'),
     })
     if (!message) return
     busy = true
     try {
       await gitRCommitMerge(vaultRoot, { message })
-      setStatus('已提交合并')
+      setStatus(t('git.mergeCommitted'))
       if (typeof onPullDone === 'function') await onPullDone()
       await load()
     } catch (e) {
-      await messageDialog('提交合并失败：' + errText(e))
+      await messageDialog(t('git.mergeCommitFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -778,18 +773,18 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     const ok = await confirmDialog(
-      '中止合并会把工作树回退到合并前状态，冲突标记将被清除。确定？',
-      '中止合并',
+      t('git.abortConfirm'),
+      t('git.mergeAbortBtn'),
     )
     if (!ok) return
     busy = true
     try {
       await gitRAbortMerge(vaultRoot)
-      setStatus('已中止合并')
+      setStatus(t('git.mergeAborted'))
       if (typeof onPullDone === 'function') await onPullDone()
       await load()
     } catch (e) {
-      await messageDialog('中止合并失败：' + errText(e))
+      await messageDialog(t('git.mergeAbortFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -808,7 +803,7 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) {
       curRepoPath = null
-      renderPlaceholder('打开知识库后显示 Git 状态')
+      renderPlaceholder(t('git.needVaultShow'))
       return
     }
     try {
@@ -818,7 +813,7 @@ export function createGitPanel(deps) {
         renderHead(info, 0)
         body.innerHTML = ''
         body.appendChild(
-          el('div', 'nl-git-empty', '此文件夹不是 Git 仓库。点上方「初始化仓库」即可纳入版本管理。'),
+          el('div', 'nl-git-empty', t('git.notRepoHint')),
         )
         return
       }
@@ -832,7 +827,7 @@ export function createGitPanel(deps) {
       renderHead(info, items.length)
       renderBody(items, commits, merging)
     } catch (e) {
-      renderPlaceholder('读取 Git 状态失败：' + escapeHtml(errText(e)))
+      renderPlaceholder(escapeHtml(t('git.statusReadFailed', { err: errText(e) })))
     }
   }
 
@@ -851,9 +846,9 @@ export function createGitPanel(deps) {
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     const message = await promptDialog({
-      title: '提交全部改动',
-      placeholder: '描述本次改动（提交信息）',
-      confirmLabel: '提交',
+      title: t('git.commitAllTitle'),
+      placeholder: t('git.commitPh'),
+      confirmLabel: t('git.commitBtn'),
     })
     if (!message) return // 取消
 
@@ -864,16 +859,16 @@ export function createGitPanel(deps) {
       let email = null
       const id = await gitConfigIdentity(vaultRoot)
       if (!id) {
-        name = await promptDialog({ title: '提交身份 · 姓名', placeholder: 'user.name', confirmLabel: '下一步' })
+        name = await promptDialog({ title: t('git.identityName'), placeholder: 'user.name', confirmLabel: t('git.nextStep') })
         if (name == null) return
-        email = await promptDialog({ title: '提交身份 · 邮箱', placeholder: 'user@email.com', confirmLabel: '提交' })
+        email = await promptDialog({ title: t('git.identityEmail'), placeholder: 'user@email.com', confirmLabel: t('git.commitBtn') })
         if (email == null) return
       }
       const res = await gitCommitAll(vaultRoot, message, name, email)
-      setStatus('已提交 ' + res.idShort)
+      setStatus(t('git.committed', { id: res.idShort }))
       await load()
     } catch (e) {
-      await messageDialog('提交失败：' + errText(e))
+      await messageDialog(t('git.commitFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -886,10 +881,10 @@ export function createGitPanel(deps) {
     busy = true
     try {
       await gitInit(vaultRoot)
-      setStatus('已初始化 Git 仓库')
+      setStatus(t('git.initialized'))
       await load()
     } catch (e) {
-      await messageDialog('初始化失败：' + errText(e))
+      await messageDialog(t('git.initFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -939,20 +934,20 @@ export function createGitPanel(deps) {
     const { vaultRoot, origin } = await resolveOrigin()
     if (!vaultRoot) return
     const url = await promptDialog({
-      title: origin ? `修改 ${origin.name} 地址` : '添加远端 origin',
-      placeholder: 'https://… 或 git@…:…/…',
+      title: origin ? t('git.remoteEditTitle', { name: origin.name }) : t('git.remoteAddTitle'),
+      placeholder: t('git.remoteUrlPh'),
       defaultValue: origin ? origin.url : '',
-      confirmLabel: '确定',
+      confirmLabel: t('common.confirm'),
     })
     if (url == null || !url.trim()) return
     busy = true
     try {
       if (origin) await gitRRemoteSetUrl(vaultRoot, origin.name, url.trim())
       else await gitRRemoteAdd(vaultRoot, 'origin', url.trim())
-      setStatus('远端已保存')
+      setStatus(t('git.remoteSaved'))
       refresh()
     } catch (e) {
-      await messageDialog('设置远端失败：' + errText(e))
+      await messageDialog(t('git.remoteSetFailed', { err: errText(e) }))
     } finally {
       busy = false
     }
@@ -970,7 +965,7 @@ function el(tag, cls, text) {
 }
 
 function errText(e) {
-  return (e && (e.message || e)) || '未知错误'
+  return (e && (e.message || e)) || t('git.unknownErr')
 }
 
 // R3：变更行内的小按钮（阻止冒泡，避免触发行本身的 diff 点击）。
