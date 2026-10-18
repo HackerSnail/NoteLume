@@ -29,6 +29,13 @@
 
 ### Added
 
+* **i18n：今日速记 / 表格右键菜单 / 查找栏 / 文档属性四个面板文案接入词条（daily.* / table.* / find.* / fm.* 共 54 条，五种语言）**：接续上一批三个整面板，把剩下的中等面板清掉。`frontmatter-panel.js` 的 `keep()` 里原有局部变量 `t`（指 textarea 元素），与导入的 `t` 撞名，已改名 `ta`。
+  * `daily-capture.js`（daily.* 16 条）：浮层标题、设置/关闭按钮提示、输入框占位、保存与失败状态、设置对话框（含「未设置」回退与日期格式占位符）。
+  * `table-editing.js`（table.* 14 条）：右键菜单的行列增删、单元格对齐、表头切换、合并/拆分、删表。
+  * `find-in-doc.js`（find.* 12 条）：查找/替换两行的输入框、aria-label、按钮与 title。
+  * `frontmatter-panel.js`（fm.* 12 条）：空态、摘要降级显示（复杂数组/对象）、应用/重新格式化/移除按钮与确认、解析失败提示。
+  * 测试与验证：`find-in-doc.test.mjs` 14 passed、`i18n.test.mjs` 10 passed、`roundtrip.test.mjs` 58 passed；四个文件零中文残留、lint 干净；`npm run build` 无错。纯前端，刷新即生效。
+
 * **i18n：Git 面板 / 画布 / 插件三个整面板文案接入词条（新增 git.* / canvas.* / plugin.* 共 232 条，五种语言各一份）**：此前这三个面板完全没接 `t()`，文案中文写死在源码里，切语言只有主界面跟着变，面板不变。本次把用户可见文案全部抽进词条，渲染点调 `t()`；控制台类的 `[NoteLume]` 异常日志一并收了（Node 单测默认走 zh-CN，返回值与原文一致，既有断言不受影响）。
   * `git-panel.js`（git.* 134 条）：徽标名、提交 / 同步 / 合并工具条、fetch / pull / push / merge 的确认与错误引导（host_unknown 一次性信任、non_fast_forward、no_upstream、hostkey_mismatch、network 各分支）、提交身份填写对话框、相对时间。`handleRemoteErr` / `credHint` / `parseErrCode` 的参数原名为 `t`，与导入的 `t` 撞名遮蔽，改为 `raw`。
   * `canvas-view.js`（canvas.* 50 条）：右键菜单（背景 / 卡片 / 连线三类）、工具条按钮与 title、颜色 / 对齐 / 分布行、复制提示、JSON 解析失败错误。

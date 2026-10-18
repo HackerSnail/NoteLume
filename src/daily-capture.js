@@ -10,6 +10,7 @@
 import { readMdFile, writeMdFile, pickFolder, confirmDialog, messageDialog } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
 import { setIcon } from './icons.js'
+import { t } from './i18n.js'
 import { formatDate, builtinVars, applyTemplate } from './template.js'
 
 const LS_DIR = 'nl-daily-abs'
@@ -41,23 +42,23 @@ function ensureDom() {
   head.className = 'nl-daily-head'
   const title = document.createElement('span')
   title.className = 'nl-daily-title'
-  setIcon(title, 'calendar', '今日速记')
+  setIcon(title, 'calendar', t('daily.title'))
   dirLabelEl = document.createElement('span')
   dirLabelEl.className = 'nl-daily-dir'
   const cfgBtn = document.createElement('button')
   cfgBtn.className = 'nl-daily-cfg'
-  cfgBtn.title = '设置今日目录 / 文件命名'
+  cfgBtn.title = t('daily.settingsTip')
   setIcon(cfgBtn, 'sliders')
   const closeBtn = document.createElement('button')
   closeBtn.className = 'nl-daily-close'
-  closeBtn.title = '关闭并保存 (Esc)'
+  closeBtn.title = t('daily.closeTip')
   setIcon(closeBtn, 'close')
   head.append(title, dirLabelEl, cfgBtn, closeBtn)
 
   ta = document.createElement('textarea')
   ta.className = 'nl-daily-ta'
   ta.spellcheck = false
-  ta.placeholder = '随手记点什么…（停止输入即自动保存为标准 markdown）'
+  ta.placeholder = t('daily.placeholder')
 
   statusEl = document.createElement('div')
   statusEl.className = 'nl-daily-status'
@@ -88,13 +89,13 @@ async function loadAndShow(dir) {
     const now = new Date()
     content = applyTemplate(SEED, builtinVars({ title: curRel.replace(/\.md$/i, ''), filename: curRel, now }))
     try { await writeMdFile(dir, curRel, content) }
-    catch (e) { await messageDialog('无法在今日目录创建笔记：' + ((e && e.message) || e)); return }
+    catch (e) { await messageDialog(t('daily.createFailed', { err: (e && e.message) || e })); return }
   }
   ta.value = content
   dirty = false
   dirLabelEl.textContent = dirName(dir) + ' · ' + curRel
   overlay.classList.remove('hidden')
-  setStatus('已载入今天（' + curRel + '）')
+  setStatus(t('daily.loadedToday', { rel: curRel }))
   setTimeout(() => ta.focus(), 0)
 }
 
@@ -105,15 +106,15 @@ async function flush() {
   try {
     await writeMdFile(dir, curRel, ta.value)
     dirty = false
-    setStatus('已保存 · ' + new Date().toLocaleTimeString())
+    setStatus(t('daily.savedAt', { time: new Date().toLocaleTimeString() }))
   } catch (e) {
-    setStatus('保存失败：' + ((e && e.message) || e), 'warning')
+    setStatus(t('daily.saveFailed', { err: (e && e.message) || e }), 'warning')
   }
 }
 
 function onInput() {
   dirty = true
-  setStatus('编辑中…')
+  setStatus(t('daily.editing'))
   if (timer) clearTimeout(timer)
   timer = setTimeout(flush, 800)
 }
@@ -138,16 +139,15 @@ async function configure() {
   ensureDom()
   const cur = localStorage.getItem(LS_DIR)
   const go = await confirmDialog(
-    '设置「今日速记」的存放位置。\n\n当前：' + (cur ? cur : '未设置') +
-    '\n\n下一步用系统对话框选择一个文件夹（所有知识库共用这一个"今日"，与当前打开的库无关）。',
-    '今日速记 · 设置'
+    t('daily.configMsg', { dir: cur || t('daily.unset') }),
+    t('daily.configTitle')
   )
   if (!go) return
   const dir = await pickFolder()
   if (dir) localStorage.setItem(LS_DIR, dir)
-  const f = await promptDialog({ title: '今日文件名 · 日期格式', placeholder: 'YYYY-MM-DD / YYYYMMDD / YYYY年MM月DD日 …', defaultValue: getFmt() })
+  const f = await promptDialog({ title: t('daily.fmtTitle'), placeholder: t('daily.fmtPh'), defaultValue: getFmt() })
   if (f != null) localStorage.setItem(LS_FMT, f)
-  setStatus(dir ? '今日目录已设为：' + dir : '未更改目录')
+  setStatus(dir ? t('daily.dirSet', { dir }) : t('daily.dirUnchanged'))
   // 若浮层正开着，按新设置重新载入今天
   const nowDir = localStorage.getItem(LS_DIR)
   if (nowDir && !overlay.classList.contains('hidden')) await loadAndShow(nowDir)

@@ -8,6 +8,7 @@
 
 import * as yaml from 'js-yaml'
 import { hasYamlDoc } from './frontmatter.js'
+import { t } from './i18n.js'
 
 export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) {
   let error = ''
@@ -21,8 +22,8 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
 
   // 重画会清掉 textarea，故调用方 render() 后用它回填用户的（尚未落盘的）文本
   function keep(value) {
-    const t = container.querySelector('.fm-textarea')
-    if (t) t.value = value
+    const ta = container.querySelector('.fm-textarea')
+    if (ta) ta.value = value
   }
 
   function apply(text) {
@@ -48,7 +49,7 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     const src = ta.value
     if (!hasYamlDoc(src)) {
       // 空 / 只有注释：没有可 dump 的文档，原文保留、不动用户输入
-      note = '没有可格式化的内容。'
+      note = t('fm.nothingToFormat')
       render()
       keep(src)
       return
@@ -56,11 +57,11 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     try {
       const data = yaml.load(src)
       const dumped = data == null ? '' : yaml.dump(data, { lineWidth: 0, sortKeys: false })
-      note = '已重排为规范 YAML（可能改动注释/顺序）；点「应用」生效。'
+      note = t('fm.reformatted')
       render()
       keep(dumped)
     } catch (e) {
-      error = '无法解析，不能格式化：' + String((e && e.message) || e)
+      error = t('fm.parseFailed', { err: String((e && e.message) || e) })
       render()
       keep(src)
     }
@@ -69,7 +70,7 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
   function render() {
     container.innerHTML = ''
     if (!isEditable || !isEditable()) {
-      const p = el('div', 'muted', '打开一个 Markdown 文档后可编辑文档属性')
+      const p = el('div', 'muted', t('fm.needDoc'))
       container.appendChild(p)
       return
     }
@@ -79,11 +80,11 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     // —— 只读字段摘要 ——
     const sum = el('div', 'fm-summary')
     if (!hasFm) {
-      sum.appendChild(el('div', 'muted', '该文档暂无 frontmatter（YAML 头）'))
+      sum.appendChild(el('div', 'muted', t('fm.noFm')))
     } else {
       const keys = Object.keys(data || {})
       if (!keys.length) {
-        sum.appendChild(el('div', 'muted', '（空 frontmatter）'))
+        sum.appendChild(el('div', 'muted', t('fm.emptyFm')))
       }
       for (const k of keys) sum.appendChild(row(k, (data || {})[k]))
     }
@@ -102,11 +103,11 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
 
     // —— 动作按钮 ——
     const bar = el('div', 'fm-actions')
-    bar.appendChild(btn('应用', 'primary', () => apply(ta.value)))
-    bar.appendChild(btn('重新格式化', '', reformat))
+    bar.appendChild(btn(t('fm.apply'), 'primary', () => apply(ta.value)))
+    bar.appendChild(btn(t('fm.reformatBtn'), '', reformat))
     if (hasFm) {
-      bar.appendChild(btn('移除 frontmatter', 'danger', () => {
-        if (window.confirm('移除本文档的 frontmatter（YAML 头）？')) setFm(null)
+      bar.appendChild(btn(t('fm.removeBtn'), 'danger', () => {
+        if (window.confirm(t('fm.removeConfirm'))) setFm(null)
       }))
     }
     container.appendChild(bar)
@@ -120,9 +121,9 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     const v = document.createElement('span')
     v.className = 'fm-val'
     if (Array.isArray(val)) {
-      v.textContent = val.every(isScalar) ? val.map((x) => String(x)).join(', ') : '[…] 复杂数组'
+      v.textContent = val.every(isScalar) ? val.map((x) => String(x)).join(', ') : t('fm.complexArray')
     } else if (val && typeof val === 'object') {
-      v.textContent = '{…} 复杂对象'
+      v.textContent = t('fm.complexObject')
     } else if (val == null) {
       v.textContent = '—'
     } else {

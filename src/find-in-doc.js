@@ -10,6 +10,7 @@
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { setIcon } from './icons.js'
+import { t } from './i18n.js'
 
 export const findKey = new PluginKey('nl-find')
 
@@ -135,8 +136,8 @@ export function createFindBar({ view, paneEl }) {
     input = document.createElement('input')
     input.type = 'text'
     input.className = 'nl-find-input'
-    input.placeholder = '在本篇文档中查找…'
-    input.setAttribute('aria-label', '文档内查找')
+    input.placeholder = t('find.placeholder')
+    input.setAttribute('aria-label', t('find.aria'))
 
     countEl = document.createElement('span')
     countEl.className = 'nl-find-count'
@@ -146,7 +147,7 @@ export function createFindBar({ view, paneEl }) {
     caseBtn.className = 'nl-find-btn nl-find-case'
     caseBtn.type = 'button'
     caseBtn.textContent = 'Aa'
-    caseBtn.title = '区分大小写'
+    caseBtn.title = t('find.caseTip')
     caseBtn.addEventListener('click', () => {
       caseSensitive = !caseSensitive
       caseBtn.classList.toggle('on', caseSensitive)
@@ -168,9 +169,9 @@ export function createFindBar({ view, paneEl }) {
       setIcon(b, icon, '')
       return b
     }
-    const prev = mkIcon('arrow-up', '上一个（Shift+Enter）', () => { step(-1); input.focus() })
-    const next = mkIcon('arrow-down', '下一个（Enter）', () => { step(1); input.focus() })
-    const closeBtn = mkIcon('close', '关闭（Esc）', () => closeBar())
+    const prev = mkIcon('arrow-up', t('find.prevTip'), () => { step(-1); input.focus() })
+    const next = mkIcon('arrow-down', t('find.nextTip'), () => { step(1); input.focus() })
+    const closeBtn = mkIcon('close', t('find.closeTip'), () => closeBar())
 
     row1.append(input, countEl, caseBtn, prev, next, closeBtn)
 
@@ -181,11 +182,11 @@ export function createFindBar({ view, paneEl }) {
     replaceInput = document.createElement('input')
     replaceInput.type = 'text'
     replaceInput.className = 'nl-find-input nl-find-replace-input'
-    replaceInput.placeholder = '替换为…'
-    replaceInput.setAttribute('aria-label', '替换文本')
+    replaceInput.placeholder = t('find.replacePh')
+    replaceInput.setAttribute('aria-label', t('find.replaceAria'))
 
-    const replaceOneBtn = mk('替换', '替换当前项（Enter）', () => { doReplaceOne(); replaceInput.focus() }, 'nl-find-replace-btn')
-    const replaceAllBtn = mk('全部替换', '替换全部命中', () => { doReplaceAll(); replaceInput.focus() }, 'nl-find-replace-btn')
+    const replaceOneBtn = mk(t('find.replaceOne'), t('find.replaceOneTip'), () => { doReplaceOne(); replaceInput.focus() }, 'nl-find-replace-btn')
+    const replaceAllBtn = mk(t('find.replaceAll'), t('find.replaceAllTip'), () => { doReplaceAll(); replaceInput.focus() }, 'nl-find-replace-btn')
 
     row2.append(replaceInput, replaceOneBtn, replaceAllBtn)
     bar.append(row1, row2)

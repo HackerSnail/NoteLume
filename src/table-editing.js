@@ -10,6 +10,7 @@
 
 import { keymap } from 'prosemirror-keymap'
 import { Plugin, TextSelection } from 'prosemirror-state'
+import { t } from './i18n.js'
 import {
   columnResizing,
   tableEditing,
@@ -271,30 +272,30 @@ export function attachTableContextMenu(view) {
 
     const menu = document.createElement('div')
     menu.className = 'cv-menu table-menu'
-    menu.appendChild(item('上方插入行', run(addRowBefore)))
-    menu.appendChild(item('下方插入行', run(addRowAfter)))
-    menu.appendChild(item('删除本行', run(deleteRow), true))
+    menu.appendChild(item(t('table.rowAbove'), run(addRowBefore)))
+    menu.appendChild(item(t('table.rowBelow'), run(addRowAfter)))
+    menu.appendChild(item(t('table.rowDelete'), run(deleteRow), true))
     menu.appendChild(sep())
-    menu.appendChild(item('左侧插入列', run(addColumnBefore)))
-    menu.appendChild(item('右侧插入列', run(addColumnAfter)))
-    menu.appendChild(item('删除本列', run(deleteColumn), true))
+    menu.appendChild(item(t('table.colLeft'), run(addColumnBefore)))
+    menu.appendChild(item(t('table.colRight'), run(addColumnAfter)))
+    menu.appendChild(item(t('table.colDelete'), run(deleteColumn), true))
     menu.appendChild(sep())
-    menu.appendChild(item('左对齐单元格', run(setCellAttr('alignment', 'left'))))
-    menu.appendChild(item('居中对齐单元格', run(setCellAttr('alignment', 'center'))))
-    menu.appendChild(item('右对齐单元格', run(setCellAttr('alignment', 'right'))))
-    menu.appendChild(item('清除对齐', run(setCellAttr('alignment', null))))
+    menu.appendChild(item(t('table.alignLeft'), run(setCellAttr('alignment', 'left'))))
+    menu.appendChild(item(t('table.alignCenter'), run(setCellAttr('alignment', 'center'))))
+    menu.appendChild(item(t('table.alignRight'), run(setCellAttr('alignment', 'right'))))
+    menu.appendChild(item(t('table.alignClear'), run(setCellAttr('alignment', null))))
     menu.appendChild(sep())
-    menu.appendChild(item('切换首行为表头', run(toggleHeaderRow)))
+    menu.appendChild(item(t('table.headerToggle'), run(toggleHeaderRow)))
     // 合并/拆分（仅在对应手势下出现）：多选≥ 2 格→合并；光标/选区落在合并态格→拆分
     if (isMultiCellSel(view.state.selection)) {
       menu.appendChild(sep())
-      menu.appendChild(item('合并单元格', run(mergeCells)))
+      menu.appendChild(item(t('table.mergeCells'), run(mergeCells)))
     }
     if (isMergedSel(view.state.selection)) {
-      menu.appendChild(item('拆分单元格', runSplit))
+      menu.appendChild(item(t('table.splitCells'), runSplit))
     }
     menu.appendChild(sep())
-    menu.appendChild(item('删除整个表格', run(deleteTable), true))
+    menu.appendChild(item(t('table.tableDelete'), run(deleteTable), true))
 
     document.body.appendChild(menu)
     let x = e.clientX
