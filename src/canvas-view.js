@@ -7,6 +7,7 @@
 // 文件读写在本模块内完成（复用通用文本命令），脏标记经 onDirty 上报给 main.js 统一驱动保存/切换确认。
 import { readMdFile, writeMdFile } from './tauri-bridge.js'
 import { setIcon } from './icons.js'
+import { t } from './i18n.js'
 import MarkdownIt from 'markdown-it'
 
 // 卡片文本的 markdown-lite 渲染器（与导出/编辑器同用 markdown-it，零新依赖）：
@@ -202,7 +203,7 @@ export function createCanvasView(deps) {
     box.className = 'cv-node-body'
     if (n.type === 'file') {
       box.classList.add('cv-node-file')
-      const name = String(n.file || '').split(/[\\/]/).pop() || '（空文件）'
+      const name = String(n.file || '').split(/[\\/]/).pop() || t('canvas.emptyFile')
       setIcon(box, 'file', name)
       box.title = n.file || ''
     } else {
@@ -758,7 +759,7 @@ export function createCanvasView(deps) {
     const nodes = data.nodes.filter((n) => ids.has(n.id)).map(clone)
     const edges = data.edges.filter((e) => ids.has(e.fromNode) && ids.has(e.toNode)).map(clone)
     clipboard = { nodes, edges }
-    setStatus && setStatus('已复制 ' + nodes.length + ' 个元素')
+    setStatus && setStatus(t('canvas.copied', { n: nodes.length }))
   }
   function pasteClipboard() {
     if (!clipboard.nodes.length) return
@@ -881,15 +882,15 @@ export function createCanvasView(deps) {
           render()
         }
         if (n.type === 'file') {
-          items.push({ label: '打开文件', onClick: () => { onOpenFile && onOpenFile(n.file); closeMenu() } })
+          items.push({ label: t('canvas.openFile'), onClick: () => { onOpenFile && onOpenFile(n.file); closeMenu() } })
         } else {
-          items.push({ label: n.type === 'group' ? '编辑标签' : '编辑文字', hint: '双击', onClick: () => { startEdit(n, n.type === 'group' ? 'label' : 'text'); closeMenu() } })
+          items.push({ label: n.type === 'group' ? t('canvas.editLabel') : t('canvas.editText'), hint: t('canvas.hintDblClick'), onClick: () => { startEdit(n, n.type === 'group' ? 'label' : 'text'); closeMenu() } })
         }
-        items.push({ label: '复制', hint: 'Ctrl+C', onClick: () => { copySelection(); closeMenu() } })
-        items.push({ label: '删除', hint: 'Del', danger: true, onClick: () => { deleteSelection(); closeMenu() } })
+        items.push({ label: t('canvas.copy'), hint: 'Ctrl+C', onClick: () => { copySelection(); closeMenu() } })
+        items.push({ label: t('canvas.delete'), hint: 'Del', danger: true, onClick: () => { deleteSelection(); closeMenu() } })
         if (n.type !== 'group') items.push({ el: makeColorRow() })
-        if (n.type === 'group') items.push({ label: '解组', onClick: () => { ungroupSelection(); closeMenu() } })
-        else if (selectedCards().length >= 2) items.push({ label: '编组', onClick: () => { groupSelection(); closeMenu() } })
+        if (n.type === 'group') items.push({ label: t('canvas.ungroup'), onClick: () => { ungroupSelection(); closeMenu() } })
+        else if (selectedCards().length >= 2) items.push({ label: t('canvas.group'), onClick: () => { groupSelection(); closeMenu() } })
         if (selectedCards().length >= 2) items.push({ el: makeAlignRow() })
         if (selectedCards().length >= 3) items.push({ el: makeDistributeRow() })
       }
@@ -899,23 +900,23 @@ export function createCanvasView(deps) {
         selected.clear()
         selected.add(ed.id)
         render()
-        items.push({ label: '编辑标签', hint: '双击', onClick: () => { startEditEdge(ed); closeMenu() } })
-        items.push({ label: '方向箭头', checked: ed.toEnd === 'arrow', onClick: () => { pushUndo(snapshot()); ed.toEnd = ed.toEnd === 'arrow' ? 'none' : 'arrow'; markDirty(); render(); closeMenu() } })
-        items.push({ label: '删除', danger: true, onClick: () => { deleteSelection(); closeMenu() } })
+        items.push({ label: t('canvas.editLabel'), hint: t('canvas.hintDblClick'), onClick: () => { startEditEdge(ed); closeMenu() } })
+        items.push({ label: t('canvas.arrowDir'), checked: ed.toEnd === 'arrow', onClick: () => { pushUndo(snapshot()); ed.toEnd = ed.toEnd === 'arrow' ? 'none' : 'arrow'; markDirty(); render(); closeMenu() } })
+        items.push({ label: t('canvas.delete'), danger: true, onClick: () => { deleteSelection(); closeMenu() } })
       }
     } else {
       const w = screenToWorld(e.clientX, e.clientY)
-      items.push({ label: '新建卡片', hint: '双击', onClick: () => { addNode(w.x - DEFAULT_SIZE.width / 2, w.y - DEFAULT_SIZE.height / 2); closeMenu() } })
-      items.push({ label: '粘贴', hint: 'Ctrl+V', disabled: !clipboard.nodes.length, onClick: () => { pasteClipboard(); closeMenu() } })
-      items.push({ label: '全选', hint: 'Ctrl+A', onClick: () => { selected.clear(); for (const nn of data.nodes) if (nn.type !== 'group') selected.add(nn.id); render(); closeMenu() } })
+      items.push({ label: t('canvas.newCard'), hint: t('canvas.hintDblClick'), onClick: () => { addNode(w.x - DEFAULT_SIZE.width / 2, w.y - DEFAULT_SIZE.height / 2); closeMenu() } })
+      items.push({ label: t('canvas.paste'), hint: 'Ctrl+V', disabled: !clipboard.nodes.length, onClick: () => { pasteClipboard(); closeMenu() } })
+      items.push({ label: t('canvas.selectAll'), hint: 'Ctrl+A', onClick: () => { selected.clear(); for (const nn of data.nodes) if (nn.type !== 'group') selected.add(nn.id); render(); closeMenu() } })
       items.push('-')
-      items.push({ label: '适应视图', onClick: () => { fitView(); closeMenu() } })
-      items.push({ label: '重置缩放', hint: '100%', onClick: () => { resetZoom(); closeMenu() } })
+      items.push({ label: t('canvas.fitView'), onClick: () => { fitView(); closeMenu() } })
+      items.push({ label: t('canvas.resetZoom'), hint: '100%', onClick: () => { resetZoom(); closeMenu() } })
     }
     if (items.length) {
       items.push('-')
-      items.push({ label: '撤销', hint: 'Ctrl+Z', disabled: !undoStack.length, onClick: () => { undo(); closeMenu() } })
-      items.push({ label: '重做', hint: 'Ctrl+Y', disabled: !redoStack.length, onClick: () => { redo(); closeMenu() } })
+      items.push({ label: t('canvas.undo'), hint: 'Ctrl+Z', disabled: !undoStack.length, onClick: () => { undo(); closeMenu() } })
+      items.push({ label: t('canvas.redo'), hint: 'Ctrl+Y', disabled: !redoStack.length, onClick: () => { redo(); closeMenu() } })
       showMenu(e.clientX, e.clientY, items)
     }
   })
@@ -990,24 +991,24 @@ export function createCanvasView(deps) {
     return b
   }
   function makeColorRow() {
-    const kids = [colorSwatch(null, '默认', closeMenu)]
-    for (const key of Object.keys(PALETTE)) kids.push(colorSwatch(key, '颜色 ' + key, closeMenu))
-    return menuRow('颜色', kids)
+    const kids = [colorSwatch(null, t('canvas.colorDefault'), closeMenu)]
+    for (const key of Object.keys(PALETTE)) kids.push(colorSwatch(key, t('canvas.colorN', { n: key }), closeMenu))
+    return menuRow(t('canvas.color'), kids)
   }
   function makeAlignRow() {
-    return menuRow('对齐', [
-      menuMini('align-left', '左对齐', () => alignSelection('left')),
-      menuMini('align-center', '水平居中', () => alignSelection('hcenter')),
-      menuMini('align-right', '右对齐', () => alignSelection('right')),
-      menuMini('align-top', '顶对齐', () => alignSelection('top')),
-      menuMini('align-middle', '垂直居中', () => alignSelection('vcenter')),
-      menuMini('align-bottom', '底对齐', () => alignSelection('bottom')),
+    return menuRow(t('canvas.align'), [
+      menuMini('align-left', t('canvas.alignLeft'), () => alignSelection('left')),
+      menuMini('align-center', t('canvas.alignHCenter'), () => alignSelection('hcenter')),
+      menuMini('align-right', t('canvas.alignRight'), () => alignSelection('right')),
+      menuMini('align-top', t('canvas.alignTop'), () => alignSelection('top')),
+      menuMini('align-middle', t('canvas.alignVCenter'), () => alignSelection('vcenter')),
+      menuMini('align-bottom', t('canvas.alignBottom'), () => alignSelection('bottom')),
     ])
   }
   function makeDistributeRow() {
-    return menuRow('分布', [
-      menuMini('dist-h', '水平等距', () => distributeSelection('h')),
-      menuMini('dist-v', '垂直等距', () => distributeSelection('v')),
+    return menuRow(t('canvas.distribute'), [
+      menuMini('dist-h', t('canvas.distH'), () => distributeSelection('h')),
+      menuMini('dist-v', t('canvas.distV'), () => distributeSelection('v')),
     ])
   }
 
@@ -1106,55 +1107,55 @@ export function createCanvasView(deps) {
       b.addEventListener('click', fn)
       return b
     }
-    undoBtn = mk('undo', null, '撤销（Ctrl+Z）', undo)
-    redoBtn = mk('redo', null, '重做（Ctrl+Shift+Z / Ctrl+Y）', redo)
+    undoBtn = mk('undo', null, t('canvas.undoTip'), undo)
+    redoBtn = mk('redo', null, t('canvas.redoTip'), redo)
     toolbar.appendChild(undoBtn)
     toolbar.appendChild(redoBtn)
     const sepU = document.createElement('span'); sepU.className = 'cv-sep'; toolbar.appendChild(sepU)
-    toolbar.appendChild(mk('plus', '卡片', '新建文本卡片（或双击画布空白处）', () => {
+    toolbar.appendChild(mk('plus', t('canvas.cardBtn'), t('canvas.newCardTip'), () => {
       const c = centerWorld()
       addNode(c.x - DEFAULT_SIZE.width / 2, c.y - DEFAULT_SIZE.height / 2)
     }))
-    toolbar.appendChild(mk('trash', '删除', '删除选中（Delete）', deleteSelection))
-    toolbar.appendChild(mk('fit', '适应', '缩放至显示全部卡片', fitView))
+    toolbar.appendChild(mk('trash', t('canvas.delete'), t('canvas.deleteTip'), deleteSelection))
+    toolbar.appendChild(mk('fit', t('canvas.fitBtn'), t('canvas.fitTip'), fitView))
 
     const sepA = document.createElement('span'); sepA.className = 'cv-sep'; toolbar.appendChild(sepA)
-    toolbar.appendChild(mk('align-left', null, '左对齐（选中≥２）', () => alignSelection('left')))
-    toolbar.appendChild(mk('align-center', null, '水平居中对齐', () => alignSelection('hcenter')))
-    toolbar.appendChild(mk('align-right', null, '右对齐', () => alignSelection('right')))
-    toolbar.appendChild(mk('align-top', null, '顶对齐', () => alignSelection('top')))
-    toolbar.appendChild(mk('align-middle', null, '垂直居中对齐', () => alignSelection('vcenter')))
-    toolbar.appendChild(mk('align-bottom', null, '底对齐', () => alignSelection('bottom')))
-    toolbar.appendChild(mk('dist-h', null, '水平等距分布（选中≥３）', () => distributeSelection('h')))
-    toolbar.appendChild(mk('dist-v', null, '垂直等距分布（选中≥３）', () => distributeSelection('v')))
+    toolbar.appendChild(mk('align-left', null, t('canvas.alignLeftTip'), () => alignSelection('left')))
+    toolbar.appendChild(mk('align-center', null, t('canvas.alignHCenterTip'), () => alignSelection('hcenter')))
+    toolbar.appendChild(mk('align-right', null, t('canvas.alignRight'), () => alignSelection('right')))
+    toolbar.appendChild(mk('align-top', null, t('canvas.alignTop'), () => alignSelection('top')))
+    toolbar.appendChild(mk('align-middle', null, t('canvas.alignVCenterTip'), () => alignSelection('vcenter')))
+    toolbar.appendChild(mk('align-bottom', null, t('canvas.alignBottom'), () => alignSelection('bottom')))
+    toolbar.appendChild(mk('dist-h', null, t('canvas.distHTip'), () => distributeSelection('h')))
+    toolbar.appendChild(mk('dist-v', null, t('canvas.distVTip'), () => distributeSelection('v')))
 
     const sepG = document.createElement('span'); sepG.className = 'cv-sep'; toolbar.appendChild(sepG)
-    toolbar.appendChild(mk('group', '编组', '把选中卡片收进一个分组框（拖框边可整体移动）', groupSelection))
-    toolbar.appendChild(mk('ungroup', '解组', '删除选中的分组框（卡片保留）', ungroupSelection))
+    toolbar.appendChild(mk('group', t('canvas.group'), t('canvas.groupTip'), groupSelection))
+    toolbar.appendChild(mk('ungroup', t('canvas.ungroup'), t('canvas.ungroupTip'), ungroupSelection))
 
     const sep = document.createElement('span')
     sep.className = 'cv-sep'
     toolbar.appendChild(sep)
     const sw = document.createElement('span')
     sw.className = 'cv-colors'
-    sw.appendChild(colorSwatch(null, '默认'))
-    for (const key of Object.keys(PALETTE)) sw.appendChild(colorSwatch(key, '颜色 ' + key))
+    sw.appendChild(colorSwatch(null, t('canvas.colorDefault')))
+    for (const key of Object.keys(PALETTE)) sw.appendChild(colorSwatch(key, t('canvas.colorN', { n: key })))
     toolbar.appendChild(sw)
 
     const sp = document.createElement('span')
     sp.className = 'spacer'
     toolbar.appendChild(sp)
-    toolbar.appendChild(mk('zoom-out', null, '缩小（Ctrl -）', () => zoomAt(1 / 1.2)))
+    toolbar.appendChild(mk('zoom-out', null, t('canvas.zoomOutTip'), () => zoomAt(1 / 1.2)))
     zoomLabel = document.createElement('span')
     zoomLabel.className = 'cv-zoom'
-    zoomLabel.title = '点击重置为 100%（Ctrl+0）'
+    zoomLabel.title = t('canvas.zoomResetTip')
     zoomLabel.style.cursor = 'pointer'
     zoomLabel.addEventListener('click', resetZoom)
     toolbar.appendChild(zoomLabel)
-    toolbar.appendChild(mk('zoom-in', null, '放大（Ctrl+）', () => zoomAt(1.2)))
+    toolbar.appendChild(mk('zoom-in', null, t('canvas.zoomInTip'), () => zoomAt(1.2)))
 
     const sepM = document.createElement('span'); sepM.className = 'cv-sep'; toolbar.appendChild(sepM)
-    toolbar.appendChild(mk('minimap', null, '显示 / 隐藏缩略图', toggleMinimap))
+    toolbar.appendChild(mk('minimap', null, t('canvas.minimapTip'), toggleMinimap))
   }
   function colorSwatch(c, title, onPick) {
     const s = document.createElement('button')
@@ -1284,7 +1285,7 @@ export function createCanvasView(deps) {
     try {
       parsed = text.trim() ? JSON.parse(text) : { nodes: [], edges: [] }
     } catch (err) {
-      throw new Error('画布 JSON 解析失败：' + ((err && err.message) || err))
+      throw new Error(t('canvas.parseFailed', { err: (err && err.message) || err }))
     }
     data = {
       nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
