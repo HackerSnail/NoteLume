@@ -60,6 +60,7 @@ export default {
   'cmd.app.git.pullMerge': 'Git : tirer (fusion)…',
   'cmd.app.git.remote': 'Git : configurer le distant origin…',
   'cmd.app.lang': 'Langue : {name}',
+  'cmd.app.about': 'À propos de NoteLume',
 
   'cmd.editor.undo': 'Annuler',
   'cmd.editor.redo': 'Rétablir',

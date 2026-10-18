@@ -68,6 +68,7 @@ import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
 import { builtinVars, applyTemplate } from './template.js'
 import { toggleDailyCapture, configureDailyCapture } from './daily-capture.js'
+import { openAboutDialog } from './about-dialog.js'
 import { countWords, statsLabel } from './writing-stats.js'
 import { setIcon } from './icons.js'
 import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } from './i18n.js'
@@ -1234,6 +1235,7 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
   // 语言：子菜单列出全部语言，当前语言打勾
   menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
+  addMenuCmd(menu, 'app.about', 'info')
   menu.appendChild(menuSep())
   addMenuCmd(menu, 'app.focusMode', 'target')
   addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
@@ -2363,6 +2365,9 @@ function registerAppCommands() {
   app('app.dailySettings', null, () => configureDailyCapture())
   app('app.autosave', null, () => setAutosave(!state.autosave.enabled))
   app('app.clearRecents', null, () => saveRecents([]))
+  // 「关于」：Windows/Linux 从「更多」菜单与命令面板进；mac 用原生 About role（app-menu.js），
+  // 两边不同时挂，免得 mac 出现两个入口。无默认键。
+  app('app.about', null, () => openAboutDialog())
   // 界面语言：一种语言一条命令，标题按当前语言生成（各语言自称取自 LOCALES）；选中态由 MENU_CHECKED 给出
   for (const l of LOCALES) {
     commandRegistry.register({

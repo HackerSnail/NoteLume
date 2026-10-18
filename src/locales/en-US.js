@@ -60,6 +60,7 @@ export default {
   'cmd.app.git.pullMerge': 'Git: Pull (Merge)…',
   'cmd.app.git.remote': 'Git: Set Remote Origin…',
   'cmd.app.lang': 'Language: {name}',
+  'cmd.app.about': 'About NoteLume',
 
   'cmd.editor.undo': 'Undo',
   'cmd.editor.redo': 'Redo',

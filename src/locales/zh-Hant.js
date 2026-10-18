@@ -60,6 +60,7 @@ export default {
   'cmd.app.git.pullMerge': 'Git：拉取（合併）…',
   'cmd.app.git.remote': 'Git：設定遠端 origin…',
   'cmd.app.lang': '介面語言：{name}',
+  'cmd.app.about': '關於 NoteLume',
 
   'cmd.editor.undo': '還原',
   'cmd.editor.redo': '重做',
