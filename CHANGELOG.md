@@ -10,6 +10,7 @@
 ### Fixed
 
 * **二次唤起 / 启动参数把 exe 自身当成待打开文件，弹「notelume.exe 不是 Markdown 或画布文件」**：应用已在运行时再点一次快捷方式 / exe，单实例插件把第二个进程的 argv 转给前端，其中 exe 自身这一条本该被 `launch_targets` 按路径比对剔除。原 `same_path` 只容分隔符与大小写，而 Windows 上 `current_exe()` 可能返回 `\\?\C:\...\notelume.exe`（verbatim 前缀）而 argv 里是不带前缀的形式，字符串比对不等 → exe 漏到前端 → 弹「按纯文本打开吗」。改为先 `canonicalize` 两边再比（同时消掉相对路径、符号链接与 8.3 短名），canonicalize 失败（文件不存在）才退回归一化字符串并剥 `\\?\` 前缀。`launch_targets` 拆出 `launch_targets_with_exe` 注入 exe 路径便于测试；补两条回归（verbatim 前缀相等、注入 exe 的 verbatim 形式被剔除）。`cargo test` 127 passed。含 Rust，须重启 `tauri dev` / 重打包生效。
+* **拖 exe 进窗口弹「按纯文本打开吗」**：拖入打开走的是纯前端链路（`drop-open.js`），不经 Rust 的 `launch_targets`，exe 自身落进「不可识别文件」一档，交互场景就弹「按纯文本打开」确认。`drop-open.js` 新增 `BINARY_EXTS`（exe / dll / msi / lnk 等 11 种）与 `isBinaryName`，`main.js` 的 `handleOpenTargets` 把这类文件从「按纯文本打开」候选里剔除、静默跳过；二进制与文档混拖时状态栏照常报「已跳过 n 个不支持的文件」。只剩二进制时不再调 `ensureSavedBeforeLeave`（没什么要打开的，不该问保存）。`node tests/drop-open.test.mjs` 7 passed（新增 `isBinaryName` 一条）。
 
 ### Changed
 
@@ -32,6 +33,16 @@
 * **工具条状态文字（含右下角浮动版）**：状态提示先是从工具条内联位挪到右下角浮动，看下来不好看也没意义，直接去掉。`#status` 节点与 `.status` 全部样式（`style.css` 的浮动规则、mac 贴底条内的右对齐覆盖、图标留白规则里的 `.status .nl-ico`）删除；`main.js` 的 `setStatus` 不再写 DOM，只保留两件事：`scheduleMacChrome()`（mac 原生菜单可用性/勾选依赖它，约 50 处调用点的副作用不能丢）与 `console.debug('[status] ' + msg)`；`els.status` 与 boot 里的「第一步：点『打开知识库』…」提示行一并移除。`index.html` 的全局错误兜底（`window.__nlError`）原本把未捕获异常写进状态栏，改为 `console.error('[NoteLume] ' + msg)`，错误不再显示在界面上。此前只有状态栏一个出口的提示（如「请先打开知识库文件夹」「打开失败：…」）多数已有 `messageDialog` 弹窗并行，少数只剩状态栏的路径现在只看控制台。纯前端，刷新即生效；`npm run build` 30.05s 无错，1440×900 无头 Chromium 载 `dist` 实测界面无状态条、无 page error。
 
 ### Added
+
+* **标签与文件树可以拖着摆分栏了**：此前拆分只能点标签条右侧的「左右 / 上下拆分」按钮，想把 A 窗格里的文档挪到 B 窗格，得在 B 里重新打开一遍。现在四种拖法——标签拖到另一个窗格中间 = 移动过去（源窗格摘标签，源空了留空态）；拖到窗格外圈 25% 的左 / 右 / 上 / 下 = 在该侧拆出新窗格装它；落回自己窗格中间 = 按落点重排标签顺序；文件树的文件项拖进窗格 = 在那个窗格打开，落边缘则先拆窗格再打开。
+  * 引擎新 `src/pane-drag.js`，走 pointer 事件（与分割条同源），不用 HTML5 DnD：外部文件拖入已占着 `.body` 的 `drop` 事件（`drop-open.js` 只认 `dataTransfer.files`），两套 DnD 混在同一批元素上会互相抢。位移过 4px 才起拖（不抢单击切标签 / 双击固定 / 中键关闭 / 文件树单击预览）；起拖后跟手画幽灵标签、在落点画半区高亮；Esc / pointercancel 取消；松手后紧跟的那次 click 吞掉（否则会连带切标签或开文件）。
+  * 落区与排序是纯函数：`dropZoneFor(rect, x, y)` 按外圈 25% 判四向，角落取离得更近的那条边；`tabDropIndex(rects, x, skip)` 数指针跨过几个标签中点，跳过被拖的那一项。
+  * `main.js` 的落定：`moveTabToPane` / `splitTabToPane` / `dropTreeFile` 三条，共用 `ensurePanesSaved`（只问真脏的窗格）、`detachTab`（摘标签后有邻居装邻居、没有就空态）与 `landDocInPane`（落定即固定，目标已有该文档则激活并转正）。移动一次问清源 + 目标两个窗格的未保存改动，拆分只问源窗格（目标内容不变）。落定一律直接走 `tabs` + `loadDocIntoPane`，不经过 `openDocInPane`——后者内部的 `ensurePaneSaved` 在窗格不脏时传 `[]`，而 `askSavePanes` 认空数组为「所有脏窗格」，会把无关的第三个窗格的保存弹窗带出来（这条毛病还在，另修）。
+  * `src/split-pane.js` 加 `newFirst`：`splitPane` / `view.split` 的新窗格可居左 / 上（树里 children 对调，DOM 顺序 `[新, bar, 旧]`，比例样式落在新叶上）。按钮与命令不传参，行为不变。
+  * 文件树的文件项摘掉 `draggable = true`（那条原生拖没有 data，且一动 `pointermove` 就断），改走 pointer 起拖；单文件树的 li 补齐 `data-kind`。
+  * 边界：画布标签与落点是画布窗格都拦下留 `pn.canvasSplit`（画布是单实例，分栏下禁用）；落点不在任何窗格上 = 无操作；拖预览标签过去会转正。
+  * 测试：新 `pane-drag.test.mjs` 8 条（落区九宫格与 25% 门槛内外、排序索引含跳过被拖项），新 `pane-drag-dom.test.mjs` 7 条（起拖阈值、四向落区、非窗格落点、幽灵与高亮、Esc 取消、吞 click）；`tabs.test.mjs` 20 passed（新增 `moveTo` 四条）、`split-pane.test.mjs` 16 passed、`split-pane-dom.test.mjs` 7 passed。全量 31 个测试文件通过，`npm run build` 无错。
+  * 未手验（需 `tauri dev` 开真实库）：跨窗格移动的手感、四边拆分的落位、条内排序、拖活动脏标签时的保存三选、WebView2 里 pointer 拖拽的跟手程度。
 
 * **编辑器区改完整分栏模式：每个窗格一条自己的标签条，窗格内多文档，预览模式（对标 VS Code 编辑器组）**：此前是一窗格一文档 + 屏幕顶部一条全局标签栏，看第二篇就要把第一篇换掉。现在左右 / 上下拆分后每个窗格各有自己的标签条，可开多篇文档点击切换，各窗格的根 / 脏状态 / 保存各自独立。
   * 模型：`tabs.js` 从全局单例改为每窗格一个实例，标签 id 三要素 `paneId + root + rel`——同一文档可在多个窗格各开一份（后保存的覆盖先保存的，不合并，与 VS Code 一致）。删掉 `paneTabs` / `tabPane` 两张绑定表与全局标签栏；`main.js` 删全局 `tabs` 变量，改 `ftabs()` 取焦点窗格的条子。
