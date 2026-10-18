@@ -3078,7 +3078,8 @@ fn tray_set_recent(app: tauri::AppHandle, paths: Vec<String>) {
         use tauri::Manager;
         if let Some(tray) = app.try_state::<tauri::tray::TrayIcon>() {
             if let Ok(menu) = build_tray_menu(&app, &paths) {
-                let _ = tray.set_menu(Some(&menu));
+                // set_menu 收 Menu 本体（ContextMenu 不为 &Menu<R> 实现），不是建造器那样的引用
+                let _ = tray.set_menu(Some(menu));
             }
         }
     }
