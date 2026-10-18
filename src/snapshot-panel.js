@@ -10,6 +10,7 @@ import {
   confirmDialog,
   messageDialog,
 } from './tauri-bridge.js'
+import { t } from './i18n.js'
 
 export function createSnapshotPanel(deps) {
   const {
@@ -43,19 +44,19 @@ export function createSnapshotPanel(deps) {
     const file = getCurrentFile()
     listEl.innerHTML = ''
     if (!vaultRoot || !file) {
-      listEl.innerHTML = '<div class="link-empty">打开文档后显示历史版本</div>'
+      listEl.innerHTML = '<div class="link-empty">' + t('snapshot.needDoc') + '</div>'
       return
     }
     let entries = []
     try {
       entries = await listBackups(vaultRoot, file)
     } catch (e) {
-      listEl.innerHTML = '<div class="link-empty">读取历史失败</div>'
+      listEl.innerHTML = '<div class="link-empty">' + t('snapshot.readFailed') + '</div>'
       return
     }
     if (!entries.length) {
       listEl.innerHTML =
-        '<div class="link-empty">暂无历史备份<br /><span class="muted">保存 / 自动保存后在此累积快照</span></div>'
+        '<div class="link-empty">' + t('snapshot.empty') + '<br /><span class="muted">' + t('snapshot.emptyHint') + '</span></div>'
       return
     }
     entries.forEach((entry) => {
@@ -76,12 +77,12 @@ export function createSnapshotPanel(deps) {
       const content = await readBackup(vaultRoot, entry.path)
       pending = { entry, content }
       labelEl.textContent = formatLabel(entry)
-      metaEl.textContent = '来源：' + entry.path
+      metaEl.textContent = t('snapshot.source', { path: entry.path })
       previewEl.innerHTML = renderMarkdown(content)
       modalEl.classList.remove('hidden')
       previewEl.scrollTop = 0
     } catch (e) {
-      await messageDialog('读取快照失败：' + ((e && e.message) || e))
+      await messageDialog(t('snapshot.readFailedDialog', { err: (e && e.message) || e }))
     }
   }
 
@@ -97,8 +98,8 @@ export function createSnapshotPanel(deps) {
     const vaultRoot = getVaultRoot()
     const file = getCurrentFile()
     const ok = await confirmDialog(
-      `确定回滚到 ${formatLabel(entry)} 的快照？\n当前内容将被覆盖（覆盖前会自动另存一份当前版本，可再次回滚恢复）。`,
-      '回滚版本',
+      t('snapshot.rollbackConfirm', { label: formatLabel(entry) }),
+      t('snapshot.rollbackLabel'),
     )
     if (!ok) return
     try {
@@ -114,12 +115,12 @@ export function createSnapshotPanel(deps) {
       try {
         await updateIndexDoc(file, content)
       } catch (_) {}
-      setStatus('已回滚到：' + formatLabel(entry))
+      setStatus(t('snapshot.rolledBack', { label: formatLabel(entry) }))
       close()
       if (onAfterRollback) onAfterRollback()
       refresh()
     } catch (e) {
-      await messageDialog('回滚失败：' + ((e && e.message) || e))
+      await messageDialog(t('snapshot.rollbackFailed', { err: (e && e.message) || e }))
     }
   }
 

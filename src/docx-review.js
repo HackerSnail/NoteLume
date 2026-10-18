@@ -11,6 +11,7 @@
 import MarkdownIt from 'markdown-it'
 import { setIcon } from './icons.js'
 import footnote from 'markdown-it-footnote'
+import { t } from './i18n.js'
 
 // 独立预览实例：html:true（合并表是裸 <table> HTML）、footnote（[^n] 脚注）；
 // 'default' preset 已含 table + strikethrough。与主编辑器 tokenizer 完全隔离。
@@ -66,14 +67,14 @@ export function openDocxReview(entry, ctx = {}) {
     head.className = 'nl-docx-head'
     const titleEl = document.createElement('div')
     titleEl.className = 'nl-docx-title'
-    const pos = ctx.total > 1 ? ` · 第 ${ctx.index + 1}/${ctx.total}` : ''
-    titleEl.textContent = '校对导入 Word 文档' + pos
+    const pos = ctx.total > 1 ? t('docx.progress', { i: ctx.index + 1, total: ctx.total }) : ''
+    titleEl.textContent = t('docx.reviewTitle') + pos
     head.appendChild(titleEl)
 
     const nameRow = document.createElement('div')
     nameRow.className = 'nl-docx-namerow'
     const nameLabel = document.createElement('span')
-    nameLabel.textContent = '标题'
+    nameLabel.textContent = t('docx.titleLabel')
     const nameInput = document.createElement('input')
     nameInput.type = 'text'
     nameInput.className = 'nl-docx-name'
@@ -91,7 +92,7 @@ export function openDocxReview(entry, ctx = {}) {
       if (reused) {
         const r = document.createElement('div')
         r.className = 'nl-docx-warn-item dedup'
-        setIcon(r, 'image', `${reused} 张图片命中去重，将引用库中已有文件、不重复存储`)
+        setIcon(r, 'image', t('docx.dedupNote', { n: reused }))
         wbox.appendChild(r)
       }
       for (const w of warn) {
@@ -111,7 +112,7 @@ export function openDocxReview(entry, ctx = {}) {
     left.className = 'nl-docx-pane nl-docx-preview'
     const lhead = document.createElement('div')
     lhead.className = 'nl-docx-pane-h'
-    lhead.textContent = '渲染预览（只读）'
+    lhead.textContent = t('docx.previewPane')
     const prevWrap = document.createElement('div')
     prevWrap.className = 'nl-docx-render'
     left.append(lhead, prevWrap)
@@ -120,7 +121,7 @@ export function openDocxReview(entry, ctx = {}) {
     right.className = 'nl-docx-pane nl-docx-src'
     const rhead = document.createElement('div')
     rhead.className = 'nl-docx-pane-h'
-    rhead.textContent = 'Markdown 源码（可编辑）'
+    rhead.textContent = t('docx.srcPane')
     const cmMount = document.createElement('div')
     cmMount.className = 'nl-docx-cm'
     right.append(rhead, cmMount)
@@ -133,10 +134,10 @@ export function openDocxReview(entry, ctx = {}) {
     row.className = 'nl-docx-row'
     const skipBtn = document.createElement('button')
     skipBtn.className = 'nl-docx-btn'
-    skipBtn.textContent = '跳过此文档'
+    skipBtn.textContent = t('docx.skipBtn')
     const okBtn = document.createElement('button')
     okBtn.className = 'nl-docx-btn primary'
-    okBtn.textContent = ctx.acceptLabel || '接受并落库'
+    okBtn.textContent = ctx.acceptLabel || t('dlg.docxAcceptVault')
     row.append(skipBtn, okBtn)
     box.appendChild(row)
 

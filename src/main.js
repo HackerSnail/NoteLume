@@ -888,7 +888,7 @@ async function importWordFlow(sources, destDir = '', target = {}) {
     openDocxReview(entry, {
       ...ctx,
       theme: document.documentElement.getAttribute('data-theme') || 'light',
-      acceptLabel: intoVault ? '接受并落库' : '接受',
+      acceptLabel: intoVault ? t('dlg.docxAcceptVault') : t('dlg.docxAccept'),
     })
   try {
     const res = await runImport({

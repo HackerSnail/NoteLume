@@ -29,6 +29,14 @@
 
 ### Added
 
+* **i18n：静态站导出 / 历史版本 / Word 校对 / 图片查看器 / 链接悬浮预览文案接入词条（site.* / snapshot.* / docx.* / imgv.* / hover.* 共 45 条，五种语言）**：把上一批漏掉的输出型与浮层文案清掉。导出的静态站从此跟随当前界面语言（页面骨架文案与 `<html lang>` 都取运行期语言）；`main.js` 传给校对模态的接受按钮文案也换成既有词条 `dlg.docxAcceptVault` / `dlg.docxAccept`，不再硬编码。
+  * `site-export.js`（site.* 14 条）：首页/搜索页骨架、工具栏、侧栏标题、反向链接区标题、搜索页内联脚本的加载与无结果提示、导出进度与完成统计。`site-export.test.mjs` 断言的中文原值不受影响——Node 下 `t()` 默认 zh-CN，返回原串，24 passed。
+  * `snapshot-panel.js`（snapshot.* 10 条）：空态、来源行、回滚确认（含快照时间标签插值）、回滚状态与失败。
+  * `docx-review.js`（docx.* 7 条）：标题与进度、标题输入标签、图片去重提示、双栏标题、跳过按钮。
+  * `img-viewer.js`（imgv.* 7 条 + 复用 `common.loading`）：缩放/适应/实际大小/关闭五个按钮提示、加载中、无法显示、读取失败。
+  * `wiki-hover.js`（hover.* 5 条 + 复用 `common.loading`）：加载中、预览失败、暂无内容、单击跳转、文档不存在与可新建。
+  * 测试与验证：全部 22 个测试文件通过（site-export 24、i18n 10、roundtrip 58 等）；五个文件零中文残留、lint 干净；`npm run build` 无错。纯前端，刷新即生效。
+
 * **i18n：今日速记 / 表格右键菜单 / 查找栏 / 文档属性四个面板文案接入词条（daily.* / table.* / find.* / fm.* 共 54 条，五种语言）**：接续上一批三个整面板，把剩下的中等面板清掉。`frontmatter-panel.js` 的 `keep()` 里原有局部变量 `t`（指 textarea 元素），与导入的 `t` 撞名，已改名 `ta`。
   * `daily-capture.js`（daily.* 16 条）：浮层标题、设置/关闭按钮提示、输入框占位、保存与失败状态、设置对话框（含「未设置」回退与日期格式占位符）。
   * `table-editing.js`（table.* 14 条）：右键菜单的行列增删、单元格对齐、表头切换、合并/拆分、删表。

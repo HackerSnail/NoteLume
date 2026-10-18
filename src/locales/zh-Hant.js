@@ -693,4 +693,58 @@ export default {
   'fm.removeConfirm': '移除本文件的 frontmatter（YAML 頭）？',
   'fm.complexArray': '[…] 複雜陣列',
   'fm.complexObject': '{…} 複雜物件',
+
+  // —— 靜態站匯出（site-export.js） ——
+  'site.docs': '文件',
+  'site.backlinksTitle': '被這些文件引用',
+  'site.home': '首頁',
+  'site.search': '搜尋',
+  'site.searchPageTitle': '站內搜尋',
+  'site.searchPlaceholder': '輸入關鍵字，空白分詞 + 中文子串比對',
+  'site.indexLoading': '索引載入中…',
+  'site.noResults': '無結果',
+  'site.vaultFallback': '知識庫',
+  'site.building': '構建網站圖…',
+  'site.exporting': '匯出 {done}/{total}：{rel}',
+  'site.skipWarn': '匯出跳過：',
+  'site.skeletonFailed': '網站骨架寫入失敗',
+  'site.assetsFailed': '資源複製失敗',
+  'site.done': '{ok} 篇成功 / {failed} 篇跳過',
+
+  // —— 歷史版本面板（snapshot-panel.js） ——
+  'snapshot.needDoc': '開啟文件後顯示歷史版本',
+  'snapshot.readFailed': '讀取歷史失敗',
+  'snapshot.empty': '暫無歷史備份',
+  'snapshot.emptyHint': '儲存 / 自動儲存後在此累積快照',
+  'snapshot.source': '來源：{path}',
+  'snapshot.readFailedDialog': '讀取快照失敗：{err}',
+  'snapshot.rollbackConfirm': '確定要還原到 {label} 的快照？\n目前內容將被覆寫（覆寫前會自動另存一份目前版本，可再次還原恢復）。',
+  'snapshot.rollbackLabel': '還原版本',
+  'snapshot.rolledBack': '已還原到：{label}',
+  'snapshot.rollbackFailed': '還原失敗：{err}',
+
+  // —— Word 校對匯入（docx-review.js） ——
+  'docx.reviewTitle': '校對匯入 Word 文件',
+  'docx.progress': ' · 第 {i}/{total}',
+  'docx.titleLabel': '標題',
+  'docx.dedupNote': '{n} 張圖片命中去重，將引用庫中已有檔案、不重複儲存',
+  'docx.previewPane': '渲染預覽（只讀）',
+  'docx.srcPane': 'Markdown 原始碼（可編輯）',
+  'docx.skipBtn': '跳過此文件',
+
+  // —— 圖片檢視器（img-viewer.js） ——
+  'imgv.zoomOut': '縮小',
+  'imgv.fitWindow': '適應視窗（點擊重設）',
+  'imgv.zoomIn': '放大',
+  'imgv.actualSize': '實際大小 (1:1)',
+  'imgv.close': '關閉 (Esc)',
+  'imgv.cannotShow': '無法顯示該圖片',
+  'imgv.readFailed': '讀取失敗：{err}',
+
+  // —— 連結懸停預覽（wiki-hover.js） ——
+  'hover.previewFailed': '預覽失敗：{err}',
+  'hover.noContent': '（暫無內容）',
+  'hover.clickToJump': '點擊跳轉',
+  'hover.docMissing': '{name}（文件不存在）',
+  'hover.clickToCreate': '點擊可新增該文件',
 }

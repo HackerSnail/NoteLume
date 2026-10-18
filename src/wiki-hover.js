@@ -3,6 +3,7 @@
 // 未就绪时回落到后端 docPreview。预览卡片挂在 body 上（fixed 定位），移出即关闭。
 
 import { getDocInfo, docPreview, resolveWikiLink } from './tauri-bridge.js'
+import { t } from './i18n.js'
 
 const SHOW_DELAY = 380
 const HIDE_DELAY = 220
@@ -64,7 +65,7 @@ export function attachWikiHover(mountEl, getVault) {
     currentTarget = el
     const ctx = getVault()
     ensureCard()
-    card.innerHTML = '<div class="muted">加载中…</div>'
+    card.innerHTML = '<div class="muted">' + t('common.loading') + '</div>'
     placeCard(el.getBoundingClientRect())
     let title = target
     let summary = ''
@@ -81,14 +82,14 @@ export function attachWikiHover(mountEl, getVault) {
         summary = await docPreview(ctx.vaultRoot, resolvedPath, MAX_CHARS)
       }
     } catch (e) {
-      summary = '预览失败：' + ((e && e.message) || e)
+      summary = t('hover.previewFailed', { err: (e && e.message) || e })
     }
     const safeTitle = escapeHtml(title)
-    const safeSum = escapeHtml(summary || '（暂无内容）')
+    const safeSum = escapeHtml(summary || t('hover.noContent'))
     card.innerHTML =
       '<div class="nl-hover-title">' + safeTitle + '</div>' +
       '<div class="nl-hover-body">' + safeSum + '</div>' +
-      '<div class="nl-hover-foot">单击跳转</div>'
+      '<div class="nl-hover-foot">' + t('hover.clickToJump') + '</div>'
     placeCard(el.getBoundingClientRect())
   }
 
@@ -97,7 +98,7 @@ export function attachWikiHover(mountEl, getVault) {
     // 先走 resolve_wiki_link 定位库内路径，再拿索引快照 (标题/摘要)
     try {
       const res = await resolveWikiLink(ctx.vaultRoot, ctx.mdRel || '', targetName)
-      if (!res.exists) return { title: targetName + '（文档不存在）', summary: '点击可新建该文档', path: null }
+      if (!res.exists) return { title: t('hover.docMissing', { name: targetName }), summary: t('hover.clickToCreate'), path: null }
       const info = await getDocInfo(res.path)
       if (info) return info
       return { path: res.path, title: targetName, summary: '' }

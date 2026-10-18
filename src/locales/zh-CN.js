@@ -693,4 +693,58 @@ export default {
   'fm.removeConfirm': '移除本文档的 frontmatter（YAML 头）？',
   'fm.complexArray': '[…] 复杂数组',
   'fm.complexObject': '{…} 复杂对象',
+
+  // —— 静态站导出（site-export.js） ——
+  'site.docs': '文档',
+  'site.backlinksTitle': '被这些文档引用',
+  'site.home': '首页',
+  'site.search': '搜索',
+  'site.searchPageTitle': '站内搜索',
+  'site.searchPlaceholder': '输入关键词，空格分词 + 中文子串匹配',
+  'site.indexLoading': '索引加载中…',
+  'site.noResults': '无结果',
+  'site.vaultFallback': '知识库',
+  'site.building': '构建站点图…',
+  'site.exporting': '导出 {done}/{total}：{rel}',
+  'site.skipWarn': '导出跳过：',
+  'site.skeletonFailed': '站点骨架写入失败',
+  'site.assetsFailed': '资源拷贝失败',
+  'site.done': '{ok} 篇成功 / {failed} 篇跳过',
+
+  // —— 历史版本面板（snapshot-panel.js） ——
+  'snapshot.needDoc': '打开文档后显示历史版本',
+  'snapshot.readFailed': '读取历史失败',
+  'snapshot.empty': '暂无历史备份',
+  'snapshot.emptyHint': '保存 / 自动保存后在此累积快照',
+  'snapshot.source': '来源：{path}',
+  'snapshot.readFailedDialog': '读取快照失败：{err}',
+  'snapshot.rollbackConfirm': '确定回滚到 {label} 的快照？\n当前内容将被覆盖（覆盖前会自动另存一份当前版本，可再次回滚恢复）。',
+  'snapshot.rollbackLabel': '回滚版本',
+  'snapshot.rolledBack': '已回滚到：{label}',
+  'snapshot.rollbackFailed': '回滚失败：{err}',
+
+  // —— Word 校对导入（docx-review.js） ——
+  'docx.reviewTitle': '校对导入 Word 文档',
+  'docx.progress': ' · 第 {i}/{total}',
+  'docx.titleLabel': '标题',
+  'docx.dedupNote': '{n} 张图片命中去重，将引用库中已有文件、不重复存储',
+  'docx.previewPane': '渲染预览（只读）',
+  'docx.srcPane': 'Markdown 源码（可编辑）',
+  'docx.skipBtn': '跳过此文档',
+
+  // —— 图片查看器（img-viewer.js） ——
+  'imgv.zoomOut': '缩小',
+  'imgv.fitWindow': '适应窗口（点击重置）',
+  'imgv.zoomIn': '放大',
+  'imgv.actualSize': '实际大小 (1:1)',
+  'imgv.close': '关闭 (Esc)',
+  'imgv.cannotShow': '无法显示该图片',
+  'imgv.readFailed': '读取失败：{err}',
+
+  // —— 链接悬浮预览（wiki-hover.js） ——
+  'hover.previewFailed': '预览失败：{err}',
+  'hover.noContent': '（暂无内容）',
+  'hover.clickToJump': '单击跳转',
+  'hover.docMissing': '{name}（文档不存在）',
+  'hover.clickToCreate': '点击可新建该文档',
 }

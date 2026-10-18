@@ -8,6 +8,7 @@
 
 import { readImageDataUri } from './tauri-bridge.js'
 import { setIcon, iconHTML } from './icons.js'
+import { t } from './i18n.js'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 16
@@ -24,11 +25,11 @@ function ensureOverlay() {
     '<div class="nl-imgv-bar">' +
     '<span class="nl-imgv-title"></span>' +
     '<span class="nl-imgv-spacer"></span>' +
-    '<button class="nl-imgv-btn" data-act="out" title="缩小">' + iconHTML('zoom-out') + '</button>' +
-    '<button class="nl-imgv-btn nl-imgv-zoom" data-act="reset" title="适应窗口（点击重置）">100%</button>' +
-    '<button class="nl-imgv-btn" data-act="in" title="放大">' + iconHTML('zoom-in') + '</button>' +
-    '<button class="nl-imgv-btn" data-act="actual" title="实际大小 (1:1)">1:1</button>' +
-    '<button class="nl-imgv-close" data-act="close" title="关闭 (Esc)">' + iconHTML('close') + '</button>' +
+    '<button class="nl-imgv-btn" data-act="out" title="' + t('imgv.zoomOut') + '">' + iconHTML('zoom-out') + '</button>' +
+    '<button class="nl-imgv-btn nl-imgv-zoom" data-act="reset" title="' + t('imgv.fitWindow') + '">100%</button>' +
+    '<button class="nl-imgv-btn" data-act="in" title="' + t('imgv.zoomIn') + '">' + iconHTML('zoom-in') + '</button>' +
+    '<button class="nl-imgv-btn" data-act="actual" title="' + t('imgv.actualSize') + '">1:1</button>' +
+    '<button class="nl-imgv-close" data-act="close" title="' + t('imgv.close') + '">' + iconHTML('close') + '</button>' +
     '</div>' +
     '<div class="nl-imgv-stage">' +
     '<img class="nl-imgv-img" alt="" draggable="false" />' +
@@ -154,7 +155,7 @@ export function openImage(rel, ctx) {
   img.style.height = ''
   cur = { rel, vaultRoot, zoom: 1, fitW: 0, natW: 0, natH: 0 }
   overlay.classList.remove('hidden')
-  setHint('加载中…')
+  setHint(t('common.loading'))
 
   img.onload = () => {
     if (my !== seq) return // 已切到别的图，丢弃
@@ -167,7 +168,7 @@ export function openImage(rel, ctx) {
   }
   img.onerror = () => {
     if (my !== seq) return
-    setHint('无法显示该图片', 'warning')
+    setHint(t('imgv.cannotShow'), 'warning')
   }
 
   readImageDataUri(vaultRoot, '', rel)
@@ -177,7 +178,7 @@ export function openImage(rel, ctx) {
     })
     .catch((e) => {
       if (my !== seq) return
-      setHint('读取失败：' + ((e && e.message) || e), 'warning')
+      setHint(t('imgv.readFailed', { err: (e && e.message) || e }), 'warning')
     })
 }
 

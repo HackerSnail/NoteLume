@@ -13,6 +13,7 @@
 import katex from 'katex'
 import { tokenizer } from './editor-schema.js'
 import { anchorSlug } from './heading-anchor.js'
+import { t, getLocale } from './i18n.js'
 
 // —— 路径小工具（一律用 / 分隔；库内 rel 由 Rust collect_md_paths 以 / 产出）——
 function normRel(p) {
@@ -204,7 +205,7 @@ function renderTree(node, fromDir, activeRel) {
 }
 
 export function buildSidebar(docs, activeRel, fromDir) {
-  return `<nav class="nl-nav"><div class="nl-nav-cap">${esc('文档')}</div>${renderTree(buildTree(docs), fromDir, activeRel)}</nav>`
+  return `<nav class="nl-nav"><div class="nl-nav-cap">${esc(t('site.docs'))}</div>${renderTree(buildTree(docs), fromDir, activeRel)}</nav>`
 }
 
 export function buildBacklinksHtml(selfRel, backlinks, titleOf, fromDir) {
@@ -212,7 +213,7 @@ export function buildBacklinksHtml(selfRel, backlinks, titleOf, fromDir) {
   if (!list || !list.length) return ''
   const items = list.map((from) =>
     `<li><a class="nl-wiki" href="${escAttr(relpath(fromDir, swapExtHtml(from)))}">${esc(titleOf(from))}</a></li>`).join('')
-  return `<section class="nl-backlinks"><h2 class="nl-bl-title">被这些文档引用</h2><ul>${items}</ul></section>`
+  return `<section class="nl-backlinks"><h2 class="nl-bl-title">${esc(t('site.backlinksTitle'))}</h2><ul>${items}</ul></section>`
 }
 
 // ============ 渲染规则挂载（tokenizer 单例，只加 renderer.rules，不改解析流水线）============
@@ -439,7 +440,7 @@ function buildHome({ vaultTitle, docs, backlinks }) {
   const sidebar = buildSidebar(docs, null, '')
   const toolbar = buildToolbar('')
   return `<!DOCTYPE html>
-<html lang="zh-CN"><head>
+<html lang="${getLocale()}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(vaultTitle)}</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -450,19 +451,19 @@ function buildHome({ vaultTitle, docs, backlinks }) {
 }
 
 function buildToolbar(toRoot) {
-  return `<div class="nl-toolbar"><a href="${escAttr(toRoot + 'index.html')}">首页</a><a href="${escAttr(toRoot + 'search.html')}">搜索</a></div>`
+  return `<div class="nl-toolbar"><a href="${escAttr(toRoot + 'index.html')}">${esc(t('site.home'))}</a><a href="${escAttr(toRoot + 'search.html')}">${esc(t('site.search'))}</a></div>`
 }
 
 function buildSearchPage() {
   return `<!DOCTYPE html>
-<html lang="zh-CN"><head>
+<html lang="${getLocale()}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>搜索</title>
+<title>${esc(t('site.searchPageTitle'))}</title>
 <link rel="stylesheet" href="./assets/site.css">
 </head><body class="site">
 <div class="nl-search">
-<h1>站内搜索</h1>
-<input id="q" type="search" placeholder="输入关键词，空格分词 + 中文子串匹配" autofocus>
+<h1>${esc(t('site.searchPageTitle'))}</h1>
+<input id="q" type="search" placeholder="${escAttr(t('site.searchPlaceholder'))}" autofocus>
 <div id="out"></div>
 </div>
 <script>
@@ -473,7 +474,7 @@ function buildSearchPage() {
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function snippet(text,toks){var i=text.toLowerCase().indexOf(toks[0]||'');if(i<0)i=0;var s=text.slice(Math.max(0,i-30),i+90);return (i>30?'…':'')+esc(s)+'…';}
   function run(){
-    if(!IDX){out.textContent='索引加载中…';return;}
+    if(!IDX){out.textContent='${t('site.indexLoading')}';return;}
     var raw=q.value.trim();if(!raw){out.innerHTML='';return;}
     var toks=raw.toLowerCase().split(/\\s+/).filter(Boolean);
     var res=[];
@@ -484,7 +485,7 @@ function buildSearchPage() {
       return '<div class="nl-hit"><div class="nl-hit-title"><a href="'+esc(e.href)+'">'+esc(e.title)+'</a></div>'
         +'<div class="nl-hit-snippet">'+snippet(e.text,toks)+'</div>'
         +'<div class="nl-hit-path">'+esc(e.href)+'</div></div>';
-    }).join('')||'<p>无结果</p>';
+    }).join('')||'<p>${t('site.noResults')}</p>';
   }
   q.addEventListener('input',run);q.addEventListener('keydown',run);
 })();
@@ -506,7 +507,7 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }
   if (!rulesReady) { ensureRenderRules(); rulesReady = true }
   const say = (m) => { try { setStatus(m) } catch { /* ignore */ } }
 
-  say('构建站点图…')
+  say(t('site.building'))
   const graph = await io.buildGraph(vaultRoot)
   const docs = ((graph && graph.docs) || []).map((d) => ({ rel: normRel(d.rel), title: d.title }))
   const docsByRel = new Map(docs.map((d) => [d.rel, d.title]))
@@ -530,7 +531,7 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }
 
   let done = 0, failed = 0
   for (const d of docs) {
-    say(`导出 ${done + 1}/${docs.length}：${d.rel}`)
+    say(t('site.exporting', { done: done + 1, total: docs.length, rel: d.rel }))
     try {
       const raw = await io.readMd(vaultRoot, d.rel)
       const body = stripFrontmatter(raw)
@@ -549,31 +550,31 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }
       await io.writeFile(joinOut(swapExtHtml(d.rel)), page)
     } catch (e) {
       failed++
-      console.warn('导出跳过：', d.rel, e)
+      console.warn(t('site.skipWarn'), d.rel, e)
     }
     done++
   }
 
   // 首页 + 搜索页 + 搜索索引 + 共享样式
   try {
-    const vaultTitle = baseName(String(vaultRoot).replace(/[\\/]+$/, '')) || '知识库'
+    const vaultTitle = baseName(String(vaultRoot).replace(/[\\/]+$/, '')) || t('site.vaultFallback')
     await io.writeFile(joinOut('index.html'), buildHome({ vaultTitle, docs }))
     await io.writeFile(joinOut('search.html'), buildSearchPage())
     await io.writeFile(joinOut('search-index.json'), JSON.stringify(buildSearchIndex(searchEntries), null, 0))
     await io.writeFile(joinOut('assets/site.css'), siteCss())
   } catch (e) {
-    console.warn('站点骨架写入失败', e)
+    console.warn(t('site.skeletonFailed'), e)
   }
 
   // 图片镜像拷贝（仅被引用到的）
   try {
     if (assets.size) await io.copyAssets(vaultRoot, [...assets], outDir)
   } catch (e) {
-    console.warn('资源拷贝失败', e)
+    console.warn(t('site.assetsFailed'), e)
   }
 
   const ok = docs.length - failed
-  say(`完成：${ok} 篇成功 / ${failed} 篇跳过`)
+  say(t('site.done', { ok, failed }))
   return { ok, failed, total: docs.length }
 }
 

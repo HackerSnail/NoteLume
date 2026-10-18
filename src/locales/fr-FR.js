@@ -694,4 +694,58 @@ export default {
   'fm.removeConfirm': 'Supprimer le frontmatter (en-tête YAML) de ce document ?',
   'fm.complexArray': '[…] tableau complexe',
   'fm.complexObject': '{…} objet complexe',
+
+  // —— Export de site statique (site-export.js) ——
+  'site.docs': 'Documents',
+  'site.backlinksTitle': 'Cité par',
+  'site.home': 'Accueil',
+  'site.search': 'Recherche',
+  'site.searchPageTitle': 'Recherche',
+  'site.searchPlaceholder': 'Mots-clés ; jetons séparés par des espaces + correspondance par sous-chaîne',
+  'site.indexLoading': 'Chargement de l’index…',
+  'site.noResults': 'Aucun résultat',
+  'site.vaultFallback': 'Coffre',
+  'site.building': 'Construction du graphe du site…',
+  'site.exporting': 'Export {done}/{total} : {rel}',
+  'site.skipWarn': 'Export ignoré : ',
+  'site.skeletonFailed': 'Écriture du squelette du site échouée',
+  'site.assetsFailed': 'Copie des ressources échouée',
+  'site.done': '{ok} réussis / {failed} ignorés',
+
+  // —— Panneau d’historique des versions (snapshot-panel.js) ——
+  'snapshot.needDoc': 'Ouvrez un document pour voir l’historique des versions',
+  'snapshot.readFailed': 'Lecture de l’historique impossible',
+  'snapshot.empty': 'Aucune sauvegarde',
+  'snapshot.emptyHint': 'Les instantanés s’accumulent ici après les enregistrements / sauvegardes automatiques',
+  'snapshot.source': 'Source : {path}',
+  'snapshot.readFailedDialog': 'Lecture de l’instantané impossible : {err}',
+  'snapshot.rollbackConfirm': 'Revenir à l’instantané du {label} ?\nLe contenu actuel sera écrasé (une copie de la version actuelle est enregistrée automatiquement avant, et pourra être restaurée à nouveau).',
+  'snapshot.rollbackLabel': 'Revenir en arrière',
+  'snapshot.rolledBack': 'Revenu à : {label}',
+  'snapshot.rollbackFailed': 'Échec du retour en arrière : {err}',
+
+  // —— Vérification de l’import Word (docx-review.js) ——
+  'docx.reviewTitle': 'Vérification de l’import Word',
+  'docx.progress': ' · {i}/{total}',
+  'docx.titleLabel': 'Titre',
+  'docx.dedupNote': '{n} images correspondent à des fichiers existants (par empreinte) et seront référencées plutôt que stockées à nouveau',
+  'docx.previewPane': 'Aperçu rendu (lecture seule)',
+  'docx.srcPane': 'Source Markdown (modifiable)',
+  'docx.skipBtn': 'Ignorer ce document',
+
+  // —— Visionneuse d’images (img-viewer.js) ——
+  'imgv.zoomOut': 'Zoom arrière',
+  'imgv.fitWindow': 'Ajuster à la fenêtre (clic pour réinitialiser)',
+  'imgv.zoomIn': 'Zoom avant',
+  'imgv.actualSize': 'Taille réelle (1:1)',
+  'imgv.close': 'Fermer (Échap)',
+  'imgv.cannotShow': 'Affichage de cette image impossible',
+  'imgv.readFailed': 'Lecture impossible : {err}',
+
+  // —— Aperçu flottant des liens (wiki-hover.js) ——
+  'hover.previewFailed': 'Aperçu impossible : {err}',
+  'hover.noContent': '(aucun contenu)',
+  'hover.clickToJump': 'Cliquer pour ouvrir',
+  'hover.docMissing': '{name} (document inexistant)',
+  'hover.clickToCreate': 'Cliquer pour créer ce document',
 }

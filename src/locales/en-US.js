@@ -694,4 +694,58 @@ export default {
   'fm.removeConfirm': "Remove this document's frontmatter (YAML header)?",
   'fm.complexArray': '[…] complex array',
   'fm.complexObject': '{…} complex object',
+
+  // —— Static site export (site-export.js) ——
+  'site.docs': 'Documents',
+  'site.backlinksTitle': 'Referenced by',
+  'site.home': 'Home',
+  'site.search': 'Search',
+  'site.searchPageTitle': 'Search',
+  'site.searchPlaceholder': 'Enter keywords; space-separated tokens + substring match',
+  'site.indexLoading': 'Loading index…',
+  'site.noResults': 'No results',
+  'site.vaultFallback': 'Vault',
+  'site.building': 'Building site graph…',
+  'site.exporting': 'Exporting {done}/{total}: {rel}',
+  'site.skipWarn': 'Export skipped: ',
+  'site.skeletonFailed': 'Failed to write the site skeleton',
+  'site.assetsFailed': 'Failed to copy assets',
+  'site.done': '{ok} succeeded / {failed} skipped',
+
+  // —— Version history panel (snapshot-panel.js) ——
+  'snapshot.needDoc': 'Open a document to see version history',
+  'snapshot.readFailed': 'Failed to load history',
+  'snapshot.empty': 'No backups yet',
+  'snapshot.emptyHint': 'Snapshots accumulate here after saves / auto-saves',
+  'snapshot.source': 'Source: {path}',
+  'snapshot.readFailedDialog': 'Failed to read snapshot: {err}',
+  'snapshot.rollbackConfirm': 'Roll back to the snapshot from {label}?\nCurrent content will be overwritten (a copy of the current version is saved automatically first, and can be rolled back again).',
+  'snapshot.rollbackLabel': 'Roll Back',
+  'snapshot.rolledBack': 'Rolled back to: {label}',
+  'snapshot.rollbackFailed': 'Rollback failed: {err}',
+
+  // —— Word import review (docx-review.js) ——
+  'docx.reviewTitle': 'Review Word Import',
+  'docx.progress': ' · {i}/{total}',
+  'docx.titleLabel': 'Title',
+  'docx.dedupNote': '{n} images matched existing files by hash and will reference them instead of being stored again',
+  'docx.previewPane': 'Rendered preview (read-only)',
+  'docx.srcPane': 'Markdown source (editable)',
+  'docx.skipBtn': 'Skip this document',
+
+  // —— Image viewer (img-viewer.js) ——
+  'imgv.zoomOut': 'Zoom out',
+  'imgv.fitWindow': 'Fit window (click to reset)',
+  'imgv.zoomIn': 'Zoom in',
+  'imgv.actualSize': 'Actual size (1:1)',
+  'imgv.close': 'Close (Esc)',
+  'imgv.cannotShow': 'Cannot display this image',
+  'imgv.readFailed': 'Read failed: {err}',
+
+  // —— Link hover preview (wiki-hover.js) ——
+  'hover.previewFailed': 'Preview failed: {err}',
+  'hover.noContent': '(no content)',
+  'hover.clickToJump': 'Click to open',
+  'hover.docMissing': '{name} (document does not exist)',
+  'hover.clickToCreate': 'Click to create this document',
 }

@@ -694,4 +694,58 @@ export default {
   'fm.removeConfirm': 'Frontmatter (YAML-Kopf) dieses Dokuments entfernen?',
   'fm.complexArray': '[…] komplexes Array',
   'fm.complexObject': '{…} komplexes Objekt',
+
+  // —— Statischer Site-Export (site-export.js) ——
+  'site.docs': 'Dokumente',
+  'site.backlinksTitle': 'Verlinkt von',
+  'site.home': 'Startseite',
+  'site.search': 'Suche',
+  'site.searchPageTitle': 'Suche',
+  'site.searchPlaceholder': 'Stichwörter eingeben; durch Leerzeichen getrennte Tokens + Teilstring-Treffer',
+  'site.indexLoading': 'Index wird geladen…',
+  'site.noResults': 'Keine Treffer',
+  'site.vaultFallback': 'Vault',
+  'site.building': 'Site-Graph wird aufgebaut…',
+  'site.exporting': 'Export {done}/{total}: {rel}',
+  'site.skipWarn': 'Export übersprungen: ',
+  'site.skeletonFailed': 'Site-Gerüst konnte nicht geschrieben werden',
+  'site.assetsFailed': 'Ressourcen konnten nicht kopiert werden',
+  'site.done': '{ok} erfolgreich / {failed} übersprungen',
+
+  // —— Panel für Versionsverlauf (snapshot-panel.js) ——
+  'snapshot.needDoc': 'Dokument öffnen, um den Versionsverlauf zu sehen',
+  'snapshot.readFailed': 'Verlauf nicht lesbar',
+  'snapshot.empty': 'Noch keine Sicherungen',
+  'snapshot.emptyHint': 'Schnappschüsse sammeln sich hier nach dem Speichern / automatischen Speichern',
+  'snapshot.source': 'Quelle: {path}',
+  'snapshot.readFailedDialog': 'Schnappschuss nicht lesbar: {err}',
+  'snapshot.rollbackConfirm': 'Auf den Schnappschuss von {label} zurücksetzen?\nDer aktuelle Inhalt wird überschrieben (eine Kopie der aktuellen Version wird vorher automatisch gespeichert und kann erneut zurückgesetzt werden).',
+  'snapshot.rollbackLabel': 'Zurücksetzen',
+  'snapshot.rolledBack': 'Zurückgesetzt auf: {label}',
+  'snapshot.rollbackFailed': 'Zurücksetzen fehlgeschlagen: {err}',
+
+  // —— Word-Import prüfen (docx-review.js) ——
+  'docx.reviewTitle': 'Word-Import prüfen',
+  'docx.progress': ' · {i}/{total}',
+  'docx.titleLabel': 'Titel',
+  'docx.dedupNote': '{n} Bilder treffen per Hash auf vorhandene Dateien und werden referenziert statt erneut gespeichert',
+  'docx.previewPane': 'Gerenderte Vorschau (nur lesen)',
+  'docx.srcPane': 'Markdown-Quelltext (bearbeitbar)',
+  'docx.skipBtn': 'Dieses Dokument überspringen',
+
+  // —— Bildbetrachter (img-viewer.js) ——
+  'imgv.zoomOut': 'Verkleinern',
+  'imgv.fitWindow': 'Fenster einpassen (Klick setzt zurück)',
+  'imgv.zoomIn': 'Vergrößern',
+  'imgv.actualSize': 'Tatsächliche Größe (1:1)',
+  'imgv.close': 'Schließen (Esc)',
+  'imgv.cannotShow': 'Dieses Bild kann nicht angezeigt werden',
+  'imgv.readFailed': 'Lesen fehlgeschlagen: {err}',
+
+  // —— Schwebe-Vorschau für Links (wiki-hover.js) ——
+  'hover.previewFailed': 'Vorschau fehlgeschlagen: {err}',
+  'hover.noContent': '(kein Inhalt)',
+  'hover.clickToJump': 'Klick öffnet',
+  'hover.docMissing': '{name} (Dokument existiert nicht)',
+  'hover.clickToCreate': 'Klick erstellt dieses Dokument',
 }
