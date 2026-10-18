@@ -842,7 +842,7 @@ async function openAbsPath(abs) {
   if (snapshotPanel) snapshotPanel.refresh()
   if (pluginManager) pluginManager.reload()
   if (gitPanel) gitPanel.refresh()
-  const tabId = tabs && tabs.open({ root: dir, rel: name })
+  const tabId = tabs ? tabs.open({ root: dir, rel: name }).id : null
   bindTabToPane(tabId, panes.focused)
   persistWorkspace()
 }
@@ -1828,7 +1828,7 @@ async function openTabDoc(tab, paneId = panes.focused) {
     }
     await openFile(tab.rel, true, paneId)
   }
-  const tabId = tabs && tabs.open(tab)
+  const tabId = tabs ? tabs.open(tab).id : null
   // 标签从别的窗格挪过来：原窗格清空，不留一份谁都不管的旧内容
   const prevPane = panes.tabPane.get(tabId)
   bindTabToPane(tabId, paneId)
@@ -2063,7 +2063,7 @@ async function openFile(rel, skipDirtyConfirm, paneId = panes.focused) {
     resetBackupTimer()
     // 临时文件不进「最近打开」：它的归宿是另存为那一刻的正式路径（saveScratchAs 里记）
     if (!ctx.scratch) recordRecent(state.vaultRoot, rel)
-    const tabId = tabs && tabs.open({ root: state.vaultRoot, rel, scratch: ctx.scratch })
+    const tabId = tabs ? tabs.open({ root: state.vaultRoot, rel, scratch: ctx.scratch }).id : null
     bindTabToPane(tabId, paneId)
     persistWorkspace() // 记住这次打开的库与文档，下次启动恢复
   } catch (e) {
@@ -2124,7 +2124,7 @@ async function openCanvas(path) {
     resetBackupTimer()
     recordRecent(state.vaultRoot, path)
     showPaneEmpty(panes.canvasPane, false)
-    const tabId = tabs && tabs.open({ root: state.vaultRoot, rel: path, canvas: true, scratch: state.scratch })
+    const tabId = tabs ? tabs.open({ root: state.vaultRoot, rel: path, canvas: true, scratch: state.scratch }).id : null
     bindTabToPane(tabId, panes.canvasPane)
   } catch (e) {
     await messageDialog(t('msg.canvasOpenFailed', { err: (e && e.message) || e }))
@@ -2161,7 +2161,7 @@ async function newCanvas() {
     renderTree(await scanVault(state.vaultRoot))
     setStatus(t('status.canvasCreated', { name }))
     showPaneEmpty(panes.canvasPane, false)
-    const tabId = tabs && tabs.open({ root: state.vaultRoot, rel: name, canvas: true })
+    const tabId = tabs ? tabs.open({ root: state.vaultRoot, rel: name, canvas: true }).id : null
     bindTabToPane(tabId, panes.canvasPane)
   } catch (e) {
     await messageDialog(t('msg.canvasCreateFailed', { err: (e && e.message) || e }))
