@@ -2653,7 +2653,9 @@ function setupTrayMenu() {
     const entry = loadRecents()[Number(e.payload)]
     if (entry) reopenRecent(entry)
   })
-  syncTrayRecents()
+  // boot 里 setUiLang 是不等返回的点火式调用，这里再等一次落好再同步，
+  // 否则托盘菜单在启动瞬间用的是 Rust 默认的 zh-CN，要等用户下次动语言才纠正
+  setUiLang(getLocale()).then(() => syncTrayRecents(), () => {})
 }
 function syncTrayRecents() {
   if (!IS_MAC || !window.__TAURI_INTERNALS__) return

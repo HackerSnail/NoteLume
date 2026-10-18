@@ -31,8 +31,9 @@
 
 * **i18n：后端用户可见文案全部接入词条（`src-tauri/src/ui_lang.rs` 五语言词表 + `set_ui_lang` 上报）**：此前 Rust 侧文案全部硬编码中文，切到英文 / 法文 / 德文界面后，命令失败弹窗、Word 导入警告、git 远程结果、mac 托盘菜单仍是中文。新增 `ui_lang` 模块放一张五语言词表（key → 五列模板，`{name}` 占位符），各处经 `ui_msg!("key", "name" => value)` 取词；缺词条回退 key、未知 id 回退 zh-CN，与前端 `t()` 的规则对齐。
   * 覆盖四类：`lib.rs` 的命令错误（路径越界 / 读写失败 / 回收站 / 备份 / 插件 / 导出 / 本地 git，40 余处）；`git_builtin.rs` System 与 Builtin 后端的错误与结果文本（`[code]` 前串保留原样——前端 `handleRemoteErr` 按前串分派，只本地化后面的说明；`MERGED` / `CONFLICTS` 协议行同理）；`docx_import.rs` / `docx_export.rs` 的 15 条导入警告与导出错误（警告 code 不变、message 本地化，校对弹窗直接跟着界面语言走）；mac 托盘菜单五项（显示主窗口 / 新建笔记 / 打开最近 / 暂无最近文件 / 退出）。
-  * 前端接线三处：`tauri-bridge.js` 加 `setUiLang`；`main.js` 的 `boot` 与 `switchLocale` 各上报一次当前语言；mac 下切语言等 `setUiLang` 落好再重建托盘菜单，否则「打开最近」子菜单还是旧语言。
-  * 验证：`cargo test` 122 passed（含 `ui_lang` 5 条新单测：取词 / 插值 / 缺键回退 / 未知语言 / 键唯一且五列非空）；`cargo build` 无错；`src` 下 22 个测试文件全部通过。改的是文案生成方式，invoke 契约不变。
+  * 前端接线三处：`tauri-bridge.js` 加 `setUiLang`；`main.js` 的 `boot` 与 `switchLocale` 各上报一次当前语言；mac 下切语言等 `setUiLang` 落好再重建托盘菜单，否则「打开最近」子菜单还是旧语言。`setupTrayMenu` 里同样先等语言上报再同步最近列表——boot 的点火式调用不保证顺序，不等的话托盘启动瞬间是 Rust 默认的简体中文，要等用户下次动语言才纠正。
+  * git 证书回调里 `from_str` 的英文分类 token（`hostkey mismatch` 等）`map_err` 归一时替换为词条文案（`gitHostkeyMismatch` / `gitHostNotTrusted` / `gitPushRejectedToken`）——token 只供 `map_err_text` 关键词分类，不该以英文原文显示给用户。
+  * 验证：`cargo test` 122 passed（含 `ui_lang` 5 条新单测：取词 / 插值 / 缺键回退 / 未知语言 / 键唯一且五列非空）；`cargo build` 无错；`src` 下 22 个测试文件全部通过；`npm run build` 33.9s 无错。改的是文案生成方式，invoke 契约不变。
 
 * **i18n：系统对话框 / KaTeX / 语言选择 / Mermaid / 图谱 / 标签页 / 写作统计 / Word 导入的零碎文案接入词条（19 条，五种语言）**：清掉剩在中小组件里的硬编码。新增 `common.unknownErr` 作为通用「未知错误」，`git-panel.js` 与 `docx-import.js` 的 `errText` 一并改用，删掉上一批临时加的 `git.unknownErr`。
   * `tauri-bridge.js`（dlg.* 4 条）：知识库文件夹 / Markdown·画布 / Word 三个选择器标题与另存为标题。

@@ -974,10 +974,18 @@ pub mod builtin {
     }
 
     /// 将 git2 错误归一为 `[code]msg` 前串；code 同 spec §6。
+    /// msg 是证书回调里 from_str 的分类 token 时正文换本地化文案——token 只参与
+    /// map_err_text 的关键词分类，不该以英文原文显示给用户。
     fn map_err(e: GError) -> String {
         let code = classify_err(&e);
         let msg = e.message();
-        format!("[{}]{}", code.as_str(), msg)
+        let body = match msg {
+            "hostkey mismatch" => ui_msg!("gitHostkeyMismatch"),
+            "host key not trusted" => ui_msg!("gitHostNotTrusted"),
+            "push rejected" => ui_msg!("gitPushRejectedToken"),
+            _ => msg.to_string(),
+        };
+        format!("[{}]{}", code.as_str(), body)
     }
 
     /// 失败时先看侧信道是否有 host_unknown payload，有→前置 `[host_unknown]<json>`；无→回 map_err。

@@ -543,6 +543,29 @@ const TABLE: &[Entry] = &[
         "impossible de résoudre l’amont : {up}",
         "Upstream konnte nicht aufgelöst werden: {up}",
     ]},
+    // 证书回调里的分类标记（from_str 的英文 token）：map_err 按 map_err_text 分类后，
+    // 正文替换成本地化文案，token 本身不显示给用户。
+    Entry { key: "gitHostkeyMismatch", texts: [
+        "主机密钥与记录不一致（known_hosts 里已是另一个 key），连接已中止。若确认是服务器换了密钥，更新 ~/.ssh/known_hosts 后重试",
+        "主機金鑰與記錄不一致（known_hosts 裡已是另一個 key），連線已中止。若確認是伺服器換了金鑰，更新 ~/.ssh/known_hosts 後重試",
+        "the host key does not match the one recorded in known_hosts; the connection was aborted. If the server key really changed, update ~/.ssh/known_hosts and retry",
+        "la clé d’hôte ne correspond pas à celle enregistrée dans known_hosts ; la connexion a été interrompue. Si la clé du serveur a vraiment changé, mettez à jour ~/.ssh/known_hosts et réessayez",
+        "der Host-Schlüssel passt nicht zum Eintrag in known_hosts; die Verbindung wurde abgebrochen. Wenn sich der Serverschlüssel wirklich geändert hat, aktualisieren Sie ~/.ssh/known_hosts und versuchen Sie es erneut",
+    ]},
+    Entry { key: "gitHostNotTrusted", texts: [
+        "主机密钥未被信任",
+        "主機金鑰未被信任",
+        "the host key is not trusted",
+        "la clé d’hôte n’est pas approuvée",
+        "der Host-Schlüssel ist nicht vertrauenswürdig",
+    ]},
+    Entry { key: "gitPushRejectedToken", texts: [
+        "push 被远端拒绝（未给出原因）",
+        "push 被遠端拒絕（未給出原因）",
+        "push rejected by the remote (no reason given)",
+        "push refusé par le distant (aucune raison indiquée)",
+        "Push vom Remote abgelehnt (kein Grund angegeben)",
+    ]},
     Entry { key: "gitNonFfDivergent", texts: [
         "分叉：ahead={ahead} behind={behind}；本 R1-B 不自动 merge/rebase，请用系统 git 工作流或批次 L 快照手动处理",
         "分叉：ahead={ahead} behind={behind}；本 R1-B 不自動 merge/rebase，請用系統 git 工作流或批次 L 快照手動處理",
