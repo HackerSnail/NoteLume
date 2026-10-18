@@ -70,6 +70,23 @@ t('拆分：原叶居第一位带比例样式，新叶第二位吃剩余', () =>
   assert.equal(styleOf(secondOf('p1')).basis, '0px')
 })
 
+t('拆分 newFirst：新叶在 DOM 里居第一位，比例样式落在新叶上', () => {
+  const view = mountOne()
+  view.split('p1', 'horizontal', 'p2', true)
+  assert.deepEqual(paneIds(view.tree), ['p2', 'p1'])
+  assert.equal(document.querySelectorAll('.nl-resizer').length, 1)
+  // DOM 顺序必须跟树一致：[新叶, 分割条, 原叶]
+  const wrap = paneEl(document, 'p2').parentElement
+  assert.equal(wrap.children.length, 3)
+  assert.equal(wrap.children[0], paneEl(document, 'p2'))
+  assert.equal(wrap.children[1].className.includes('nl-resizer'), true)
+  assert.equal(wrap.children[2], paneEl(document, 'p1'))
+  assert.equal(styleOf(paneEl(document, 'p2')).grow, '0')
+  assert.match(styleOf(paneEl(document, 'p2')).basis, /^calc\(50/)
+  assert.equal(styleOf(paneEl(document, 'p1')).grow, '1')
+  assert.equal(styleOf(paneEl(document, 'p1')).basis, '0px')
+})
+
 t('嵌套拆分：新 split 的第一子是原叶，样式归位（不被缓存引用刷错）', () => {
   const view = mountOne()
   view.split('p1', 'horizontal', 'p2')

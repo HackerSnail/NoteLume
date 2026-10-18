@@ -45,6 +45,24 @@ test('单窗格起步；split 后原叶居第一位、新叶第二位', () => {
   assert.deepStrictEqual(paneIds(t0), ['p1'])
 })
 
+test('splitPane newFirst：新叶居第一位（左 / 上），比例仍对半', () => {
+  const t1 = splitPane(createTree('p1'), 'p1', 'horizontal', 'p2', true)
+  assert.deepStrictEqual(paneIds(t1), ['p2', 'p1'])
+  assert.strictEqual(t1.children[0].id, 'p2')
+  assert.strictEqual(t1.children[1].id, 'p1')
+  assert.strictEqual(t1.ratio, SPLIT_DEFAULT)
+  // 竖分落上半：同样新叶在前
+  let t = splitPane(createTree('p1'), 'p1', 'vertical', 'p2', true)
+  assert.strictEqual(t.orientation, 'vertical')
+  assert.deepStrictEqual(paneIds(t), ['p2', 'p1'])
+  // 嵌套里也按落位算
+  t = splitPane(t, 'p1', 'horizontal', 'p3', true)
+  assert.deepStrictEqual(paneIds(t), ['p2', 'p3', 'p1'])
+  // 不传参（现有 4 处调用点）行为不变
+  const old = splitPane(createTree('p1'), 'p1', 'horizontal', 'p2')
+  assert.deepStrictEqual(paneIds(old), ['p1', 'p2'])
+})
+
 test('嵌套：在已有分栏的叶里再分，树深度增加、顺序稳定', () => {
   let t = splitPane(createTree('p1'), 'p1', 'horizontal', 'p2')
   t = splitPane(t, 'p2', 'vertical', 'p3')

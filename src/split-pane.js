@@ -96,11 +96,12 @@ export function parentSplit(tree, paneId) {
 }
 
 /**
- * 在 paneId 窗格内插入新分栏：该叶子换成 split，原叶子居第一个子位，新叶子第二。
- * orientation 由调用方给（横 = 左右，竖 = 上下）；新 split 的 ratio 取默认值。
+ * 在 paneId 窗格内插入新分栏。orientation 由调用方给（横 = 左右，竖 = 上下）。
+ * newFirst 为真时新叶子居第一个子位（左 / 上），否则居第二（右 / 下）——拖标签到
+ * 窗格左半区或上半区松手时走前者。比例一律 SPLIT_DEFAULT（对称，两侧各半）。
  * 返回新树；paneId 不存在时原样返回。
  */
-export function splitPane(tree, paneId, orientation, newPaneId) {
+export function splitPane(tree, paneId, orientation, newPaneId, newFirst = false) {
   const next = clone(tree)
   const dir = orientation === 'vertical' ? 'vertical' : 'horizontal'
   // 新 split 当场领 id：持久化（settings.json）与 DOM 的 data-split-id 都认它，
@@ -110,11 +111,12 @@ export function splitPane(tree, paneId, orientation, newPaneId) {
     if (isLeaf(n)) {
       if (n.id !== paneId) return false
       const fresh = { type: 'leaf', id: newPaneId }
+      const old = { type: 'leaf', id: paneId }
       n.type = 'split'
       n.id = splitId
       n.orientation = dir
       n.ratio = SPLIT_DEFAULT
-      n.children = [{ type: 'leaf', id: paneId }, fresh]
+      n.children = newFirst ? [fresh, old] : [old, fresh]
       return true
     }
     return n.children.some(walk)
@@ -410,12 +412,13 @@ export function mountSplitTree(opts) {
 
   /**
    * 在 paneId 里插入新分栏（DOM 手术：叶子元素原节点搬进新容器，不重建）。
+   * newFirst 为真时新窗格居左 / 上（DOM 顺序与树顺序一致，比例样式落在新叶子上）。
    * 返回新树；调用方据此更新自己的状态与持久化。
    */
-  function split(paneId, orientation, newPaneId) {
+  function split(paneId, orientation, newPaneId, newFirst = false) {
     const leaf = leafEls.get(paneId)
     if (!leaf) return tree
-    const next = splitPane(tree, paneId, orientation, newPaneId)
+    const next = splitPane(tree, paneId, orientation, newPaneId, newFirst)
     // 找到新 split 节点对象（splitPane 是纯函数，这里按 id 找回引用）
     const findSplit = (n) => {
       if (isLeaf(n)) return null
@@ -436,10 +439,11 @@ export function mountSplitTree(opts) {
     bar.setAttribute('aria-orientation', node.orientation === 'horizontal' ? 'vertical' : 'horizontal')
     bar.title = node.orientation === 'horizontal' ? '拖动调整左右比例（双击回默认）' : '拖动调整上下比例（双击回默认）'
     const fresh = buildLeaf(newPaneId)
-    // 先让 wrap 顶上空位（leaf 此刻脱离文档），再把 leaf 搬进 wrap 第一位——
+    // 先让 wrap 顶上空位（leaf 此刻脱离文档），再把两个叶子搬进 wrap——
     // 顺序反了的话 append 会先把 leaf 搬走，replaceChild 就找不到它了
     leaf.parentNode.replaceChild(wrap, leaf)
-    wrap.append(leaf, bar, fresh)
+    if (newFirst) wrap.append(fresh, bar, leaf)
+    else wrap.append(leaf, bar, fresh)
     const ref = { wrap, bar, node }
     splitRefs.set(node.id, ref)
     applyRatioStyle(ref, node.ratio)
