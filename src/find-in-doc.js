@@ -218,9 +218,11 @@ export function createFindBar({ view, paneEl }) {
     })
   }
 
-  // 把查找栏钉在滚动容器可视顶部（pane 本身滚动，绝对定位会随内容走，需补 scrollTop）
+  // 把查找栏钉在滚动容器可视顶部（pane 本身滚动，绝对定位会随内容走，需补 scrollTop）。
+  // 偏移含窗格标签条高度（完整分栏后每条 pane 顶部有 sticky 条子，压上去会重叠）
+  const STRIP_H = 34
   function pin() {
-    if (bar) bar.style.top = paneEl.scrollTop + 12 + 'px'
+    if (bar) bar.style.top = paneEl.scrollTop + 12 + STRIP_H + 'px'
   }
 
   function setState(patch) {

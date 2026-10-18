@@ -67,6 +67,8 @@ import { confirm3Dialog } from './confirm3-dialog.js'
 import { createPluginManager } from './plugin-loader.js'
 import { createRegistry } from './commands.js'
 import { createTabs } from './tabs.js'
+import { createPaneStrip } from './pane-strip.js'
+import { normVaultPath, rootChanged } from './vault-path.js'
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createCanvasView } from './canvas-view.js'
@@ -104,6 +106,7 @@ const state = {
   mode: 'md', // 'md' 编辑器 | 'canvas' 画布
   dirty: false,
   indexReady: false,
+  singleFile: null, // 非空 = 单文件模式（打开的是单个 md / canvas，侧栏只列它，不铺开目录）
   docNames: [], // 全库 .md 文件名（去 .md）——供 [[ 自动补全
   tagNames: [], // 全库标签——供 # 自动补全
   tree: [], // 最近一次 scanVault 的文件树——供模板/每日笔记列目录
@@ -130,8 +133,8 @@ const els = {
   tagsGlobalDocs: $('tags-global-docs'),
   editor: $('editor'),
   filename: $('filename'),
-  tabs: $('tabs'),
-  tabsSplit: $('tabs-split'),
+  tabs: null,
+  tabsSplit: null,
   btnOpen: $('btn-open'),
   btnOpenFile: $('btn-open-file'),
   btnNewFile: $('btn-new-file'),
@@ -163,8 +166,7 @@ const els = {
 }
 
 let editor
-let findBar = null // 文档内查找栏控制器（boot 里 editor 装配后创建）
-let tabs = null // 标签页（文档 tabs）控制器，boot 里创建
+let findBar = null // 焦点窗格的查找栏（分栏后每个窗格各一个，见 panes.findBars）
 let palette = null
 let keySettings = null
 let hlBar = null // 选区高亮浮动工具栏（p5plan §6.4）
@@ -190,11 +192,12 @@ function setStatus(msg) {
   scheduleMacChrome()
 }
 
-// —— 分栏（P5 §6.1）——
-// 编辑器区是一棵 SplitPane 树（split-pane.js）：叶子窗格各持一个编辑器实例与
-// 自己的根 / 文档上下文——保存、脏状态、关闭确认都按窗格自己的来；全局 state
-// 只镜像焦点窗格（面板、索引、文件树都读它）。窗格与标签页双向绑定：一个标签
-// 同时只在一个窗格显示。画布视图是单实例（canvas-mount 只有一个），分栏下禁用。
+// —— 分栏（P5 §6.1，完整模式 spec 2026-10-18-pane-tab-groups）——
+// 编辑器区是一棵 SplitPane 树（split-pane.js）：叶子窗格各持一个编辑器实例、一条
+// 标签条（pane-strip.js + tabs.js 每窗格实例）与自己的根 / 文档上下文——保存、脏状态、
+// 关闭确认都按窗格自己的来；全局 state 只镜像焦点窗格的活动标签（面板、索引、文件树
+// 都读它）。标签归属窗格（id = paneId + root + rel），同一文档可在多个窗格各开一份。
+// 画布视图是单实例（canvas-mount 只有一个），分栏下禁用。
 const panes = {
   tree: null, // SplitPane 树
   focused: 'p1',
@@ -204,11 +207,14 @@ const panes = {
   contents: new Map(), // paneId -> .nl-pane-body（编辑器 + 源码挂载点）
   mounts: new Map(), // paneId -> { editorDiv, sourceDiv, canvasDiv }
   ctx: new Map(), // paneId -> { vaultRoot, rel, scratch, dirty }
-  paneTabs: new Map(), // paneId -> tabId | null
-  tabPane: new Map(), // tabId -> paneId
+  strips: new Map(), // paneId -> 窗格标签条（pane-strip.js 的返回值）
   view: null, // mountSplitTree 控制器
-  chrome: false, // 拆分按钮是否已挂（编辑区右上角 + 标签条右侧各一组）
   canvasPane: null, // 画布挂载点所在的窗格（canvas-mount 单实例，分栏禁用画布）
+}
+
+/** 焦点窗格的标签条控制器（旧全局 tabs 变量的归宿：所有「当前标签列表」语义都指它） */
+function ftabs() {
+  return panes.strips.get(panes.focused) || null
 }
 
 function paneCtx(paneId) {
@@ -232,12 +238,14 @@ function dirtyPaneIds() {
   return out
 }
 
-// 脏标记统一入口：按窗格记（分栏后各窗格独立）；焦点窗格额外驱动文件名圆点与自动保存
+// 脏标记统一入口：按窗格记（各窗格独立）；写给该窗格活动标签的脏点，
+// 焦点窗格额外驱动文件名圆点与自动保存
 function markPaneDirty(paneId, d) {
   const ctx = paneCtx(paneId)
   ctx.dirty = d
-  const tabId = panes.paneTabs.get(paneId)
-  if (tabId && tabs) tabs.setDirty(tabId, d)
+  const strip = panes.strips.get(paneId)
+  const active = strip && strip.tabs.active()
+  if (strip && active) strip.tabs.setDirty(active.id, d)
   if (paneId === panes.focused) {
     state.dirty = d
     els.filename.classList.toggle('dirty', d)
@@ -253,38 +261,6 @@ function markPaneDirty(paneId, d) {
 // 焦点窗格的脏标记（画布与旧调用点走这里）
 function markDirty(d) {
   markPaneDirty(panes.focused, d)
-}
-
-// 标签 ↔ 窗格绑定：一个标签同时只在一个窗格显示
-function bindTabToPane(tabId, paneId) {
-  if (!tabId) return
-  const old = panes.tabPane.get(tabId)
-  if (old === paneId) return
-  if (old != null) panes.paneTabs.set(old, null)
-  panes.tabPane.set(tabId, paneId)
-  panes.paneTabs.set(paneId, tabId)
-}
-function unbindTab(tabId) {
-  const paneId = panes.tabPane.get(tabId)
-  if (paneId == null) return
-  panes.tabPane.delete(tabId)
-  if (panes.paneTabs.get(paneId) === tabId) panes.paneTabs.set(paneId, null)
-}
-// 重命名 / 另存为会改标签 id（root+rel 是 id 的组成部分）：绑定表的 key 跟着换，
-// 否则窗格与它的标签脱钩，脏标记与关闭确认都会找错人
-function rekeyTab(oldId, newId) {
-  if (!oldId || !newId || oldId === newId) return
-  const paneId = panes.tabPane.get(oldId)
-  if (paneId == null) return
-  panes.tabPane.delete(oldId)
-  panes.tabPane.set(newId, paneId)
-  panes.paneTabs.set(paneId, newId)
-}
-// 换根时旧标签整体作废（tabs.clear 的配套）：绑定表跟着清。窗格里已加载的文档
-// 保留（各自的 ctx 还在，照常能保存），只是没了标签——跨根多窗格的边界情形。
-function clearTabBindings() {
-  panes.paneTabs.clear()
-  panes.tabPane.clear()
 }
 
 // 离开前处理未保存改动（分栏后可能多个窗格有改动）：
@@ -753,15 +729,6 @@ async function openFolder() {
   }
 }
 
-// 规范化库路径用于比较：去掉 Windows canonicalize 的 \\?\ verbatim 前缀、统一分隔符、
-// 去尾部分隔符、忽略大小写（Rust 存的是 canonical 路径，前端持有的是对话框原始路径）
-function normVaultPath(p) {
-  let s = String(p || '').split('\\').join('/') // 反斜杠统一成正斜杠
-  if (s.slice(0, 4) === '//?/') s = s.slice(4) // 去掉 Windows canonicalize 前缀（\\?\ → //?/）
-  s = s.replace(/\/+$/, '') // 去尾部分隔符
-  return s.toLowerCase() // Windows 路径大小写不敏感
-}
-
 // —— 触发后台重建，前端 500ms 轮询 status.ready，就绪后刷新当前文档的双链面板 ——
 function startIndexPolling() {
   state.indexReady = false
@@ -807,43 +774,19 @@ async function openSingleFile() {
 
 // 按绝对路径打开单个文档（P5 §6.6：选择器 / 双击关联 / 单实例转发 / 拖入共用）。
 // 把文件所在目录作为工作根——保存 / 图片 / wikilink 都依赖一个根。
+// preview：拖入 / 单实例转发传 true（预览标签），选择器与启动参数是显式意图、固定标签。
 // 出错直接抛：调用方按场景决定弹窗（选择器来的）还是静默（启动恢复）。
-async function openAbsPath(abs) {
+async function openAbsPath(abs, preview = false) {
   const { dir, name } = splitAbs(abs)
   leaveCurrentVault(dir) // 跨目录打开：旧根的标签页与文档态作废，避免还指着上一个库
   state.vaultRoot = dir
   state.tempImportRoot = ''
-  if (isCanvasPath(name)) {
-    renderSingleFileTree(name)
-    await openCanvas(name)
-    startIndexPolling()
-    persistWorkspace()
-    return
-  }
-  const md = await readMdFile(dir, name)
-  state.currentFile = name
-  state.scratch = false
-  const ctx = paneCtx(panes.focused)
-  ctx.vaultRoot = dir
-  ctx.rel = name
-  ctx.scratch = false
-  ctx.dirty = false
-  setMode('md')
-  editor.setMarkdown(md)
-  updateDocStats() // setMode 里的刷新发生在换文档之前，这里按新内容补一次
-  els.filename.textContent = abs
-  showPaneEmpty(panes.focused, false)
-  renderSingleFileTree(name)
+  state.singleFile = isCanvasPath(name) ? null : name // 画布也铺单文件树，但索引照扫全目录
+  const canvas = isCanvasPath(name)
+  await openDocInPane(panes.focused, { root: dir, rel: name, scratch: false, canvas }, { preview })
+  // 单文件模式：侧栏只列当前这一个（loadDocIntoPane 的跨根分支按 singleFile 判定）
+  if (canvas) renderSingleFileTree(name)
   setStatus(t('status.fileOpened', { abs }))
-  recordRecent(dir, name)
-  editor.focus()
-  // 单文件也后台索引：库根就是同目录，反查更方便
-  startIndexPolling()
-  if (snapshotPanel) snapshotPanel.refresh()
-  if (pluginManager) pluginManager.reload()
-  if (gitPanel) gitPanel.refresh()
-  const tabId = tabs ? tabs.open({ root: dir, rel: name }).id : null
-  bindTabToPane(tabId, panes.focused)
   persistWorkspace()
 }
 
@@ -864,12 +807,13 @@ async function openVaultPath(root, rel) {
   if (!root) return
   if (normVaultPath(root) === normVaultPath(state.vaultRoot)) {
     // 就是当前库：不重扫不重建，只补开指定文档
-    if (rel) await openFile(rel, true)
+    if (rel) await openFile(rel)
     persistWorkspace()
     return
   }
   leaveCurrentVault(root)
   state.vaultRoot = root
+  state.singleFile = null // 正式库接管，退出单文件模式
   state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
   const tree = await scanVault(root)
   renderTree(tree)
@@ -881,7 +825,7 @@ async function openVaultPath(root, rel) {
   if (snapshotPanel) snapshotPanel.refresh()
   if (pluginManager) pluginManager.reload()
   if (gitPanel) gitPanel.refresh()
-  if (rel) await openFile(rel, true)
+  if (rel) await openFile(rel)
   persistWorkspace()
 }
 
@@ -890,7 +834,8 @@ async function openVaultPath(root, rel) {
 // 同目录的其余进标签页；混目录的其余只提示（标签页的根跟着当前文档走，混根多开
 // 没有明确语义）。交互场景（拖入 / 二次唤起）遇到不可识别文件弹一次「按纯文本打开」；
 // 启动场景静默忽略——参数里混进安装器开关之类的东西不该弹窗。
-async function handleOpenTargets(targets, { interactive = false } = {}) {
+// preview：交互场景（拖入 / 二次唤起）开预览标签，启动参数是显式意图、开固定标签。
+async function handleOpenTargets(targets, { interactive = false, preview = false } = {}) {
   const list = (targets || []).filter((t) => t && t.path)
   if (!list.length) return
   const dirs = list.filter((t) => t.isDir)
@@ -903,7 +848,7 @@ async function handleOpenTargets(targets, { interactive = false } = {}) {
     if (!(await confirmDialog(t('ws.openAsPlain', { name })))) return
     if (!(await ensureSavedBeforeLeave())) return
     try {
-      await openAbsPath(others[0].path)
+      await openAbsPath(others[0].path, preview)
     } catch (e) {
       await messageDialog(t('msg.openFileFailedDlg', { msg: (e && e.message) || e }))
     }
@@ -915,13 +860,13 @@ async function handleOpenTargets(targets, { interactive = false } = {}) {
   try {
     if (dirs.length) await openVaultPath(dirs[0].path)
     if (files.length) {
-      await openAbsPath(files[0].path)
+      await openAbsPath(files[0].path, preview)
       for (const f of files.slice(1)) {
         if (normVaultPath(splitAbs(f.path).dir) !== normVaultPath(state.vaultRoot)) {
           setStatus(t('ws.skippedOtherDir', { name: splitAbs(f.path).name }))
           continue
         }
-        await openFile(splitAbs(f.path).name, true)
+        await openFile(splitAbs(f.path).name, preview)
       }
     }
   } catch (e) {
@@ -940,7 +885,12 @@ async function handleLaunchArgs() {
   }
   if (!targets.length) {
     const ws = settingsStore ? settingsStore.get().workspace : null
-    if (ws && ws.lastVault) {
+    // panes 段恢复出了标签就不走工作区老路（上次的 lastFile 已随迁移 / 恢复进窗格）
+    const restoredTabs = paneIds(panes.tree).some((id) => {
+      const s = panes.strips.get(id)
+      return s && s.tabs.list().length > 0
+    })
+    if (ws && ws.lastVault && !restoredTabs) {
       try {
         await openVaultPath(ws.lastVault, ws.lastFile || null)
       } catch (e) {
@@ -953,14 +903,16 @@ async function handleLaunchArgs() {
   await handleOpenTargets(targets)
 }
 
-// 单文件模式：侧栏只列当前这一个文件（不铺开整个目录）
+// 单文件模式：侧栏只列当前这一个文件（不铺开整个目录）。
+// 单击 = 预览入口，双击 = 固定入口（与文件树一致）。
 function renderSingleFileTree(name) {
   const li = document.createElement('li')
   li.className = 'tree-file active'
   li.textContent = name
   li.dataset.path = name
   li.title = name
-  li.addEventListener('click', () => openFile(name))
+  li.addEventListener('click', () => openFile(name, true))
+  li.addEventListener('dblclick', () => openFile(name))
   const ul = document.createElement('ul')
   ul.className = 'tree-root'
   ul.appendChild(li)
@@ -1299,7 +1251,9 @@ function renderNode(node) {
   if (isImagePath(node.path)) li.classList.add('is-img')
   li.draggable = true
   li.title = node.path
-  li.addEventListener('click', () => openFile(node.path))
+  // 文件树：单击 = 预览（斜体临时标签，点下一个被替换），双击 = 固定（VS Code 习惯）
+  li.addEventListener('click', () => openFile(node.path, true))
+  li.addEventListener('dblclick', () => openFile(node.path))
   li.addEventListener('contextmenu', (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -1697,9 +1651,9 @@ function remapCurrentAfterRename(from, to, isFolder) {
   paneCtx(panes.focused).rel = newCf
   els.filename.textContent = newCf
   highlightActiveFile()
-  if (tabs && tabs.active()) {
-    const oldId = tabs.active().id
-    rekeyTab(oldId, tabs.update(oldId, { rel: newCf }))
+  const strip = ftabs()
+  if (strip && strip.tabs.active()) {
+    strip.tabs.update(strip.tabs.active().id, { rel: newCf })
   }
 }
 
@@ -1723,11 +1677,14 @@ async function deleteVaultFile(rel, name) {
       els.filename.classList.remove('dirty')
       refreshLinkPanels()
       if (snapshotPanel) snapshotPanel.refresh()
-      const act = tabs && tabs.active()
+      // 关掉当前页并激活邻居（没有就清空窗格）
+      const strip = ftabs()
+      const act = strip && strip.tabs.active()
       if (act) {
-        const next = tabs.neighborOf(act.id)
-        tabs.remove(act.id)
-        if (next) await openTabDoc(next)
+        const next = strip.tabs.neighborOf(act.id)
+        strip.tabs.remove(act.id)
+        if (next) await openDocInPane(panes.focused, next, { preview: !!next.preview })
+        else clearPane(panes.focused)
       }
     }
     renderTree(await scanVault(state.vaultRoot))
@@ -1777,7 +1734,7 @@ async function newScratchFile() {
     const root = await ensureScratchDir()
     const rel = t('doc.untitled') + '-' + stamp + '.md'
     await writeMdFile(root, rel, '# ' + t('doc.untitled') + '\n\n')
-    await openTabDoc({ root, rel, scratch: true })
+    await openDocInPane(panes.focused, { root, rel, scratch: true })
     setStatus(t('status.createdScratch'))
     editor.focus()
   } catch (e) {
@@ -1785,109 +1742,159 @@ async function newScratchFile() {
   }
 }
 
-// 切到某一页：先处理当前文档的未保存改动，再换根开文档（跨库 / 临时目录都要重载树与索引）
+// 切到焦点窗格内的另一个标签：走既有打开链路（脏检查 → 激活 → 换内容）。
+// 完整分栏后标签归窗格所有，条子之外的入口点不到别窗格的标签。
 async function switchToTab(id) {
-  const tab = tabs && tabs.get(id)
+  const strip = ftabs()
+  if (!strip) return
+  const tab = strip.get(id)
   if (!tab) return
-  const active = tabs.active()
-  if (active && active.id === id) {
-    // 点的就是当前标签：只是把焦点挪到它所在的窗格（分栏下它可能在别的窗格）
-    const paneId = panes.tabPane.get(id)
-    if (paneId && paneId !== panes.focused) await focusPaneUi(paneId)
-    return
-  }
-  if (!(await ensureSavedBeforeLeave())) return
-  // 把该标签挪到焦点窗格加载（原窗格若绑着它，加载后自然改绑，见 openTabDoc）
-  await openTabDoc(tab, panes.focused)
+  if (strip.active() && strip.active().id === id) return // 点的就是当前标签
+  await openDocInPane(panes.focused, tab, { preview: !!tab.preview })
 }
 
 /**
- * 把一个标签的文档装进指定窗格（默认焦点窗格）并完成绑定。
- * 分栏后切页 = 「标签挪到焦点窗格」：原窗格失去该标签（留空），不整棵重置。
- * 跨根时全局根 / 树 / 索引跟着这个窗格的文档走（既有跨库切页链路）。
+ * 打开一个文档进指定窗格并完成标签入列（spec §5.1）：
+ *   1. 该窗格已有同 (root, rel) 标签 → 激活 + 换内容（脏检查照旧）；
+ *   2. 预览入口且该窗格有旧预览 → 先问旧预览的未保存改动，取消则整体中止；
+ *   3. 脏检查（一个编辑器实例：换内容前必须处理当前文档的改动）；
+ *   4. 装内容 + 标签入列（openPreview 内部摘旧预览）+ 根变化门控 + 最近记录。
+ * 装内容失败（文件没了 / 读取出错）时摘掉刚入列的标签，不留空壳。
  */
-async function openTabDoc(tab, paneId = panes.focused) {
-  if (tab.canvas && paneId !== panes.canvasPane) {
+async function openDocInPane(paneId, doc, { preview = false } = {}) {
+  const strip = panes.strips.get(paneId)
+  if (!strip) return
+  if (doc.canvas && paneId !== panes.canvasPane) {
     // 画布视图是单实例（canvas-mount 一个），分栏下不允许在非画布窗格开画布
     setStatus(t('pn.canvasSplit'))
     return
   }
-  state.vaultRoot = tab.root
-  state.tempImportRoot = ''
-  state.scratch = !!tab.scratch
-  if (tab.canvas) {
-    renderSingleFileTree(tab.rel)
-    await openCanvas(tab.rel)
-  } else {
-    if (tab.scratch) {
-      // 临时目录不进侧栏树（那是系统 temp，铺开只会碍事）；也只列当前这一个
-      renderSingleFileTree(tab.rel)
-      state.tree = []
-    } else {
-      renderTree(await scanVault(tab.root))
+  const exist = strip.tabs.list().find((x) => x.root === doc.root && x.rel === doc.rel)
+  if (exist) {
+    if (strip.tabs.active() && strip.tabs.active().id === exist.id) {
+      await loadDocIntoPane(paneId, doc) // 已是活动标签：重载内容（外部改动），不问脏
+      return
     }
-    await openFile(tab.rel, true, paneId)
+    if (!(await ensurePaneSaved(paneId))) return
+    strip.tabs.activate(exist.id)
+    await loadDocIntoPane(paneId, doc)
+    return
   }
-  const tabId = tabs ? tabs.open(tab).id : null
-  // 标签从别的窗格挪过来：原窗格清空，不留一份谁都不管的旧内容
-  const prevPane = panes.tabPane.get(tabId)
-  bindTabToPane(tabId, paneId)
-  if (prevPane != null && prevPane !== paneId) clearPane(prevPane)
-  startIndexPolling() // 根可能变（跨库 / 临时目录），索引跟着换
-  if (pluginManager) pluginManager.reload()
+  if (!(await ensurePaneSaved(paneId))) return
+  let opened = null
+  try {
+    opened = preview ? strip.tabs.openPreview(doc) : strip.tabs.open(doc)
+    await loadDocIntoPane(paneId, doc)
+  } catch (e) {
+    if (opened && !opened.existed) strip.tabs.remove(opened.id)
+    if (!strip.tabs.list().length) showPaneEmpty(paneId, true)
+    throw e
+  }
+  // 临时文件不进「最近打开」：它的归宿是另存为那一刻的正式路径（saveScratchAs 里记）
+  if (!doc.scratch) recordRecent(doc.root, doc.rel)
+  persistWorkspace()
   if (gitPanel) gitPanel.refresh()
   if (snapshotPanel) snapshotPanel.refresh()
 }
 
-// 关闭一页。分栏后「活动页」的判定换成「焦点窗格绑的页」；非焦点窗格绑的页也可能脏
-// （它的编辑器一直在改），关它之前同样要问——按它绑的窗格单独问，不牵连其它窗格。
+/**
+ * 把文档内容装进窗格（不碰标签入列，那由 openDocInPane 负责）。
+ * 读根取窗格自己的 ctx——一个窗格里可能有跨根标签（库文件 + 临时文件），
+ * 全局 state.vaultRoot 只镜像焦点窗格。焦点窗格额外同步全局镜像；根没变只刷
+ * 高亮与面板，根变了才重扫树 / 重建索引 / 重载插件（预览浏览不能每次都重扫）。
+ */
+async function loadDocIntoPane(paneId, doc) {
+  const ctx = paneCtx(paneId)
+  const rootChangedNow = rootChanged(ctx.vaultRoot, doc.root)
+  ctx.vaultRoot = doc.root
+  ctx.rel = doc.rel
+  ctx.scratch = !!doc.scratch
+  ctx.dirty = false
+  if (paneId === panes.focused) {
+    state.tempImportRoot = '' // 独立解析模式只对焦点窗格有意义
+    state.currentFile = doc.rel
+    state.scratch = ctx.scratch
+  }
+  if (doc.canvas) {
+    await openCanvas(doc.rel)
+  } else {
+    const md = await readMdFile(doc.root, doc.rel)
+    const inst = panes.editors.get(paneId)
+    if (paneId === panes.focused) {
+      setMode('md')
+      editor.setMarkdown(md)
+      updateDocStats() // setMode 里的刷新发生在换文档之前，这里补一次
+      els.filename.textContent = ctx.scratch ? await joinPath(doc.root, doc.rel) : doc.rel
+    } else if (inst) {
+      // 非焦点窗格：装进它自己的编辑器实例，不抢全局焦点与面板
+      inst.setMarkdown(md)
+    }
+    showPaneEmpty(paneId, false)
+    if (pluginManager) pluginManager.fireFileOpen(doc.rel, md)
+  }
+  markPaneDirty(paneId, false) // setMarkdown 会 onDirty(false)，显式一次确保脏点清掉
+  resetBackupTimer()
+  if (paneId === panes.focused) {
+    if (rootChangedNow) {
+      // 跨根：树与索引跟着这个窗格的文档走（既有跨库切页链路）
+      if (ctx.scratch || state.singleFile) {
+        // 临时目录 / 单文件模式：侧栏不铺开目录，只列当前这一个
+        state.tree = []
+        renderSingleFileTree(doc.rel)
+      } else {
+        renderTree(await scanVault(doc.root))
+      }
+      startIndexPolling()
+      if (pluginManager) pluginManager.reload()
+    } else {
+      highlightActiveFile()
+      refreshLinkPanels()
+    }
+    if (snapshotPanel) snapshotPanel.refresh()
+    if (gitPanel) gitPanel.refresh()
+  }
+  scheduleMacChrome()
+}
+
+// 关一个标签（× / 中键 / Ctrl+W）。标签只可能属于焦点窗格（条子就挂在窗格上）：
+// 非活动标签直接摘；活动标签先问脏（临时页多问一次要不要选正式位置），关完激活
+// 右邻再左邻，没有就清空窗格显示空态。
 async function closeTab(id) {
-  if (!tabs) return
-  const tab = tabs.get(id)
+  const strip = ftabs()
+  if (!strip) return
+  const tab = strip.get(id)
   if (!tab) return
-  const paneId = panes.tabPane.get(id) || null
-  const isFocusTab = tabs.active() && tabs.active().id === id
-  if (isFocusTab || paneId) {
+  const paneId = panes.focused
+  const isActive = !!strip.active() && strip.active().id === id
+  if (isActive) {
     if (tab.scratch) {
       // 临时页：先按常规处理改动（选「保存」会走另存为，成功后这一页已不再是临时页），
       // 仍是临时页（没改动 / 自动保存过 / 选了不保存）再问要不要选正式位置
-      if (!(await ensurePaneSaved(paneId || panes.focused))) return
-      if (tab.scratch) {
-        const choice = await confirm3Dialog({
-          title: t('dlg.scratchTitle'),
-          message: t('dlg.scratchMsg', { name: baseName(tab.rel) }),
-          confirmLabel: t('dlg.scratchChoose'),
-          neutralLabel: t('dlg.scratchClose'),
-          cancelLabel: t('common.cancel'),
-        })
-        if (choice === 'cancel') return
-        if (choice === 'confirm' && !(await saveScratchAs())) return
-      }
-    } else if (!(await ensurePaneSaved(paneId || panes.focused))) {
+      if (!(await ensurePaneSaved(paneId))) return
+      const choice = await confirm3Dialog({
+        title: t('dlg.scratchTitle'),
+        message: t('dlg.scratchMsg', { name: baseName(tab.rel) }),
+        confirmLabel: t('dlg.scratchChoose'),
+        neutralLabel: t('dlg.scratchClose'),
+        cancelLabel: t('common.cancel'),
+      })
+      if (choice === 'cancel') return
+      if (choice === 'confirm' && !(await saveScratchAs())) return
+    } else if (!(await ensurePaneSaved(paneId))) {
       return
     }
-    // 另存为会改这一页的 id（root/rel 变了），故用 tab 对象上的现值，不用入参 id
-    const cur = tabs.get(tab.id) || tab
-    const next = tabs.neighborOf(cur.id) // 先问邻居，再移除（移除后该页就没了）
-    tabs.remove(cur.id)
-    unbindTab(cur.id)
-    if (paneId) {
-      // 窗格腾出来了：有邻居就装邻居，没有就留空
-      if (next) await openTabDoc(next, paneId)
-      else showPaneEmpty(paneId, true)
-    } else if (next) await openTabDoc(next, panes.focused)
-    else await goNoDoc()
-  } else {
-    tabs.remove(id)
-    unbindTab(id)
   }
-}
-
-// 全部关完：回到无文档态（不退出应用）
-async function goNoDoc() {
-  resetToNoDoc()
-  refreshLinkPanels()
-  if (snapshotPanel) snapshotPanel.refresh()
+  // 另存为会改这一页的 id（root/rel 变了），故用 tab 对象上的现值，不用入参 id
+  const cur = strip.get(tab.id) || tab
+  const next = isActive ? strip.neighborOf(cur.id) : null // 先问邻居，再移除
+  strip.remove(cur.id)
+  if (next) {
+    await openDocInPane(paneId, next, { preview: !!next.preview })
+  } else if (isActive) {
+    clearPane(paneId)
+    refreshLinkPanels()
+    if (snapshotPanel) snapshotPanel.refresh()
+  }
 }
 
 // 回到无文档态：清编辑器 / 统计 / 脏标记 / 文件名（标签页与面板由调用方决定）
@@ -1940,8 +1947,9 @@ function showPaneEmpty(paneId, on) {
 // 返回 false = 挑的就是当前根，调用方应原样返回，不动任何状态。
 function leaveCurrentVault(root) {
   if (normVaultPath(root) === normVaultPath(state.vaultRoot)) return false
-  if (tabs) tabs.clear()
-  clearTabBindings()
+  const strip = ftabs()
+  if (strip) strip.clear()
+  state.singleFile = null
   resetToNoDoc()
   // 搜索结果还挂着旧库的命中：点进去会用新根打开一个同名（或不存在）的文件
   els.searchInput.value = ''
@@ -1949,16 +1957,19 @@ function leaveCurrentVault(root) {
   return true
 }
 
-// Ctrl+Tab / Ctrl+Shift+Tab：循环切页（dir = 1 下一个，-1 上一个）
+// Ctrl+Tab / Ctrl+Shift+Tab：焦点窗格内循环切标签（dir = 1 下一个，-1 上一个）
 async function cycleTab(dir) {
-  if (!tabs) return
-  const list = tabs.list()
+  const strip = ftabs()
+  if (!strip) return
+  const list = strip.tabs.list()
   if (list.length < 2) {
     setStatus(list.length ? t('status.oneTab') : t('status.noTab'))
     return
   }
-  const i = list.findIndex((t) => t.id === (tabs.active() || {}).id)
-  const next = list[(i + dir + list.length) % list.length]
+  const active = strip.tabs.active()
+  const i = active ? list.findIndex((x) => x.id === active.id) : -1
+  const from = i < 0 ? 0 : i
+  const next = list[(from + dir + list.length) % list.length]
   await switchToTab(next.id)
 }
 
@@ -1984,9 +1995,10 @@ async function saveScratchAs() {
     editor.markSaved()
     markPaneDirty(panes.focused, false)
     els.filename.textContent = abs
-    if (tabs && tabs.active()) {
-      const oldId = tabs.active().id
-      rekeyTab(oldId, tabs.update(oldId, { root: dir, rel: name, scratch: false }))
+    const strip = ftabs()
+    if (strip && strip.tabs.active()) {
+      // update 自己按新 root/rel 重拼 id 并搬脏标记，没有外部绑定表要 rekey
+      strip.tabs.update(strip.tabs.active().id, { root: dir, rel: name, scratch: false })
     }
     renderTree(await scanVault(dir))
     highlightActiveFile()
@@ -2014,58 +2026,29 @@ function cssEscape(s) {
 }
 
 // —— 打开/切换文档 ——
-// paneId 缺省 = 焦点窗格（文件树 / wikilink / 命令面板 / 最近打开都落焦点窗格）；
-// 分栏拆分时传新窗格 id，把接管的标签直接装进去，不抢全局焦点。
-async function openFile(rel, skipDirtyConfirm, paneId = panes.focused) {
+// 兼容入口：文件树 / wikilink / 搜索 / 命令面板 / 最近打开都经它落焦点窗格。
+// preview = true 是预览入口（文件树单击 / 拖入），false 是固定入口（其余全部）。
+// 图片附件走独立查看器，不切换当前文档、不触发脏状态确认。
+async function openFile(rel, preview = false) {
   if (!state.vaultRoot) return
-  // 图片附件：走独立查看器单独放大查看，不切换当前文档、不触发脏状态确认
   if (isImagePath(rel)) {
     openImage(rel, { vaultRoot: state.vaultRoot })
     return
   }
-  const ctx = paneCtx(paneId)
-  if (rel === ctx.rel) return
-  if (!skipDirtyConfirm && !(await ensurePaneSaved(paneId))) return
-  if (isCanvasPath(rel)) {
-    if (paneId !== panes.canvasPane) {
-      setStatus(t('pn.canvasSplit')) // 画布视图单实例，分栏下只能在画布窗格开
-      return
-    }
-    await openCanvas(rel)
+  const ctx = paneCtx(panes.focused)
+  if (ctx.rel === rel) {
+    // 点的就是当前文档：只把焦点给编辑器（VS Code 单击已开文件的行为）
+    editor.focus()
     return
   }
   try {
-    const md = await readMdFile(state.vaultRoot, rel)
-    // 窗格自己的上下文（保存 / 脏状态按它走）；焦点窗格额外镜像到全局 state
-    ctx.vaultRoot = state.vaultRoot
-    ctx.rel = rel
-    ctx.scratch = isScratchRoot(state.vaultRoot)
-    ctx.dirty = false
-    if (paneId === panes.focused) {
-      state.currentFile = rel
-      state.scratch = ctx.scratch
-      setMode('md')
-      editor.setMarkdown(md)
-      updateDocStats() // setMode 里的刷新发生在换文档之前（切标签时编辑器还是上一个文档），这里补一次
-      els.filename.textContent = ctx.scratch ? await joinPath(state.vaultRoot, rel) : rel
-      editor.focus()
-      refreshLinkPanels()
-      if (snapshotPanel) snapshotPanel.refresh()
-    } else {
-      // 非焦点窗格：装进它自己的编辑器实例，不抢全局焦点与面板
-      const inst = panes.editors.get(paneId)
-      if (inst) inst.setMarkdown(md)
-    }
-    showPaneEmpty(paneId, false)
-    highlightActiveFile()
+    await openDocInPane(
+      panes.focused,
+      { root: state.vaultRoot, rel, scratch: isScratchRoot(state.vaultRoot), canvas: isCanvasPath(rel) },
+      { preview },
+    )
     setStatus(t('status.opened', { rel }))
-    if (pluginManager) pluginManager.fireFileOpen(rel, md)
-    resetBackupTimer()
-    // 临时文件不进「最近打开」：它的归宿是另存为那一刻的正式路径（saveScratchAs 里记）
-    if (!ctx.scratch) recordRecent(state.vaultRoot, rel)
-    const tabId = tabs ? tabs.open({ root: state.vaultRoot, rel, scratch: ctx.scratch }).id : null
-    bindTabToPane(tabId, paneId)
-    persistWorkspace() // 记住这次打开的库与文档，下次启动恢复
+    editor.focus()
   } catch (e) {
     await messageDialog(t('status.openFailed', { msg: e }))
   }
@@ -2103,6 +2086,8 @@ function setMode(mode) {
   updateDocStats()
 }
 
+// 画布打开（内容装载；标签入列由 openDocInPane 负责）。
+// 画布视图单实例，只在画布窗格（canvasPane）里开。
 async function openCanvas(path) {
   try {
     if (panes.focused !== panes.canvasPane) {
@@ -2111,23 +2096,15 @@ async function openCanvas(path) {
     }
     setMode('canvas') // 先显示容器，open 内的 fitView 才能拿到真实尺寸（否则 0×0 会把节点甩到左上角）
     await canvasView.open(path)
-    state.currentFile = path
-    state.scratch = isScratchRoot(state.vaultRoot)
     const ctx = paneCtx(panes.canvasPane)
-    ctx.vaultRoot = state.vaultRoot
-    ctx.rel = path
-    ctx.scratch = state.scratch
     ctx.dirty = false
     els.filename.textContent = path
-    highlightActiveFile()
+    showPaneEmpty(panes.canvasPane, false)
     setStatus(t('status.canvasOpened', { path }))
     resetBackupTimer()
-    recordRecent(state.vaultRoot, path)
-    showPaneEmpty(panes.canvasPane, false)
-    const tabId = tabs ? tabs.open({ root: state.vaultRoot, rel: path, canvas: true, scratch: state.scratch }).id : null
-    bindTabToPane(tabId, panes.canvasPane)
   } catch (e) {
-    await messageDialog(t('msg.canvasOpenFailed', { err: (e && e.message) || e }))
+    // 不在这里弹窗：openDocInPane 会摘掉刚入列的标签，由最外层调用方统一报错
+    throw e
   }
 }
 
@@ -2148,21 +2125,11 @@ async function newCanvas() {
   const name = t('doc.canvasName') + '-' + stamp + '.canvas'
   try {
     setMode('canvas') // 先显示容器，newBlank 里 centerWorld 才能拿到真实尺寸
-    state.currentFile = name
-    const ctx = paneCtx(panes.canvasPane)
-    ctx.vaultRoot = state.vaultRoot
-    ctx.rel = name
-    ctx.scratch = false
-    ctx.dirty = false
-    els.filename.textContent = name
-    highlightActiveFile()
     await canvasView.newBlank(name)
     await canvasView.save() // 先落盘一个空画布，使其出现在文件树
     renderTree(await scanVault(state.vaultRoot))
+    await openDocInPane(panes.canvasPane, { root: state.vaultRoot, rel: name, scratch: false, canvas: true })
     setStatus(t('status.canvasCreated', { name }))
-    showPaneEmpty(panes.canvasPane, false)
-    const tabId = tabs ? tabs.open({ root: state.vaultRoot, rel: name, canvas: true }).id : null
-    bindTabToPane(tabId, panes.canvasPane)
   } catch (e) {
     await messageDialog(t('msg.canvasCreateFailed', { err: (e && e.message) || e }))
   }
@@ -2257,9 +2224,9 @@ async function saveTempAsFormal() {
     state.tempImportRoot = ''
     state.scratch = false
     paneCtx(panes.focused).scratch = false
-    if (tabs && tabs.active()) {
-      const oldId = tabs.active().id
-      rekeyTab(oldId, tabs.update(oldId, { root: target }))
+    const strip = ftabs()
+    if (strip && strip.tabs.active()) {
+      strip.tabs.update(strip.tabs.active().id, { root: target })
     }
     renderTree(await scanVault(target))
     startIndexPolling()
@@ -2767,16 +2734,18 @@ function registerAppCommands() {
     }
     renameEntry(state.currentFile, baseName(state.currentFile), false)
   })
-  // 关闭当前标签页（Ctrl+W）：只剩一页时等同关闭文档，回到无文档态
+  // 关闭当前标签页（Ctrl+W）：关焦点窗格的活动标签；关完没有邻居则窗格留空态
   app('app.closeFile', 'Mod-w', () => {
-    const act = tabs && tabs.active()
+    const strip = ftabs()
+    const act = strip && strip.tabs.active()
     if (!act) {
       setStatus(t('status.noTab'))
       return
     }
     closeTab(act.id)
   })
-  // 标签页循环（Ctrl+Tab / Ctrl+Shift+Tab）：刻意用 Ctrl 而非 Mod——mac 上 Cmd+Tab 被系统切应用占用
+  // 标签页循环（Ctrl+Tab / Ctrl+Shift+Tab）：完整分栏后是焦点窗格内循环。
+  // 刻意用 Ctrl 而非 Mod——mac 上 Cmd+Tab 被系统切应用占用
   app('app.nextTab', 'Ctrl-Tab', () => cycleTab(1))
   app('app.prevTab', 'Ctrl-Shift-Tab', () => cycleTab(-1))
   // 插入图片（Ctrl+Shift+I，Typora 习惯）：file input 选图后走落库路径
@@ -3359,9 +3328,17 @@ async function syncFocusedEditor() {
 
 // 在焦点窗格里插入新分栏（P5 §6.1「拆分」按钮 / 命令入口）。
 // 新窗格优先接管一个没人占的已开标签，没有就空置等用户点文件树 / 拖文件进来。
+// 在焦点窗格内插入新分栏（P5 §6.1「拆分」按钮 / 命令入口）。
+// 新窗格复制焦点窗格的当前文档（VS Code 拆分行为，便于左右对照）；焦点窗格是空态
+// （没有当前文档）或当前是画布（单实例）时新窗格空置。
 async function splitFocusedPane(orientation) {
   if (!panes.view) return
   const from = panes.focused
+  const fromCtx = paneCtx(from)
+  const dup =
+    fromCtx.rel && !isCanvasPath(fromCtx.rel)
+      ? { root: fromCtx.vaultRoot, rel: fromCtx.rel, scratch: fromCtx.scratch }
+      : null
   const newId = freshId(panes.tree, 'p')
   ensurePaneEditor(newId) // 壳 + 实例先备好（engine 的 contentFor 只取壳）
   panes.tree = panes.view.split(from, orientation, newId)
@@ -3371,31 +3348,17 @@ async function splitFocusedPane(orientation) {
   ensurePaneFindBar(newId)
   ensurePaneHlBar(newId)
   updatePaneChrome()
-  const free = pickFreeTab()
-  if (free) await openTabDoc(free, newId)
+  if (dup) await openDocInPane(newId, dup)
   else showPaneEmpty(newId, true)
   persistPanes()
   setStatus(t(orientation === 'vertical' ? 'pn.splitVDone' : 'pn.splitHDone'))
 }
 
-// 拆分时挑一个「没人占」的已开标签给新窗格接管：同根的优先（省得焦点一切过去
-// 就重扫树重建索引），画布不接（单实例限制）。没有就 null（空窗格）。
-function pickFreeTab() {
-  if (!tabs) return null
-  const list = tabs.list().filter((t) => !panes.tabPane.has(t.id))
-  if (!list.length) return null
-  const root = state.vaultRoot
-  const sameRoot = list.find((t) => !t.canvas && normVaultPath(t.root) === normVaultPath(root))
-  return sameRoot || list.find((t) => !t.canvas) || null
-}
-
-// 关一个窗格（它右上角的关闭按钮）。未保存改动先按老规矩问；最后一个窗格不让关
+// 关一个窗格（它标签条右侧的关闭按钮）。未保存改动先按老规矩问；最后一个窗格不让关
 // （按钮也隐藏），要回到无文档态请用「关闭文档」。
 async function closePaneUi(paneId) {
   if (paneIds(panes.tree).length <= 1) return
   if (!(await ensurePaneSaved(paneId))) return
-  const tabId = panes.paneTabs.get(paneId)
-  if (tabId) unbindTab(tabId)
   panes.tree = panes.view.close(paneId)
   const inst = panes.editors.get(paneId)
   if (inst) {
@@ -3406,12 +3369,13 @@ async function closePaneUi(paneId) {
     }
     panes.editors.delete(paneId)
   }
-  // 查找栏 / 高亮工具栏的 DOM 都在被摘掉的叶子里，随垃圾回收，无需显式销毁
+  // 查找栏 / 高亮工具栏 / 标签条的 DOM 都在被摘掉的叶子里，随垃圾回收；只清控制器引用
   panes.findBars.delete(paneId)
   panes.hlBars.delete(paneId)
   panes.contents.delete(paneId)
   panes.mounts.delete(paneId)
   panes.ctx.delete(paneId)
+  panes.strips.delete(paneId)
   panes.view.releaseLeaf(paneId)
   panes.focused = paneIds(panes.tree)[0]
   await syncFocusedEditor()
@@ -3420,63 +3384,46 @@ async function closePaneUi(paneId) {
   setStatus(t('pn.closed'))
 }
 
-// 拆分按钮（编辑区右上角 + 标签条右侧，p5plan §6.1）：横分 / 竖分各一组
-function buildPaneChrome() {
-  if (panes.chrome) return
-  const mk = (icon, key, orientation) => {
-    const b = document.createElement('button')
-    b.type = 'button'
-    b.className = 'nl-split-btn'
-    b.title = t(key)
-    b.setAttribute('aria-label', t(key))
-    setIcon(b, icon)
-    b.addEventListener('click', () => splitFocusedPane(orientation))
-    return b
-  }
-  const group = () => {
-    const bar = document.createElement('div')
-    bar.className = 'nl-split-btns'
-    bar.append(mk('dist-h', 'pn.splitH', 'horizontal'), mk('dist-v', 'pn.splitV', 'vertical'))
-    return bar
-  }
-  els.editorPane.appendChild(group())
-  if (els.tabsSplit) els.tabsSplit.appendChild(group())
-  panes.chrome = true
-}
-
-// 窗格自己的关闭按钮（钉在窗格右上角；只剩一个窗格时隐藏，见 updatePaneChrome）
+// 窗格自己的标签条（pane-strip.js：标签滚动区 + 拆分横/竖 + 关窗格）。幂等——
+// 已挂过的窗格直接返回（boot 与拆分都会调）。
 function mountPaneChrome(paneId) {
   const leaf = paneLeaf(paneId)
-  if (!leaf || leaf.querySelector('.nl-pane-close')) return
-  const btn = document.createElement('button')
-  btn.type = 'button'
-  btn.className = 'nl-pane-close hidden'
-  btn.title = t('pn.closeTip')
-  btn.setAttribute('aria-label', t('pn.closeTip'))
-  setIcon(btn, 'close')
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation() // 别先触发窗格焦点切换（紧接着就关掉了，切了也白切）
-    closePaneUi(paneId)
-  })
-  leaf.appendChild(btn)
+  if (!leaf || panes.strips.has(paneId) || leaf.querySelector('.nl-pane-strip')) return
+  panes.strips.set(
+    paneId,
+    createPaneStrip({
+      paneId,
+      leaf,
+      onSwitch: (id) => switchToTab(id),
+      onClose: (id) => closeTab(id),
+      onSplit: (o) => splitFocusedPane(o),
+      onClosePane: () => closePaneUi(paneId),
+    }),
+  )
 }
 
-// 多窗格时才显示各窗格的关闭按钮（每个窗格右上角各一个，钉在各自窗格内）
+// 多窗格时才显示各窗格的关窗格按钮；焦点窗格打标（打印只打焦点窗格用）
 function updatePaneChrome() {
   const multi = paneIds(panes.tree).length > 1
   for (const paneId of paneIds(panes.tree)) {
     const leaf = paneLeaf(paneId)
     if (!leaf) continue
     leaf.classList.toggle('focused', paneId === panes.focused)
-    const btn = leaf.querySelector('.nl-pane-close')
-    if (btn) btn.classList.toggle('hidden', !multi)
+    const strip = panes.strips.get(paneId)
+    if (strip) strip.setMulti(multi)
   }
 }
 
-// 分栏树与比例进 settings.json 的 panes 段（拆分 / 关闭 / 拖拽结束都落盘）
+// 分栏树与各窗格标签列进 settings.json 的 panes 段（拆分 / 关闭 / 拖拽结束 /
+// 开关标签都落盘）。预览与脏标记不持久化（serialize 里已剔除）。
 function persistPanes() {
   if (!settingsStore) return
-  const data = serializeTree(panes.tree)
+  const tabs = {}
+  for (const paneId of paneIds(panes.tree)) {
+    const strip = panes.strips.get(paneId)
+    if (strip) tabs[paneId] = strip.tabs.serialize()
+  }
+  const data = { tree: serializeTree(panes.tree), focused: panes.focused, tabs }
   const cur = settingsStore.get().panes
   if (cur && JSON.stringify(cur) === JSON.stringify(data)) return
   settingsStore.update({ panes: data })
@@ -3502,22 +3449,19 @@ async function boot() {
     if (legacy) ap = normalizeAppearance({ ...ap, theme: legacy })
   }
   initTitlebar()
-  // 标签页先建：编辑器回调（onDirty → markDirty → tabs.setDirty）可能在装配过程中就触发
-  tabs = createTabs({
-    mountEl: els.tabs,
-    onSwitch: (id) => switchToTab(id),
-    onClose: (id) => closeTab(id),
-  })
-  // —— 分栏（P5 §6.1）：编辑器区挂 SplitPane 树 ——
+  // —— 分栏（P5 §6.1，完整模式）：编辑器区挂 SplitPane 树 ——
   // 首窗格复用静态 HTML 的三个挂载点（#editor / #source-mount / #canvas-mount），
-  // 整体搬进 .nl-pane 内容壳；树结构从 settings.json 恢复（上次会话的分栏布局），
-  // 文档本身不走恢复——由下面的启动参数 / 工作区恢复链路开进首窗格。
-  panes.tree = normalizeTree(settingsStore.get().panes, 'p1')
-  // 恢复出来的树里第一个叶子的 id 才是初始焦点与首窗格：上次会话可能把 p1 那个
-  // 窗格关掉了，剩下 p2|p3 之类。首窗格复用静态 HTML 的三个挂载点，注册名跟着
-  // 首个叶子走，不能写死 p1（写死的话 #editor 会挂到一个不存在的窗格上）。
+  // 整体搬进 .nl-pane 内容壳；树结构与各窗格标签列从 settings.json 恢复
+  // （上次会话的分栏布局）。旧格式（裸树）迁移时首窗格按 workspace.lastFile
+  // 建一个固定标签；panes 为空 / 坏 → 单窗格空布局，走下面的工作区恢复老路。
+  const wsFallback = settingsStore.get().workspace || {}
+  const panesData = normalizeTree(settingsStore.get().panes, 'p1', wsFallback.lastVault && wsFallback.lastFile ? { root: wsFallback.lastVault, rel: wsFallback.lastFile } : null)
+  panes.tree = panesData.tree
+  // 恢复出来的树里第一个叶子的 id 才是首窗格（挂静态 HTML 的三个挂载点）：上次会话
+  // 可能把 p1 那个窗格关掉了，剩下 p2|p3 之类，不能写死 p1。焦点按恢复的值走，
+  // 可能与首窗格不同（syncFocusedEditor 负责把 els.editor 等指针挪过去）。
   const firstPane = paneIds(panes.tree)[0] || 'p1'
-  panes.focused = firstPane
+  panes.focused = panesData.focused || firstPane
   const paneOneBody = document.createElement('div')
   paneOneBody.className = 'nl-pane-body'
   paneOneBody.append(els.editor, els.sourceMount, els.canvasMount)
@@ -3534,7 +3478,7 @@ async function boot() {
     onRatioCommit: () => persistPanes(),
     onRatioReset: () => persistPanes(),
   })
-  // 树里的每个窗格备好编辑器实例（恢复出来的布局此刻才有实例；首窗格同理）
+  // 树里的每个窗格备好编辑器实例与标签条（恢复出来的布局此刻才有实例；首窗格同理）
   for (const paneId of paneIds(panes.tree)) {
     ensurePaneEditor(paneId)
     mountPaneChrome(paneId)
@@ -3544,9 +3488,27 @@ async function boot() {
   editor = panes.editors.get(panes.focused)
   findBar = panes.findBars.get(panes.focused) || null
   hlBar = panes.hlBars.get(panes.focused) || null
-  buildPaneChrome()
+  await syncFocusedEditor() // 焦点可能不是首窗格：els.editor 等挂载点指针跟着焦点走
   updatePaneChrome()
-  showPaneEmpty(panes.focused, true) // 启动时还没有文档，先显空态
+  // 还原各窗格的标签列（预览不恢复，一律按固定），每个窗格只读活动标签的内容，
+  // 其余标签点击时再读。恢复出的文档可能已被移走：摘掉该标签留空态，不打断启动。
+  for (const paneId of paneIds(panes.tree)) {
+    const strip = panes.strips.get(paneId)
+    if (strip && panesData.tabs[paneId]) strip.tabs.restore(panesData.tabs[paneId])
+  }
+  for (const paneId of paneIds(panes.tree)) {
+    const strip = panes.strips.get(paneId)
+    const act = strip && strip.tabs.active()
+    if (!act) continue
+    try {
+      await loadDocIntoPane(paneId, act)
+    } catch (e) {
+      console.warn('[restore] 打开上次的文档失败', act.rel, e)
+      strip.tabs.remove(act.id)
+      showPaneEmpty(paneId, true)
+    }
+  }
+  if (!ftabs() || !ftabs().tabs.active()) showPaneEmpty(panes.focused, true) // 焦点窗格没有文档：显空态
 
   // 文档属性（frontmatter）面板：查看 / 编辑当前 md 文档的 YAML 头
   frontmatterPanel = createFrontmatterPanel({
@@ -3671,7 +3633,8 @@ async function boot() {
     setStatus,
   })
   // P5 §6.6 文件打开链路：拖入打开（主区域）与单实例二次唤起（Rust 转发 file-opened
-  // 事件）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次工作区
+  // 事件）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次工作区。
+  // 拖入 / 二次唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
   bindDropOpen({
     rootEl: document.querySelector('.body'),
     onTargets: async (targets, e) => {
@@ -3681,12 +3644,12 @@ async function boot() {
       if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
         await focusPaneUi(paneId)
       }
-      return handleOpenTargets(targets, { interactive: true })
+      return handleOpenTargets(targets, { interactive: true, preview: true })
     },
   })
   listen('file-opened', (e) => {
     const p = e && e.payload
-    if (p && p.path) handleOpenTargets([{ path: p.path, isDir: !!p.isDir }], { interactive: true })
+    if (p && p.path) handleOpenTargets([{ path: p.path, isDir: !!p.isDir }], { interactive: true, preview: true })
   }).catch(() => {}) // 纯 web 构建没有事件通道，忽略
   await handleLaunchArgs()
   bindShortcuts()

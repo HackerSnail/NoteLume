@@ -362,21 +362,26 @@ body {
   display: contents;
 }
 
-/* —— 标签页（文档 tabs）：工具条下方一横条，超出宽度横向滚动 —— */
-.tabbar {
+/* —— 窗格标签条（完整分栏模式，spec 2026-10-18）：每个窗格顶部一条 —— */
+/* sticky 钉在窗格滚动内容上方：.nl-pane 仍是滚动容器，不套嵌套滚动 */
+.nl-pane-strip {
+  position: sticky;
+  top: 0;
+  z-index: 6;
   display: flex;
   align-items: stretch;
   gap: 2px;
-  padding: 0 8px;
+  width: 100%;
   min-height: 30px;
+  padding: 0 6px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  overflow-y: hidden;
-  flex: none;
 }
-/* 分栏后标签条内部再分：左边滚动区放标签，右边固定区放拆分按钮 */
-.tabs-scroll {
+.nl-pane-strip.hidden {
+  display: none;
+}
+/* 左边滚动区放标签，右边固定区放拆分 / 关窗格按钮 */
+.nl-pane-strip-scroll {
   display: flex;
   align-items: stretch;
   gap: 2px;
@@ -385,21 +390,14 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
 }
-.tabs-scroll::-webkit-scrollbar {
+.nl-pane-strip-scroll::-webkit-scrollbar {
   height: 0;
 }
-.tabs-split {
+.nl-pane-strip-btns {
   display: flex;
   align-items: center;
   gap: 4px;
   flex: none;
-  background: var(--bg-panel);
-}
-.tabbar.hidden {
-  display: none;
-}
-.tabbar::-webkit-scrollbar {
-  height: 0;
 }
 .tab {
   display: inline-flex;
@@ -430,6 +428,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 160px;
+}
+/* 预览标签（文件树单击开的临时标签）：斜体 + 降不透明度，与固定标签区分 */
+.tab.preview .tab-name {
+  font-style: italic;
+  opacity: 0.75;
 }
 .tab-dot {
   display: none;
@@ -465,16 +468,12 @@ body {
 }
 
 /* —— mac：动作交给系统菜单栏，窗口内工具条下沉为底部状态条 —— */
-/* 标签条留顶部（与浏览器一致）：tabbar 1 → body 2 → toolbar 3（底部状态条） */
-[data-mac] .tabbar {
-  order: 1;
-  border-top: none;
-}
+/* 完整分栏后没有全局标签条了，body 1 → toolbar 2（底部状态条） */
 [data-mac] .body {
-  order: 2;
+  order: 1;
 }
 [data-mac] .toolbar {
-  order: 3;
+  order: 2;
   border-bottom: 0;
   border-top: 1px solid var(--border);
   padding: 5px 12px;
@@ -1620,6 +1619,8 @@ details.panel[open] > summary::before {
   flex-direction: column;
 }
 /* 叶子窗格：自己的滚动容器 + 定位层（查找栏 / 高亮工具栏 / 关闭按钮都钉在这一层） */
+/* 叶子窗格：自己的滚动容器 + 纵向布局（标签条 sticky 在顶，正文在下滚）。
+   查找栏 / 高亮工具栏的定位层仍是这一层（position:relative） */
 .nl-pane {
   flex: 1 1 0;
   min-width: 0;
@@ -1627,7 +1628,8 @@ details.panel[open] > summary::before {
   position: relative;
   overflow-y: auto;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
 }
 .nl-pane-body {
   width: 100%;
@@ -1682,15 +1684,7 @@ html.nl-resizing[data-resize-dir='vertical'],
 html.nl-resizing[data-resize-dir='vertical'] * {
   cursor: row-resize !important;
 }
-/* 拆分按钮（编辑区右上角） */
-.nl-split-btns {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 8;
-  display: flex;
-  gap: 4px;
-}
+/* 拆分 / 关窗格按钮（完整分栏后住在各窗格标签条右侧，VS Code 组工具栏布局） */
 .nl-split-btn {
   width: 26px;
   height: 22px;
@@ -1704,37 +1698,14 @@ html.nl-resizing[data-resize-dir='vertical'] * {
   border-radius: 6px;
   cursor: pointer;
   opacity: 0.72;
+  flex: none;
 }
 .nl-split-btn:hover {
   opacity: 1;
   color: var(--fg);
   border-color: var(--accent);
 }
-/* 窗格关闭按钮：只让焦点窗格的可见（多窗格时才显示） */
-.nl-pane-close {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  z-index: 7;
-  width: 22px;
-  height: 20px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  opacity: 0.72;
-}
-.nl-pane-close:hover {
-  opacity: 1;
-  color: var(--fg);
-  border-color: var(--accent);
-}
-.nl-pane-close.hidden {
+.nl-split-btn.hidden {
   display: none;
 }
 /* 空窗格提示：新拆分出来的窗格 / 关掉文档的窗格 */
@@ -4433,8 +4404,8 @@ html.nl-resizing[data-resize-dir='vertical'] * {
   .editor-pane > :not(.editor):not(.nl-split):not(.nl-pane),
   /* 分栏只打焦点窗格（P5 §6.1）：多窗格同时上纸没有可读的版式 */
   .nl-pane:not(.focused),
-  .nl-split-btns,
-  .nl-pane-close,
+  /* 窗格标签条（拆分 / 关窗格按钮、预览标记）不上纸 */
+  .nl-pane-strip,
   .nl-pane-empty {
     display: none !important;
   }

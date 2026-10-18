@@ -25,6 +25,8 @@
     "test:split-pane": "node tests/split-pane.test.mjs",
     "test:split-pane-dom": "node tests/split-pane-dom.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
+    "test:pane-strip": "node tests/pane-strip.test.mjs",
+    "test:vault-path": "node tests/vault-path.test.mjs",
     "test:drop-open": "node tests/drop-open.test.mjs"
   },
   "dependencies": {

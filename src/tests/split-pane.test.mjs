@@ -119,19 +119,62 @@ test('parentSplit：找叶子的父分栏；根叶子没有父', () => {
   assert.strictEqual(parentSplit(createTree('p1'), 'p1'), null)
 })
 
-test('normalizeTree：合法树原样收（ratio 夹紧）；坏树退回单窗格', () => {
+test('normalizeTree：旧形状（裸树）迁移——树保留、首窗格带 fallbackDoc、其余空列', () => {
   const good = serializeTree(splitPane(createTree('p1'), 'p1', 'horizontal', 'p2'))
-  const ok = normalizeTree(JSON.parse(JSON.stringify(good)), 'p1')
-  assert.deepStrictEqual(paneIds(ok), ['p1', 'p2'])
+  const ok = normalizeTree(JSON.parse(JSON.stringify(good)), 'p1', { root: 'C:/v', rel: 'a.md' })
+  assert.deepStrictEqual(paneIds(ok.tree), ['p1', 'p2'])
+  assert.strictEqual(ok.focused, 'p1')
+  assert.deepStrictEqual(ok.tabs, {
+    p1: { items: [{ root: 'C:/v', rel: 'a.md' }], active: 0 },
+    p2: { items: [], active: -1 },
+  })
+  // 没有 fallbackDoc：全部空列
+  const bare = normalizeTree(JSON.parse(JSON.stringify(good)), 'p1')
+  assert.deepStrictEqual(bare.tabs, { p1: { items: [], active: -1 }, p2: { items: [], active: -1 } })
+})
 
-  const wide = { type: 'split', id: 's1', orientation: 'weird', ratio: 5, children: [good.children[0], good.children[1]] }
-  const fixed = normalizeTree(wide, 'p1')
-  assert.strictEqual(fixed.orientation, 'horizontal') // 非法方向回落横
-  assert.strictEqual(fixed.ratio, SPLIT_MAX) // 越界夹紧
-
-  for (const bad of [null, 42, {}, { type: 'leaf' }, { type: 'split', id: 's', children: [{ type: 'leaf', id: 'a' }] }, { type: 'split', id: 's', children: [{ type: 'leaf', id: 'a' }, { type: 'leaf', id: 'a' }] }]) {
-    assert.deepStrictEqual(paneIds(normalizeTree(bad, 'p9')), ['p9'], '坏树应退回单窗格：' + JSON.stringify(bad))
+test('normalizeTree：新形状原样收（tabs 校验 / 丢孤儿 / 补空列 / active 夹紧 / focused 回落）', () => {
+  const tree = serializeTree(splitPane(createTree('p1'), 'p1', 'horizontal', 'p2'))
+  const data = {
+    tree,
+    focused: 'p2',
+    tabs: {
+      p1: { items: [{ root: 'C:/v', rel: 'a.md' }, { root: 'C:/v', rel: 'a.md' }, { bad: 1 }, { root: 'C:/v', rel: 'b.md', canvas: true, scratch: true }], active: 99 },
+      pX: { items: [{ root: 'C:/v', rel: 'ghost.md' }], active: 0 }, // 树里没有的窗格：丢弃
+      // p2 没有条目：补空列
+    },
   }
+  const ok = normalizeTree(JSON.parse(JSON.stringify(data)), 'p1')
+  assert.strictEqual(ok.focused, 'p2')
+  assert.deepStrictEqual(ok.tabs.p1.items, [
+    { root: 'C:/v', rel: 'a.md', canvas: false, scratch: false },
+    { root: 'C:/v', rel: 'b.md', canvas: true, scratch: true },
+  ])
+  assert.strictEqual(ok.tabs.p1.active, 0) // 99 夹到第一项
+  assert.deepStrictEqual(ok.tabs.p2, { items: [], active: -1 })
+  assert.ok(!('pX' in ok.tabs))
+  // focused 不在树里 → 首个叶子
+  const badFocus = normalizeTree({ tree, focused: 'nope', tabs: {} }, 'p1')
+  assert.strictEqual(badFocus.focused, 'p1')
+})
+
+test('normalizeTree：坏树退回单窗格（旧形状与新形状都退回）', () => {
+  for (const bad of [null, 42, {}, { type: 'leaf' }, { type: 'split', id: 's', children: [{ type: 'leaf', id: 'a' }] }, { type: 'split', id: 's', children: [{ type: 'leaf', id: 'a' }, { type: 'leaf', id: 'a' }] }]) {
+    const r = normalizeTree(bad, 'p9')
+    assert.deepStrictEqual(paneIds(r.tree), ['p9'], '坏树应退回单窗格：' + JSON.stringify(bad))
+    assert.deepStrictEqual(r.tabs, { p9: { items: [], active: -1 } })
+  }
+  // 新形状但树坏：同样退回
+  const r = normalizeTree({ tree: { type: 'split', id: 's', children: [{ type: 'leaf', id: 'a' }] }, focused: 'a', tabs: {} }, 'p9')
+  assert.deepStrictEqual(paneIds(r.tree), ['p9'])
+})
+
+test('normalizeTree：合法树的 orientation / ratio 就地归一', () => {
+  const good = serializeTree(splitPane(createTree('p1'), 'p1', 'horizontal', 'p2'))
+  const wide = { type: 'split', id: 's1', orientation: 'weird', ratio: 5, children: [good.children[0], good.children[1]] }
+  const fixed = normalizeTree({ tree: wide, focused: 'p1', tabs: {} }, 'p1')
+  assert.strictEqual(fixed.tree.orientation, 'horizontal') // 非法方向回落横
+  assert.strictEqual(fixed.tree.ratio, SPLIT_MAX) // 越界夹紧
 })
 
 test('serializeTree：往返稳定', () => {
@@ -139,7 +182,7 @@ test('serializeTree：往返稳定', () => {
   t = setRatio(t, t.id, 0.31)
   const data = JSON.parse(JSON.stringify(serializeTree(t)))
   const back = normalizeTree(data, 'p1')
-  assert.deepStrictEqual(serializeTree(back), data)
+  assert.deepStrictEqual(serializeTree(back.tree), data)
 })
 
 test('freshId：不给已占用的 id，前缀可不同', () => {

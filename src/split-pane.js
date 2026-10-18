@@ -183,13 +183,8 @@ export function serializeTree(tree) {
   }
 }
 
-/**
- * settings.json 里的 panes 段 → 合法树。坏数据（缺子、类型错、id 撞车）一律
- * 修：修不动就退回单窗格——启动不能因为一份坏分栏配置起不来。
- * @param {any} raw
- * @param {string} fallbackPaneId 退回单窗格时用的 id
- */
-export function normalizeTree(raw, fallbackPaneId) {
+/** 校验并就地归一一棵树（orientation / ratio）；不合法返回 null */
+function validateTree(raw) {
   const ids = new Set()
   const ok = (n) => {
     if (!n || typeof n !== 'object') return false
@@ -206,8 +201,69 @@ export function normalizeTree(raw, fallbackPaneId) {
     n.ratio = clampRatio(n.ratio)
     return true
   }
-  if (ok(raw)) return raw
-  return createTree(fallbackPaneId)
+  return ok(raw) ? raw : null
+}
+
+/** 单窗格空布局（坏数据的归宿） */
+function singleLayout(fallbackPaneId) {
+  return {
+    tree: createTree(fallbackPaneId),
+    focused: fallbackPaneId,
+    tabs: { [fallbackPaneId]: { items: [], active: -1 } },
+  }
+}
+
+/** 归一一个窗格的标签列：items 去重 / 剔坏项，active 夹到 [-1, len-1] */
+function normalizeTabsEntry(entry) {
+  const items = []
+  if (entry && Array.isArray(entry.items)) {
+    for (const it of entry.items) {
+      if (!it || typeof it.root !== 'string' || typeof it.rel !== 'string') continue
+      if (items.some((x) => x.root === it.root && x.rel === it.rel)) continue
+      items.push({ root: it.root, rel: it.rel, canvas: !!it.canvas, scratch: !!it.scratch })
+    }
+  }
+  let active = entry && Number.isInteger(entry.active) ? entry.active : -1
+  if (active < 0 || active >= items.length) active = items.length ? 0 : -1
+  return { items, active }
+}
+
+/**
+ * settings.json 里的 panes 段 → 合法布局 { tree, focused, tabs }。两种形状都认：
+ *   新形状 { tree, focused, tabs: { paneId: { items, active } } }
+ *   旧形状（裸树，完整分栏之前的版本）：迁移——树保留，首个叶子按 fallbackDoc
+ *   （workspace.lastFile 那一条）建一个固定标签，其余窗格空列。
+ * 坏数据（缺子、类型错、id 撞车、tabs 结构非法）一律修：修不动就退回单窗格——
+ * 启动不能因为一份坏分栏配置起不来。
+ * @param {any} raw settings.json 的 panes 段
+ * @param {string} fallbackPaneId 退回单窗格时用的 id
+ * @param {{root:string, rel:string}|null} [fallbackDoc] 旧形状迁移时首窗格的文档
+ */
+export function normalizeTree(raw, fallbackPaneId, fallbackDoc = null) {
+  // 旧形状：raw 自己就是一棵树
+  if (raw && (raw.type === 'leaf' || raw.type === 'split')) {
+    const tree = validateTree(raw)
+    if (!tree) return singleLayout(fallbackPaneId)
+    const ids = paneIds(tree)
+    const tabs = {}
+    for (const id of ids) tabs[id] = { items: [], active: -1 }
+    const first = ids[0]
+    if (first && fallbackDoc && fallbackDoc.root && fallbackDoc.rel) {
+      tabs[first] = { items: [{ root: fallbackDoc.root, rel: fallbackDoc.rel }], active: 0 }
+    }
+    return { tree, focused: first || fallbackPaneId, tabs }
+  }
+  // 新形状
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.tree && (raw.tree.type === 'leaf' || raw.tree.type === 'split')) {
+    const tree = validateTree(raw.tree)
+    if (!tree) return singleLayout(fallbackPaneId)
+    const ids = paneIds(tree)
+    const tabs = {}
+    for (const id of ids) tabs[id] = normalizeTabsEntry(raw.tabs && raw.tabs[id])
+    const focused = typeof raw.focused === 'string' && ids.includes(raw.focused) ? raw.focused : ids[0]
+    return { tree, focused, tabs }
+  }
+  return singleLayout(fallbackPaneId)
 }
 
 // —— 以下为 DOM 渲染与拖拽 ————————————————————————————————
