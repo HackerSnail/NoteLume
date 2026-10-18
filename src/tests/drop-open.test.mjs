@@ -1,7 +1,7 @@
 // drop-open.test.mjs —— 拖入打开（P5 §6.6）纯逻辑回归（不触 DOM）
 // 运行：cd src && node tests/drop-open.test.mjs
 import assert from 'node:assert'
-import { normDropPath, isDroppableName, collectDropPaths } from '../drop-open.js'
+import { normDropPath, isDroppableName, isBinaryName, collectDropPaths } from '../drop-open.js'
 
 let pass = 0
 let fail = 0
@@ -34,6 +34,19 @@ test('isDroppableName：md / markdown / canvas 收，其余与无扩展名不收
   assert.strictEqual(isDroppableName('noext'), false)
   assert.strictEqual(isDroppableName('archive.md.zip'), false) // 看最后一段
   assert.strictEqual(isDroppableName(''), false)
+})
+
+test('isBinaryName：exe / dll / lnk 等二进制收，md / txt / 无扩展名不收', () => {
+  assert.strictEqual(isBinaryName('notelume.exe'), true)
+  assert.strictEqual(isBinaryName('NOTELUME.EXE'), true)
+  assert.strictEqual(isBinaryName('foo.dll'), true)
+  assert.strictEqual(isBinaryName('setup.msi'), true)
+  assert.strictEqual(isBinaryName('快捷方式.lnk'), true)
+  assert.strictEqual(isBinaryName('a.md'), false)
+  assert.strictEqual(isBinaryName('c.txt'), false)
+  assert.strictEqual(isBinaryName('noext'), false)
+  assert.strictEqual(isBinaryName('archive.md.zip'), false)
+  assert.strictEqual(isBinaryName(''), false)
 })
 
 test('collectDropPaths：优先 items 的 entry（能拿文件夹）', () => {

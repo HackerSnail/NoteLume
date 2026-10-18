@@ -71,6 +71,7 @@ function tabEls(leaf) {
 export function createPaneDrag({ hitLeaf, labelFor, onDrop }) {
   let st = null
   let swallowClick = false
+  let swallowTimer = 0
 
   function teardown() {
     if (!st) return
@@ -160,7 +161,14 @@ export function createPaneDrag({ hitLeaf, labelFor, onDrop }) {
       tabIndex = tabDropIndex(rects, ev.clientX, els.indexOf(s.sourceEl))
     }
     teardown()
+    // 起拖过的这次松手会跟着来一次 click（切标签 / 开文件），吞掉。但 click 不是
+    // 必然派发（松手在窗口外、源元素已被 render 重建等场景），标志不能一直挂着——
+    // 卡 true 会把用户下一次正常单击也吞掉，表现就是「点文件没反应」。给个上限自清。
     swallowClick = true
+    clearTimeout(swallowTimer)
+    swallowTimer = setTimeout(() => {
+      swallowClick = false
+    }, 350)
     if (onDrop) onDrop({ payload: s.payload, paneId, zone, tabIndex })
   }
 
@@ -177,6 +185,7 @@ export function createPaneDrag({ hitLeaf, labelFor, onDrop }) {
   const onCaptureClick = (ev) => {
     if (!swallowClick) return
     swallowClick = false
+    clearTimeout(swallowTimer)
     ev.stopPropagation()
     ev.preventDefault()
   }
@@ -196,6 +205,7 @@ export function createPaneDrag({ hitLeaf, labelFor, onDrop }) {
     begin: (ev, payload, sourceEl) => {
       if (st) return
       swallowClick = false
+      clearTimeout(swallowTimer)
       st = {
         payload,
         sourceEl,
@@ -212,6 +222,7 @@ export function createPaneDrag({ hitLeaf, labelFor, onDrop }) {
     cancel,
     destroy() {
       teardown()
+      clearTimeout(swallowTimer)
       document.removeEventListener('click', onCaptureClick, true)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)

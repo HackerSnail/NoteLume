@@ -66,7 +66,7 @@
   3. 目标窗格已有该文档 → `activate` + `pin`（落定即固定）；没有 → `tabs.open(doc)`。两者都跟着 `loadDocIntoPane`。
   4. `detachTab(源窗格, tabId)`；`focusPaneUi(dstPaneId)`；`persistPanes()`。
 - `splitTabToPane(tabId, dstPaneId, orientation, newFirst)`
-  1. 同上的画布拦截；目标窗格是画布所在窗格 → 同样拦下（画布下不允许分栏）。
+  1. 同上的画布拦截。不再按「目标窗格是 `panes.canvasPane`」拦：那个 id 含义是画布挂载点归谁，启动时固定给首窗格，单窗格布局下边落拆分会被全部拦掉（2026-10-19 修）。拆出去的新窗格本来就装不到画布——画布标签在上面第一条就拦了，文件树的 `.canvas` 走 `openDocInPane` 不落边——画布视图留在原窗格，与标签条的「拆分」按钮同行为。
   2. 问清：只有源窗格（被拖的是活动标签且脏）——目标窗格内容不变，不用问。
   3. `newId = freshId(...)` → `ensurePaneEditor(newId)` → `panes.tree = panes.view.split(dstPaneId, orientation, newId, newFirst)`。
   4. `mountPaneChrome(newId)` + `ensurePaneFindBar` + `ensurePaneHlBar` + `updatePaneChrome()`（与 `splitFocusedPane` 同套路）。
@@ -94,7 +94,7 @@
 
 | 情况 | 处理 |
 |---|---|
-| 拖的是画布标签 / 落点是画布窗格 | 拦下，`setStatus(t('pn.canvasSplit'))` |
+| 拖的是画布标签 | 拦下，`setStatus(t('pn.canvasSplit'))` |
 | 目标窗格已有该文档 | 只激活（并把预览转正），不重开第二个 |
 | 拖走窗格最后一个标签 | 源窗格 `clearPane` 变空态 |
 | 落在侧栏 / 状态条 / 窗口外 | 无操作，标签复原 |

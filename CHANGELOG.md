@@ -9,10 +9,24 @@
 
 ### Fixed
 
+* **左侧文件树单击文件没反应**：三个静默路径，撞上哪个都是点了没动静。① 拖拽引擎（`src/pane-drag.js`）松手后置的吞 click 标志，等不到紧跟的 click（松手在窗口外、源元素被 render 重建等场景）就一直挂着，下一次正常单击被 capture 监听吞掉——加 350ms 超时自清，吞到 click 或超时即复位。② `loadDocIntoPane` 在 `readMdFile` 之前就把 `ctx.rel` 写进窗格上下文，读取失败（上次会话的文档已被移走之类）后不回滚，留下「窗格空态 + ctx.rel 有值」的组合，`openFile` 的同文档早退误命中，点那个文件只 focus 不加载——失败时回滚上下文（焦点窗格连带回滚全局镜像），`openFile` 的同文档早退前另查一遍空态兜底。③ `openDocInPane` 遇到树里有叶子但 strips 无实例的死窗格直接 return——改落到还有实例的窗格；`closePaneUi` 在 `view.close` 没动树时不再照删映射，不制造死窗格。三处都是真缺陷，但没能在真机 `tauri dev` 下复现用户那次「单击无反应」，改完反馈仍在，排查继续。
+* **`ensurePaneSaved` 把无关窗格的保存弹窗带进打开链路**：CLAUDE.MD 里记着「这条毛病还在，另修」的那条——窗格不脏时传空数组给 `askSavePanes`，被当成「问所有脏窗格」，第三个窗格的保存弹窗（或取消）会拦住一个不相干的打开动作。现在窗格不脏直接放行。连带修了自动保存写盘失败只进 console、`askSavePanes` 返回 false 把打开 / 关闭链路静默拦下的问题：失败改为弹窗提示，不再无声中止。全量 31 个测试文件通过，`npm run build` 无错。
 * **二次唤起 / 启动参数把 exe 自身当成待打开文件，弹「notelume.exe 不是 Markdown 或画布文件」**：应用已在运行时再点一次快捷方式 / exe，单实例插件把第二个进程的 argv 转给前端，其中 exe 自身这一条本该被 `launch_targets` 按路径比对剔除。原 `same_path` 只容分隔符与大小写，而 Windows 上 `current_exe()` 可能返回 `\\?\C:\...\notelume.exe`（verbatim 前缀）而 argv 里是不带前缀的形式，字符串比对不等 → exe 漏到前端 → 弹「按纯文本打开吗」。改为先 `canonicalize` 两边再比（同时消掉相对路径、符号链接与 8.3 短名），canonicalize 失败（文件不存在）才退回归一化字符串并剥 `\\?\` 前缀。`launch_targets` 拆出 `launch_targets_with_exe` 注入 exe 路径便于测试；补两条回归（verbatim 前缀相等、注入 exe 的 verbatim 形式被剔除）。`cargo test` 127 passed。含 Rust，须重启 `tauri dev` / 重打包生效。
 * **拖 exe 进窗口弹「按纯文本打开吗」**：拖入打开走的是纯前端链路（`drop-open.js`），不经 Rust 的 `launch_targets`，exe 自身落进「不可识别文件」一档，交互场景就弹「按纯文本打开」确认。`drop-open.js` 新增 `BINARY_EXTS`（exe / dll / msi / lnk 等 11 种）与 `isBinaryName`，`main.js` 的 `handleOpenTargets` 把这类文件从「按纯文本打开」候选里剔除、静默跳过；二进制与文档混拖时状态栏照常报「已跳过 n 个不支持的文件」。只剩二进制时不再调 `ensureSavedBeforeLeave`（没什么要打开的，不该问保存）。`node tests/drop-open.test.mjs` 7 passed（新增 `isBinaryName` 一条）。
+* **标签拖到窗格边上松手，新窗格没拆出来，标签回原位（无任何提示）**：`splitEmptyPane` 拿 `dstPaneId === panes.canvasPane` 拦画布相关操作，但 `panes.canvasPane` 的含义是「`#canvas-mount` 归哪个窗格」，启动时固定给首窗格。单窗格布局下每次边落都命中这条，`splitEmptyPane` 返回 null，`splitTabToPane` / `dropTreeFile` 随后直接收工，而 `setStatus` 已经不写界面（只进 console），看起来就是拖了个寂寞。改为不按窗格 id 拦：拆出去的新窗格本来也装不到画布——画布标签在 `splitTabToPane` / `moveTabToPane` 里拦，文件树的 `.canvas` 走 `openDocInPane` 且不落到边上——与标签条上的「拆分」按钮行为对齐。spec `2026-10-19-pane-drag-design.md` §5 / §8 同步改掉这条规则。
+* **分割条拖完的比例，重启又回到 50/50**：引擎里改比例是 `setRatio` 生成的新树，只留在 `mountSplitTree` 内部，`panes.tree` 还是拖之前那份；`onRatioCommit` 直接调 `persistPanes()`，写盘用的是老比例。加 `commitPaneRatios()`，落盘前先把 `panes.view.tree` 交回 `panes.tree`（拖完与双击回默认两条路都走它）。
+* **重启恢复布局后，点文件树没反应**：boot 恢复只经 `loadDocIntoPane` 装文档，树按 `doc.root` 现扫所以看着正常，但全局 `state.vaultRoot` 没人回填（`syncFocusedEditor` 在标签恢复之前就跑完了），`openFile` 开头 `if (!state.vaultRoot) return` 静默返回——点什么都没动静、无报错、控制台干净。`loadDocIntoPane` 焦点窗格分支补上 `state.vaultRoot` 镜像（与 `syncFocusedEditor` 同语义），装载失败在 catch 里随窗格 ctx 一并退回。
+* **焦点环不跟焦点**：`.focused` 只在挂条子 / 关窗格 / 启动装配时刷一遍，普通点窗格、拖拽拆分落定后环都留在旧窗格——`splitEmptyPane` 里 `updatePaneChrome()` 跑在 `panes.focused = newId` 之前，画的是旧焦点。`focusPaneUi` 补一次 `updatePaneChrome()`，`splitEmptyPane` 把焦点赋值挪到打标之前。
+* **拖完立刻关窗，布局丢回上一次**：`persistPanes` 只调 `settingsStore.update`，写盘走 500ms 防抖且没人 flush（settings-store 注释写明「拖拽结束由调用方调 flush()」，main.js 从没调过），pointerup 之后半秒内关窗，本次拆分 / 移动 / 排序就没了。`persistPanes` 里 update 后立即 `flush()`。
+* **开标签不落盘 panes 段**：「开关标签都落盘」只做了关——`openDocInPane` 只调 `persistWorkspace`，开新标签 / 切激活位 / 预览转正都不进 settings.json，重启后少标签、激活位回到旧位置。`openDocInPane` 三处（转正 / 激活 / 新开）补 `persistPanes()`；serialize 剔除预览标签加上 dedupe 比对，纯重载不产生写盘。复现与验证都走无头 Chromium + 桩 Tauri bridge（vite dev，合成指针事件驱动单击 / 拖边拆分 / 拖回移动 / 刷新恢复 / 恢复后点树）；全量 31 个测试文件通过，`npm run build` 无错。
 
 ### Changed
+
+* **文件树单击直接开固定标签（原为预览标签）**：此前单击 = 开斜体预览标签、点下一个文件就被替换掉，想留住一篇得挨个双击。现在单击 = 固定入口（同路径已开则激活，预览标签一并转正），`main.js` 的文件树 / 单文件树 li 摘掉 `dblclick` 监听（与单击同效）；预览入口只剩拖入打开与单实例二次唤起，预览机制本身不动（每窗格一个预览标签、双击标签转正、拖预览标签落定转正照旧）。CLAUDE.MD「标签页设计」同步。纯前端，刷新即生效。全量 31 个测试文件通过，`npm run build` 33.25s 无错。
+
+* **文件树单击改回固定入口**：完整分栏模式把文件树单击划成了预览入口（斜体临时标签，同窗格再点下一篇就把它顶掉），用下来不对味——单击就是想打开这一篇，不该被下一次点击挤掉。现在文件树单击开普通（固定）标签，双击不再另开一路，预览入口只剩拖入打开与单实例二次唤起。单文件模式的树同步（原先单击预览 / 双击固定两条监听并成一条）。`src/tabs.js` 的入口注释、`main.js` 的 `openFile` 注释、CLAUDE.MD、spec §2 / §5.1 同步。
+
+* **空窗格自动关掉**：此前关掉窗格最后一个标签会留下空态窗格，拆几次分栏、关几次文档就攒一排要手动关的空壳。现在三种路径关光标签都整格自动关掉（`closePaneIfEmpty`：关标签 / Ctrl+W、把最后一个标签拖走、删掉当前文档），只剩最后一个窗格时保留空态承接下一次打开；启动恢复时标签列为空的叶子直接剪掉（`pruneEmptyPanes`，首叶子保留）。关掉 `#canvas-mount` 宿主窗格时挂载点搬进剩余第一个窗格（`rehomeCanvasMount`），`panes.canvasPane` 跟着改——此前手动关掉那个窗格，画布就被静默废掉且无任何提示。CLAUDE.MD 与 spec 同步改掉「pane 保留空态」的旧结论。纯前端，刷新即生效。
 
 * **编辑器与侧栏排版整体收紧（浅色 / 暗黑 / Dracula 三主题分别调过）**：此前的界面文字贴边、表格满框竖线、侧栏与编辑区只靠 1px 硬边框分界，看着像表格工具不像编辑器。本次按 Notion / Obsidian 的路子重排，配色按主题各自给值，不搞一套色三个主题硬套。
   * ① 表格去竖框：`.ProseMirror th/td` 从 `border: 1px solid` 改为只留 `border-bottom`（表头 2px、行间 1px），内边距 6px 10px → 8px 12px，整表 `margin: 1.5em 0; font-size: .95em`，表头不再铺底色；新增行悬停高亮（主题色 8% 浅底，压在既有斑马纹之上）。列宽封顶、拖拽手柄、选中格覆盖等既有规则不动。

@@ -9,6 +9,10 @@
 
 const OPENABLE_EXTS = ['md', 'markdown', 'canvas']
 
+// 这类文件拖进来不弹「按纯文本打开」：二进制 / 系统文件读出来没有意义，
+// 静默跳过。exe 自身拖进窗口就落在这一档。
+const BINARY_EXTS = ['exe', 'dll', 'msi', 'msp', 'com', 'scr', 'cpl', 'msc', 'sys', 'ocx', 'lnk']
+
 /** WebView 拖放 fullPath 在 Windows 下形如 /C:/a/b.md：剥掉开头的 / 还原成绝对路径 */
 export function normDropPath(p) {
   let s = String(p || '').trim()
@@ -24,6 +28,14 @@ export function isDroppableName(name) {
   const dot = base.lastIndexOf('.')
   if (dot < 0) return false
   return OPENABLE_EXTS.includes(base.slice(dot + 1).toLowerCase())
+}
+
+/** 二进制 / 系统文件（exe、dll 之类）：连「按纯文本打开」的确认都不给，直接跳过 */
+export function isBinaryName(name) {
+  const base = String(name || '')
+  const dot = base.lastIndexOf('.')
+  if (dot < 0) return false
+  return BINARY_EXTS.includes(base.slice(dot + 1).toLowerCase())
 }
 
 /**
