@@ -7,6 +7,10 @@
 
 ## [Unreleased](https://gitee.com/hackerSnail/note-lume/compare/master...dev)
 
+### Fixed
+
+* **二次唤起 / 启动参数把 exe 自身当成待打开文件，弹「notelume.exe 不是 Markdown 或画布文件」**：应用已在运行时再点一次快捷方式 / exe，单实例插件把第二个进程的 argv 转给前端，其中 exe 自身这一条本该被 `launch_targets` 按路径比对剔除。原 `same_path` 只容分隔符与大小写，而 Windows 上 `current_exe()` 可能返回 `\\?\C:\...\notelume.exe`（verbatim 前缀）而 argv 里是不带前缀的形式，字符串比对不等 → exe 漏到前端 → 弹「按纯文本打开吗」。改为先 `canonicalize` 两边再比（同时消掉相对路径、符号链接与 8.3 短名），canonicalize 失败（文件不存在）才退回归一化字符串并剥 `\\?\` 前缀。`launch_targets` 拆出 `launch_targets_with_exe` 注入 exe 路径便于测试；补两条回归（verbatim 前缀相等、注入 exe 的 verbatim 形式被剔除）。`cargo test` 127 passed。含 Rust，须重启 `tauri dev` / 重打包生效。
+
 ### Changed
 
 * **编辑器与侧栏排版整体收紧（浅色 / 暗黑 / Dracula 三主题分别调过）**：此前的界面文字贴边、表格满框竖线、侧栏与编辑区只靠 1px 硬边框分界，看着像表格工具不像编辑器。本次按 Notion / Obsidian 的路子重排，配色按主题各自给值，不搞一套色三个主题硬套。

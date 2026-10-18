@@ -3094,6 +3094,11 @@ fn set_ui_lang(lang: String) -> bool {
 /// `-` 开头的是 CLI 开关，不要。
 fn launch_targets<I: IntoIterator<Item = String>>(argv: I) -> Vec<LaunchTarget> {
     let exe = std::env::current_exe().ok().map(|p| p.to_string_lossy().to_string());
+    launch_targets_with_exe(argv, exe)
+}
+
+/// 与 launch_targets 同，exe 路径由调用方给（测试注入；生产传 current_exe()）。
+fn launch_targets_with_exe<I: IntoIterator<Item = String>>(argv: I, exe: Option<String>) -> Vec<LaunchTarget> {
     argv.into_iter()
         .filter(|a| !a.is_empty() && !a.starts_with('-'))
         .filter(|a| exe.as_deref().map_or(true, |e| !same_path(e, a)))
@@ -3111,10 +3116,24 @@ fn launch_targets<I: IntoIterator<Item = String>>(argv: I) -> Vec<LaunchTarget> 
         .collect()
 }
 
-/// 仅用于剔除 exe 自身：容分隔符与大小写（Windows 路径大小写不敏感）之差
+/// 仅用于剔除 exe 自身。先 canonicalize（消相对路径、符号链接与 8.3 短名），
+/// 失败（文件不存在等）退回归一化字符串：容分隔符、大小写（Windows 路径大小写
+/// 不敏感）与 `\\?\` verbatim 前缀之差——current_exe() 在 Windows 上可能带这个
+/// 前缀而 argv 里不带，纯字符串比对会把 exe 自身漏过去，前端就弹
+/// 「notelume.exe 不是 Markdown 或画布文件」。
 fn same_path(a: &str, b: &str) -> bool {
-    let na = a.replace('\\', "/");
-    let nb = b.replace('\\', "/");
+    if let (Some(pa), Some(pb)) = (std::fs::canonicalize(a).ok(), std::fs::canonicalize(b).ok()) {
+        let na = pa.to_string_lossy().replace('\\', "/");
+        let nb = pb.to_string_lossy().replace('\\', "/");
+        #[cfg(target_os = "windows")]
+        let (na, nb) = (na.to_lowercase(), nb.to_lowercase());
+        return na == nb
+    }
+    let strip_verbatim = |s: &str| match s.replace('\\', "/").strip_prefix("//?/") {
+        Some(rest) => rest.to_string(),
+        None => s.replace('\\', "/"),
+    };
+    let (na, nb) = (strip_verbatim(a), strip_verbatim(b));
     #[cfg(target_os = "windows")]
     let (na, nb) = (na.to_lowercase(), nb.to_lowercase());
     na == nb
@@ -3369,5 +3388,33 @@ mod launch_tests {
         #[cfg(target_os = "windows")]
         assert!(same_path("C:\\A\\X", "c:/a/x"));
         assert!(!same_path("/a/b/x", "/a/b/y"));
+    }
+
+    #[test]
+    fn same_path_ignores_windows_verbatim_prefix() {
+        // current_exe() 可能返回 \\?\C:\... 而 argv 里不带：此前纯字符串比对漏掉 exe 自身
+        assert!(same_path(r"\\?\C:\Program Files\NoteLume\notelume.exe", r"C:\Program Files\NoteLume\notelume.exe"));
+        assert!(!same_path(r"\\?\C:\a\x.exe", r"C:\a\y.exe"));
+    }
+
+    #[test]
+    fn drops_exe_self_by_injected_path() {
+        // 用一个真实存在的临时文件假扮 exe：verbatim 前缀形式也要被剔除
+        let dir = std::env::temp_dir();
+        let exe = dir.join("notelume-self-test.exe");
+        std::fs::write(&exe, "x").unwrap();
+        let exe_s = exe.to_string_lossy().to_string();
+        // 手工拼 verbatim 形式（temp_dir 不是 UNC，不会天然带前缀）
+        let verbatim = format!("\\\\?\\{}", exe_s);
+        let other = dir.join("notelume-other-test.md");
+        std::fs::write(&other, "y").unwrap();
+        let got = launch_targets_with_exe(
+            vec![exe_s.clone(), verbatim, other.to_string_lossy().to_string(), "-v".to_string()],
+            Some(exe_s),
+        );
+        assert_eq!(got.len(), 1);
+        assert!(got[0].path.ends_with("notelume-other-test.md"));
+        let _ = std::fs::remove_file(&exe);
+        let _ = std::fs::remove_file(&other);
     }
 }
