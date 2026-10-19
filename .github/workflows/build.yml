@@ -119,7 +119,7 @@ jobs:
             artifact_name: NoteLume-Linux-AppImage
             artifact_path: src-tauri/target/release/bundle/appimage/*.AppImage
           - platform: windows
-            runs_on: windows-latest
+            runs_on: windows-2022   # 不用 windows-latest（=Server 2025）：镜像移除 .NET Framework 3.5 预装，WiX v3 的 light.exe 打 MSI 会无输出直接失败
             bundles: msi nsis   # Tauri v2 Windows 合法值是 msi/nsis（空格分隔多值；wix 是 v1 旧名）
             artifact_name: NoteLume-Windows
             artifact_path: |
