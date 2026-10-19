@@ -199,6 +199,7 @@
 5. 每次输出先给出完整最小可运行demo，再逐步增加功能
 6. 优先保证编辑器流畅性，知识库索引不要阻塞UI（Rust后台扫描）
 7. 前端界面不用 emoji 与临时字形（✕ ✓ ▾ ↑ ↓ ⚠ • 之类），图标统一走 SVG sprite：`src/icons.js` 的 `setIcon(el, name, label)` / `iconHTML(name)`，图形数据只有 `index.html` 里 `<svg class="nl-sprite">` 那一份 `<symbol id="i-*">`。例外：键位图例（⌘ ⌥）、提示句里的 →、Git 状态字母徽标（M/N/D/R/C/?）
+8. 分支纪律：`web`（网页沙盒试用版）**永不合并进** `master`（桌面主干），主干只收桌面改动。`master → web` 方向随时可合，那是 web 跟住主干的正常手段；反过来要拿 web 里的某条桌面修复，就把那一条单独 cherry-pick 到 master，不在 master 上合整支。两分支的公共祖先是 `c5846a0`，站在 master 上合 web 会一次性拖进 `server/`、`src/web/`、演示库与 `web:*` 脚本，git 不会拦也不报错，只靠这条约定兜（细则见 `docs/SERVER.MD`「分支与合并方向」）
 
 ## 界面多语言（i18n）
 
