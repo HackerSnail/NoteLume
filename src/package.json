@@ -10,6 +10,7 @@
     "preview": "vite preview --port 1420",
     "tauri": "tauri",
     "test:roundtrip": "node tests/roundtrip.test.mjs",
+    "test:inline-input-rules": "node tests/inline-input-rules.test.mjs",
     "test:footnote": "node tests/footnote.test.mjs",
     "test:merged-table": "node tests/merged-table.test.mjs",
     "test:docx-import": "node tests/docx-import.test.mjs",

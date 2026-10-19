@@ -1,5 +1,5 @@
 // editor-view.js —— ProseMirror WYSIWYG 编辑器装配
-// 负责：状态与插件、快捷键、[[wikilink]]/#tag 行内输入规则、图片拖拽/粘贴落库、
+// 负责：状态与插件、快捷键、[[wikilink]]/#tag/$公式$ 行内输入规则与 **粗** 等强调的输入即渲染、图片拖拽/粘贴落库、
 // 点击链接跳转、大纲与标签提取。纯渲染/交互层，模型转换在 editor-schema.js。
 
 import { EditorView } from 'prosemirror-view'
@@ -9,6 +9,7 @@ import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
 import { schema, parseMarkdown, serializeMarkdown, serializeMarkdownMapped } from './editor-schema.js'
+import { emphasisInputTr } from './inline-input-rules.js'
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js'
 import { resolveSourceText } from './source-sync.js'
 import { createPosMapper } from './pos-map.js'
@@ -157,7 +158,7 @@ export function createEditor(opts) {
   // 标题折叠（仅渲染层）：换文档时由 setMarkdown 清空，源码模式往返则保留
   const fold = createFoldPlugin()
 
-  // —— 行内输入规则：[[目标]] 与 #标签 触发即转成节点 ——
+  // —— 行内输入规则：[[目标]] / #标签 / $公式$ 触发即转成节点，**粗** 等强调落定即换标记 ——
   const inputRulesPlugin = new Plugin({
     props: {
       handleTextInput(view, from, to, text) {
@@ -213,6 +214,17 @@ export function createEditor(opts) {
               view.dispatch(tr.scrollIntoView())
               return true
             }
+          }
+          return false
+        }
+
+        // **粗** / *斜* / ~~删~~ / __粗__ / _斜_：结束符落定即换成带标记文本（输入即渲染）。
+        // 规则表与「先过解析器确认再换」的判定在 inline-input-rules.js，那边可单测。
+        if (text === '*' || text === '~' || text === '_') {
+          const tr = emphasisInputTr(state, $head, before, text)
+          if (tr) {
+            view.dispatch(tr.scrollIntoView())
+            return true
           }
           return false
         }
