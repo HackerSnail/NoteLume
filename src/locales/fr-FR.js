@@ -862,6 +862,7 @@ export default {
   'msg.autosaveFailed': 'Enregistrement automatique échoué',
   'msg.backupFailed': 'Sauvegarde échouée',
   'msg.opFailed': 'Échec de l’opération : {err}',
+  'msg.desktopOnly': 'Cette fonction nécessite l’application de bureau',
   'status.saveAsFailed': 'Échec de l’enregistrement sous',
   'schema.wikiTitle': 'Aller au document : {target}',
   'schema.tagTitle': 'Étiquette : {tag}',

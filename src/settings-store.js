@@ -10,13 +10,10 @@
 // 整个文档（不止外观）都走这一个 store，后续 P5 的工作区 / 最近文件并进来即可。
 
 import { readSettingsJson, writeSettingsJson } from './tauri-bridge.js'
+import { isDesktop } from './desktop-gate.js'
 
 const LS_KEY = 'nl-settings'
 const DEBOUNCE_MS = 500
-
-function hasTauri() {
-  return typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
-}
 
 function readLs() {
   try {
@@ -45,7 +42,7 @@ export function createSettingsStore() {
   /** 启动时调用一次：读回设置文档。失败（含文件损坏）时静默用默认值，不阻断启动。 */
   async function load() {
     try {
-      const raw = hasTauri() ? await readSettingsJson() : readLs()
+      const raw = isDesktop() ? await readSettingsJson() : readLs()
       if (raw && typeof raw === 'object' && !Array.isArray(raw)) doc = raw
     } catch (e) {
       console.warn('[settings] 读取失败，使用默认值', e)
@@ -73,7 +70,7 @@ export function createSettingsStore() {
   }
 
   function schedule() {
-    if (!hasTauri()) {
+    if (!isDesktop()) {
       writeLs(doc) // 浏览器回落：localStorage 同步写，没有 IO 压力
       return
     }
@@ -90,7 +87,7 @@ export function createSettingsStore() {
       clearTimeout(timer)
       timer = null
     }
-    if (!hasTauri()) {
+    if (!isDesktop()) {
       writeLs(doc)
       return Promise.resolve()
     }

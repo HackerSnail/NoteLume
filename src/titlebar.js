@@ -3,8 +3,7 @@
 // .win-btns（右端）是最小化/最大化/关闭。mac 走原生 Overlay，这套默认隐藏、仅 win/linux 显示。
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { t } from './i18n.js'
-
-const inTauri = '__TAURI_INTERNALS__' in window
+import { isDesktop } from './desktop-gate.js'
 
 function detectPlatform() {
   const ua = navigator.userAgent
@@ -17,7 +16,7 @@ function detectPlatform() {
 document.documentElement.dataset.tauriPlatform = detectPlatform()
 
 export function initTitlebar() {
-  if (!inTauri) return
+  if (!isDesktop()) return
   const appWindow = getCurrentWindow()
 
   const btns = document.querySelector('.win-btns')

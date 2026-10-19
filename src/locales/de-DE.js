@@ -862,6 +862,7 @@ export default {
   'msg.autosaveFailed': 'Automatisches Speichern fehlgeschlagen',
   'msg.backupFailed': 'Sicherung fehlgeschlagen',
   'msg.opFailed': 'Operation fehlgeschlagen: {err}',
+  'msg.desktopOnly': 'Diese Funktion benötigt die Desktop-App',
   'status.saveAsFailed': 'Speichern unter fehlgeschlagen',
   'schema.wikiTitle': 'Zum Dokument springen: {target}',
   'schema.tagTitle': 'Tag: {tag}',

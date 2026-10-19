@@ -861,6 +861,7 @@ export default {
   'msg.autosaveFailed': '自動儲存失敗',
   'msg.backupFailed': '備份失敗',
   'msg.opFailed': '操作失敗：{err}',
+  'msg.desktopOnly': '此功能需在桌面應用程式中使用',
   'status.saveAsFailed': '另存失敗',
   'schema.wikiTitle': '跳轉到文件：{target}',
   'schema.tagTitle': '標籤：{tag}',

@@ -46,6 +46,8 @@ import {
   exportDocx,
   fileToBase64,
   takeLaunchPaths,
+  tempDir,
+  join,
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages } from './site-export.js'
 import { docToIR } from './docx-export.js'
@@ -59,6 +61,7 @@ import { createPaneDrag } from './pane-drag.js'
 import { mountSplitTree, normalizeTree, serializeTree, paneIds, freshId, closePane } from './split-pane.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
+import { isDesktop } from './desktop-gate.js'
 import { initTitlebar } from './titlebar.js'
 import { openGraph } from './graph-view.js'
 import { createSnapshotPanel } from './snapshot-panel.js'
@@ -92,7 +95,6 @@ import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } f
 import { LOCALES } from './locales/index.js'
 import { analyzeOutline, hiddenRows } from './outline-tree.js'
 import MarkdownIt from 'markdown-it'
-import { tempDir, join } from '@tauri-apps/api/path'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
 // 与 editor-schema 里的 tokenizer 分开，避免污染 schema 层的解析器
@@ -326,15 +328,12 @@ async function ensurePaneSaved(paneId) {
 // 本版 @tauri-apps/api：handler 会被 await，返回后若未 preventDefault 则框架自动 destroy()，
 // 故取消时 preventDefault 保住窗口，保存/不保存时顺其自然关闭（需 core:window:allow-destroy 权限）。
 function setupCloseGuard() {
-  try {
-    getCurrentWindow()
-      .onCloseRequested(async (event) => {
-        if (!(await ensureSavedBeforeLeave())) event.preventDefault()
-      })
-      .catch(() => {}) // 非 Tauri 环境（如纯浏览器预览）忽略
-  } catch {
-    /* 非 Tauri 环境，跳过 */
-  }
+  if (!isDesktop()) return // 纯浏览器预览没有窗口，也没有关闭询问这回事
+  getCurrentWindow()
+    .onCloseRequested(async (event) => {
+      if (!(await ensureSavedBeforeLeave())) event.preventDefault()
+    })
+    .catch(() => {}) // 缺 core:window:allow-destroy 之类权限时忽略
 }
 
 // —— 批次 B：写作统计 / 专注 / 打字机 ——
@@ -776,9 +775,9 @@ function splitAbs(p) {
 
 async function openSingleFile() {
   if (!(await ensureSavedBeforeLeave())) return
-  const abs = await pickFile()
-  if (!abs) return
   try {
+    const abs = await pickFile() // 选择器自己失败也要报（无后端 / 对话框出错），别静默吞掉
+    if (!abs) return
     await openAbsPath(abs)
   } catch (e) {
     const msg = (e && e.message) || e
@@ -896,10 +895,13 @@ async function handleOpenTargets(targets, { interactive = false, preview = false
 // 启动：取走启动参数；无参数则恢复上次工作区（p5plan §6.6「无参数则恢复上次工作区」）
 async function handleLaunchArgs() {
   let targets = []
-  try {
-    targets = await takeLaunchPaths()
-  } catch (e) {
-    console.warn('[launch] 取启动参数失败', e)
+  if (isDesktop()) {
+    // 启动参数只有原生壳里有；浏览器沙盒不去问，免得每次加载都留一条无意义的 warn
+    try {
+      targets = await takeLaunchPaths()
+    } catch (e) {
+      console.warn('[launch] 取启动参数失败', e)
+    }
   }
   if (!targets.length) {
     const ws = settingsStore ? settingsStore.get().workspace : null
@@ -1101,7 +1103,13 @@ async function importDroppedFiles(files, destDir) {
 
 /** 「更多」菜单入口：选 .docx → 直接解析校对；已开库接受即落库，未开库接受时才问存到哪（取消=不保存） */
 async function importWordViaDialog() {
-  const paths = await pickDocxFiles()
+  let paths
+  try {
+    paths = await pickDocxFiles()
+  } catch (e) {
+    await messageDialog(t('msg.wordImportFailedDlg', { err: errText(e) }))
+    return
+  }
   if (!paths || !paths.length) return
   const sources = paths.map((p) => ({ srcPath: p }))
 
@@ -2954,9 +2962,9 @@ function switchLocale(id) {
   updateDocStats()
   scheduleMacChrome()
   // 后端文案跟随；托盘菜单要等 setUiLang 落好再重建才是新语言（scheduleMacChrome 只重建菜单栏）
-  if (IS_MAC && window.__TAURI_INTERNALS__) {
+  if (IS_MAC && isDesktop()) {
     setUiLang(id).then(() => syncTrayRecents()).catch(() => {})
-  } else if (window.__TAURI_INTERNALS__) {
+  } else if (isDesktop()) {
     setUiLang(id).catch(() => {})
   }
   setStatus(t('status.langSwitched', { name: localeName(id) }))
@@ -3113,7 +3121,7 @@ async function pushMacMenu() {
 
 // mac 的标题属于系统标题栏：当前文档名写进窗口标题，工具条里的文件名不再重复
 function syncWindowTitle() {
-  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  if (!IS_MAC || !isDesktop()) return
   const name = (els.filename.textContent || '').trim() || 'NoteLume'
   if (name === macTitle) return
   macTitle = name
@@ -3126,7 +3134,7 @@ function syncWindowTitle() {
 
 // macOS 菜单栏状态图标：接 Rust 转发的菜单事件（新建笔记 / 打开最近），并把最近列表同步给托盘
 function setupTrayMenu() {
-  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  if (!IS_MAC || !isDesktop()) return
   listen('notelume://menu-action', (e) => {
     if (e.payload === 'new') els.btnNewFile?.click()
     // 'show' 由 Rust 侧 show()+set_focus() 处理，前端不用动；'quit' 由 Rust 走窗口关闭
@@ -3140,12 +3148,12 @@ function setupTrayMenu() {
   setUiLang(getLocale()).then(() => syncTrayRecents(), () => {})
 }
 function syncTrayRecents() {
-  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  if (!IS_MAC || !isDesktop()) return
   traySetRecent(loadRecents().map((e) => e.rel)).catch(() => {})
 }
 
 async function setupMacMenu() {
-  if (!IS_MAC || !window.__TAURI_INTERNALS__) return
+  if (!IS_MAC || !isDesktop()) return
   try {
     await listen('nl:menu-select', (e) => onMenuSelect(e.payload))
     await pushMacMenu()
@@ -3754,7 +3762,7 @@ async function boot() {
   document.documentElement.lang = getLocale()
   applyStaticDom(document)
   // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
-  if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
+  if (isDesktop()) setUiLang(getLocale()).catch(() => {})
   // 应用设置（settings.json）：先读回再装配界面。外观状态（主题 / 颜色 / 字体 /
   // 字号 / 行高 / 自动换行 / 侧栏比例）恢复到上次保存的样子；文件不存在或损坏
   // 时（load 内部静默处理）normalizeAppearance 给代码里的默认值。
