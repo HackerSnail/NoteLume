@@ -245,6 +245,11 @@ export function langFor(sid) {
   return BY_SID.get(sid) || defaultLang
 }
 
+/** 会话销毁时回收该 sid 上报的语言（与索引表 BY_SID 生命周期对齐，不留残值） */
+export function deleteLang(sid) {
+  BY_SID.delete(sid)
+}
+
 /** 分派入口调用：把该 sid 的语言刷成生效值，使同步执行链上的 msg() 取对词 */
 export function applyLang(sid) {
   lang = langFor(sid)

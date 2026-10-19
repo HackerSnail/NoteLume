@@ -1,9 +1,10 @@
 // serve.mjs —— 网页版的 Node 后端入口：HTTP 路由 + 静态伺服
 //
-// 三条 API：POST /api/invoke（cmd -> handler）、GET /api/browse（目录浏览器）、GET /api/health。
+// 三条 API：POST /api/invoke（cmd -> handler）、GET /api/browse（目录浏览器）、GET /api/health、POST /api/heartbeat。
 // 其余 GET 走静态伺服 server/dist（构建产物），找不到文件回 index.html。
 //
-// 只绑 127.0.0.1，零依赖：只用 node:http / fs / path / os / child_process。
+// 只绑 127.0.0.1。API 路由本身零依赖（只用 node:http / fs / path / os / child_process）；
+// 唯一例外是网页沙盒的 Word 导入解析（src/docxCommands.mjs + src/docxOoxml.mjs）引入的两个同步解析库：adm-zip / fast-xml-parser。
 // 参数：--sandbox（会话工作区）/ --port / --api-only（只出 API，静态交给 vite dev）/ --open（起服务后开浏览器）。
 //
 // sessionId 从请求头 x-notelume-session 取；invoke 与 browse 都按它落监狱（沙盒模式）或忽略（本机模式）。
@@ -17,6 +18,7 @@ import { dispatch } from './src/router.mjs'
 import { browse } from './src/browse.mjs'
 import { configure, cfg, jailRoot, scratchRoot, defaultVaultRoot, pruneSessions, DIST_DIR } from './src/paths.mjs'
 import { langFor } from './src/uiLang.mjs'
+import { touch, sweepIdle } from './src/sessions.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 // vite 以 root=src 构建、入口是 src/web/index.html，产物路径保留成 dist/web/index.html。
@@ -44,6 +46,9 @@ const SANDBOX = hasFlag('sandbox')
 const API_ONLY = hasFlag('api-only')
 const PORT = Number(flagValue('port', API_ONLY ? 1430 : 1420))
 const HOST = '127.0.0.1'
+// 会话空闲多久后被销毁（关浏览器 → 心跳停 → 超这个时长即清）。默认 180s，明显大于后台标签页限流间隔。
+const IDLE_TTL_MS = Number(flagValue('idle-ttl', 180000))
+const SWEEP_MS = 30000
 
 configure({ sandbox: SANDBOX })
 const removed = pruneSessions()
@@ -98,9 +103,10 @@ function sidOf(req) {
   return typeof raw === 'string' ? raw : ''
 }
 
-/** ctx：本机模式 jail=null；沙盒模式 jail=该会话工作区（顺带首访灌演示库） */
+/** ctx：本机模式 jail=null；沙盒模式 jail=该会话工作区（顺带首访灌演示库）。任何请求都算一次活跃 */
 function makeCtx(req) {
   const sid = sidOf(req)
+  touch(sid) // 关浏览器销毁：活跃登记，后台定时器据此扫掉久无活动的会话
   const jail = jailRoot(sid) // 沙盒返回工作区根并保证 vault 就位；本机返回 null
   return { sid, jail }
 }
@@ -208,6 +214,12 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (req.method === 'POST' && p === '/api/heartbeat') {
+      touch(sidOf(req)) // 沙盒下前端定时打点：保持会话不被扫掉（不建 jail，不灌库）
+      json(res, 200, { ok: true })
+      return
+    }
+
     if (req.method === 'GET' || req.method === 'HEAD') {
       serveStatic(req, res, p)
       return
@@ -225,6 +237,15 @@ server.listen(PORT, HOST, () => {
   if (SANDBOX) console.log('[serve] 沙盒模式：每个访客一份临时工作区，只绑 127.0.0.1')
   if (!API_ONLY && hasFlag('open')) openBrowser(`http://${HOST}:${PORT}/`)
 })
+
+// 沙盒模式：后台扫掉久无活动的会话（关浏览器 → 心跳停 → 工作区被销毁，重开即全新演示库）
+if (SANDBOX) {
+  const timer = setInterval(() => {
+    const gone = sweepIdle(IDLE_TTL_MS)
+    if (gone.length) console.log(`[serve] 已销毁 ${gone.length} 个空闲会话工作区（idle > ${IDLE_TTL_MS / 1000}s）`)
+  }, SWEEP_MS)
+  timer.unref && timer.unref()
+}
 
 function openBrowser(url) {
   try {

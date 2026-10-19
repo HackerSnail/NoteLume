@@ -93,6 +93,17 @@ function installCloseGuard() {
   })
 }
 
+/**
+ * 沙盒心跳：每 25s 打一次 /api/heartbeat，后端据此判会话“还活着”。
+ * 关浏览器→心跳停→后端约 180s 后销毁该工作区；刷新期间同 sid、心跳很快恢复→不误删。
+ * 本机模式不需要（无临时工作区），不挂定时器。
+ */
+function startHeartbeat() {
+  const beat = () => fetch('/api/heartbeat', { method: 'POST', headers: { 'x-notelume-session': sessionId() } }).catch(() => {})
+  beat()
+  setInterval(beat, 25000)
+}
+
 export async function runBootstrap() {
   // 1) 先定 sid：即便 health 失败也保证后续 fetch 带头
   sessionId()
@@ -125,6 +136,9 @@ export async function runBootstrap() {
 
   // 7) 关页守卫
   installCloseGuard()
+
+  // 8) 沙盒心跳（关浏览器即销毁会话）
+  if (health.mode === 'sandbox') startHeartbeat()
 
   return health
 }
