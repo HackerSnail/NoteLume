@@ -1,0 +1,12 @@
+{
+  "name": "notelume-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "NoteLume 网页版的 Node 后端：mirror Rust 命令表的一部分给浏览器用，兼静态伺服",
+  "scripts": {
+    "start": "node serve.mjs",
+    "sandbox": "node serve.mjs --sandbox",
+    "test": "node --test tests/"
+  }
+}

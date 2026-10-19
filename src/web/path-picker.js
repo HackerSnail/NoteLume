@@ -1,0 +1,195 @@
+// path-picker.js —— 浏览器版的「选择文件夹 / 选择文件 / 另存为」模态
+//
+// 桌面版这三个框由 Tauri 原生提供；浏览器没有能给出绝对路径的 picker，所以这个框由后端 /api/browse
+// 喂真实目录数据、这里画出来，返回绝对路径字符串（§2 决策 5）。外壳复用 style.css 现成的
+// .nl-prompt-overlay / .nl-prompt 一套，不新造视觉语言；标题由调用方（tauri-bridge 的 t('dlg.*')）传入，
+// 已经是当前语言。列表 / 面包屑这些 picker 专属样式在 web.css 里按 .nl-picker-* 补。
+
+import { sessionId } from './tauri-core.js'
+import { t } from '../i18n.js'
+
+async function apiBrowse(path, wantFiles) {
+  const qs = new URLSearchParams()
+  if (path) qs.set('path', path)
+  if (wantFiles) qs.set('files', '1')
+  const res = await fetch('/api/browse?' + qs.toString(), { headers: { 'x-notelume-session': sessionId() } })
+  const data = await res.json()
+  if (!data || !data.ok) throw new Error((data && data.error) || 'browse failed')
+  return data.result
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag)
+  if (cls) n.className = cls
+  if (text != null) n.textContent = text
+  return n
+}
+
+/**
+ * 打开一个路径选择框。mode: 'dir' 选目录 | 'file' 选文件 | 'save' 选目录 + 填文件名。
+ * multiple 仅 file 模式有意义。返回 Promise<string | string[] | null>。
+ */
+export function pickPath({ mode = 'dir', multiple = false, title = '', startPath = '' } = {}) {
+  return new Promise((resolve) => {
+    const overlay = el('div', 'nl-prompt-overlay nl-picker-overlay')
+    const box = el('div', 'nl-prompt nl-picker')
+
+    const head = el('div', 'nl-picker-head')
+    head.appendChild(el('div', 'nl-prompt-title', title || t('dlg.pickFolder')))
+    const pathRow = el('div', 'nl-picker-path')
+    const upBtn = el('button', 'nl-picker-up')
+    upBtn.type = 'button'
+    upBtn.textContent = '↑'
+    upBtn.title = t('ui.up') || '上级'
+    const pathLabel = el('span', 'nl-picker-cur', '…')
+    pathRow.append(upBtn, pathLabel)
+    head.appendChild(pathRow)
+    const rootsRow = el('div', 'nl-picker-roots')
+    head.appendChild(rootsRow)
+
+    const list = el('div', 'nl-picker-list')
+    box.append(head, list)
+
+    let nameInput = null
+    if (mode === 'save') {
+      const nameRow = el('div', 'nl-picker-namerow')
+      nameRow.appendChild(el('span', 'nl-picker-namelbl', t('ui.fileName') || '文件名'))
+      nameInput = el('input', 'nl-prompt-input nl-picker-name')
+      nameInput.type = 'text'
+      nameInput.value = startPath ? basename(startPath) : 'untitled.md'
+      nameRow.appendChild(nameInput)
+      box.appendChild(nameRow)
+    }
+
+    const foot = el('div', 'nl-prompt-row')
+    const cancel = el('button', 'nl-prompt-btn', t('common.cancel'))
+    const ok = el('button', 'nl-prompt-btn primary', t('common.confirm'))
+    cancel.type = 'button'
+    ok.type = 'button'
+    foot.append(cancel, ok)
+    box.appendChild(foot)
+
+    overlay.appendChild(box)
+    document.body.appendChild(overlay)
+
+    const state = { cur: '', parent: null, selected: null, selectedMulti: [] }
+    let done = false
+    const finish = (val) => {
+      if (done) return
+      done = true
+      document.removeEventListener('keydown', onKey, true)
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay)
+      resolve(val)
+    }
+
+    function renderDirs(roots) {
+      rootsRow.textContent = ''
+      ;(roots || []).forEach((r) => {
+        const b = el('button', 'nl-picker-root', r.name)
+        b.type = 'button'
+        b.title = r.path
+        b.addEventListener('click', () => load(r.path))
+        rootsRow.appendChild(b)
+      })
+    }
+
+    function paint(data) {
+      state.cur = data.path
+      state.parent = data.parent
+      pathLabel.textContent = data.path || t('dlg.pickFolder')
+      renderDirs(data.roots)
+      list.textContent = ''
+
+      const back = data.parent
+      if (back != null) {
+        const li = el('div', 'nl-picker-item nl-picker-back', '… ' + (t('ui.up') || '上级'))
+        li.addEventListener('click', () => load(back))
+        list.appendChild(li)
+      }
+      for (const d of data.dirs) {
+        const li = el('div', 'nl-picker-item nl-picker-dir')
+        li.textContent = '▸ ' + d.name
+        li.addEventListener('click', () => load(d.path))
+        li.addEventListener('dblclick', () => (mode === 'dir' ? finish(d.path) : load(d.path)))
+        list.appendChild(li)
+      }
+      if (mode === 'file') {
+        for (const f of data.files) {
+          const li = el('div', 'nl-picker-item nl-picker-file')
+          li.textContent = '· ' + f.name
+          const abs = f.path
+          li.addEventListener('click', () => {
+            if (multiple) {
+              const i = state.selectedMulti.indexOf(abs)
+              if (i >= 0) {
+                state.selectedMulti.splice(i, 1)
+                li.classList.remove('sel')
+              } else {
+                state.selectedMulti.push(abs)
+                li.classList.add('sel')
+              }
+            } else {
+              finish(abs)
+            }
+          })
+          if (multiple && state.selectedMulti.includes(abs)) li.classList.add('sel')
+          list.appendChild(li)
+        }
+        if (!data.files.length) list.appendChild(el('div', 'nl-picker-empty', t('ui.noFiles') || '此目录没有可选文件'))
+      }
+    }
+
+    async function load(p) {
+      try {
+        paint(await apiBrowse(p, mode === 'file'))
+      } catch (e) {
+        pathLabel.textContent = String((e && e.message) || e)
+      }
+    }
+
+    upBtn.addEventListener('click', () => {
+      if (state.parent != null) load(state.parent)
+    })
+
+    ok.addEventListener('click', () => {
+      if (mode === 'dir') return finish(state.cur || null)
+      if (mode === 'file') return finish(multiple ? state.selectedMulti : state.selected || null)
+      // save：目录 + 文件名拼成绝对路径；分隔符跟随当前路径
+      const rawName = (nameInput && nameInput.value.trim()) || ''
+      if (!state.cur || !rawName) return
+      const sep = state.cur.includes('\\') ? '\\' : '/'
+      const joined = state.cur.replace(/[\\/]+$/, '') + sep + rawName
+      finish(joined)
+    })
+
+    cancel.addEventListener('click', () => finish(null))
+    overlay.addEventListener('pointerdown', (e) => {
+      if (e.target === overlay) finish(null)
+    })
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        finish(null)
+      } else if (e.key === 'Enter' && mode === 'save' && e.target === nameInput) {
+        e.preventDefault()
+        ok.click()
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+
+    // 起始路径：save 用 defaultPath 的目录，dir/file 从 home（后端回）开始
+    apiBrowse(startPath && mode !== 'save' ? startPath : '', mode === 'file')
+      .then((data) => {
+        paint(data)
+        if (mode === 'save' && data.home) load(data.home)
+      })
+      .catch((e) => {
+        pathLabel.textContent = String((e && e.message) || e)
+      })
+  })
+}
+
+function basename(p) {
+  const s = String(p).replace(/[\\/]+$/, '')
+  return s.split(/[\\/]/).pop() || ''
+}

@@ -14,6 +14,11 @@ cache/
 # 应用自存的库内备份副本（自动快照，不进版本库）
 .notelume-backup/
 
+# 网页版：构建产物与运行期文件、生成的入口 HTML（均可由源码重新生成）
+server/dist/
+server/data/
+src/web/index.html
+
 # 编辑器/系统噪音
 .DS_Store
 Thumbs.db

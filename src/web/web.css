@@ -1,0 +1,130 @@
+/* web.css —— 网页版专属样式，靠 <html data-web> 生效，不改 style.css 一行（§10）
+   外壳（overlay / box / 按钮）复用 style.css 现成的 .nl-prompt-* 一套，这里只补 picker 列表、
+   横幅，以及把桌面专属、网页里点了没反应的自绘窗口按钮「只藏不删」（标记留着，桌面启动逻辑不会缺节点报错）。 */
+
+/* —— 顶部横幅 —— */
+.nl-web-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-bottom: 1px solid var(--border);
+}
+.nl-web-banner-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--bg);
+  background: var(--accent);
+}
+
+/* —— 自绘窗口按钮：网页里无意义，藏掉 —— */
+[data-web] .win-btns {
+  display: none;
+}
+
+/* —— 路径选择框 —— */
+.nl-picker {
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  gap: 10px;
+}
+.nl-picker-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nl-picker-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nl-picker-up {
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--fg);
+  border-radius: 6px;
+  width: 26px;
+  height: 24px;
+  cursor: pointer;
+  flex: none;
+}
+.nl-picker-up:hover {
+  background: var(--hover);
+}
+.nl-picker-cur {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* 长路径优先看末尾 */
+}
+.nl-picker-roots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nl-picker-root {
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nl-picker-root:hover {
+  background: var(--hover);
+}
+.nl-picker-list {
+  overflow: auto;
+  min-height: 160px;
+  max-height: 44vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.nl-picker-item {
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nl-picker-item:hover {
+  background: var(--hover);
+}
+.nl-picker-back {
+  color: var(--muted);
+}
+.nl-picker-dir {
+  font-weight: 600;
+}
+.nl-picker-item.sel {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-panel));
+}
+.nl-picker-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.nl-picker-namerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nl-picker-namelbl {
+  font-size: 13px;
+  color: var(--muted);
+  flex: none;
+}
+.nl-picker-name {
+  flex: 1;
+}
