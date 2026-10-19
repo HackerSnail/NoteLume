@@ -3192,6 +3192,7 @@ fn deliver_open_targets(app: &tauri::AppHandle, targets: Vec<LaunchTarget>) {
 /// LaunchServices 递来的 URL → 打开目标：只收 file: 协议且当前真实存在的文件/目录，
 /// 其余（http、已删的路径、非 file）逐项丢弃。to_file_path 负责 percent-解码，
 /// 「打开方式」递的中文/空格文件名靠它才能还原成真实路径。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 生产路径只有 mac 的 RunEvent::Opened 调它，其余平台仅 launch_tests 引用
 fn opened_targets(urls: &[tauri::Url]) -> Vec<LaunchTarget> {
     urls.iter()
         .filter_map(|u| u.to_file_path().ok())
@@ -3395,13 +3396,13 @@ pub fn run() {
         .expect("error while building NoteLume application");
     app.run(|app, event| {
         // macOS 的「双击 / 打开方式 / 拖到 Dock 图标」不进 argv，只以 Opened 事件递 URL；
-        // 非 mac 目标没这个变体。
+        // 非 mac 目标没这个变体，两个参数都用不上，显式消费掉免 unused 警告。
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
             deliver_open_targets(app, opened_targets(&urls));
         }
         #[cfg(not(target_os = "macos"))]
-        let _ = event;
+        let _ = (app, event);
     });
 }
 
