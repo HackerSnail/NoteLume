@@ -1,9 +1,59 @@
 // tauri-bridge.js —— 封装对 Rust 后端的调用（invoke）与系统对话框
 // 参数命名遵循 Tauri v2 约定：Rust 里 snake_case -> JS 里 camelCase。
 
-import { invoke } from '@tauri-apps/api/core'
-import { open, save, confirm as dialogConfirm, message as dialogMessage } from '@tauri-apps/plugin-dialog'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
+import {
+  open as tauriOpen,
+  save as tauriSave,
+  confirm as tauriConfirm,
+  message as tauriMessage,
+} from '@tauri-apps/plugin-dialog'
+import { tempDir as tauriTempDir, join as tauriJoin } from '@tauri-apps/api/path'
 import { t } from './i18n.js'
+import { isDesktop, desktopOnlyError } from './desktop-gate.js'
+
+// —— 环境分流 ——
+// 下面 7 个原语是本应用全部的桌面能力出口，一处判定即覆盖本文件全部 wrapper，调用点不用各自防。
+// 真实实现原样保留，只在无后端的浏览器沙盒里换成 reject（选择器 / 路径）或 Web 等价物（对话框）。
+function invoke(cmd, args) {
+  if (!isDesktop()) return Promise.reject(desktopOnlyError(cmd))
+  return tauriInvoke(cmd, args)
+}
+
+function open(opts) {
+  if (!isDesktop()) return Promise.reject(desktopOnlyError('dialog:open'))
+  return tauriOpen(opts)
+}
+
+function save(opts) {
+  if (!isDesktop()) return Promise.reject(desktopOnlyError('dialog:save'))
+  return tauriSave(opts)
+}
+
+function dialogConfirm(message, opts) {
+  if (!isDesktop()) return Promise.resolve(window.confirm(message))
+  return tauriConfirm(message, opts)
+}
+
+function dialogMessage(message, opts) {
+  if (!isDesktop()) {
+    window.alert(message)
+    return Promise.resolve(true)
+  }
+  return tauriMessage(message, opts)
+}
+
+/** 系统临时目录绝对路径 */
+export function tempDir() {
+  if (!isDesktop()) return Promise.reject(desktopOnlyError('path:tempDir'))
+  return tauriTempDir()
+}
+
+/** 按平台规则拼接路径片段 */
+export function join(...parts) {
+  if (!isDesktop()) return Promise.reject(desktopOnlyError('path:join'))
+  return tauriJoin(...parts)
+}
 
 /** 打开文件夹选择器，返回选中的知识库根目录（取消返回 null） */
 export async function pickFolder() {

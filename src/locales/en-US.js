@@ -862,6 +862,7 @@ export default {
   'msg.autosaveFailed': 'Auto-save failed',
   'msg.backupFailed': 'Backup failed',
   'msg.opFailed': 'Operation failed: {err}',
+  'msg.desktopOnly': 'This feature needs the desktop app',
   'status.saveAsFailed': 'Save as failed',
   'schema.wikiTitle': 'Jump to document: {target}',
   'schema.tagTitle': 'Tag: {tag}',

@@ -143,7 +143,15 @@ async function configure() {
     t('daily.configTitle')
   )
   if (!go) return
-  const dir = await pickFolder()
+  let dir
+  try {
+    dir = await pickFolder()
+  } catch (e) {
+    // 选目录这一步失败（无后端 / 对话框出错）：到此为止，后面两项设置不再追问
+    await messageDialog(t('msg.opFailed', { err: (e && e.message) || e }))
+    setStatus(t('daily.dirUnchanged'))
+    return
+  }
   if (dir) localStorage.setItem(LS_DIR, dir)
   const f = await promptDialog({ title: t('daily.fmtTitle'), placeholder: t('daily.fmtPh'), defaultValue: getFmt() })
   if (f != null) localStorage.setItem(LS_FMT, f)

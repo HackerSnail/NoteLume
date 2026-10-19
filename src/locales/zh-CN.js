@@ -862,6 +862,7 @@ export default {
   'msg.autosaveFailed': '自动保存失败',
   'msg.backupFailed': '备份失败',
   'msg.opFailed': '操作失败：{err}',
+  'msg.desktopOnly': '此功能需在桌面应用中使用',
   'status.saveAsFailed': '另存为失败',
   'schema.wikiTitle': '跳转到文档：{target}',
   'schema.tagTitle': '标签：{tag}',
