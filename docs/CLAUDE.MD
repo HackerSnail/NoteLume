@@ -196,9 +196,10 @@
 
 1. 不改桌面代码。`src/*.js`、`src/index.html`、`src/style.css`、`src/vite.config.js`、`src-tauri/**` 一概不改，差异全在新增文件：前端替身 `src/web/`，Node 后端与演示库 `server/`。唯一例外是能力入口的集中分流（见硬性约束第 7 条）——分流过程中被碰过的桌面文件（`main.js`、`titlebar.js`、`settings-store.js`、`daily-capture.js` 及那两个入口）连理由一起钉在 `server/tests/desktop-untouched.test.mjs` 的豁免表里；这条测试站在主干肩膀上比 `git diff`，新增触碰得改豁免表才能过。
 2. 隔离在构建期。耦合面只有五个裸包名（`@tauri-apps/api/core|window|event|path`、`@tauri-apps/plugin-dialog`），vite alias 把它们指到 `src/web/` 里的替身：`invoke` 走 `POST /api/invoke`，系统对话框走 DOM 目录浏览器，`getCurrentWindow()` 落到 `beforeunload` 与 `document.title`。`tauri-bridge.js` 与 `main.js` 原样进产物，里面不埋 `if (isWeb)`。
-3. 功能边界在后端判定，菜单不藏。曾计划把 `./commands.js` 换成 wrapper、让 git / docx / 插件 / 整站导出在网页模式根本登记不进去（菜单与命令面板三处同时消失），已废：藏掉反而让人以为产品缺功能。现在的做法是项照旧留着，点了由 `server/src/router.mjs` 的 `UNSUPPORTED` 回一句「网页版不支持此功能，请下载桌面版」（错误带 `code:'desktop-only'`，前端 `src/web/desktop-only.js` 负责上屏，细则见 `docs/SERVER.MD`）。面板本身由 `src/web/web.css` 按 `<html data-web>` 隐藏。只藏不删：`createGitPanel`、`createPluginManager` 这些调用点照旧会跑，挂载点缺节点就是 TypeError。
+3. 功能边界在后端判定，菜单不藏。曾计划把 `./commands.js` 换成 wrapper、让 git / 插件 / 整站导出 / 导出 Word 在网页模式根本登记不进去（菜单与命令面板三处同时消失），已废：藏掉反而让人以为产品缺功能。现在的做法是项照旧留着，点了由 `server/src/router.mjs` 的 `UNSUPPORTED` 回一句「网页版不支持此功能，请下载桌面版」（错误带 `code:'desktop-only'`，前端 `src/web/desktop-only.js` 负责上屏，细则见 `docs/SERVER.MD`）。面板本身由 `src/web/web.css` 按 `<html data-web>` 隐藏。只藏不删：`createGitPanel`、`createPluginManager` 这些调用点照旧会跑，挂载点缺节点就是 TypeError。
+   - 例外：Word **导入**（`docx_preview` / `docx_commit`）不属桌面专属，已由服务端镜像（`server/src/docxCommands.mjs` + `docxOoxml.mjs`，同步解析，`adm-zip` / `fast-xml-parser`），整条桌面导入流程在浏览器里原样跑通，公式 / 交叉引用 / 域 / 文本框降级为 warnings；保真度低于桌面引擎。导出 Word（`export_docx`）仍是桌面专属。
 
-入口：`npm run web`（本机全功能，读写真实库）、`npm run web:sandbox`（每访客一份临时工作区加内置演示库，公网部署用这条）、`npm run web:api` 配 `npm --prefix src run dev`（开发热更，两个终端）。沙盒首屏不写新逻辑：`src/web/bootstrap.js` 预置 localStorage `nl-settings` 的 `workspace`，桌面 `boot()` 里现成的工作区恢复自己把演示库铺开。
+入口：`npm run web`（本机全功能，读写真实库）、`npm run web:sandbox`（每访客一份临时工作区加内置演示库，公网部署用这条）、`npm run web:api` 配 `npm --prefix src run dev`（开发热更，两个终端）。沙盒首屏不写新逻辑：`src/web/bootstrap.js` 预置 localStorage `nl-settings` 的 `workspace`，桌面 `boot()` 里现成的工作区恢复自己把演示库铺开。沙盒工作区是临时的：前端心跳 + 后端短 TTL 扫描，关浏览器约 180s 后即销毁（`server/src/sessions.mjs`，细则见 `docs/SERVER.MD`）；选择文件框支持「上传本机文件」。
 
 设置文档在浏览器走 localStorage（`settings-store.js` 的 `hasTauri()` 回落，本来就有），后端不存 settings.json。详细设计与命令清单见 `docs/superpowers/specs/2026-10-19-web-sandbox-server-design.md`。
 

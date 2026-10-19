@@ -55,6 +55,16 @@ NoteLume 是一个本地 Markdown 知识库编辑器，当前主形态是 Tauri 
 
 前端不存第二份「不支持」文案，也不新建命令名单：加一条桌面专属能力，只改 `router.mjs` 那个 Set。
 
-演示库（`server/default-vault/`）里放了一份 `示例文档.docx`：沙盒首访会随 `fs.cpSync` 灌进每个会话的 `vault/`，供「导入 Word」入口在选择框里真能选中一个合法 .docx（不再因为库里没有而只能取消）。注意这只是让入口可达、不表示网页版能导入：`.docx → Markdown` 的解析在桌面端 Rust（`docx_import`），`docx_preview` / `docx_commit` 仍在 `UNSUPPORTED` 里，选中后下一步就是回一句桌面专属提示。文件选择框已按 `filters.extensions` 过滤，docx 选择框只列 `.docx`、不会把 md / canvas 混进来。
+演示库（`server/default-vault/`）里放了一份 `示例文档.docx`：沙盒首访会随 `fs.cpSync` 灌进每个会话的 `vault/`，供「导入 Word」入口在选择框里真能选中一个合法 .docx。文件选择框已按 `filters.extensions` 过滤，docx 选择框只列 `.docx`、不会把 md / canvas 混进来；选框底部另有「上传本机文件」，把浏览器 `<input type=file>` 选中的本机文件读成 base64、经 `import_vault_file` 落进当前浏览目录，再回它的库内绝对路径——预置样例与本机上传两条路都喂进同一条桌面流程。
+
+### Word 导入：`docx_preview` / `docx_commit` 已在服务端镜像
+
+`.docx → Markdown` 的解析改由服务端同步完成（`server/src/docxCommands.mjs` 的两个 handler + `server/src/docxOoxml.mjs` 的解析子集，引入 `adm-zip` / `fast-xml-parser` 两个同步库），二者已从 `UNSUPPORTED` 摘出。于是「选 / 拖 .docx → `docx_preview` → 校对弹窗 → `docx_commit` 落库 → 自动打开」整条桌面导入流程（`docx-import.js` / `docx-review.js` / `main.js` 的 `importWordFlow` 一行不改）在浏览器里原样跑通：出入参严格对齐 `src-tauri/src/docx_import.rs` 的 serde 契约（camelCase），图片按 `<sha12>.<ext>` 命名内联、去重索引与 `title` / `plannedDocRel` / frontmatter 约定一致，校对弹窗与落库才对得上。之所以必须同步：`/api/invoke → dispatch` 全程同步是「按 sid 刷生效语言、并发不串」成立的前提，故不能用异步解析库（如 mammoth）。
+
+保真度取舍：这是网页沙盒的轻量解析，只为「上传即试」，**不等于桌面导入引擎**。常见结构（标题、粗/斜/删除线、有序无序列表、超链接、图片、GFM 表格、段落）正常转换；公式（`m:oMath`）、域 / 交叉引用（`w:fldSimple` / `w:instrText`）、文本框（`w:txbxContent`）、脚注尾注一律降级为 `warnings`（`mathDropped` / `fieldDropped` / `xrefDegraded` / `textboxDropped` / `footnoteDropped`）并在 `stats` 计数，绝不抛错。要完整保真仍请下载桌面版。导出 Word（`export_docx`）在沙盒仍是桌面专属，不在服务端镜像之列。
+
+### 沙盒会话的销毁（关浏览器即回收）
+
+sid 存浏览器 localStorage（稳定），但工作区是临时的。`server/src/sessions.mjs` 登记每个沙盒会话的最近活跃时间：`serve.mjs` 的 `makeCtx` 对每个活跃请求 `touch(sid)`，并新增 `POST /api/heartbeat` 路由；前端 `src/web/bootstrap.js` 在 `health.mode==='sandbox'` 时每 ~25s 打一次心跳。后端启动后挂 `setInterval` 扫掉久无活动的会话（`sweepIdle`：删 `sessionBase/<sid>` 整份工作区目录 + `dropIndex` 回收内存索引 + `deleteLang` 回收语言），默认 `IDLE_TTL=180s`、扫描间隔 `30s`，可用 `--idle-ttl` 覆盖。于是：关浏览器 → 心跳停 → 约 180s 后连同改动一起销毁；刷新 → 同 sid 心跳在 TTL 内恢复，不误删；重开（sid 已被扫掉）→ `jailRoot→ensureSessionVault` 重新灌一份全新演示库，`workspace.lastVault` 路径不变仍有效。TTL 取 180s 是为明显大于浏览器对后台标签页的限流间隔（约每分钟一次），留足余量。启动时 `pruneSessions`（7 天）仍作兜底。
 
 web版代码推送到web 分支
