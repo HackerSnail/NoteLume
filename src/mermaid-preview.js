@@ -14,6 +14,7 @@
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
+import { t } from './i18n.js'
 
 const mmKey = new PluginKey('nl-mermaid')
 

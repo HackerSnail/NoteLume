@@ -3957,9 +3957,9 @@ async function boot() {
     flush: () => settingsStore.flush(),
     setStatus,
   })
-  // P5 §6.6 文件打开链路：拖入打开（主区域）与单实例二次唤起（Rust 转发 file-opened
-  // 事件）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次工作区。
-  // 拖入 / 二次唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
+  // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到
+  // Dock 图标，二次唤起）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次
+  // 工作区。拖入 / 唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
   bindDropOpen({
     rootEl: document.querySelector('.body'),
     onTargets: async (targets, e) => {
@@ -3972,9 +3972,14 @@ async function boot() {
       return handleOpenTargets(targets, { interactive: true, preview: true })
     },
   })
-  listen('file-opened', (e) => {
-    const p = e && e.payload
-    if (p && p.path) handleOpenTargets([{ path: p.path, isDir: !!p.isDir }], { interactive: true, preview: true })
+  // Rust 侧的唤起只排队、不带路径：事件叫醒后统一去 takeLaunchPaths 取。
+  // 冷启动那次事件没人听也不丢——排着的同一份队列由 handleLaunchArgs 兜走。
+  listen('file-opened', () => {
+    takeLaunchPaths()
+      .then((targets) => {
+        if (targets && targets.length) return handleOpenTargets(targets, { interactive: true, preview: true })
+      })
+      .catch(() => {}) // 无后端 / 取回失败：静默，界面本来就没有这条路
   }).catch(() => {}) // 纯 web 构建没有事件通道，忽略
   await handleLaunchArgs()
   bindShortcuts()
