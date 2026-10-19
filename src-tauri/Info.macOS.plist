@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- mac 专属补丁：这个键整组覆盖 fileAssociations 生成的同类（同键覆盖不追加），
+     所以三类都得在这写全。前两类与 fileAssociations 一一对应；第三类是库目录，
+     fileAssociations 只能声明扩展名，声明不了文件夹。fileAssociations 本身留着：
+     Windows 安装包与 Linux 桌面项靠它注册。rank 取 None，不抢文件夹的系统默认。 -->
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key>
@@ -9,6 +13,46 @@
     <string>zh_CN</string>
     <string>zh-Hans</string>
     <string>en</string>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>NoteLume Markdown</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>md</string>
+        <string>markdown</string>
+      </array>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Default</string>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>NoteLume Canvas</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>canvas</string>
+      </array>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Default</string>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>NoteLume Vault Folder</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>None</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.folder</string>
+      </array>
+    </dict>
   </array>
 </dict>
 </plist>

@@ -3082,19 +3082,34 @@ fn set_ui_lang(lang: String) -> bool {
 
 // ==================== P5 §6.6 文件打开链路 ====================
 //
-// 三条入口汇到同一处：
-//  · 启动参数（双击 .md、`note.exe x.md`）：setup 前收进 LaunchPaths，前端 boot 时
-//    经 take_launch_paths 取走。这里不用事件推是防竞态——setup 执行时页面 JS 还没
+// 四条入口汇到一条交付通道（deliver_open_targets）：
+//  · 启动参数（`note.exe x.md`，Windows 双击关联文件同条）：setup 前收进 LaunchPaths，前端
+//    boot 时经 take_launch_paths 取走。这里不用事件推是防竞态——setup 执行时页面 JS 还没
 //    跑起来，emit 出去没人听；拉取式没有时序问题。
-//  · 单实例二次唤起：应用已在运行、前端监听已就绪，那边用 emit("file-opened") 推。
-//  · 拖入打开：纯前端（DataTransfer 拿路径后走同一套 openAbsPath），不经 Rust。
+//  · macOS LaunchServices：双击关联文件、右键「打开方式」、把文件拖到 Dock 图标。
+//    路径只经 application:openURLs: 递来、不进 argv，要 run callback 接 RunEvent::Opened，
+//    不接就只剩「唤起应用、文件没打开」。
+//  · 单实例二次唤起：第二个进程把新路径交给第一个进程的 argv 回调。
+//  · 拖入窗口：纯前端（DataTransfer 拿路径后走同一套 openAbsPath），不经 Rust。
+// 交付通道只做两件事：目标排进 LaunchPaths，再 emit 一次 file-opened 叫前端来取。
+// 两条都不能省：冷启动时前端监听未必就绪，排着等它 boot 来取；应用常驻时前端不再主动
+// 取，得靠这次 emit 叫醒。emit 不带路径（同一条走队列只出一份，不会开两遍）。
 
 /// 启动 / 二次唤起的参数里挑出真实存在的文件或目录。exe 自身按路径比对剔除
 /// （不按位置 skip：std::env::args 与单实例插件的 argv 首元素是否 exe 并不保证）；
 /// `-` 开头的是 CLI 开关，不要。
 fn launch_targets<I: IntoIterator<Item = String>>(argv: I) -> Vec<LaunchTarget> {
+    let argv: Vec<String> = argv.into_iter().collect();
+    // argv 首元素是「递来这份参数的那个进程」自己的 exe：冷启动时它就是本机 current_exe，
+    // 单实例二次唤起时它是另一条路径上的同一份应用（多份拷贝、.app 内外各一份）。
+    // 只比 current_exe 会漏掉后者，于是把应用二进制当文档递出去——前端弹
+    // 「notelume 不是 Markdown 或画布文件」，点开后只剩「stream did not contain valid UTF-8」。
+    let sender = argv.first().cloned();
     let exe = std::env::current_exe().ok().map(|p| p.to_string_lossy().to_string());
     launch_targets_with_exe(argv, exe)
+        .into_iter()
+        .filter(|t| !sender.as_deref().is_some_and(|s| same_path(s, &t.path)))
+        .collect()
 }
 
 /// 与 launch_targets 同，exe 路径由调用方给（测试注入；生产传 current_exe()）。
@@ -3158,6 +3173,42 @@ fn take_launch_paths(app: tauri::AppHandle) -> Vec<LaunchTarget> {
         Some(s) => s.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default(),
         None => Vec::new(),
     }
+}
+
+/// 打开目标交给前端的唯一通道：排进队列 + 敲一次 file-opened（详见本节抬头）。
+fn deliver_open_targets(app: &tauri::AppHandle, targets: Vec<LaunchTarget>) {
+    use tauri::{Emitter, Manager};
+    if targets.is_empty() {
+        return;
+    }
+    if let Some(state) = app.try_state::<LaunchPaths>() {
+        if let Ok(mut v) = state.0.lock() {
+            v.extend(targets);
+        }
+    }
+    let _ = app.emit("file-opened", ());
+}
+
+/// LaunchServices 递来的 URL → 打开目标：只收 file: 协议且当前真实存在的文件/目录，
+/// 其余（http、已删的路径、非 file）逐项丢弃。to_file_path 负责 percent-解码，
+/// 「打开方式」递的中文/空格文件名靠它才能还原成真实路径。
+fn opened_targets(urls: &[tauri::Url]) -> Vec<LaunchTarget> {
+    urls.iter()
+        .filter_map(|u| u.to_file_path().ok())
+        .filter_map(|p| {
+            let path = p.to_string_lossy().to_string();
+            if path.is_empty() {
+                return None;
+            }
+            if p.is_dir() {
+                Some(LaunchTarget { path, is_dir: true })
+            } else if p.is_file() {
+                Some(LaunchTarget { path, is_dir: false })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// 应用设置文件路径：<app_config_dir>/settings.json。
@@ -3226,15 +3277,11 @@ fn tray_set_recent(app: tauri::AppHandle, paths: Vec<String>) {
 pub fn run() {
     // 启动参数先于窗口装配收好（P5 §6.6）：exe 路径本身已被 launch_targets 剔除
     let launch = launch_targets(std::env::args());
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // 单实例（P5 §6.6）：第二个进程把新文件路径经本回调交给第一个进程。
-        // 走到这里说明前端已在运行、监听就绪，用事件推；冷启动那次走 LaunchPaths 拉取。
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            use tauri::Emitter;
-            for t in launch_targets(argv) {
-                let _ = app.emit("file-opened", t);
-            }
+            deliver_open_targets(app, launch_targets(argv));
         }))
         .manage(LaunchPaths(std::sync::Mutex::new(launch)))
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
@@ -3344,8 +3391,18 @@ pub fn run() {
             use tauri::Emitter;
             let _ = app.emit("nl:menu-select", event.id().as_ref().to_string());
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building NoteLume application");
+    app.run(|app, event| {
+        // macOS 的「双击 / 打开方式 / 拖到 Dock 图标」不进 argv，只以 Opened 事件递 URL；
+        // 非 mac 目标没这个变体。
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = event {
+            deliver_open_targets(app, opened_targets(&urls));
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = event;
+    });
 }
 
 #[cfg(test)]
@@ -3416,5 +3473,50 @@ mod launch_tests {
         assert!(got[0].path.ends_with("notelume-other-test.md"));
         let _ = std::fs::remove_file(&exe);
         let _ = std::fs::remove_file(&other);
+    }
+
+    #[test]
+    fn drops_sender_exe_when_it_is_not_current_exe() {
+        // 单实例二次唤起：argv 首元素是「另一个进程」的 exe，路径与本机 current_exe 不同。
+        // 只比 current_exe 会把这份应用二进制当文档递出去（前端弹「不是 Markdown 或画布文件」）。
+        let dir = std::env::temp_dir();
+        let sender = dir.join("notelume-sender-self-test");
+        std::fs::write(&sender, "x").unwrap();
+        let other = dir.join("notelume-sender-other.md");
+        std::fs::write(&other, "y").unwrap();
+        let got = launch_targets(vec![sender.to_string_lossy().to_string(), other.to_string_lossy().to_string()]);
+        assert_eq!(got.len(), 1);
+        assert!(got[0].path.ends_with("notelume-sender-other.md"));
+        let _ = std::fs::remove_file(&sender);
+        let _ = std::fs::remove_file(&other);
+    }
+
+    #[test]
+    fn opened_targets_decodes_paths_and_skips_rest() {
+        // 「打开方式」递来的 URL：带空格与中文的路径经 percent 编码，非 file: 协议与
+        // 不存在的路径一律丢弃
+        let dir = std::env::temp_dir().join("notelume opened 测试");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("打开方式 探测.md");
+        std::fs::write(&file, "x").unwrap();
+
+        let file_url = tauri::Url::from_file_path(&file).unwrap();
+        assert!(file_url.as_str().contains("%20"), "夹具应带 percent 编码：{file_url}");
+        let got = opened_targets(&[
+            tauri::Url::parse("https://example.com/a.md").unwrap(),
+            tauri::Url::parse("file:///no/such/file.md").unwrap(),
+            file_url,
+        ]);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].path, file.to_string_lossy());
+        assert!(!got[0].is_dir);
+
+        let got_dir = opened_targets(&[tauri::Url::from_file_path(&dir).unwrap()]);
+        assert_eq!(got_dir.len(), 1);
+        assert!(got_dir[0].is_dir);
+        assert!(opened_targets(&[]).is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
