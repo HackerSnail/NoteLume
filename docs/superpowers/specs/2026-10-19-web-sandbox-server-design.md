@@ -63,7 +63,7 @@ body: { cmd, params }         // params 原样是 Tauri 会收到的那个对象
 
 `src/web/` 其余文件：
 
-- `index.html`：复制自 `src/index.html`，只改两处——`<html>` 加 `data-web`，`<script type="module">` 指向 `./entry.js`。sprite、挂载点、工具条标记全部保持原样（§2 决策 6 的理由）。
+- `index.html`：不手写副本，由 `server/gen-web-html.mjs` 从 `src/index.html` 生成（`web:build` 的第一步），只改两处——`<html>` 加 `data-web`，`<script type="module">` 指向 `./entry.js`。sprite、挂载点、工具条标记全部原样（§2 决策 6 的理由）。生成而不是副本：桌面版以后改 index.html（加按钮、改 id）时网页版不会错开，生成物 `src/web/index.html` 进 `.gitignore`。
 - `entry.js`：`import './bootstrap.js'` 再 `import '../main.js'`。
 - `bootstrap.js`：拉 `/api/health`、按 §2 决策 7 预置 `nl-settings`、插顶部横幅。
 - `path-picker.js`：目录浏览器弹窗。
@@ -167,7 +167,7 @@ server/
 - 根 `package.json` 追加四条，现有 `dev` / `build` / `tauri` 三条不动：
 
 ```
-"web:build":   node src/node_modules/vite/bin/vite.js build --config src/web/vite.config.web.js
+"web:build":   node server/gen-web-html.mjs && node src/node_modules/vite/bin/vite.js build --config src/web/vite.config.web.js
 "web":         npm run web:build && node server/serve.mjs --open
 "web:sandbox": npm run web:build && node server/serve.mjs --sandbox --open
 "web:api":     node server/serve.mjs --api-only --port 1430
@@ -176,7 +176,7 @@ server/
 - dev 是两条命令、两个终端：终端一 `npm run web:api`（1430 只出 API），终端二 `npm run web:dev`（vite 起 `src/web/index.html`，`/api` 走 proxy）。不用 `&&` 串——`serve.mjs` 是常驻进程，串下去第二条永远不执行；也不引 `concurrently`。
 - `--open` 用 `child_process`：win 走 `start`、mac/linux 走 `open` / `xdg-open`，失败静默。
 - `server/package.json`：`{ "type": "module", "scripts": { "start": "node serve.mjs", "test": "node --test tests/" } }`，无 `dependencies`。
-- `.gitignore` 追加 `server/dist/`、`server/data/`。
+- `.gitignore` 追加 `server/dist/`、`server/data/`、`src/web/index.html`（生成物）。
 - 文档：`server/README.md` 写两条路径（本机试用 / 沙盒部署）、端口、参数、限制；`docs/SERVER.MD` 的「当前构建状态」补网页版命令并把残缺的 `- Ta` 行写完。
 
 ## 12. 测试与验收
@@ -210,7 +210,7 @@ server/
 
 四段，每段结束都有能跑的东西：
 
-1. `src/web/` 替身五件 + `serve.mjs` 骨架 + 文件类命令：浏览器里能选库、开文档、编辑、`Ctrl+S` 落盘。这一段就能验证 §2 决策 1 的替身路线走不走得通，走不通要立刻停下来重议。
+1. `gen-web-html.mjs` + `src/web/` 替身五件与 `entry.js` / `bootstrap.js` + `serve.mjs` 骨架 + 文件类命令：浏览器里能选库、开文档、编辑、`Ctrl+S` 落盘。这一段就能验证 §2 决策 1 的替身路线走不走得通，走不通要立刻停下来重议。
 2. `index.mjs` + `kbCommands.mjs`：反链 / 标签 / 搜索 / 图谱 / 快照与悬浮预览可用。
 3. `--sandbox` + `default-vault/` + `commands-guard.js` + `web.css` + 横幅与五语言词条。
 4. 七份测试、根脚本与产物验证、`server/README.md` 与 `docs/SERVER.MD`、桌面回归。
