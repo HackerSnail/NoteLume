@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { dispatch } from './src/router.mjs'
 import { browse } from './src/browse.mjs'
 import { configure, cfg, jailRoot, scratchRoot, defaultVaultRoot, pruneSessions, DIST_DIR } from './src/paths.mjs'
-import { getLang } from './src/uiLang.mjs'
+import { langFor } from './src/uiLang.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 // vite 以 root=src 构建、入口是 src/web/index.html，产物路径保留成 dist/web/index.html。
@@ -201,7 +201,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         mode: cfg.mode,
         version: VERSION,
-        lang: getLang(),
+        lang: langFor(sid),
         scratchDir: scratchRoot(sid),
         demo: { vaultRoot: demo.vaultRoot, file: demo.file },
       })

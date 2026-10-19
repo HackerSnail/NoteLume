@@ -11,7 +11,7 @@
 
 import { handlers } from './fsCommands.mjs'
 import { kbHandlers } from './kbCommands.mjs'
-import { msg, setLang, LANG_LIST } from './uiLang.mjs'
+import { msg, setLangFor, applyLang, LANG_LIST } from './uiLang.mjs'
 import { defaultVaultRoot, isSafeSid, scratchRoot } from './paths.mjs'
 
 /**
@@ -42,8 +42,9 @@ export const UNSUPPORTED = new Set([
 ])
 
 const EXTRA = {
-  set_ui_lang: ({ lang }) => {
-    setLang(LANG_LIST.includes(lang) ? lang : 'zh-CN')
+  // 普通函数而非箭头：需要 this.sid（handlerView 挂上）把语言按访客存，多访客不串
+  set_ui_lang: function ({ lang }) {
+    setLangFor(this.sid, LANG_LIST.includes(lang) ? lang : 'zh-CN')
     return null
   },
   /** 给前端的 tempDir() 用：main.js 的 ensureScratchDir 会在这里再建 NoteLume/scratch */
@@ -75,6 +76,8 @@ function handlerView(ctx) {
 export function dispatch(ctx, cmd, params) {
   try {
     if (!ctx || !isSafeSid(ctx.sid || '')) throw new Error('bad session id')
+    // 生效语言按访客刷一次：本行以下到命令返回全同步，msg() 取的就是这一份，不会被别的请求串改
+    applyLang(ctx.sid)
     // 已知不支持：回一句给用户看的完整话术；只有根本没登记的命令才留 [unsupported] 调试前串
     if (UNSUPPORTED.has(cmd)) {
       const e = new Error(msg('webUnsupported'))

@@ -220,11 +220,34 @@ const TABLE = {
   ],
 }
 
-let lang = 'zh-CN'
+// 一个后端同时伺候多个访客：语言按会话 sid 存，`msg()` 读的是「本次请求生效的那一份」。
+// 分派入口把该 sid 的语言刷进 `lang` 即可——Node 事件循环单线程，且 router.dispatch 到每条
+// handler 全同步（没有 await），整条命令执行期间 `lang` 不会被别的请求改动。这比把 sid 一路
+// 塞进每个 msg() 调用干净得多（vault.mjs 那些深层校验够不着 sid，也不想让它们依赖会话）。
+let lang = 'zh-CN' // 本次 dispatch 的生效语言（msg 读它）
+let defaultLang = 'zh-CN' // 没人上报时的回落
+const BY_SID = new Map() // sid -> 该访客经 set_ui_lang 上报的语言
 
-/** 前端 set_ui_lang 上报的语言；不在五种之内时保持原值 */
+/** 设默认语言（无会话上报时的回落）；桌面全局路径与单测走这个。不在五种之内时保持原值 */
 export function setLang(next) {
-  if (LANGS.includes(next)) lang = next
+  if (LANGS.includes(next)) defaultLang = next
+  return defaultLang
+}
+
+/** 记某个会话上报的语言；不在五种之内时忽略，返回该会话此刻生效的语言 */
+export function setLangFor(sid, next) {
+  if (LANGS.includes(next)) BY_SID.set(sid, next)
+  return langFor(sid)
+}
+
+/** 该会话此刻应使用的语言：上报过用上报的，否则回落默认 */
+export function langFor(sid) {
+  return BY_SID.get(sid) || defaultLang
+}
+
+/** 分派入口调用：把该 sid 的语言刷成生效值，使同步执行链上的 msg() 取对词 */
+export function applyLang(sid) {
+  lang = langFor(sid)
   return lang
 }
 

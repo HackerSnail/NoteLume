@@ -50,6 +50,7 @@ NoteLume 是一个本地 Markdown 知识库编辑器，当前主形态是 Tauri 
 菜单与命令面板里的桌面专属项照旧留着（藏掉反而让人以为产品缺功能），点下去要给一句能看的话。这条路只有两处：
 
 - 判定与文案在后端：`router.mjs` 的 `UNSUPPORTED` 是唯一名单，命中的命令回 `{ ok:false, error:<一句完整话术>, code:'desktop-only' }`。话术在 `server/src/uiLang.mjs` 的 `webUnsupported`（五语），语言由前端 `set_ui_lang` 上报；不带 code 的普通失败仍是 `{ ok:false, error }`，不要把访客的误操作说成「网页版不支持」。
+- 后端语言按会话隔离：一个 serve.mjs 同时伺候多个访客，`set_ui_lang` 把语言按 sid 存进 `uiLang.mjs` 的 `BY_SID`（不是进程级全局，否则 A 切英文会把 B 也带过去）。`dispatch` 入口先 `applyLang(sid)` 刷本次生效值——分派到 handler 全同步、无 await，整条命令执行期间不会被别的请求串改，故深层校验里的 `msg()` 取的就是这一份。没人上报的 sid 落回 `setLang` 设定的默认（zh-CN）；`/api/health` 用 `langFor(sid)` 报该访客此刻的语言。
 - 可见化在前端：`src/web/tauri-core.js` 见到 `code:'desktop-only'` 就调 `src/web/desktop-only.js` 把那句话提示到屏幕底部。为什么要这一层：桌面版的失败提示走 `setStatus`，而 `setStatus` 早已从界面上去掉（只剩 `console.debug`），Git / 插件那一类命令在网页里就会「点了没反应」。三条规矩：访客动过之前不提示（开库自检也会被拒）、同一句话只一条、调用方自己弹了同一句话的框（导出 Word / 整站 / Git push）就不再补提示——`window.alert` 被包了一层只记不拦的挂钩，因为 bridge 的 `dialogMessage` 在非桌面环境是直接调 `window.alert` 的，不走 alias 的替身。
 
 前端不存第二份「不支持」文案，也不新建命令名单：加一条桌面专属能力，只改 `router.mjs` 那个 Set。

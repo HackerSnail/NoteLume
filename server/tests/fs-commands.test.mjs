@@ -14,7 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { dispatch } from '../src/router.mjs'
 import { handlers } from '../src/fsCommands.mjs'
-import { msg, setLang } from '../src/uiLang.mjs'
+import { msg, setLang, langFor } from '../src/uiLang.mjs'
 import { fnv1a } from '../src/vault.mjs'
 
 let pass = 0
@@ -271,6 +271,25 @@ test('根本没登记的命令才回 [unsupported] 调试前串，不是 500 堆
   const r = dispatch(ctx, 'no_such_command_xyz', {})
   assert.equal(r.ok, false)
   assert.equal(r.error, '[unsupported] no_such_command_xyz')
+})
+
+test('语言按会话隔离：一个后端伺候多访客不串（set_ui_lang 按 sid 存）', () => {
+  const A = { sid: 'isoA', jail: null }
+  const B = { sid: 'isoB', jail: null }
+  const N = { sid: 'isoNew', jail: null }
+  try {
+    setLang('zh-CN') // 默认中文：没上报的访客落回这里
+    dispatch(A, 'set_ui_lang', { lang: 'en-US' })
+    dispatch(B, 'set_ui_lang', { lang: 'de-DE' })
+    assert.match(dispatch(A, 'git_status', {}).error, /desktop app/, 'A 应是英文')
+    assert.match(dispatch(B, 'export_docx', {}).error, /Desktop-App/, 'B 应是德文')
+    // B 刚切完德文，A 再说一遍仍是英文——这正是旧版全局 lang 会串的地方
+    assert.match(dispatch(A, 'git_status', {}).error, /desktop app/, 'B 切德文不该影响 A')
+    assert.match(dispatch(N, 'git_status', {}).error, /桌面/, '没上报过的访客落回默认中文')
+    assert.equal(langFor('isoA'), 'en-US', 'langFor 直接读也该是 A 自己的那份')
+  } finally {
+    setLang('zh-CN')
+  }
 })
 
 fs.rmSync(base, { recursive: true, force: true })
