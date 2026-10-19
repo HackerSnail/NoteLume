@@ -14,10 +14,11 @@ NoteLume 是一个本地 Markdown 知识库编辑器，当前主形态是 Tauri 
 
 ## 网页版隔离规则
 
-- 桌面版代码是已验证成品，网页版开发**不改** `src/*.js`（`src/web/` 下新增的除外）、`src/index.html`、`src/style.css`、`src/vite.config.js`、`src-tauri/**`。
+- 桌面版代码是已验证成品，网页版开发**不改** `src/index.html`、`src/style.css`、`src/vite.config.js`、`src-tauri/**`；`src/*.js`（`src/web/` 下新增的除外）只在一个地方允许动：桌面能力的集中分流，即 `src/tauri-bridge.js` + `src/desktop-gate.js`。其它调用点不得自己加环境判断。
+- 两条判据分工，别混：`hasBackend()` = Tauri 原生或网页版替身（`src/web/tauri-core.js` 挂 `__NOTELUME_BACKEND__`），管 `invoke` / 选择器 / 路径 API 能不能调；`isDesktop()` 只认真 `__TAURI_INTERNALS__`，管窗口按钮、设置存储的 localStorage 回落、启动参数探测。网页版里 `isDesktop()` 恒为假，所以确认框 / 提示框降到 `window.confirm` / `window.alert`，而 HTTP 后端照常工作。
 - 网页端的差异全部写在新增文件里：前端替身在 `src/web/`，Node 后端与演示库在 `server/`。
 - 隔离靠构建期替身：vite alias 把五个 `@tauri-apps/*` 包名换成 `src/web/` 里的网页实现，`./commands.js` 换成注册表 wrapper 拦掉网页不支持的命令。
-- 护栏测试 `server/tests/desktop-untouched.test.mjs`：`git diff` 里出现被禁的桌面文件即失败。
+- 护栏两条：`node src/tests/desktop-gate.test.mjs` 全仓扫描——除 bridge / gate（加 titlebar、main 的窗口调用）外不得出现 Tauri 导入与注入标记读取，且网页标记必须放行后端、不冒充桌面；`server/tests/desktop-untouched.test.mjs` 检查 `git diff` 里没碰到上面那批被禁的桌面文件。
 - 设计细节见 `docs/superpowers/specs/2026-10-19-web-sandbox-server-design.md`。
 
 ## 网页试用版约束

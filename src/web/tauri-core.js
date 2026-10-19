@@ -9,6 +9,12 @@
 
 let sidCache = null
 
+// 本模块就是网页版的后端入口，而 src/tauri-bridge.js 会用 hasBackend() 分流桌面原语：
+// 没有这个标记，bridge 会把 alias 进来的 HTTP invoke 也当成「无后端」拒掉，整个网页版一个请求都发不出去。
+// 这里故意不伪造 __TAURI_INTERNALS__：那是 isDesktop() 的判据，窗口按钮、settings-store 的
+// localStorage 回落、main.js 的启动参数探测都要它保持 false，伪造等于把浏览器冒充成桌面端。
+if (typeof window !== 'undefined') window.__NOTELUME_BACKEND__ = true
+
 /** 会话 id：localStorage 里有就用，没有生成一个存下（沙盒模式据此分工作区） */
 export function sessionId() {
   if (sidCache) return sidCache

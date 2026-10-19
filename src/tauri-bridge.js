@@ -10,23 +10,25 @@ import {
 } from '@tauri-apps/plugin-dialog'
 import { tempDir as tauriTempDir, join as tauriJoin } from '@tauri-apps/api/path'
 import { t } from './i18n.js'
-import { isDesktop, desktopOnlyError } from './desktop-gate.js'
+import { isDesktop, hasBackend, desktopOnlyError } from './desktop-gate.js'
 
 // —— 环境分流 ——
 // 下面 7 个原语是本应用全部的桌面能力出口，一处判定即覆盖本文件全部 wrapper，调用点不用各自防。
 // 真实实现原样保留，只在无后端的浏览器沙盒里换成 reject（选择器 / 路径）或 Web 等价物（对话框）。
+// 两个判据各管一头：后端能不能调用看 hasBackend()（网页版的 alias 替身也算后端），
+// 有没有桌面窗口 / 原生对话框看 isDesktop()——后者在网页版里永远是假，确认框才能降到 window.*。
 function invoke(cmd, args) {
-  if (!isDesktop()) return Promise.reject(desktopOnlyError(cmd))
+  if (!hasBackend()) return Promise.reject(desktopOnlyError(cmd))
   return tauriInvoke(cmd, args)
 }
 
 function open(opts) {
-  if (!isDesktop()) return Promise.reject(desktopOnlyError('dialog:open'))
+  if (!hasBackend()) return Promise.reject(desktopOnlyError('dialog:open'))
   return tauriOpen(opts)
 }
 
 function save(opts) {
-  if (!isDesktop()) return Promise.reject(desktopOnlyError('dialog:save'))
+  if (!hasBackend()) return Promise.reject(desktopOnlyError('dialog:save'))
   return tauriSave(opts)
 }
 
@@ -45,13 +47,13 @@ function dialogMessage(message, opts) {
 
 /** 系统临时目录绝对路径 */
 export function tempDir() {
-  if (!isDesktop()) return Promise.reject(desktopOnlyError('path:tempDir'))
+  if (!hasBackend()) return Promise.reject(desktopOnlyError('path:tempDir'))
   return tauriTempDir()
 }
 
 /** 按平台规则拼接路径片段 */
 export function join(...parts) {
-  if (!isDesktop()) return Promise.reject(desktopOnlyError('path:join'))
+  if (!hasBackend()) return Promise.reject(desktopOnlyError('path:join'))
   return tauriJoin(...parts)
 }
 

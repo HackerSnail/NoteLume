@@ -139,5 +139,30 @@ await t('Tauri 原语只在 tauri-bridge.js / titlebar.js / main.js 导入', () 
   }
 })
 
+await t('网页标记：后端放行，但不冒充桌面', async () => {
+  delete globalThis.window.__TAURI_INTERNALS__
+  globalThis.window.__NOTELUME_BACKEND__ = true
+  assert.strictEqual(gate.isDesktop(), false, '窗口按钮与设置存储靠 isDesktop 为假走浏览器路径')
+  assert.strictEqual(gate.hasBackend(), true, 'hasBackend 要认网页替身')
+  let err = null
+  try {
+    await bridge.scanVault('/v')
+  } catch (e) {
+    err = e
+  }
+  // 已经放行到原生原语：桩里没有 internals，它会炸成另一种样子，但绝不该再是 desktop-only 那句
+  assert.ok(!(err && err.code === 'desktop-only'), '后端仍被拦住：' + (err && err.message))
+})
+
+await t('有网页标记时确认框仍走 window.confirm（对话框只看 isDesktop）', async () => {
+  alerts.length = 0
+  confirms.length = 0
+  assert.strictEqual(await bridge.confirmDialog('还是原生框'), true)
+  assert.deepStrictEqual(confirms, ['还是原生框'])
+  // 恢复桌面标记，后面的用例接着在桌面态上跑
+  delete globalThis.window.__NOTELUME_BACKEND__
+  globalThis.window.__TAURI_INTERNALS__ = { invoke: async () => '/stub' }
+})
+
 console.log('结果：' + pass + ' passed, ' + fail + ' failed')
 if (fail) process.exit(1)
