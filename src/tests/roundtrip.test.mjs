@@ -12,6 +12,13 @@ import { splitFrontmatter, joinFrontmatter, hasYamlDoc } from '../frontmatter.js
 const SAMPLES = {
   headings: '# H1\n## H2\n### H3\n',
   inline: '这是一段 **粗体**、*斜体*、~~删除线~~、`行内代码`、[链接](https://a.b) 混排。\n',
+  // 中文标点紧邻强调定界符：CommonMark 的 flanking 规则在这里不构成贴合（收尾 ** 前是全角
+  // 标点、后是汉字），editor-schema.js 已按 Typora/Obsidian 的行为放宽，往返须幂等
+  cjk_bold_colon: '- 数字图像\n  **总结：**大段说明\n',
+  cjk_bold_quote: '这是**「重要」**的内容。\n',
+  cjk_bold_curly: '**“注意”**请看这里。\n',
+  cjk_strike_colon: '~~提示：~~如下。\n',
+  cjk_em_colon: '选*斜体：*这个词。\n',
   quote_list:
     '> 引用第一行\n>\n> 引用第二行\n\n- 无序 a\n- 无序 b\n\n1. 有序一\n2. 有序二\n',
   tasklist: '- [x] 已完成\n- [ ] 未完成\n- 普通项\n',
@@ -71,6 +78,28 @@ for (const [name, md] of Object.entries(SAMPLES)) {
     console.error(`❌ ${name}: ${e.message}`)
     fail++
   }
+}
+
+// 具体断言：中文标点紧邻的强调落到标记上，序列化原样写回（不把 ** 转义后存盘）
+{
+  const marksOf = (md) => {
+    const marks = []
+    parseMarkdown(md).descendants((n) => { if (n.isText) n.marks.forEach((m) => marks.push(m.type.name)) })
+    return marks
+  }
+  assert.ok(marksOf('**总结：**大段').includes('strong'), '全角冒号后的 ** 应构成加粗')
+  assert.strictEqual(serializeMarkdown(parseMarkdown('**总结：**大段')), '**总结：**大段', '加粗段序列化不应转义 **')
+  assert.ok(marksOf('这是**「重要」**的内容。').includes('strong'), '中文引号邻接的 ** 应构成加粗')
+  assert.ok(marksOf('**“注意”**请看').includes('strong'), '弯引号邻接的 ** 应构成加粗')
+  assert.ok(marksOf('*斜：*体').includes('em'), '全角冒号邻接的 * 应构成斜体')
+  assert.ok(marksOf('~~提示：~~如下').includes('strike'), '全角冒号邻接的 ~~ 应构成删除线')
+  // 列表项续行（软换行后的第二行）同样生效
+  assert.ok(marksOf('- 数字图像\n  **总结：**大段说明\n').includes('strong'), '列表项续行里的 ** 应构成加粗')
+  // 边界：ASCII 标点仍按 CommonMark 不渲染；_ 的词内限制不动
+  assert.ok(!marksOf('**foo:**bar').includes('strong'), 'ASCII 冒号邻接仍按 CommonMark 不渲染')
+  assert.strictEqual(marksOf('文件_备份').length, 0, '汉字之间的 _ 不构成斜体')
+  console.log('✅ 中文标点邻接的强调')
+  pass++
 }
 
 // 额外断言：任务列表 / wikilink / tag / 行内公式 / 块公式 落到正确的模型上
