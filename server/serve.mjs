@@ -5,7 +5,7 @@
 //
 // 默认只绑 127.0.0.1（--host 0.0.0.0 可改，仅容器部署场景用）。API 路由本身零依赖（只用 node:http / fs / path / os / child_process）；
 // 唯一例外是网页沙盒的 Word 导入解析（src/docxCommands.mjs + src/docxOoxml.mjs）引入的两个同步解析库：adm-zip / fast-xml-parser。
-// 参数：--sandbox（会话工作区）/ --port / --host（默认 127.0.0.1，容器部署时传 0.0.0.0）/ --api-only（只出 API，静态交给 vite dev）/ --open（起服务后开浏览器）。
+// 参数：--sandbox（会话工作区）/ --port / --host（默认 127.0.0.1，容器部署时传 0.0.0.0）/ --data-dir（运行期数据目录，默认 server/data；容器里 server/ 挂载为只读时要指到可写路径）/ --api-only（只出 API，静态交给 vite dev）/ --open（起服务后开浏览器）。
 //
 // sessionId 从请求头 x-notelume-session 取；invoke 与 browse 都按它落监狱（沙盒模式）或忽略（本机模式）。
 
@@ -50,7 +50,9 @@ const HOST = flagValue('host', '127.0.0.1')
 const IDLE_TTL_MS = Number(flagValue('idle-ttl', 180000))
 const SWEEP_MS = 30000
 
-configure({ sandbox: SANDBOX })
+// --data-dir 后面跟了 --xxx 时 flagValue 会回 true，只认字符串值，否则落回默认 server/data
+const DATA_DIR = flagValue('data-dir', undefined)
+configure({ sandbox: SANDBOX, ...(typeof DATA_DIR === 'string' ? { dataDir: DATA_DIR } : {}) })
 const removed = pruneSessions()
 if (removed.length) console.log(`[serve] 清理了 ${removed.length} 个过期会话工作区`)
 

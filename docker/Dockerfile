@@ -17,4 +17,5 @@ COPY --chown=node:node server/default-vault ./server/default-vault
 # dist 不入库不进镜像：运行时由 compose 挂载宿主的 server/dist，升级前端只需重传产物 + 重启容器
 EXPOSE 1420
 # 容器内绑 0.0.0.0 才能被宿主 nginx 反代到；端口由 compose 只暴露到 127.0.0.1
-CMD ["node", "server/serve.mjs", "--sandbox", "--host", "0.0.0.0"]
+# --data-dir：compose 把 server/ 源码挂成只读，运行期数据目录指进镜像自身可写层
+CMD ["node", "server/serve.mjs", "--sandbox", "--host", "0.0.0.0", "--data-dir", "/app/server/data"]
