@@ -3,9 +3,9 @@
 // 三条 API：POST /api/invoke（cmd -> handler）、GET /api/browse（目录浏览器）、GET /api/health、POST /api/heartbeat。
 // 其余 GET 走静态伺服 server/dist（构建产物），找不到文件回 index.html。
 //
-// 只绑 127.0.0.1。API 路由本身零依赖（只用 node:http / fs / path / os / child_process）；
+// 默认只绑 127.0.0.1（--host 0.0.0.0 可改，仅容器部署场景用）。API 路由本身零依赖（只用 node:http / fs / path / os / child_process）；
 // 唯一例外是网页沙盒的 Word 导入解析（src/docxCommands.mjs + src/docxOoxml.mjs）引入的两个同步解析库：adm-zip / fast-xml-parser。
-// 参数：--sandbox（会话工作区）/ --port / --api-only（只出 API，静态交给 vite dev）/ --open（起服务后开浏览器）。
+// 参数：--sandbox（会话工作区）/ --port / --host（默认 127.0.0.1，容器部署时传 0.0.0.0）/ --api-only（只出 API，静态交给 vite dev）/ --open（起服务后开浏览器）。
 //
 // sessionId 从请求头 x-notelume-session 取；invoke 与 browse 都按它落监狱（沙盒模式）或忽略（本机模式）。
 
@@ -45,7 +45,7 @@ function flagValue(name, dflt) {
 const SANDBOX = hasFlag('sandbox')
 const API_ONLY = hasFlag('api-only')
 const PORT = Number(flagValue('port', API_ONLY ? 1430 : 1420))
-const HOST = '127.0.0.1'
+const HOST = flagValue('host', '127.0.0.1')
 // 会话空闲多久后被销毁（关浏览器 → 心跳停 → 超这个时长即清）。默认 180s，明显大于后台标签页限流间隔。
 const IDLE_TTL_MS = Number(flagValue('idle-ttl', 180000))
 const SWEEP_MS = 30000
@@ -234,7 +234,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   const line = `NoteLume 网页版已启动： http://${HOST}:${PORT}/  （模式 ${cfg.mode}${API_ONLY ? '，仅 API' : ''}）`
   console.log(line)
-  if (SANDBOX) console.log('[serve] 沙盒模式：每个访客一份临时工作区，只绑 127.0.0.1')
+  if (SANDBOX) console.log('[serve] 沙盒模式：每个访客一份临时工作区，只绑 ' + HOST)
   if (!API_ONLY && hasFlag('open')) openBrowser(`http://${HOST}:${PORT}/`)
 })
 

@@ -1,0 +1,24 @@
+# NoteLume 网页版沙盒：放服务器仓库根，`docker compose -f docker/docker-compose.yml up -d --build`
+# 端口只绑 127.0.0.1——对外由宿主 nginx 反代（lume.hackersnail.online），不直接暴露公网。
+services:
+  notelume-web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: notelume-web:latest
+    container_name: notelume-web
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:1420:1420'
+    volumes:
+      # 热更新面：只挂后端源码与产物，容器重启即生效新代码；node_modules 留在镜像层。
+      # dist 是构建产物不入库，由部署脚本 tar 同步到宿主 server/dist 后挂进来。
+      - ../server/serve.mjs:/app/server/serve.mjs:ro
+      - ../server/src:/app/server/src:ro
+      - ../server/dist:/app/server/dist:ro
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:1420/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

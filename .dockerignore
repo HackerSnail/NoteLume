@@ -1,0 +1,7 @@
+# docker build 上下文 = 仓库根，只留 Dockerfile 需要 COPY 的路径
+*
+!docker/
+!server/
+server/node_modules/
+server/tests/
+server/data/
