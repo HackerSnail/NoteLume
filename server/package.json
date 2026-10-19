@@ -7,6 +7,6 @@
   "scripts": {
     "start": "node serve.mjs",
     "sandbox": "node serve.mjs --sandbox",
-    "test": "node --test tests/"
+    "test": "node tests/run.mjs"
   }
 }

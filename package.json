@@ -13,6 +13,7 @@
     "web:sandbox": "npm run web:build && node server/serve.mjs --sandbox --open",
     "web:api": "node server/serve.mjs --api-only --port 1430",
     "web:dev": "node src/node_modules/vite/bin/vite.js dev --config src/web/vite.config.web.js",
+    "web:test": "node server/tests/run.mjs",
     "tauri": "node src/node_modules/@tauri-apps/cli/tauri.js",
     "test:roundtrip": "npm --prefix ./src run test:roundtrip",
     "test:footnote": "npm --prefix ./src run test:footnote",

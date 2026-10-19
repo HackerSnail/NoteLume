@@ -76,6 +76,29 @@ const TABLE = {
     'Verzeichnis konnte nicht gelesen werden',
   ],
 
+  // 快照（.notelume-backup）
+  writeBackupFailed: [
+    '写入备份失败：{err}',
+    '寫入備份失敗：{err}',
+    'Failed to write the backup: {err}',
+    'Échec d’écriture de la sauvegarde : {err}',
+    'Sicherung konnte nicht geschrieben werden: {err}',
+  ],
+  readBackupFailed: [
+    '读取备份失败：{err}',
+    '讀取備份失敗：{err}',
+    'Failed to read the backup: {err}',
+    'Échec de lecture de la sauvegarde : {err}',
+    'Sicherung konnte nicht gelesen werden: {err}',
+  ],
+  backupOnly: [
+    '非法路径：只能读取备份目录内的快照',
+    '非法路徑：只能讀取備份目錄內的快照',
+    'Invalid path: only snapshots inside the backup directory can be read',
+    'Chemin invalide : seuls les instantanés du dossier de sauvegarde peuvent être lus',
+    'Ungültiger Pfad: Nur Snapshots im Sicherungsverzeichnis können gelesen werden',
+  ],
+
   // 库内条目操作
   emptyFileName: [
     '文件名不能为空',

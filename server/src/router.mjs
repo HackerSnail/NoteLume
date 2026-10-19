@@ -6,10 +6,11 @@
 //
 // 三条边界：
 //   - 未列出的命令回 [unsupported] + 一句本地化说明（git / docx / 插件 / 整站导出）。
-//   - 索引类命令本轮给空表与 ready:true，形状与 Rust 一致，侧栏面板显示「没有结果」而不是报错。
+//   - 索引与快照类命令在 kbCommands.mjs，索引表按 sid 隔离（一个后端伺候多个会话）。
 //   - VaultError 的 message 已经是给人看的文案，直接回传，不再加前缀。
 
 import { handlers } from './fsCommands.mjs'
+import { kbHandlers } from './kbCommands.mjs'
 import { msg, setLang, LANG_LIST } from './uiLang.mjs'
 import { defaultVaultRoot, isSafeSid, scratchRoot } from './paths.mjs'
 
@@ -29,26 +30,6 @@ export const UNSUPPORTED = new Set([
   // Rust 侧前端零引用的历史入口
   'copy_image_asset',
 ])
-
-/**
- * 索引类命令的空实现。返回形状照 lib.rs，docs 为 0、ready 为真：
- * 前端 rebuildIndex 之后轮询 getIndexStatus，看到 ready 就把面板当「已就绪但没有数据」。
- */
-const EMPTY_INDEX = {
-  rebuild_index: (p) => undefined,
-  get_index_status: (p) => ({ vaultRoot: (p && p.vaultRoot) || null, docs: 0, ready: true }),
-  update_index_doc: () => undefined,
-  remove_index_doc: () => undefined,
-  query_backlinks: () => [],
-  query_outgoing: () => [],
-  query_tag: () => [],
-  list_all_tags: () => [],
-  search_vault: () => [],
-  get_graph_data: () => ({ nodes: [], edges: [] }),
-  get_doc_info: () => null,
-  doc_preview: () => '',
-  list_backups: () => [],
-}
 
 const EXTRA = {
   set_ui_lang: ({ lang }) => {
@@ -73,7 +54,7 @@ export function dispatch(ctx, cmd, params) {
   try {
     if (!ctx || !isSafeSid(ctx.sid || '')) throw new Error('bad session id')
     if (UNSUPPORTED.has(cmd)) throw new Error('[unsupported] ' + msg('webUnsupported'))
-    const fn = handlers[cmd] || EXTRA[cmd] || EMPTY_INDEX[cmd]
+    const fn = handlers[cmd] || kbHandlers[cmd] || EXTRA[cmd]
     if (!fn) throw new Error('[unsupported] ' + cmd)
     const result = fn.call(ctx, params || {}, cmd)
     return { ok: true, result: result === undefined ? null : result }

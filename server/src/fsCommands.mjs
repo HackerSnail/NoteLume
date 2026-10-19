@@ -331,8 +331,8 @@ function findAssetByName(dir, name, depth) {
   return null
 }
 
-/** 命中一条 md 的库内相对路径；解析不出返回 null */
-function resolveOne(root, refRel, link) {
+/** 命中一条 md 的库内相对路径；解析不出返回 null（索引与 resolve_wiki_link 共用这一份） */
+export function resolveOne(root, refRel, link) {
   const name = link.trim()
   if (!name) return null
   if (name.includes('/') || name.startsWith('..') || name.toLowerCase().endsWith('.md')) {

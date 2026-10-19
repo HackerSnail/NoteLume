@@ -7,6 +7,7 @@
 
 import { sessionId } from './tauri-core.js'
 import { t } from '../i18n.js'
+import { wt } from './web-strings.js'
 
 async function apiBrowse(path, wantFiles) {
   const qs = new URLSearchParams()
@@ -40,7 +41,7 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
     const upBtn = el('button', 'nl-picker-up')
     upBtn.type = 'button'
     upBtn.textContent = '↑'
-    upBtn.title = t('ui.up') || '上级'
+    upBtn.title = wt('ui.up')
     const pathLabel = el('span', 'nl-picker-cur', '…')
     pathRow.append(upBtn, pathLabel)
     head.appendChild(pathRow)
@@ -53,7 +54,7 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
     let nameInput = null
     if (mode === 'save') {
       const nameRow = el('div', 'nl-picker-namerow')
-      nameRow.appendChild(el('span', 'nl-picker-namelbl', t('ui.fileName') || '文件名'))
+      nameRow.appendChild(el('span', 'nl-picker-namelbl', wt('ui.fileName')))
       nameInput = el('input', 'nl-prompt-input nl-picker-name')
       nameInput.type = 'text'
       nameInput.value = startPath ? basename(startPath) : 'untitled.md'
@@ -102,7 +103,7 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
 
       const back = data.parent
       if (back != null) {
-        const li = el('div', 'nl-picker-item nl-picker-back', '… ' + (t('ui.up') || '上级'))
+        const li = el('div', 'nl-picker-item nl-picker-back', '… ' + wt('ui.up'))
         li.addEventListener('click', () => load(back))
         list.appendChild(li)
       }
@@ -135,7 +136,7 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
           if (multiple && state.selectedMulti.includes(abs)) li.classList.add('sel')
           list.appendChild(li)
         }
-        if (!data.files.length) list.appendChild(el('div', 'nl-picker-empty', t('ui.noFiles') || '此目录没有可选文件'))
+        if (!data.files.length) list.appendChild(el('div', 'nl-picker-empty', wt('ui.noFiles')))
       }
     }
 

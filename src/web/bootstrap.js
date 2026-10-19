@@ -10,7 +10,8 @@
 //   5. 顶部插一条「网页沙盒试用版」横幅。
 
 import { invoke, sessionId } from './tauri-core.js'
-import { getLocale } from '../i18n.js'
+import { getLocale, onLocaleChange } from '../i18n.js'
+import { wt } from './web-strings.js'
 
 const LS_KEY = 'nl-settings'
 
@@ -48,15 +49,30 @@ function insertBanner(health) {
   bar.className = 'nl-web-banner'
   const text = document.createElement('span')
   text.className = 'nl-web-banner-text'
-  text.textContent = '网页沙盒试用版 · 功能为桌面版子集'
+  text.textContent = wt('web.banner')
   bar.appendChild(text)
+  let tag = null
   if (health && health.mode === 'sandbox') {
-    const tag = document.createElement('span')
+    tag = document.createElement('span')
     tag.className = 'nl-web-banner-tag'
-    tag.textContent = '沙盒模式'
+    tag.textContent = wt('web.sandboxMode')
     bar.appendChild(tag)
   }
   toolbar.insertAdjacentElement('afterend', bar)
+  // 横幅是网页版新插的 DOM，桌面的 applyStaticDom 扫不到它（那些靠 data-i18n），所以自己订阅一次
+  onLocaleChange(() => {
+    text.textContent = wt('web.banner')
+    if (tag) tag.textContent = wt('web.sandboxMode')
+  })
+}
+
+/** 把界面语言报给后端，让错误文案跟着切；浏览器里没有 __TAURI_INTERNALS__，桌面那条上报路径整段跳过 */
+async function reportLang() {
+  try {
+    await invoke('set_ui_lang', { lang: getLocale() })
+  } catch {
+    /* 上报失败不致命：后端默认 zh-CN */
+  }
 }
 
 export async function runBootstrap() {
@@ -75,12 +91,9 @@ export async function runBootstrap() {
     }
   }
 
-  // 4) 语言上报（点火式，不等返回失败影响启动）
-  try {
-    await invoke('set_ui_lang', { lang: getLocale() })
-  } catch {
-    /* 上报失败不致命：后端默认 zh-CN */
-  }
+  // 4) 语言上报，并跟随后续的语言切换（后端错误文案要用当前语言）
+  await reportLang()
+  onLocaleChange(reportLang)
 
   // 5) 横幅
   insertBanner(health)
