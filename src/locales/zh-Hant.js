@@ -175,7 +175,6 @@ export default {
   'ui.more': '更多',
   'ui.tipMore': '更多操作（匯出 / 列印 / 圖譜 / 畫布 / 模板 / 模式）',
   'ui.tipDocstats': '寫作統計（點擊設定字數目標）',
-  'ui.noDoc': '未開啟文件',
   'ui.autosave': '自動儲存',
   'ui.tipAutosave': '開啟後：停止輸入 2s 自動寫回原檔案；每 2分鐘保留一份時間戳副本到庫內 .notelume-backup/',
   'ui.dark': '暗黑',

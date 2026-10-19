@@ -1,6 +1,7 @@
-// i18n.test.mjs —— 多语言基础设施的纯逻辑回归（不触 DOM）
+// i18n.test.mjs —— 多语言基础设施的纯逻辑回归（不建 DOM；末尾两条扫 index.html 的文本）
 // 运行：cd src && node tests/i18n.test.mjs
 import assert from 'node:assert'
+import { readFileSync } from 'node:fs'
 import { t as tr, getLocale, setLocale, localeName, onLocaleChange, applyStaticDom } from '../i18n.js'
 import { LOCALES, MESSAGES } from '../locales/index.js'
 
@@ -84,6 +85,25 @@ t('onLocaleChange 订阅与退订', () => {
 
 t('applyStaticDom 对空 / 非 DOM 输入安全退出', () => {
   assert.strictEqual(applyStaticDom(null), undefined)
+})
+
+// 钉住一个真踩过的坑：#filename 上曾挂 data-i18n="ui.noDoc"，而它的内容是动态的
+// （main.js 直接写文件名）。applyStaticDom 切语言时无条件重刷，于是切一次语言就把
+// 当前文件名刷成「未打开文档」（mac 上还会经 MutationObserver 连带刷掉系统标题栏）。
+// 规矩：静态文案才挂 data-i18n，动态文案在渲染点调 t()（见 i18n.js 开头）。
+t('#filename 不挂 data-i18n（它是动态内容，静态刷新会把文件名顶掉）', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  const tag = html.match(/<span[^>]*id="filename"[^>]*>/)
+  assert.ok(tag, 'index.html 里找不到 #filename')
+  assert.ok(!/data-i18n=/u.test(tag[0]), '#filename 上不能挂 data-i18n：' + tag[0])
+})
+
+t('标题栏占位文案五个语言齐全（switchLocale 靠它重写 #filename）', () => {
+  setLocale('zh-CN')
+  for (const { id } of LOCALES) {
+    const v = MESSAGES[id]['ui.noDocOpen']
+    assert.ok(v && !v.includes('{'), id + ' 缺 ui.noDocOpen（缺键会让界面露出键名）')
+  }
 })
 
 console.log('结果：' + pass + ' passed, ' + fail + ' failed')

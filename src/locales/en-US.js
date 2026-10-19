@@ -176,7 +176,6 @@ export default {
   'ui.more': 'More',
   'ui.tipMore': 'More actions (export / print / graph / canvas / templates / modes)',
   'ui.tipDocstats': 'Writing stats (click to set a word goal)',
-  'ui.noDoc': 'No document open',
   'ui.autosave': 'Auto Save',
   'ui.tipAutosave': 'When on: writes back 2s after typing stops; keeps a timestamped copy under .notelume-backup/ in the vault every 2 minutes',
   'ui.dark': 'Dark',
