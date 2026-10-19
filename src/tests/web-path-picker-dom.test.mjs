@@ -60,9 +60,11 @@ const settle = () => wait(20) // 等 apiBrowse 的 Promise 链跑完 paint
 const listedFiles = () => [...document.querySelectorAll('.nl-picker-file')].map((e) => e.textContent.replace('· ', ''))
 
 // 关掉当前还挂着的模态，免得下一条测试数到旧的节点
+// file 模式底部除了 cancel / ok(primary) 还多了一个「上传本机文件」按钮（也是 .nl-prompt-btn、带文字），
+// 所以要显式排掉它，否则 find 会先命中上传按钮、点了不 finish、top-level await 永远挂住。
 function closeOpen() {
   const btns = [...document.querySelectorAll('.nl-prompt-btn')]
-  const cancel = btns.find((b) => b.textContent && !b.classList.contains('primary'))
+  const cancel = btns.find((b) => b.textContent && !b.classList.contains('primary') && !b.classList.contains('nl-picker-upload'))
   if (cancel) cancel.click()
   document.querySelectorAll('.nl-picker-overlay').forEach((o) => o.remove())
 }

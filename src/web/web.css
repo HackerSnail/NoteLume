@@ -130,6 +130,13 @@
   font-size: 13px;
   text-align: center;
 }
+/* 上传本机文件：按钮靠底栏左端，真正的 <input type=file> 不进布局 */
+.nl-picker-upload {
+  margin-right: auto;
+}
+.nl-picker-fileinput {
+  display: none;
+}
 .nl-picker-namerow {
   display: flex;
   align-items: center;

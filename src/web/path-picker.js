@@ -5,7 +5,7 @@
 // .nl-prompt-overlay / .nl-prompt 一套，不新造视觉语言；标题由调用方（tauri-bridge 的 t('dlg.*')）传入，
 // 已经是当前语言。列表 / 面包屑这些 picker 专属样式在 web.css 里按 .nl-picker-* 补。
 
-import { sessionId } from './tauri-core.js'
+import { sessionId, invoke } from './tauri-core.js'
 import { t } from '../i18n.js'
 import { wt } from './web-strings.js'
 
@@ -68,7 +68,36 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
     const ok = el('button', 'nl-prompt-btn primary', t('common.confirm'))
     cancel.type = 'button'
     ok.type = 'button'
-    foot.append(cancel, ok)
+    if (mode === 'file') {
+      // 上传本机文件：浏览器 <input type=file> 拿到真文件→base64→import_vault_file 落进当前浏览目录，
+      // 再把库内绝对路径回给调用方——.docx 经「导入 Word」喂给已实现的服务端 docx_preview，整条流程自动跑通。
+      const upload = el('button', 'nl-prompt-btn nl-picker-upload', wt('ui.uploadLocal'))
+      upload.type = 'button'
+      const fileInput = document.createElement('input')
+      fileInput.type = 'file'
+      fileInput.className = 'nl-picker-fileinput'
+      fileInput.accept = extensions && extensions.length ? extensions.map((e) => '.' + e).join(',') : ''
+      upload.addEventListener('click', () => fileInput.click())
+      fileInput.addEventListener('change', async () => {
+        const f = fileInput.files && fileInput.files[0]
+        fileInput.value = ''
+        if (!f) return
+        if (!state.cur) {
+          pathLabel.textContent = wt('ui.uploadLocal') + ' ✕ ' + t('status.needVaultFolder')
+          return
+        }
+        pathLabel.textContent = wt('ui.uploading')
+        try {
+          finish(await uploadLocalFile(f, state.cur))
+        } catch (e) {
+          pathLabel.textContent = wt('ui.uploadLocal') + ' ✕ ' + String((e && e.message) || e)
+        }
+      })
+      box.appendChild(fileInput)
+      foot.append(upload, cancel, ok)
+    } else {
+      foot.append(cancel, ok)
+    }
     box.appendChild(foot)
 
     overlay.appendChild(box)
@@ -197,4 +226,19 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
 function basename(p) {
   const s = String(p).replace(/[\\/]+$/, '')
   return s.split(/[\\/]/).pop() || ''
+}
+
+/** 把一个本机 File 读成 base64、以 dir 为库根 import_vault_file 落库，返回它的绝对路径 */
+async function uploadLocalFile(file, dir) {
+  const dataUrl = await new Promise((res, rej) => {
+    const fr = new FileReader()
+    fr.onload = () => res(fr.result)
+    fr.onerror = () => rej(fr.error || new Error('read failed'))
+    fr.readAsDataURL(file)
+  })
+  const dataBase64 = String(dataUrl).split(',')[1] || ''
+  const vaultRoot = String(dir).replace(/[\\/]+$/, '')
+  const rel = await invoke('import_vault_file', { vaultRoot, args: { destDirRel: '', name: file.name, dataBase64 } })
+  if (!rel) throw new Error('import failed')
+  return vaultRoot + '/' + rel
 }

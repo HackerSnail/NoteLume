@@ -23,6 +23,21 @@ const TABLE = {
     'Aucun fichier à choisir dans ce dossier',
     'Keine auswählbaren Dateien in diesem Ordner',
   ],
+  // 从本机上传一个文件进沙盒（path-picker.js）
+  'ui.uploadLocal': [
+    '上传本机文件',
+    '上傳本機檔案',
+    'Upload from this device',
+    'Téléverser depuis cet appareil',
+    'Von diesem Gerät hochladen',
+  ],
+  'ui.uploading': [
+    '正在上传并导入…',
+    '正在上傳並匯入…',
+    'Uploading and importing…',
+    'Téléversement et import…',
+    'Wird hochgeladen und importiert…',
+  ],
   // 顶部横幅（bootstrap.js）
   'web.banner': [
     '网页沙盒试用版 · 功能为桌面版子集',
