@@ -8,5 +8,9 @@
     "start": "node serve.mjs",
     "sandbox": "node serve.mjs --sandbox",
     "test": "node tests/run.mjs"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "fast-xml-parser": "^5.11.2"
   }
 }
