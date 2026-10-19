@@ -211,11 +211,15 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
     }
     document.addEventListener('keydown', onKey, true)
 
-    // 起始路径：save 用 defaultPath 的目录，dir/file 从 home（后端回）开始
+    // 起始路径：save 用 defaultPath 的目录，file / save 从库根（沙盒）或 home 开始——桌面
+    // 原生框也是开在一个具体目录里，不是一张空列表；dir 模式（打开知识库）不给起点，保持
+    // 盘符 / 工作区列表让用户自己选。先 paint 再 load：load 失败也还看得见 roots。
     apiBrowse(startPath && mode !== 'save' ? startPath : '', mode === 'file')
       .then((data) => {
         paint(data)
-        if (mode === 'save' && data.home) load(data.home)
+        const explicit = !!(startPath && mode !== 'save')
+        const startDir = explicit || mode === 'dir' ? null : data.vault || data.home
+        if (startDir) load(startDir)
       })
       .catch((e) => {
         pathLabel.textContent = String((e && e.message) || e)

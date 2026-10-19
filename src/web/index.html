@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-web>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="ui.docTitle">NoteLume — Markdown 知识库编辑器</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!-- 图标表：全站唯一的图形来源。静态 HTML 与 JS（icons.js）都只用 <use href="#i-*"> 引用，
+         描边色继承 currentColor，浅色/暗黑/吸血鬼主题下自动换色。 -->
+    <svg class="nl-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></symbol>
+      <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" /><path d="M14 3v5h5" /><path d="M15 14.5v6M12 17.5h6" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v5h7V4" /><path d="M8 14h8v6H8z" /></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" /><path d="M4 10h16M8 3.5v4M16 3.5v4" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M12 7.5V12l3 1.8" /></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z" /><path d="M4 8.5 12 13l8-4.5M12 13v7" /></symbol>
+      <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="7" cy="5.5" r="2.2" /><circle cx="7" cy="18.5" r="2.2" /><circle cx="17" cy="8" r="2.2" /><path d="M7 7.7v8.6" /><path d="M17 10.2c0 3.6-4.6 3.1-10 6" /></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3.5v5M15 3.5v5" /><path d="M7 8.5h10v3a5 5 0 0 1-10 0z" /><path d="M12 16.5v4" /></symbol>
+      <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.2" /><circle cx="18" cy="9" r="2.2" /><circle cx="10.5" cy="18" r="2.2" /><path d="M7.9 8.1 9.9 15.8M8.1 6.9l7.8 1.7M16.3 10.9l-4.4 5.2" /></symbol>
+      <symbol id="i-board" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17z" /><path d="M7 8.5h5v5H7z" /><path d="M15 9.5h3M15 13.5h3" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M12 11.2v5" /><path d="M12 7.8h.01" /></symbol>
+      <symbol id="i-win-min" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
+      <symbol id="i-win-max" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1" /></symbol>
+      <symbol id="i-win-restore" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="9" height="9" rx="1" /><path d="M5.5 15.5v-8a2 2 0 0 1 2-2h8" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5" /></symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4 21 19.5H3z" /><path d="M12 10v4.2M12 17h.01" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" /></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7" /><path d="M6.5 7l1 13h9l1-13" /><path d="M10.5 11v5.5M13.5 11v5.5" /></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 8h8.5M17.5 8H20M4 16h2.5M11 16h9" /><circle cx="15" cy="8" r="2.2" /><circle cx="8.5" cy="16" r="2.2" /></symbol>
+      <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 16V4" /><path d="M8 7.5 12 3.5l4 4" /><path d="M4.5 14v6.5h15V14" /></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M4 12h16" /><path d="M12 4c2.6 2.3 2.6 13.7 0 16M12 4c-2.6 2.3-2.6 13.7 0 16" /></symbol>
+      <symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 8V4h10v4" /><path d="M4 8h16v8h-3" /><path d="M7 16H4V8" /><path d="M7 12.5h10V20H7z" /></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M3 7.5h18v9H3z" /><path d="M6.5 11h.01M10 11h.01M13.5 11h.01M17 11h.01M7.5 14h9" /></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.5" /><circle cx="12" cy="12" r="0.6" fill="currentColor" stroke="none" /></symbol>
+      <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M9 5.5H7a1.5 1.5 0 0 0-1.5 1.5v12A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 17 5.5h-2" /><path d="M9 3.5h6v4H9z" /><path d="M9 12.5h6M9 16h4" /></symbol>
+      <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M15 4.5 20.5 10 12.5 18H7L4 15z" /><path d="M8.5 20.5H20" /></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M3.5 5.5h17v13h-17z" /><path d="M7 9.5l3 2.7-3 2.7M12.5 15h4.5" /></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M8.5 4.5 4 9l4.5 4.5" /><path d="M4 9h10.5a5 5 0 0 1 0 10H8" /></symbol>
+      <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15.5 4.5 20 9l-4.5 4.5" /><path d="M20 9H9.5a5 5 0 0 0 0 10H16" /></symbol>
+      <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8" /><path d="M20 4v4.5h-4.5" /></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19.5v-15" /><path d="M6 10.5 12 4.5l6 6" /></symbol>
+      <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 4.5v15" /><path d="M6 13.5l6 6 6-6" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7" /></symbol>
+      <symbol id="i-align-left" viewBox="0 0 24 24"><path d="M4 4v16" /><path d="M8 8h11M8 14h7" /></symbol>
+      <symbol id="i-align-center" viewBox="0 0 24 24"><path d="M12 4v16" /><path d="M6 8h12M7.5 14h9" /></symbol>
+      <symbol id="i-align-right" viewBox="0 0 24 24"><path d="M20 4v16" /><path d="M5 8h11M9 14h7" /></symbol>
+      <symbol id="i-align-top" viewBox="0 0 24 24"><path d="M4 4h16" /><path d="M8 8v11M14 8v7" /></symbol>
+      <symbol id="i-align-middle" viewBox="0 0 24 24"><path d="M4 12h16" /><path d="M8 6v12M14 7.5v9" /></symbol>
+      <symbol id="i-align-bottom" viewBox="0 0 24 24"><path d="M4 20h16" /><path d="M8 5v11M14 9v7" /></symbol>
+      <symbol id="i-dist-h" viewBox="0 0 24 24"><path d="M3.5 4.5v15M20.5 4.5v15" /><path d="M8.5 6v12M15.5 6v12" /></symbol>
+      <symbol id="i-dist-v" viewBox="0 0 24 24"><path d="M4.5 3.5h15M4.5 20.5h15" /><path d="M6 8.5h12M6 15.5h12" /></symbol>
+      <symbol id="i-group" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></symbol>
+      <symbol id="i-ungroup" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /><path d="M9.5 9.5h5v5h-5z" /></symbol>
+      <symbol id="i-minimap" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17z" /><path d="M7 9h6v8H7z" /></symbol>
+      <symbol id="i-sidebar" viewBox="0 0 24 24"><path d="M3.5 5h17v14h-17z" /><path d="M9.5 5v14" /></symbol>
+      <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15" /></symbol>
+      <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /><path d="M11 8.5v5M8.5 11h5" /></symbol>
+      <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /><path d="M8.5 11h5" /></symbol>
+      <symbol id="i-pilcrow" viewBox="0 0 24 24"><path d="M12 4v16M18 4v16M8 4H6.5a3.5 3.5 0 0 0 0 7H8" /></symbol>
+      <symbol id="i-list-bullet" viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h11" /><circle cx="5" cy="6.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="5" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="5" cy="17.5" r="1.1" fill="currentColor" stroke="none" /></symbol>
+      <symbol id="i-list-ordered" viewBox="0 0 24 24"><path d="M10 6.5h9M10 12h9M10 17.5h9" /><path d="M4 4.5h1.5v4M3.5 15.6c0-1.8 2.6-1.6 2.6 0 0 1.2-2.6 1.9-2.6 3.4h2.8" /></symbol>
+      <symbol id="i-task" viewBox="0 0 24 24"><path d="M5.5 4.5h13a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2z" /><path d="M8 12l2.8 2.8L16.5 9" /></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="M9 7.5 4.5 12 9 16.5" /><path d="M15 7.5 19.5 12 15 16.5" /></symbol>
+      <symbol id="i-quote" viewBox="0 0 24 24"><path d="M6 5.5v13" /><path d="M10.5 9h7.5M10.5 14h5.5" /></symbol>
+      <symbol id="i-hr" viewBox="0 0 24 24"><path d="M4 12h16" /><path d="M7 7.5h10M7 16.5h10" opacity=".35" /></symbol>
+      <symbol id="i-table" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4z" /><path d="M4 10.5h16M12 5.5v13" /></symbol>
+      <symbol id="i-lightbulb" viewBox="0 0 24 24"><path d="M9.5 18.5h5M10.5 21.5h3" /><path d="M12 3a6.5 6.5 0 0 1 3.5 12v2.5h-7V15A6.5 6.5 0 0 1 12 3z" /></symbol>
+      <symbol id="i-math" viewBox="0 0 24 24"><path d="M17.5 5h-10l5.5 7-5.5 7h10" /></symbol>
+      <symbol id="i-diagram" viewBox="0 0 24 24"><path d="M4.5 4.5h6v5h-6z" /><path d="M13.5 14.5h6v5h-6z" /><path d="M7.5 9.5v3a2 2 0 0 0 2 2h4" /></symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24"><path d="M16.5 4.5 19.5 7.5 8.5 18.5l-4 1z" /><path d="M14 7l3 3" /></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4z" /><circle cx="9" cy="10.5" r="1.6" /><path d="M4 16l4.5-4.5 4 4 2.5-2.5 5 5" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8" /></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 13.5A8.5 8.5 0 1 1 10.5 4a6.8 6.8 0 0 0 9.5 9.5z" /></symbol>
+      <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" /></symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.4 0 1.8-.9 1.8-1.8 0-1.6 1.2-2.2 2.7-2.2h1.5c1.7 0 3-1.3 3-3 0-5-4-10-9-10z" /><circle cx="8" cy="9" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="7" r="1.1" fill="currentColor" stroke="none" /><circle cx="7" cy="13.5" r="1.1" fill="currentColor" stroke="none" /></symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="12" rx="1" /><path d="M9 20.5h6M12 17v3.5" /></symbol>
+    </svg>
+    <div id="app">
+      <header class="toolbar">
+        <span class="appbar-lead" data-tauri-drag-region>NoteLume</span>
+        <div class="btn-group">
+          <button id="btn-open-file" data-i18n-title="ui.tipOpenFile" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg><span class="btn-label" data-i18n="ui.openFile">打开文件</span></button>
+          <button id="btn-open" data-i18n-title="ui.tipOpenVault" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg><span class="btn-label" data-i18n="ui.openVault">打开知识库</span></button>
+          <button id="btn-new-file" data-i18n-title="ui.tipNew" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg><span class="btn-label" data-i18n="ui.new">新建</span></button>
+          <button id="btn-save" data-i18n-title="ui.tipSave" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg><span class="btn-label" data-i18n="ui.save">保存</span></button>
+          <button id="btn-daily" data-i18n-title="ui.tipToday" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg><span class="btn-label" data-i18n="ui.today">今日</span></button>
+          <button id="btn-source" data-i18n-title="ui.tipSource" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg><span class="btn-label" data-i18n="ui.source">源码</span></button>
+          <button id="btn-more" data-i18n-title="ui.tipMore" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg><span class="btn-label" data-i18n="ui.more">更多</span></button>
+        </div>
+        <span id="docstats" class="docstats" data-i18n-title="ui.tipDocstats" title="写作统计（点击设置字数目标）"></span>
+        <!-- 文件名是动态内容，全由 main.js 写（无文档时占位走 ui.noDocOpen）。这里不能挂 data-i18n：
+             applyStaticDom 切语言时会把带该属性的元素整片重刷，真实文件名会被占位文案顶掉 -->
+        <span id="filename" class="filename">（无打开文档）</span>
+        <span class="spacer" data-tauri-drag-region></span>
+        <label class="autosave-toggle" data-i18n-title="ui.tipAutosave" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
+          <input type="checkbox" id="chk-autosave" /> <span data-i18n="ui.autosave">自动保存</span>
+        </label>
+        <button id="btn-theme" data-i18n-title="ui.tipTheme" title="切换主题"><svg class="nl-ico"><use href="#i-moon" /></svg><span data-i18n="ui.dark">暗黑</span></button>
+        <div class="win-btns">
+          <button type="button" data-win="min" data-i18n-title="ui.winMin" data-i18n-aria-label="ui.winMin" title="最小化" aria-label="最小化">
+            <svg class="nl-ico" aria-hidden="true"><use href="#i-win-min" /></svg>
+          </button>
+          <button type="button" data-win="max" data-i18n-title="ui.winMaxTip" data-i18n-aria-label="ui.winMax" title="最大化 / 还原" aria-label="最大化">
+            <svg class="nl-ico" aria-hidden="true"><use href="#i-win-max" /></svg>
+          </button>
+          <button type="button" data-win="close" data-i18n-title="ui.winClose" data-i18n-aria-label="ui.winClose" title="关闭" aria-label="关闭">
+            <svg class="nl-ico" aria-hidden="true"><use href="#i-close" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+        <div class="side-corner" role="group">
+          <button type="button" class="side-corner-btn" data-tab="files" data-i18n-title="ui.sideFiles" title="文件"><svg class="nl-ico"><use href="#i-folder" /></svg></button>
+          <button type="button" class="side-corner-btn" data-tab="outline" data-i18n-title="ui.sideOutline" title="大纲"><svg class="nl-ico"><use href="#i-list-bullet" /></svg></button>
+          <button type="button" class="side-corner-btn" id="btn-inspector" data-i18n-title="ui.sideInspector" title="检查器"><svg class="nl-ico"><use href="#i-sliders" /></svg></button>
+        </div>
+        <aside class="sidebar" id="sidebar">
+          <section class="panel">
+            <div class="side-tabs" role="tablist">
+              <button type="button" class="side-tab" data-tab="files" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-folder" /></svg><span data-i18n="ui.sideFiles">文件</span></button>
+              <button type="button" class="side-tab" data-tab="outline" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-list-bullet" /></svg><span data-i18n="ui.sideOutline">大纲</span></button>
+            </div>
+            <div class="search-box">
+              <svg class="nl-ico"><use href="#i-search" /></svg>
+              <input id="search-input" class="search-input" type="search" data-i18n-placeholder="ui.searchPh" placeholder="标题 / 正文 / #标签" autocomplete="off" />
+            </div>
+            <div id="search-results" class="search-results"></div>
+            <div id="filetree" class="filetree"></div>
+            <nav id="outline" class="outline hidden"></nav>
+          </section>
+        </aside>
+        <div class="nl-gutter" id="gutter-side" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterSide" title="拖拽改变侧栏宽度"></div>
+
+        <main class="editor-pane" id="editor-pane">
+          <div id="editor" class="editor"></div>
+          <div id="source-mount" class="nl-source hidden"></div>
+          <div id="canvas-mount" class="hidden"></div>
+        </main>
+
+        <div class="nl-gutter" id="gutter-insp" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterInsp" title="拖拽改变检查器宽度"></div>
+        <aside class="inspector" id="inspector">
+          <details class="panel">
+            <summary><h2 data-i18n="panel.docProps">文档属性</h2></summary>
+            <div class="panel-body">
+              <div id="frontmatter" class="frontmatter"></div>
+            </div>
+          </details>
+          <details class="panel">
+            <summary><h2 data-i18n="panel.tags">标签</h2></summary>
+            <div class="panel-body">
+              <div id="tags" class="tags"></div>
+              <div class="tags-sub" data-i18n="panel.tagsGlobal">全局标签</div>
+              <div id="tags-global" class="tags tags-global"></div>
+              <div id="tags-global-docs" class="tags-global-docs"></div>
+            </div>
+          </details>
+          <details class="panel">
+            <summary><h2 data-i18n="panel.backlinks">双向链接</h2></summary>
+            <div class="panel-body">
+              <div class="bl-h3" data-i18n="panel.citeThis">引用本文档</div>
+              <div id="backlinks" class="link-list"></div>
+              <div class="bl-h3" data-i18n="panel.cites">本文档引用</div>
+              <div id="outgoing" class="link-list"></div>
+            </div>
+          </details>
+          <section class="panel">
+            <h2><svg class="nl-ico"><use href="#i-box" /></svg><span data-i18n="panel.snapshots">历史版本</span></h2>
+            <div id="snapshots" class="snapshots"></div>
+          </section>
+          <section class="panel">
+            <h2><svg class="nl-ico"><use href="#i-branch" /></svg>Git</h2>
+            <div id="git" class="git"></div>
+          </section>
+          <section class="panel">
+            <h2><svg class="nl-ico"><use href="#i-plug" /></svg><span data-i18n="panel.plugins">插件</span></h2>
+            <div id="plugins" class="plugins"></div>
+          </section>
+        </aside>
+      </div>
+    </div>
+
+    <div id="graph-modal" class="graph-modal hidden" role="dialog" data-i18n-aria-label="graph.aria" aria-label="知识图谱">
+      <div class="graph-panel">
+        <div class="graph-head">
+          <span class="graph-title"><svg class="nl-ico"><use href="#i-graph" /></svg><span data-i18n="graph.title">知识图谱</span></span>
+          <span id="graph-info" class="graph-info"></span>
+          <button id="graph-close" class="graph-close" data-i18n-title="common.close" title="关闭 (Esc)"><svg class="nl-ico"><use href="#i-close" /></svg></button>
+        </div>
+        <canvas id="graph-canvas" class="graph-canvas"></canvas>
+      </div>
+    </div>
+
+    <div id="snapshot-modal" class="snapshot-modal hidden" role="dialog" data-i18n-aria-label="snapshot.aria" aria-label="历史版本预览">
+      <div class="snapshot-panel">
+        <div class="snapshot-head">
+          <span class="snapshot-title"><svg class="nl-ico"><use href="#i-box" /></svg><span id="snapshot-label"></span></span>
+          <button id="snapshot-close" class="snapshot-close" data-i18n-title="common.close" title="关闭 (Esc)"><svg class="nl-ico"><use href="#i-close" /></svg></button>
+        </div>
+        <div id="snapshot-preview" class="snapshot-preview ProseMirror"></div>
+        <div class="snapshot-foot">
+          <span id="snapshot-meta" class="snapshot-meta"></span>
+          <span class="spacer"></span>
+          <button id="snapshot-rollback" class="btn-primary"><svg class="nl-ico"><use href="#i-undo" /></svg><span data-i18n="snapshot.rollback">回滚到此版本</span></button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 全局错误可视化：任何未捕获异常 / Promise 拒绝都不再显示在界面（状态栏已去掉），
+      // 统一打到 console，避免“白屏无反应”时无从排查（模块加载失败也能捕获）。
+      window.__nlError = function (msg) {
+        console.error('[NoteLume] ' + msg)
+      }
+      window.addEventListener('error', function (e) {
+        window.__nlError('启动错误：' + (e.message || e.error))
+      })
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason
+        window.__nlError('异步错误：' + ((r && r.message) || r))
+      })
+    </script>
+    <script type="module" src="/web/entry.js"></script>
+  </body>
+</html>

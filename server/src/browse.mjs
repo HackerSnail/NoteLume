@@ -45,13 +45,26 @@ function looksLikeDir(p) {
   }
 }
 
+/** home：沙盒给工作区根，本机给用户目录（save 模式的兜底起点） */
+function homeOf(jail) {
+  return jail ? fs.realpathSync(jail) : os.homedir()
+}
+
+/** 沙盒会话的库根：file / save 模式的 picker 从这开始（本机模式没有这个概念，回 null） */
+function vaultOf(jail) {
+  if (!jail) return null
+  const v = path.join(fs.realpathSync(jail), 'vault')
+  return fs.existsSync(v) ? v : null
+}
+
 /**
  * 列一个目录。jail 非空时锁在 jail 内（沙盒模式）。
  * wantFiles 为真时附带可挑的文件（md / markdown / canvas / docx）。
+ * 回包里的 vault 是「file / save 模式该从哪开始」的提示：沙盒是会话库根，本机是 null。
  */
 export function browse(absPath, { jail = null, wantFiles = false } = {}) {
   if (!absPath) {
-    return { path: '', parent: null, roots: roots(jail), dirs: [], files: [] }
+    return { path: '', parent: null, roots: roots(jail), dirs: [], files: [], home: homeOf(jail), vault: vaultOf(jail) }
   }
   const target = path.resolve(String(absPath))
   if (jail) {
@@ -93,6 +106,7 @@ export function browse(absPath, { jail = null, wantFiles = false } = {}) {
     roots: roots(jail),
     dirs,
     files,
-    home: jail ? fs.realpathSync(jail) : os.homedir(),
+    home: homeOf(jail),
+    vault: vaultOf(jail),
   }
 }

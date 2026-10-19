@@ -18,11 +18,25 @@ const canon = (p) => {
   }
 }
 
-/** 该绝对路径是否落在 jail 内（jail 为空即本机模式，不限制） */
+/** realpathSync 只对存在的路径生效。commit 是「先校验后建目录」，目标（如样例文档的
+ *  plannedDocRel 带一层标题子目录）落盘前并不存在，直接 canon 会 ENOENT 把整条 commit
+ *  打崩；这里逐级上找最近的存在的祖先来解析——符号链接在祖先层面照样归一，比对结果
+ *  与「路径已存在」时一致。 */
+function canonNearest(p) {
+  let cur = path.resolve(String(p))
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur)
+    if (parent === cur) break
+    cur = parent
+  }
+  return canon(cur)
+}
+
+/** 该绝对路径是否落在 jail 内（jail 为空即本机模式，不限制）。目标可以不存在。 */
 function assertInsideJail(jail, abs) {
   if (!jail) return
   const jr = canon(jail)
-  const r = canon(abs)
+  const r = canonNearest(abs)
   if (!(r === jr || r.startsWith(jr + path.sep) || r.startsWith(jr + '/'))) {
     throw new VaultError('路径不在本会话工作区内')
   }

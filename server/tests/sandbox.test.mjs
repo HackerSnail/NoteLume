@@ -58,6 +58,19 @@ test('首屏入口是 home.md，不是字母序第一篇示例', () => {
   assert.equal(home, 'home.md', '实际会开成 ' + home)
 })
 
+test('browse 空路径回 vault 起点：file / save 的 picker 从库根开始，不落空列表', () => {
+  const jail = jailRoot(B)
+  const r = browse('', { jail, wantFiles: true })
+  assert.equal(r.vault, path.join(fs.realpathSync(jail), 'vault'), 'vault 应指向会话库根')
+  assert.equal(r.home, fs.realpathSync(jail), 'home 仍是工作区根（兜底起点）')
+  assert.ok(fs.existsSync(r.vault), 'vault 起点必须真实存在')
+  // 库根里点得到 .docx：导入 Word 的选择框不再是一张空列表
+  const inVault = browse(r.vault, { jail, wantFiles: true })
+  assert.ok(inVault.files.some((f) => f.kind === 'docx'), '库根应列得出 .docx：' + JSON.stringify(inVault.files))
+  // 本机模式没有 vault 概念，回 null（picker 走 home / 盘符列表）
+  assert.equal(browse('', { jail: null }).vault, null, '本机模式 vault 应为 null')
+})
+
 test('非法 sid 直接拒，不当目录名用', () => {
   for (const bad of ['../etc', 'a/b', 'with space', '.']) {
     assert.throws(() => jailRoot(bad), /bad session id/, `${bad} 竟然放行`)

@@ -3,6 +3,8 @@
 //
 // 本机模式（jail = null）跑命令语义：preview 出 wire 契约字段、commit 落盘 + 去重索引 + 复用；
 // 监狱约束本身在 sandbox.test.mjs，这里不重复。图片/公式样本在内存里用 adm-zip 现造，避免依赖外部文件。
+// 例外是末尾那条 jail 回归：assertInsideJail 用 realpathSync 校验「先校验后建目录」的目标，
+// 目标子目录不存在时 ENOENT 会把 commit 打崩——本机模式下校验被跳过，只有 jail 下才复现。
 
 import crypto from 'node:crypto'
 import assert from 'node:assert'
@@ -149,6 +151,49 @@ test('公式 m:oMathPara 降级为 warning（mathDropped），不抛错', () => 
 
 test('非法字节 → 报错而非崩', () => {
   bad('docx_preview', { args: { srcB64: 'notazip', srcDisplayName: 'x.docx', destDir: '' } }, '坏 zip')
+})
+
+// ---------- jail 下的 commit：目标子目录尚未落盘，校验不能误杀 ----------
+// 回归：样例文档的 plannedDocRel 自带一层标题子目录（NoteLume-Word-导入示例/…），
+// assertInsideJail 原先对「不存在的目录」直接 ENOENT，沙盒里点「接受并落库」必崩；
+// 本机模式（jail=null）校验被跳过，所以那条 bug 在纯本机测试里是绿的。
+test('docx_commit：jail 下目标子目录不存在也正常落盘', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-docx-jail-'))
+  try {
+    const jail = path.join(base, 'jail')
+    const vault = path.join(jail, 'vault')
+    fs.mkdirSync(vault, { recursive: true })
+    const jctx = { sid: 'jailtest', jail }
+    const p = ok('docx_preview', { args: { srcB64: b64(docWithImage), srcDisplayName: 'img.docx', destDir: '', withFrontmatter: false, maxImageBytes: 8388608, dedupIndex: {} } }, 'preview')
+    assert.equal(p.plannedDocRel, 'img/img.md', 'plannedDocRel 应带标题子目录')
+    const r = dispatch(jctx, 'docx_commit', { args: { vaultRoot: vault, destDir: '', md: p.md, docRel: p.plannedDocRel, images: p.images, dedupIndex: {}, newTitle: null } })
+    assert.equal(r.ok, true, 'jail 下 commit 应成功：' + (r.error || ''))
+    assert.ok(fs.existsSync(path.join(vault, 'img', 'img.md')), 'md 应落进原本不存在的子目录')
+    assert.ok(fs.existsSync(path.join(vault, ...p.images[0].plannedRel.split('/'))), '图片应落进原本不存在的子目录')
+    // 复用分支同理：索引指着库内一个还没落盘的路径，也要能补写而不是 ENOENT 后走错分支
+    const r2 = dispatch(jctx, 'docx_commit', { args: { vaultRoot: vault, destDir: '', md: '# x', docRel: 'plain.md', images: [{ sha256: IMG_SHA, ext: 'png', dataB64: b64(Buffer.from('fake-png-bytes')), plannedRel: 'img/' + IMG_SHA.slice(0, 12) + '.png' }], dedupIndex: { [IMG_SHA]: 'img/' + IMG_SHA.slice(0, 12) + '.png' }, newTitle: null } })
+    assert.equal(r2.ok, true, '复用分支应成功：' + (r2.error || ''))
+    assert.ok(fs.existsSync(path.join(vault, 'img', IMG_SHA.slice(0, 12) + '.png')), '索引路径应补写上')
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true })
+  }
+})
+
+// 越界仍然拦：索引里的路径经 vaultJoin 的 '..' 就已抛错，这里确认不会把文件写到 jail 外
+test('docx_commit：jail 下越界索引被拦下且不写盘', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-docx-jail-'))
+  try {
+    const jail = path.join(base, 'jail')
+    const vault = path.join(jail, 'vault')
+    fs.mkdirSync(vault, { recursive: true })
+    const r = dispatch({ sid: 'jailtest', jail }, 'docx_commit', { args: { vaultRoot: vault, destDir: '', md: '# x', docRel: 'ok.md', images: [{ sha256: IMG_SHA, ext: 'png', dataB64: b64(Buffer.from('fake-png-bytes')), plannedRel: 'img/a.png' }], dedupIndex: { [IMG_SHA]: '../../outside.png' }, newTitle: null } })
+    assert.equal(r.ok, true, '整体仍应成功（越界项走 plannedRel 兜底）')
+    assert.ok(fs.existsSync(path.join(vault, 'ok.md')), 'md 正常落盘')
+    assert.ok(fs.existsSync(path.join(vault, 'img', 'a.png')), '图片走 plannedRel 落盘')
+    assert.ok(!fs.existsSync(path.join(base, 'outside.png')), '不得写到 jail 外')
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true })
+  }
 })
 
 console.log('结果：' + pass + ' passed, ' + fail + ' failed')
