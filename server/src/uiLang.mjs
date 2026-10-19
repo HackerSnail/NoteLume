@@ -202,13 +202,14 @@ const TABLE = {
     'Bild nicht gefunden: {src}',
   ],
 
-  // 只属于网页版（桌面版走原生能力，后端不实现）
+  // 只属于网页版（桌面版走原生能力，后端不实现）。这条是访客在菜单 / 命令面板里点到
+  // 桌面专属功能时弹的唯一文案，所以写成一句完整的话，不带 [code] 前串。
   webUnsupported: [
-    '该功能在网页版不可用：桌面版支持，网页沙盒只做了编辑与知识库能力。',
-    '該功能在網頁版不可用：桌面版支持，網頁沙盒只做了編輯與知識庫能力。',
-    'Not available in the web build: the sandbox covers editing and the knowledge base only.',
-    'Non disponible dans la version web : la sandbox ne couvre que l’édition et la base de connaissances.',
-    'Im Webbau nicht verfügbar: Die Sandbox deckt nur Editing und Wissensbasis ab.',
+    '网页版不支持此功能，请下载桌面版。',
+    '網頁版不支援此功能，請下載桌面版。',
+    'This feature isn’t supported in the web version — please download the desktop app.',
+    'Cette fonctionnalité n’est pas prise en charge dans la version web : merci de télécharger l’application de bureau.',
+    'Diese Funktion wird in der Webversion nicht unterstützt – bitte laden Sie die Desktop-App herunter.',
   ],
   webNetFailed: [
     '连不上本地服务（server/serve.mjs 是否已启动？）：{err}',

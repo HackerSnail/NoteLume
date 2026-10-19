@@ -14,7 +14,17 @@ import { kbHandlers } from './kbCommands.mjs'
 import { msg, setLang, LANG_LIST } from './uiLang.mjs'
 import { defaultVaultRoot, isSafeSid, scratchRoot } from './paths.mjs'
 
-/** 桌面版有、网页沙盒不做的命令（前端侧由 desktop-gate 的 desktopOnlyError 分流，面板藏在 web.css） */
+/**
+ * 桌面版有、网页沙盒不做的命令（面板与入口藏在 src/web/web.css，菜单项本身不藏）。
+ * 访客点到这些命令时回的就是 msg('webUnsupported') 那一句，不带 [code] 前串。
+ *
+ * 错误上另挂 code：网页版前端（src/web/tauri-core.js）靠它把这句话提示出来。
+ * 桌面版的 setStatus 早已从界面去掉（main.js 里只剩 console.debug），Git / 插件的失败在
+ * 桌面版走的就是这条路——没有 code，网页版点这些项就是「屏幕上一个反应都没有」。
+ * 文案只在 uiLang.mjs 存一份，判定的唯一出处也在这里（前端不再抄一份命令清单）。
+ */
+export const UNSUPPORTED_CODE = 'desktop-only'
+
 export const UNSUPPORTED = new Set([
   'git_open', 'git_status', 'git_log', 'git_diff_file', 'git_config_identity', 'git_init', 'git_commit_all',
   'git_r_have', 'git_r_info', 'git_r_remote_list', 'git_r_remote_add', 'git_r_remote_set_url', 'git_r_fetch',
@@ -65,13 +75,19 @@ function handlerView(ctx) {
 export function dispatch(ctx, cmd, params) {
   try {
     if (!ctx || !isSafeSid(ctx.sid || '')) throw new Error('bad session id')
-    if (UNSUPPORTED.has(cmd)) throw new Error('[unsupported] ' + msg('webUnsupported'))
+    // 已知不支持：回一句给用户看的完整话术；只有根本没登记的命令才留 [unsupported] 调试前串
+    if (UNSUPPORTED.has(cmd)) {
+      const e = new Error(msg('webUnsupported'))
+      e.code = UNSUPPORTED_CODE
+      throw e
+    }
     const fn = API[cmd] || EXTRA[cmd]
     if (!fn) throw new Error('[unsupported] ' + cmd)
     const result = fn.call(handlerView(ctx), params || {}, cmd)
     return { ok: true, result: result === undefined ? null : result }
   } catch (e) {
     const text = e && e.message ? String(e.message) : String(e)
-    return { ok: false, error: text }
+    // code 原样带上：前端靠 'desktop-only' 把这句提示提示到屏幕上，其余失败只有文案
+    return e && e.code ? { ok: false, error: text, code: String(e.code) } : { ok: false, error: text }
   }
 }

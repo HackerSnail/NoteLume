@@ -6,8 +6,10 @@
 //   - open({directory:false})           → 选文件，回字符串路径；multiple:true 回字符串数组；取消回 null / []
 //   - save({defaultPath})               → 选目录 + 填文件名，回字符串路径；取消回 null
 //   - confirm(msg, {title})             → window.confirm（桌面这里只用于是/否）
-//   - message(msg, {title, kind})       → window.alert（错误 / 提示）
+//   - message(msg, {title, kind})      → window.alert（错误 / 提示）
 // 目录浏览的真实数据来自后端 /api/browse，由 path-picker.js 画出来。
+// 注意：bridge 的 dialogConfirm / dialogMessage 在无桌面环境里直接调 window.*，不会走到这里的
+// confirm / message（open / save 才会走），所以这两个导出只是给「直接 import plugin-dialog」的调用点兜底。
 
 import { pickPath } from './path-picker.js'
 

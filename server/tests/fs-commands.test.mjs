@@ -14,7 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { dispatch } from '../src/router.mjs'
 import { handlers } from '../src/fsCommands.mjs'
-import { msg } from '../src/uiLang.mjs'
+import { msg, setLang } from '../src/uiLang.mjs'
 import { fnv1a } from '../src/vault.mjs'
 
 let pass = 0
@@ -237,10 +237,40 @@ test('take_launch_paths：网页版没有拖开语义，恒回空数组', () => 
   assert.deepEqual(ok('take_launch_paths', {}, '启动参数'), [])
 })
 
-test('未列出的命令回 [unsupported]，不是 500 堆栈', () => {
-  const r = dispatch(ctx, 'git_status', {})
+test('桌面专属命令回一句给用户看的完整话术，不带 [code] 前串', () => {
+  // 访客在菜单 / 命令面板里点到 Git / Word / 整站导出时看到的就是这一句
+  for (const cmd of ['git_status', 'export_docx', 'build_site_graph', 'list_plugins']) {
+    const r = dispatch(ctx, cmd, {})
+    assert.equal(r.ok, false, cmd + ' 该被拒')
+    assert.equal(r.error, msg('webUnsupported'), cmd + ' 文案不对：' + r.error)
+    assert.ok(!r.error.startsWith('['), cmd + ' 不该带调试前串：' + r.error)
+    // code 是前端把这句话提示到屏幕上的唯一依据（与 src/desktop-gate.js 的 DESKTOP_ONLY_CODE 同值）
+    assert.equal(r.code, 'desktop-only', cmd + ' 该带 desktop-only 标记：' + JSON.stringify(r))
+  }
+})
+
+test('普通失败不带 desktop-only 标记（否则访客的误操作会被说成“网页版不支持”）', () => {
+  const r = dispatch(ctx, 'read_md_file', { ...V, path: '../outside.md' })
+  assert.equal(r.ok, false, '越界读该被拒')
+  assert.equal(r.code, undefined, '路径越界不是“不支持”：' + JSON.stringify(r))
+  assert.equal(dispatch(ctx, 'no_such_command_xyz', {}).code, undefined, '未登记命令也不带标记')
+})
+
+test('不支持文案跟着界面语言走（后端靠 set_ui_lang 上报）', () => {
+  try {
+    setLang('en-US')
+    assert.match(dispatch(ctx, 'git_status', {}).error, /desktop app/)
+    setLang('de-DE')
+    assert.match(dispatch(ctx, 'export_docx', {}).error, /Desktop-App/)
+  } finally {
+    setLang('zh-CN')
+  }
+})
+
+test('根本没登记的命令才回 [unsupported] 调试前串，不是 500 堆栈', () => {
+  const r = dispatch(ctx, 'no_such_command_xyz', {})
   assert.equal(r.ok, false)
-  assert.ok(r.error.startsWith('[unsupported]'), r.error)
+  assert.equal(r.error, '[unsupported] no_such_command_xyz')
 })
 
 fs.rmSync(base, { recursive: true, force: true })

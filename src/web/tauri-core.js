@@ -4,8 +4,11 @@
 // 于是原样进产物的 tauri-bridge.js 拿到的 invoke 就是这个函数——桌面文件一行不用改（§2 决策 1）。
 //
 // 协议（§3）：POST /api/invoke，body {cmd, params}，头 x-notelume-session:<sid>。
-// 响应一律 200 + {ok:true,result} / {ok:false,error}；error 原样抛成 Error，
+// 响应一律 200 + {ok:true,result} / {ok:false,error[,code]}；error 原样抛成 Error，
 // 保留 [invalid_path] / [not_found] / [unsupported] 前串，前端按前串分派的既有约定不变。
+// code:'desktop-only'（后端 router 对桌面专属命令的标记）额外做一件事：把那句话提示到屏幕上。
+
+import { notifyDesktopOnly } from './desktop-only.js'
 
 let sidCache = null
 
@@ -58,5 +61,12 @@ export async function invoke(cmd, params) {
     throw new Error('本地服务返回非 JSON（HTTP ' + res.status + '）')
   }
   if (data && data.ok) return data.result
-  throw new Error((data && data.error) || 'invoke failed: ' + cmd)
+  const text = (data && data.error) || 'invoke failed: ' + cmd
+  const err = new Error(text)
+  if (data && data.code) {
+    err.code = String(data.code)
+    // 所有后端调用都过这一个漏斗，桌面专属命令的判定因此只需要 router.mjs 一处
+    if (err.code === 'desktop-only') notifyDesktopOnly(text)
+  }
+  throw err
 }

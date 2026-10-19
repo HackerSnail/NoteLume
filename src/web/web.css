@@ -143,3 +143,34 @@
 .nl-picker-name {
   flex: 1;
 }
+
+/* —— 「网页版不支持」提示（desktop-only.js）——
+   桌面版的失败提示走 setStatus，而 setStatus 早已从界面上去掉，只剩 console.debug；
+   访客点了命令面板里的 Git / 插件类命令就会「一个反应都没有」。网页版用这条底部提示兜住。
+   不用 alert：开库时插件与 Git 的自检也会被拒，模态框会在首屏拦住访客。 */
+.nl-web-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 2200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.nl-web-toast {
+  pointer-events: auto;
+  max-width: min(560px, 86vw);
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--fg);
+  font-size: 12.5px;
+  line-height: 1.5;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+}
