@@ -36,3 +36,5 @@ NoteLume 是一个本地 Markdown 知识库编辑器，当前主形态是 Tauri 
 所有涉及上述能力的代码必须通过环境判断隔离，不能直接删除桌面版实现。
 
 网页版的文件读写不走浏览器本地能力：前端调的还是 `invoke(cmd, params)` 那一套形状，传输层被替成 `POST /api/invoke`，由 `server/` 的 Node 后端读写真文件系统。浏览器只当客户端。
+
+web版代码推送到web 分支
