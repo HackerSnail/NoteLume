@@ -28,9 +28,10 @@ function el(tag, cls, text) {
 
 /**
  * 打开一个路径选择框。mode: 'dir' 选目录 | 'file' 选文件 | 'save' 选目录 + 填文件名。
- * multiple 仅 file 模式有意义。返回 Promise<string | string[] | null>。
+ * multiple 仅 file 模式有意义。extensions 仅 file 模式有意义：限定可选扩展名（小写、不含点），
+ * 对齐桌面版 filters 的行为——非空时列表只列这些类型，空 / 缺省则全列。返回 Promise<string | string[] | null>。
  */
-export function pickPath({ mode = 'dir', multiple = false, title = '', startPath = '' } = {}) {
+export function pickPath({ mode = 'dir', multiple = false, title = '', startPath = '', extensions = null } = {}) {
   return new Promise((resolve) => {
     const overlay = el('div', 'nl-prompt-overlay nl-picker-overlay')
     const box = el('div', 'nl-prompt nl-picker')
@@ -115,7 +116,10 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
         list.appendChild(li)
       }
       if (mode === 'file') {
-        for (const f of data.files) {
+        // 后端回的每个文件带 kind（扩展名）；给了 extensions 就只列对得上的，对齐桌面 filters
+        const allow = extensions && extensions.length ? extensions : null
+        const shown = allow ? data.files.filter((f) => allow.includes(String(f.kind || '').toLowerCase())) : data.files
+        for (const f of shown) {
           const li = el('div', 'nl-picker-item nl-picker-file')
           li.textContent = '· ' + f.name
           const abs = f.path
@@ -136,7 +140,7 @@ export function pickPath({ mode = 'dir', multiple = false, title = '', startPath
           if (multiple && state.selectedMulti.includes(abs)) li.classList.add('sel')
           list.appendChild(li)
         }
-        if (!data.files.length) list.appendChild(el('div', 'nl-picker-empty', wt('ui.noFiles')))
+        if (!shown.length) list.appendChild(el('div', 'nl-picker-empty', wt('ui.noFiles')))
       }
     }
 
