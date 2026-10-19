@@ -3,7 +3,7 @@ name = "notelume"
 version = "0.1.0"
 description = "Markdown 知识库编辑器（Typora 式 WYSIWYG + 精简 Obsidian 知识库能力）"
 authors = ["NoteLume"]
-edition = "2021"
+edition = "2026"
 
 # Tauri v2 推荐结构：逻辑放在 lib，main.rs 仅做入口
 [lib]
