@@ -14,7 +14,7 @@ import { kbHandlers } from './kbCommands.mjs'
 import { msg, setLang, LANG_LIST } from './uiLang.mjs'
 import { defaultVaultRoot, isSafeSid, scratchRoot } from './paths.mjs'
 
-/** 桌面版有、网页沙盒不做的命令（前端同时在命令注册表里拦掉，见 src/web/commandsGuard.js） */
+/** 桌面版有、网页沙盒不做的命令（前端侧由 desktop-gate 的 desktopOnlyError 分流，面板藏在 web.css） */
 export const UNSUPPORTED = new Set([
   'git_open', 'git_status', 'git_log', 'git_diff_file', 'git_config_identity', 'git_init', 'git_commit_all',
   'git_r_have', 'git_r_info', 'git_r_remote_list', 'git_r_remote_add', 'git_r_remote_set_url', 'git_r_fetch',
@@ -46,6 +46,18 @@ const EXTRA = {
   },
 }
 
+/** 命令总表：fs 与 kb 两张拼一起，handler 之间可以 `this.other_cmd(...)` 互相复用 */
+const API = Object.assign(Object.create(handlers), kbHandlers)
+
+/**
+ * handler 的 this：本次请求的 sid / jail 挂自身，命令表挂原型链。
+ * 直接 fn.call(ctx) 的话 this 里没有命令表，create_md_file 里的 this.write_md_file 就是
+ * undefined——网页版点「新建文件」必然 TypeError（这条命令当时没有单测覆盖）。
+ */
+function handlerView(ctx) {
+  return Object.assign(Object.create(API), { sid: ctx.sid, jail: ctx.jail })
+}
+
 /**
  * 执行一条命令。ctx = { sid, jail }，jail 为 null 表示本机模式不限制路径。
  * 返回 { ok, result } 或 { ok:false, error }，绝不抛（异常都折成 error 串）。
@@ -54,9 +66,9 @@ export function dispatch(ctx, cmd, params) {
   try {
     if (!ctx || !isSafeSid(ctx.sid || '')) throw new Error('bad session id')
     if (UNSUPPORTED.has(cmd)) throw new Error('[unsupported] ' + msg('webUnsupported'))
-    const fn = handlers[cmd] || kbHandlers[cmd] || EXTRA[cmd]
+    const fn = API[cmd] || EXTRA[cmd]
     if (!fn) throw new Error('[unsupported] ' + cmd)
-    const result = fn.call(ctx, params || {}, cmd)
+    const result = fn.call(handlerView(ctx), params || {}, cmd)
     return { ok: true, result: result === undefined ? null : result }
   } catch (e) {
     const text = e && e.message ? String(e.message) : String(e)

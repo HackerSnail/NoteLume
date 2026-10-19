@@ -49,21 +49,24 @@ configure({ sandbox: SANDBOX })
 const removed = pruneSessions()
 if (removed.length) console.log(`[serve] 清理了 ${removed.length} 个过期会话工作区`)
 
-/** 演示库首屏：从 default-vault 里挑一篇排在最前的 md 作为 lastFile */
+/** 演示库首屏：从 default-vault 里挑首页作为 lastFile */
 function demoEntry(sid) {
   if (cfg.mode !== 'sandbox') return { vaultRoot: null, file: null }
   const vault = defaultVaultRoot(sid)
   if (!vault) return { vaultRoot: null, file: null }
-  let first = null
+  let names = []
   try {
-    first = fs
+    names = fs
       .readdirSync(vault)
       .filter((n) => n.toLowerCase().endsWith('.md'))
-      .sort()[0]
+      .sort()
   } catch {
     /* 灌入失败等：留空，首屏走空态 */
   }
-  return { vaultRoot: vault, file: first || null }
+  // 首屏要落在介绍页上：按字母序取第一篇会开到某篇语法示例（实测拿到的是 code-math.md），
+  // 访客第一眼看到的就不是「这里能做什么」。库在顶层，basename 就是库内相对路径。
+  const home = names.find((n) => /^(home|index|readme)\.md$/i.test(n)) || names[0] || null
+  return { vaultRoot: vault, file: home }
 }
 
 function readBody(req, limit = 8 * 1024 * 1024) {

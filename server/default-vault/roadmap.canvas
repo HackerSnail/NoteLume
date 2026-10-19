@@ -1,0 +1,56 @@
+{
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "text",
+      "x": -360,
+      "y": -220,
+      "width": 260,
+      "height": 90,
+      "color": "4",
+      "text": "# 试用路线\n\n从 [[home]] 出发，五分钟能过完核心能力"
+    },
+    {
+      "id": "n2",
+      "type": "file",
+      "x": -40,
+      "y": -240,
+      "width": 300,
+      "height": 200,
+      "file": "wiki-links.md"
+    },
+    {
+      "id": "n3",
+      "type": "text",
+      "x": -40,
+      "y": 20,
+      "width": 300,
+      "height": 120,
+      "color": "5",
+      "text": "**要抄的清单**\n\n- [ ] 团队规范放 `规范/` 目录\n- [ ] 会议纪要走今日速记\n- [ ] 旧笔记导入试 Word"
+    },
+    {
+      "id": "n4",
+      "type": "group",
+      "x": -380,
+      "y": -260,
+      "width": 660,
+      "height": 420,
+      "label": "网页试用版 · 一张画布"
+    },
+    {
+      "id": "n5",
+      "type": "file",
+      "x": 320,
+      "y": -100,
+      "width": 280,
+      "height": 160,
+      "file": "code-math.md"
+    }
+  ],
+  "edges": [
+    { "id": "e1", "fromNode": "n1", "fromSide": "right", "toNode": "n2", "toSide": "left", "label": "先看双链" },
+    { "id": "e2", "fromNode": "n2", "fromSide": "bottom", "toNode": "n3", "toSide": "top" },
+    { "id": "e3", "fromNode": "n2", "fromSide": "right", "toNode": "n5", "toSide": "left", "label": "语法细节" }
+  ]
+}

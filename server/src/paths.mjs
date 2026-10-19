@@ -27,7 +27,9 @@ export const cfg = {
 }
 
 export function configure(opts = {}) {
-  if (opts.sandbox) cfg.mode = 'sandbox'
+  // mode 给显式切换留口子：只认 opts.sandbox 的话，测试里再也切不回本机模式
+  if (opts.mode) cfg.mode = opts.mode
+  else if (opts.sandbox) cfg.mode = 'sandbox'
   if (opts.dataDir) cfg.dataDir = path.resolve(opts.dataDir)
   if (opts.localTmp) cfg.localTmp = path.resolve(opts.localTmp)
   if (opts.sessionBase) cfg.sessionBase = path.resolve(opts.sessionBase)

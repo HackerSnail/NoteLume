@@ -27,6 +27,21 @@
   display: none;
 }
 
+/* —— 桌面专属面板：Git 与插件（网页后端不接这两条命令）——
+   只藏不删：createGitPanel / createPluginManager 在启动时仍会跑，挂载点缺了就是 TypeError，
+   所以留标记藏样式。:has() 是为了连标题条一起藏（面板的 h2 在 #git / #plugins 前面，没后代选不了）。 */
+[data-web] .inspector .panel:has(#git),
+[data-web] .inspector .panel:has(#plugins) {
+  display: none;
+}
+
+/* —— 沙盒模式：库根定死在访客自己的工作区，「打开知识库」无可选的东西，藏掉；
+   本机模式（npm run web）保留，试用者要能挂自己的真实库。
+   data-mode 由 src/web/bootstrap.js 按 /api/health 的 mode 写，在建文档之前就写好，免首帧闪烁。 —— */
+[data-web][data-mode='sandbox'] #btn-open {
+  display: none;
+}
+
 /* —— 路径选择框 —— */
 .nl-picker {
   width: min(560px, 92vw);

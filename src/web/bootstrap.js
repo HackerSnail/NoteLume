@@ -8,6 +8,8 @@
 //      桌面现成的工作区恢复（main.js handleLaunchArgs）自己会把演示库开起来——网页端一行首屏逻辑都不写（§2 决策 7）。
 //   4. set_ui_lang：让后端错误文案跟前端当前语言一致。
 //   5. 顶部插一条「网页沙盒试用版」横幅。
+//   6. 把模式写到 <html data-mode>：web.css 据此在沙盒里藏「打开知识库」。
+//   7. 脏时关页守卫（浏览器只给原生提示）。
 
 import { invoke, sessionId } from './tauri-core.js'
 import { getLocale, onLocaleChange } from '../i18n.js'
@@ -75,6 +77,22 @@ async function reportLang() {
   }
 }
 
+/**
+ * 脏时关页守卫：桌面版靠 onCloseRequested + 三选确认框，网页里两样都没有
+ * （beforeunload 弹不出我们自己的对话框，也无法 await）。降到浏览器标准做法：
+ * 只要有脏标签就 preventDefault，由原生「离开此网站？」接手；没改过就完全不拦刷新。
+ * 脏标记从 DOM 读：tabs.js 给脏标签上 .tab.dirty，main.js 给标题栏上 .filename.dirty，
+ * 桌面代码本来就维护着它们，不必去 main.js 里插钩子（替身路线：不碰桌面文件）。
+ */
+function installCloseGuard() {
+  const isDirty = () => !!document.querySelector('.tab.dirty, .filename.dirty')
+  window.addEventListener('beforeunload', (e) => {
+    if (!isDirty()) return
+    e.preventDefault()
+    e.returnValue = ''
+  })
+}
+
 export async function runBootstrap() {
   // 1) 先定 sid：即便 health 失败也保证后续 fetch 带头
   sessionId()
@@ -82,7 +100,14 @@ export async function runBootstrap() {
   // 2) health：拿模式与演示库位置
   const health = await fetchHealth()
 
-  // 3) 沙盒首屏预置 workspace（本机模式不动，交给桌面恢复 / 空态）
+  // 3) 模式先落到 <html> 上：早于 main.js 建任何东西，避免「打开知识库」先闪出来再被藏
+  try {
+    document.documentElement.dataset.mode = health.mode || 'local'
+  } catch {
+    /* 拿不到 DOM 就不写，CSS 的沙盒规则就当不生效 */
+  }
+
+  // 4) 沙盒首屏预置 workspace（本机模式不动，交给桌面恢复 / 空态）
   if (health.mode === 'sandbox' && health.demo && health.demo.vaultRoot) {
     const doc = readDoc() || {}
     const ws = doc.workspace
@@ -91,12 +116,15 @@ export async function runBootstrap() {
     }
   }
 
-  // 4) 语言上报，并跟随后续的语言切换（后端错误文案要用当前语言）
+  // 5) 语言上报，并跟随后续的语言切换（后端错误文案要用当前语言）
   await reportLang()
   onLocaleChange(reportLang)
 
-  // 5) 横幅
+  // 6) 横幅
   insertBanner(health)
+
+  // 7) 关页守卫
+  installCloseGuard()
 
   return health
 }
