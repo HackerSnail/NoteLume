@@ -1,0 +1,155 @@
+# NoteLume CI
+# 触发：master 分支 push + v* 标签（发版）+ 任意 PR + 手动
+# 打包只在 master push / tag / 手动时执行；tag 发的 Release 为草稿，需到 Releases 页面手动 Publish 才对外可见。
+# 网页版测试（web:test）依赖 web 分支上的 src/web 与 server/tests，web 分支经 PR 提交时由 web 作业把关。
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+    # 发版：推 v* 标签（如 v0.1.0）时自动打包并挂到该 tag 的草稿 Release
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的旧运行被新提交取代时自动取消
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 前端：vite 构建 + 桌面端测试（src/tests 下非 web- 前缀的手写测试）──
+  frontend:
+    name: Frontend build & tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - run: npm ci
+
+      - name: Vite build
+        run: npm run build
+
+      - name: Desktop tests (src/tests, skip web-*)
+        run: |
+          failed=0
+          for f in tests/*.test.mjs; do
+            case "$f" in tests/web-*) echo "--- skip $f"; continue;; esac
+            echo "=== $f ==="
+            node "$f" || failed=1
+          done
+          exit $failed
+
+  # ── 网页版：构建 dist + server/tests 与 src/tests/web-* 跑批（仅 web 分支）──
+  web:
+    name: Web build & tests
+    if: github.ref == 'refs/heads/web'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            src/package-lock.json
+            server/package-lock.json
+
+      - name: Install deps
+        run: |
+          npm --prefix src ci
+          npm --prefix server ci
+
+      - name: Web build
+        run: npm run web:build
+
+      - name: Web tests
+        run: npm run web:test
+
+  # ── Rust：Tauri 后端 cargo check + test（src-tauri）──
+  rust:
+    name: Rust (src-tauri)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri Linux 构建所需的系统库（webkit2gtk 等）
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: cargo test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  # ── 打包：Linux AppImage（仅 master push / 手动触发→传 artifact；v* tag→额外发草稿 Release）──
+  package-linux:
+    name: Package AppImage
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 建/改 Release 需要
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      # tauri CLI 装在 src/ 下，beforeBuildCommand 会先跑 vite 构建
+      - name: Install frontend deps
+        run: npm --prefix src ci
+
+      - name: Build AppImage
+        run: node src/node_modules/@tauri-apps/cli/tauri.js build --bundles appimage
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoteLume-AppImage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+      # 仅 v* tag 触发时执行：产物挂到对应 tag 的 Release（不存在则自动建草稿版 Release）
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/bundle/appimage/*.AppImage
+          draft: true
+          generate_release_notes: true
