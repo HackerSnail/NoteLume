@@ -189,6 +189,18 @@
 4. 主题样式、快捷键绑定、hover悬浮预览
 5. 调用Rust Tauri命令，获取文件列表、索引信息、读写文档
 
+## 网页版（沙盒试用）
+
+定位：浏览器里快速体验核心编辑与知识库能力，文件读写由 `server/` 的 Node HTTP 后端代劳，不是浏览器本地文件。三条做法不许动：
+
+1. 不改桌面代码。`src/*.js`、`src/index.html`、`src/style.css`、`src/vite.config.js`、`src-tauri/**` 一概不改，差异全在新增文件：前端替身 `src/web/`，Node 后端与演示库 `server/`。护栏是 `server/tests/desktop-untouched.test.mjs`，`git diff` 里出现被禁的桌面文件即失败。
+2. 隔离在构建期。耦合面只有五个裸包名（`@tauri-apps/api/core|window|event|path`、`@tauri-apps/plugin-dialog`），vite alias 把它们指到 `src/web/` 里的替身：`invoke` 走 `POST /api/invoke`，系统对话框走 DOM 目录浏览器，`getCurrentWindow()` 落到 `beforeunload` 与 `document.title`。`tauri-bridge.js` 与 `main.js` 原样进产物，里面不埋 `if (isWeb)`。
+3. 功能边界靠注册表加样式。`./commands.js` 换成 wrapper，git / docx / 插件 / 整站导出这类命令在网页模式登记不进去，命令面板、快捷键设置、菜单三处同时没有；静态 DOM 项由 `src/web/web.css` 按 `<html data-web>` 隐藏。只藏不删：`createGitPanel`、`createPluginManager` 这些调用点照旧会跑，挂载点缺节点就是 TypeError。
+
+入口：`npm run web`（本机全功能，读写真实库）、`npm run web:sandbox`（每访客一份临时工作区加内置演示库，公网部署用这条）、`npm run web:api` 配 `npm --prefix src run dev`（开发热更，两个终端）。沙盒首屏不写新逻辑：`src/web/bootstrap.js` 预置 localStorage `nl-settings` 的 `workspace`，桌面 `boot()` 里现成的工作区恢复自己把演示库铺开。
+
+设置文档在浏览器走 localStorage（`settings-store.js` 的 `hasTauri()` 回落，本来就有），后端不存 settings.json。详细设计与命令清单见 `docs/superpowers/specs/2026-10-19-web-sandbox-server-design.md`。
+
 ## 硬性约束
 
 1. 使用 Tauri v2，Rust stable版本
@@ -197,7 +209,8 @@
 4. 代码附带注释，所有代码必须可直接复制运行；按文件拆分输出
 5. 每次输出先给出完整最小可运行demo，再逐步增加功能
 6. 优先保证编辑器流畅性，知识库索引不要阻塞UI（Rust后台扫描）
-7. 前端界面不用 emoji 与临时字形（✕ ✓ ▾ ↑ ↓ ⚠ • 之类），图标统一走 SVG sprite：`src/icons.js` 的 `setIcon(el, name, label)` / `iconHTML(name)`，图形数据只有 `index.html` 里 `<svg class="nl-sprite">` 那一份 `<symbol id="i-*">`。例外：键位图例（⌘ ⌥）、提示句里的 →、Git 状态字母徽标（M/N/D/R/C/?）
+7. 网页版开发不改桌面版代码，差异一律走新增文件与构建期替身（见上方「网页版（沙盒试用）」）
+8. 前端界面不用 emoji 与临时字形（✕ ✓ ▾ ↑ ↓ ⚠ • 之类），图标统一走 SVG sprite：`src/icons.js` 的 `setIcon(el, name, label)` / `iconHTML(name)`，图形数据只有 `index.html` 里 `<svg class="nl-sprite">` 那一份 `<symbol id="i-*">`。例外：键位图例（⌘ ⌥）、提示句里的 →、Git 状态字母徽标（M/N/D/R/C/?）
 
 ## 界面多语言（i18n）
 
