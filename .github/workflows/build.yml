@@ -120,7 +120,7 @@ jobs:
             artifact_path: src-tauri/target/release/bundle/appimage/*.AppImage
           - platform: windows
             runs_on: windows-latest
-            bundles: '="wix,nsis"'   # 逗号需引号包住，否则被当矩阵分隔符
+            bundles: msi nsis   # Tauri v2 Windows 合法值是 msi/nsis（空格分隔多值；wix 是 v1 旧名）
             artifact_name: NoteLume-Windows
             artifact_path: |
               src-tauri/target/release/bundle/msi/*.msi
