@@ -55,4 +55,6 @@ NoteLume 是一个本地 Markdown 知识库编辑器，当前主形态是 Tauri 
 
 前端不存第二份「不支持」文案，也不新建命令名单：加一条桌面专属能力，只改 `router.mjs` 那个 Set。
 
+演示库（`server/default-vault/`）里放了一份 `示例文档.docx`：沙盒首访会随 `fs.cpSync` 灌进每个会话的 `vault/`，供「导入 Word」入口在选择框里真能选中一个合法 .docx（不再因为库里没有而只能取消）。注意这只是让入口可达、不表示网页版能导入：`.docx → Markdown` 的解析在桌面端 Rust（`docx_import`），`docx_preview` / `docx_commit` 仍在 `UNSUPPORTED` 里，选中后下一步就是回一句桌面专属提示。文件选择框已按 `filters.extensions` 过滤，docx 选择框只列 `.docx`、不会把 md / canvas 混进来。
+
 web版代码推送到web 分支
