@@ -26,7 +26,7 @@ NoteLume 是一个本地 Markdown 知识库编辑器，当前主形态是 Tauri 
 - 两条判据分工，别混：`hasBackend()` = Tauri 原生或网页版替身（`src/web/tauri-core.js` 挂 `__NOTELUME_BACKEND__`），管 `invoke` / 选择器 / 路径 API 能不能调；`isDesktop()` 只认真 `__TAURI_INTERNALS__`，管窗口按钮、设置存储的 localStorage 回落、启动参数探测。网页版里 `isDesktop()` 恒为假，所以确认框 / 提示框降到 `window.confirm` / `window.alert`，而 HTTP 后端照常工作。
 - 网页端的差异全部写在新增文件里：前端替身在 `src/web/`，Node 后端与演示库在 `server/`。
 - 隔离靠构建期替身：vite alias 把五个 `@tauri-apps/*` 包名换成 `src/web/` 里的网页实现，桌面代码原样进产物。网页不支持的能力不在前端做名单，统一由后端 `server/src/router.mjs` 的 `UNSUPPORTED` 判定（见下）。
-- 护栏两条：`node src/tests/desktop-gate.test.mjs` 全仓扫描——除 bridge / gate（加 titlebar、main 的窗口调用）外不得出现 Tauri 导入与注入标记读取，且网页标记必须放行后端、不冒充桌面；`server/tests/desktop-untouched.test.mjs` 检查 `git diff` 里没碰到上面那批被禁的桌面文件。
+- 护栏两条：`node src/tests/desktop-gate.test.mjs` 全仓扫描——除 bridge / gate（加 titlebar、main 的窗口调用）外不得出现 Tauri 导入与注入标记读取，且网页标记必须放行后端、不冒充桌面；`server/tests/desktop-untouched.test.mjs` 拿 `merge-base(master, HEAD)` 到 `HEAD` 的 `git diff` 做对比（拿不准主干时回退 `origin/master`），绝对禁改面（`index.html` / `style.css` / `vite.config.js` / `src-tauri/`）零命中，`src/*.js` 顶层只允许出现豁免表里的六个文件，且 `src/locales/` 只加键不改删桌面词条（桌面版共用同一份词表）。
 - 设计细节见 `docs/superpowers/specs/2026-10-19-web-sandbox-server-design.md`。
 
 ## 网页试用版约束

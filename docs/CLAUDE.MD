@@ -194,7 +194,7 @@
 
 定位：浏览器里快速体验核心编辑与知识库能力，文件读写由 `server/` 的 Node HTTP 后端代劳，不是浏览器本地文件。三条做法不许动：
 
-1. 不改桌面代码。`src/*.js`、`src/index.html`、`src/style.css`、`src/vite.config.js`、`src-tauri/**` 一概不改，差异全在新增文件：前端替身 `src/web/`，Node 后端与演示库 `server/`。唯一例外是能力入口的集中分流（见硬性约束第 7 条）。桌面文件有没有被改，目前靠 `git diff` 人工核对（原计划的 `server/tests/desktop-untouched.test.mjs` 尚未落地）。
+1. 不改桌面代码。`src/*.js`、`src/index.html`、`src/style.css`、`src/vite.config.js`、`src-tauri/**` 一概不改，差异全在新增文件：前端替身 `src/web/`，Node 后端与演示库 `server/`。唯一例外是能力入口的集中分流（见硬性约束第 7 条）——分流过程中被碰过的桌面文件（`main.js`、`titlebar.js`、`settings-store.js`、`daily-capture.js` 及那两个入口）连理由一起钉在 `server/tests/desktop-untouched.test.mjs` 的豁免表里；这条测试站在主干肩膀上比 `git diff`，新增触碰得改豁免表才能过。
 2. 隔离在构建期。耦合面只有五个裸包名（`@tauri-apps/api/core|window|event|path`、`@tauri-apps/plugin-dialog`），vite alias 把它们指到 `src/web/` 里的替身：`invoke` 走 `POST /api/invoke`，系统对话框走 DOM 目录浏览器，`getCurrentWindow()` 落到 `beforeunload` 与 `document.title`。`tauri-bridge.js` 与 `main.js` 原样进产物，里面不埋 `if (isWeb)`。
 3. 功能边界在后端判定，菜单不藏。曾计划把 `./commands.js` 换成 wrapper、让 git / docx / 插件 / 整站导出在网页模式根本登记不进去（菜单与命令面板三处同时消失），已废：藏掉反而让人以为产品缺功能。现在的做法是项照旧留着，点了由 `server/src/router.mjs` 的 `UNSUPPORTED` 回一句「网页版不支持此功能，请下载桌面版」（错误带 `code:'desktop-only'`，前端 `src/web/desktop-only.js` 负责上屏，细则见 `docs/SERVER.MD`）。面板本身由 `src/web/web.css` 按 `<html data-web>` 隐藏。只藏不删：`createGitPanel`、`createPluginManager` 这些调用点照旧会跑，挂载点缺节点就是 TypeError。
 
