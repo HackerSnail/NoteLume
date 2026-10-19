@@ -176,7 +176,6 @@ export default {
   'ui.more': 'Plus',
   'ui.tipMore': 'Plus d’actions (export / impression / graphe / canevas / modèles / modes)',
   'ui.tipDocstats': 'Statistiques d’écriture (clic pour définir un objectif de mots)',
-  'ui.noDoc': 'Aucun document ouvert',
   'ui.autosave': 'Enregistrement auto',
   'ui.tipAutosave': 'Activé : écriture 2 s après la dernière frappe ; copie horodatée dans .notelume-backup/ du coffre toutes les 2 minutes',
   'ui.dark': 'Sombre',

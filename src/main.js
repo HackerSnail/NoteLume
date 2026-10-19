@@ -2949,6 +2949,10 @@ function switchLocale(id) {
   registerAppCommands()
   registerEditorCommands()
   applyStaticDom(document)
+  // 标题栏文件名不在静态 DOM 的刷新范围内（index.html 里特意没给它挂 data-i18n），
+  // 所以只有当前显示的正是「没打开文档」那句占位时才要手动跟着语言走；开着文档时
+  // 它是路径（画布态也是），与界面语言无关，不能动
+  if (!state.currentFile) els.filename.textContent = t('ui.noDocOpen')
   applyTheme(currentThemeChoice()) // 按「选择」重放：选 system 的不会被打回具体主题
   if (hlBar) hlBar.relabel() // 高亮工具栏文案跟随界面语言
   updateDocStats()

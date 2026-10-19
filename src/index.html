@@ -93,7 +93,9 @@
           <button id="btn-more" data-i18n-title="ui.tipMore" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg><span class="btn-label" data-i18n="ui.more">更多</span></button>
         </div>
         <span id="docstats" class="docstats" data-i18n-title="ui.tipDocstats" title="写作统计（点击设置字数目标）"></span>
-        <span id="filename" class="filename" data-i18n="ui.noDoc">未打开文档</span>
+        <!-- 文件名是动态内容，全由 main.js 写（无文档时占位走 ui.noDocOpen）。这里不能挂 data-i18n：
+             applyStaticDom 切语言时会把带该属性的元素整片重刷，真实文件名会被占位文案顶掉 -->
+        <span id="filename" class="filename">（无打开文档）</span>
         <span class="spacer" data-tauri-drag-region></span>
         <label class="autosave-toggle" data-i18n-title="ui.tipAutosave" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
           <input type="checkbox" id="chk-autosave" /> <span data-i18n="ui.autosave">自动保存</span>

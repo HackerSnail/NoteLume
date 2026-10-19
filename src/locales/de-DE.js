@@ -176,7 +176,6 @@ export default {
   'ui.more': 'Mehr',
   'ui.tipMore': 'Weitere Aktionen (Export / Druck / Grafik / Leinwand / Vorlagen / Modi)',
   'ui.tipDocstats': 'Schreibstatistik (Klick setzt ein Wortziel)',
-  'ui.noDoc': 'Kein Dokument geöffnet',
   'ui.autosave': 'Auto-Speichern',
   'ui.tipAutosave': 'Wenn aktiv: 2 s nach der letzten Eingabe zurückschreiben; alle 2 Minuten eine Kopie mit Zeitstempel in .notelume-backup/ im Vault',
   'ui.dark': 'Dunkel',
