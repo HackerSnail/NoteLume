@@ -9,6 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { msg } from './uiLang.mjs'
+import { scratchRoot } from './paths.mjs'
 import {
   VaultError,
   absInVault,
@@ -49,6 +50,23 @@ function assertInJail(ctx, p) {
   const real = fs.realpathSync(cur)
   if (!(real === jr || real.startsWith(jr + path.sep) || real.startsWith(jr + '/'))) {
     throw new VaultError(msg('pathOutsideVault'))
+  }
+}
+
+/** 递归拷贝一棵树（保留相对路径、覆写同名；符号链接等其他类型忽略，与 Rust 侧一致）。
+ *  目标落在源里面时（沙盒「另存为」的目录选择器能选到源自己的子目录），跳过目标自身，
+ *  否则会把目标拷进目标、无限递归。 */
+function copyTree(from, to) {
+  for (const e of fs.readdirSync(from, { withFileTypes: true })) {
+    const srcPath = path.join(from, e.name)
+    if (srcPath === to || to.startsWith(srcPath + path.sep)) continue
+    const dest = path.join(to, e.name)
+    if (e.isDirectory()) {
+      fs.mkdirSync(dest, { recursive: true })
+      copyTree(srcPath, dest)
+    } else if (e.isFile()) {
+      fs.copyFileSync(srcPath, dest)
+    }
   }
 }
 
@@ -209,6 +227,44 @@ export const handlers = {
       }
     }
     return ndir ? `${ndir}/${fileName}` : fileName
+  },
+
+  /**
+   * 独立导入模式的一次性目录（桌面 ensure_temp_import_dir 的网页版）：
+   * <会话临时根>/NoteLume/docx-import/<时间戳>。桌面落在 std::env::temp_dir()，
+   * 沙盒里 jail 外没有可写的地方，故落会话工作区的 tmp/（scratchRoot）。
+   */
+  ensure_temp_import_dir() {
+    const base = scratchRoot(this.sid)
+    const dir = path.join(base, 'NoteLume', 'docx-import', String(Date.now()))
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+    } catch (e) {
+      throw new VaultError(msg('createDirFailed', { err: e.message }))
+    }
+    assertInJail(this, dir)
+    return dir
+  },
+
+  /**
+   * 独立导入的「另存为」：把整棵源目录递归拷到目标（保留相对路径、覆写同名、不删源）。
+   * 语义对齐 docx_import.rs 的 relocate_import；目标不存在时按需创建。
+   */
+  relocate_import({ fromRoot, toRoot }) {
+    const src = resolveVaultRoot(fromRoot, this.jail)
+    const raw = String(toRoot || '').trim()
+    if (!raw) throw new VaultError(msg('vaultPathInvalid', { err: 'empty' }))
+    // 先校验再建目录：目标可以不存在（用户选个新路径），assertInJail 走最近存在祖先比，
+    // 反过来先 mkdir 就会把越界目录真建出来再报错
+    assertInJail(this, raw)
+    try {
+      fs.mkdirSync(raw, { recursive: true })
+    } catch (e) {
+      throw new VaultError(msg('createDirFailed', { err: e.message }))
+    }
+    const dst = resolveVaultRoot(raw, this.jail)
+    copyTree(src, dst)
+    return null
   },
 
   /** [[wikilink]] 解析：先按库内相对路径，失败再按 basename 全库找。回 { exists, path } */

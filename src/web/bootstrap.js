@@ -119,11 +119,16 @@ export async function runBootstrap() {
   }
 
   // 4) 沙盒首屏预置 workspace（本机模式不动，交给桌面恢复 / 空态）
+  // 库根每次访问都校准，不是「没有才写」：演示库按会话分（sid 跨访问保留，但会话工作区
+  // 可能已被 180s 空闲扫描销毁）。留着上一次的库值会让启动恢复去打一个不存在的库 →
+  // 空态 +「未开库」，导入 Word 还会因此走进独立模式。lastFile 只在首次访问时补演示
+  // 首页，之后那是用户自己的文档位，不覆盖。
   if (health.mode === 'sandbox' && health.demo && health.demo.vaultRoot) {
     const doc = readDoc() || {}
-    const ws = doc.workspace
-    if (!ws || !ws.lastVault) {
-      writeDoc({ ...doc, workspace: { lastVault: health.demo.vaultRoot, lastFile: health.demo.file || null } })
+    const ws = doc.workspace || {}
+    if (ws.lastVault !== health.demo.vaultRoot) {
+      const lastFile = ws.lastVault ? ws.lastFile : health.demo.file || null
+      writeDoc({ ...doc, workspace: { ...ws, lastVault: health.demo.vaultRoot, lastFile } })
     }
   }
 

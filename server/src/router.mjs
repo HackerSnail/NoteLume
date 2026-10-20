@@ -32,8 +32,10 @@ export const UNSUPPORTED = new Set([
   'git_r_upstream', 'git_r_ahead_behind', 'git_r_pull_ff', 'git_r_push', 'git_r_pull_merge',
   'git_r_conflict_files', 'git_r_resolve', 'git_r_merge_state', 'git_r_abort_merge', 'git_r_commit_merge',
   'git_r_trust_host',
-  'ensure_temp_import_dir', 'relocate_import', 'export_docx',
+  'export_docx',
   // 注：docx_preview / docx_commit 已改由服务端实现（docxCommands.mjs），让网页沙盒复用桌面整条导入流程，故不在此列。
+  // ensure_temp_import_dir / relocate_import 同在 fsCommands.mjs 落地（独立导入模式的一站式目录与「另存为」），
+  // 落点是会话 tmp/，受同一套监狱约束。
   'list_plugins', 'read_plugin',
   'build_site_graph', 'copy_vault_assets',
   'set_mac_menu', 'tray_set_recent',

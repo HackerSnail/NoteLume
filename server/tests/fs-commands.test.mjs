@@ -16,6 +16,7 @@ import { dispatch } from '../src/router.mjs'
 import { handlers } from '../src/fsCommands.mjs'
 import { msg, setLang, langFor } from '../src/uiLang.mjs'
 import { fnv1a } from '../src/vault.mjs'
+import { configure, cfg, jailRoot } from '../src/paths.mjs'
 
 let pass = 0
 let fail = 0
@@ -289,6 +290,79 @@ test('语言按会话隔离：一个后端伺候多访客不串（set_ui_lang �
     assert.equal(langFor('isoA'), 'en-US', 'langFor 直接读也该是 A 自己的那份')
   } finally {
     setLang('zh-CN')
+  }
+})
+
+// ---------- 独立导入模式：一次性目录 + 另存为（原先在网页端是 desktop-only，导入必失败） ----------
+// 背景：未开库时「导入 Word」走独立模式，接受即落 ensure_temp_import_dir 给的临时目录。
+// 这两个命令曾在 UNSUPPORTED 里，网页端点接受直接「网页版不支持」——现在落进会话 tmp/，
+// 语义对齐 docx_import.rs。
+test('ensure_temp_import_dir：建出一站式目录并回路径（本机模式落本地临时根）', () => {
+  const dir = ok('ensure_temp_import_dir', {}, '建临时目录')
+  assert.ok(dir && fs.existsSync(dir) && fs.statSync(dir).isDirectory(), '应回一个已存在的目录：' + dir)
+  assert.match(dir, /NoteLume[\\/]docx-import[\\/]\d+$/, '目录形态对齐桌面：<临时根>/NoteLume/docx-import/<ts>')
+})
+
+test('relocate_import：递归拷贝保留相对路径、覆写同名、不删源', () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-reloc-src-'))
+  const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-reloc-dst-'))
+  try {
+    fs.mkdirSync(path.join(src, 'Doc', '附件'), { recursive: true })
+    fs.writeFileSync(path.join(src, 'Doc', 'Doc.md'), '# hi', 'utf8')
+    fs.writeFileSync(path.join(src, 'Doc', '附件', 'a.png'), 'PNGDATA', 'utf8')
+    fs.mkdirSync(path.join(dst, 'Doc'), { recursive: true })
+    fs.writeFileSync(path.join(dst, 'Doc', 'Doc.md'), 'stale', 'utf8') // 预置同名，验覆写
+    ok('relocate_import', { fromRoot: src, toRoot: dst }, '另存为')
+    assert.equal(fs.readFileSync(path.join(dst, 'Doc', 'Doc.md'), 'utf8'), '# hi', '同名应被覆写')
+    assert.equal(fs.readFileSync(path.join(dst, 'Doc', '附件', 'a.png'), 'utf8'), 'PNGDATA', '嵌套相对路径要保留')
+    assert.ok(fs.existsSync(path.join(src, 'Doc', 'Doc.md')), '源不删')
+  } finally {
+    fs.rmSync(src, { recursive: true, force: true })
+    fs.rmSync(dst, { recursive: true, force: true })
+  }
+})
+
+test('relocate_import：目标不存在时按需创建', () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-reloc2-src-'))
+  const dstBase = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-reloc2-dst-'))
+  try {
+    fs.writeFileSync(path.join(src, 'x.md'), 'x', 'utf8')
+    const dst = path.join(dstBase, 'does-not-exist-yet')
+    ok('relocate_import', { fromRoot: src, toRoot: dst }, '新目录')
+    assert.ok(fs.existsSync(path.join(dst, 'x.md')), '新目标里应有文件')
+  } finally {
+    fs.rmSync(src, { recursive: true, force: true })
+    fs.rmSync(dstBase, { recursive: true, force: true })
+  }
+})
+
+test('独立导入两命令在沙盒里受监狱约束：临时目录落会话 tmp，越界目标被拒', () => {
+  const jailBase = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-fs-jail-'))
+  // scratchRoot 按 cfg.mode 分流：本文件其余用例都是本机模式，这里临时切沙盒验监狱行为。
+  // 注意不能用文件顶部的 ok/err 助手——它们绑的是模块级 ctx（sid=local、jail=null）。
+  const prev = { mode: cfg.mode, sessionBase: cfg.sessionBase }
+  configure({ sandbox: true, sessionBase: path.join(jailBase, 'sessions') })
+  try {
+    const jailed = { sid: 'jailtest2', jail: jailRoot('jailtest2') }
+    const vault = path.join(jailed.jail, 'vault')
+    // 一次性目录必须落在会话 tmp/ 里（scratchRoot），而不是 jail 外的系统 temp
+    const r1 = dispatch(jailed, 'ensure_temp_import_dir', {})
+    assert.equal(r1.ok, true, '沙盒临时目录应建成功：' + (r1.error || ''))
+    assert.ok(String(r1.result).startsWith(fs.realpathSync(jailed.jail)), '临时目录应在监狱内：' + r1.result)
+    assert.ok(fs.existsSync(r1.result), '目录要真建出来')
+    // 另存为的目标越界 → 拒，且目录不许被真建出来；目标在监狱内 → 过
+    fs.writeFileSync(path.join(vault, 'src.md'), 'x', 'utf8')
+    const r2 = dispatch(jailed, 'relocate_import', { fromRoot: vault, toRoot: path.join(jailBase, 'outside') })
+    assert.equal(r2.ok, false, '越界目标该被拒')
+    assert.equal(r2.error, msg('pathOutsideVault'), '文案不对：' + r2.error)
+    assert.ok(!fs.existsSync(path.join(jailBase, 'outside')), '越界目标不该被建出来')
+    const inside = path.join(vault, 'formal')
+    const r3 = dispatch(jailed, 'relocate_import', { fromRoot: vault, toRoot: inside })
+    assert.equal(r3.ok, true, '库内目标应放过：' + (r3.error || ''))
+    assert.ok(fs.existsSync(path.join(inside, 'src.md')), '库内目标应拷到')
+  } finally {
+    configure({ mode: prev.mode, sessionBase: prev.sessionBase })
+    fs.rmSync(jailBase, { recursive: true, force: true })
   }
 })
 
