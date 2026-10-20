@@ -743,6 +743,7 @@ export default {
   'table.mergeCells': 'Zellen verbinden',
   'table.splitCells': 'Zelle teilen',
   'table.tableDelete': 'Ganze Tabelle löschen',
+  'table.sizeHint': '{rows} × {cols}',
 
   // —— Suchleiste (find-in-doc.js) ——
   'find.placeholder': 'In diesem Dokument suchen…',

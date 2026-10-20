@@ -745,6 +745,7 @@ export default {
   'table.mergeCells': 'Merge Cells',
   'table.splitCells': 'Split Cell',
   'table.tableDelete': 'Delete Table',
+  'table.sizeHint': '{rows} × {cols}',
 
   // —— Find bar (find-in-doc.js) ——
   'find.placeholder': 'Find in this document…',

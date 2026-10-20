@@ -6,7 +6,7 @@
 import assert from 'node:assert'
 import { EditorState, TextSelection, NodeSelection } from 'prosemirror-state'
 import { schema, parseMarkdown, serializeMarkdown } from '../editor-schema.js'
-import { BLOCK_COMMANDS, activeBlockKey, headingStep } from '../block-commands.js'
+import { BLOCK_COMMANDS, activeBlockKey, headingStep, createTable, insertTable } from '../block-commands.js'
 
 let pass = 0
 let fail = 0
@@ -128,6 +128,24 @@ t('table：追加 2×2 表', () => {
   assert.ok(r.md.includes('|'), r.md)
   assert.ok(r.md.startsWith('段落 anchor\n'), r.md)
   assert.equal(serializeMarkdown(parseMarkdown(r.md)), r.md, '表格应可无损往返')
+})
+
+t('createTable：N×M 结构（首行表头，其余单元格）', () => {
+  const tb = createTable(3, 4)
+  assert.equal(tb.type.name, 'table')
+  assert.equal(tb.childCount, 3)
+  assert.equal(tb.firstChild.childCount, 4)
+  assert.equal(tb.firstChild.firstChild.type.name, 'table_header')
+  assert.equal(tb.lastChild.firstChild.type.name, 'table_cell')
+})
+
+t('insertTable：按选中尺寸追加（3×4 → 表头 + 分隔行 + 2 数据行），可无损往返', () => {
+  const r = run(stateAt('段落 anchor\n', 'anchor'), (st, d) => insertTable(st, d, 3, 4))
+  assert.equal(r.ok, true)
+  const lines = r.md.split('\n').filter((l) => l.startsWith('|'))
+  assert.equal(lines.length, 4)
+  assert.equal(lines[0].split('|').length - 2, 4) // 每行 4 格
+  assert.equal(serializeMarkdown(parseMarkdown(r.md)), r.md)
 })
 
 t('callout：追加提示卡片', () => {

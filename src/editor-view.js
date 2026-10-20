@@ -21,10 +21,11 @@ import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
+import { showTableSizePicker } from './table-picker.js'
 import { mermaidPlugin } from './mermaid-preview.js'
 import { attachCodeLangPicker } from './code-lang-picker.js'
 import { createSlashMenuPlugin, SLASH_ITEMS } from './slash-menu.js'
-import { BLOCK_COMMANDS, activeBlockKey, headingStep, nlBackspace, nlEnter, nlHardBreak } from './block-commands.js'
+import { BLOCK_COMMANDS, activeBlockKey, headingStep, insertTable, nlBackspace, nlEnter, nlHardBreak } from './block-commands.js'
 import { createModesPlugin } from './editor-modes.js'
 import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plugin.js'
 import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
@@ -112,7 +113,22 @@ PM_COMMANDS['editor.headingUp'] = headingStep(-1)
 PM_COMMANDS['editor.headingDown'] = headingStep(1)
 PM_COMMANDS['editor.exitBlock'] = exitCode
 for (const id of BLOCK_CMD_IDS) {
+  if (id === 'table') continue // 特例：先弹 N×M 选择器，见下
   PM_COMMANDS['editor.block.' + id] = BLOCK_COMMANDS[id]
+}
+// 表格：先选范围（Word 式 10×8 网格）再插入。dispatch=undefined 是「菜单项能否置灰」
+// 的查询，直接放行；插入取挑选时刻的最新 state——选择器开着的时候用户可能又打了字，
+// 命令求值时那份 state 已过期。Esc / 点外面关掉选择器即什么都不插。
+PM_COMMANDS['editor.block.table'] = (state, dispatch, view) => {
+  if (!dispatch || !view) return true
+  showTableSizePicker(view, {
+    pos: state.selection.from,
+    onPick: (rows, cols) => {
+      insertTable(view.state, view.dispatch, rows, cols)
+      view.focus()
+    },
+  })
+  return true
 }
 
 // 「默认键 ∪ 覆盖」→ 编辑器 keymap 插件；固定别名/结构键始终保留

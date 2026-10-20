@@ -745,6 +745,7 @@ export default {
   'table.mergeCells': '合并单元格',
   'table.splitCells': '拆分单元格',
   'table.tableDelete': '删除整个表格',
+  'table.sizeHint': '{rows} × {cols}',
 
   // —— 文档内查找栏（find-in-doc.js） ——
   'find.placeholder': '在本篇文档中查找…',

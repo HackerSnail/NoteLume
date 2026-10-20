@@ -34,7 +34,8 @@
     "test:backspace": "node tests/backspace.test.mjs",
     "test:enter-blocks": "node tests/enter-blocks.test.mjs",
     "test:table-enter": "node tests/table-enter.test.mjs",
-    "test:gapcursor": "node tests/gapcursor.test.mjs"
+    "test:gapcursor": "node tests/gapcursor.test.mjs",
+    "test:table-picker": "node tests/table-picker.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

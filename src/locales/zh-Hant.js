@@ -744,6 +744,7 @@ export default {
   'table.mergeCells': '合併儲存格',
   'table.splitCells': '拆分儲存格',
   'table.tableDelete': '刪除整個表格',
+  'table.sizeHint': '{rows} × {cols}',
 
   // —— 文件內尋找欄（find-in-doc.js） ——
   'find.placeholder': '在本篇文件中尋找…',

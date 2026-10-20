@@ -2890,11 +2890,10 @@ html.nl-dragging * {
   margin: 1.5em 0;
   font-size: 0.95em;
 }
-/* 极简表格（Notion / Obsidian 风）：无竖线，只留行间横线；表头底线加粗 */
+/* 表格满框：定几行几列，列间的竖线要看得见；表头行下底线 2px（见下方 th 规则） */
 .ProseMirror th,
 .ProseMirror td {
-  border: none;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
   padding: 8px 12px;
   vertical-align: top;
   box-sizing: border-box;
@@ -2969,6 +2968,36 @@ html.nl-dragging * {
   position: fixed;
   z-index: 1000;
   min-width: 160px;
+}
+/* 插入表格的 N×M 选择器（Word 式 10×8 网格）：悬停高亮 + 尺寸提示 */
+.nl-table-picker {
+  position: fixed;
+  z-index: 1001;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  user-select: none;
+}
+.nl-tp-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 15px);
+  gap: 2px;
+}
+.nl-tp-cell {
+  height: 13px;
+  border-radius: 2px;
+  background: var(--hover);
+}
+.nl-tp-cell.on {
+  background: var(--accent);
+}
+.nl-tp-hint {
+  margin-top: 7px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
 }
 .ProseMirror a {
   color: var(--text-link);

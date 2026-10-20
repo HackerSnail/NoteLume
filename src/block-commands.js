@@ -12,11 +12,26 @@ import { nlCellEnter, nlCellBack } from './table-editing.js'
 const N = schema.nodes
 const para = () => N.paragraph.create()
 
-const twoRowTable = () =>
-  N.table.create(null, [
-    N.table_row.create(null, [N.table_header.create(null, []), N.table_header.create(null, [])]),
-    N.table_row.create(null, [N.table_cell.create(null, []), N.table_cell.create(null, [])]),
-  ])
+// N×M 表格：首行 table_header，其余 table_cell（与 twoRowTable 同构，序列化侧的表头行约定不变）
+export function createTable(rows, cols) {
+  const trs = []
+  for (let r = 0; r < rows; r++) {
+    const cells = []
+    for (let c = 0; c < cols; c++) {
+      cells.push(r === 0 ? N.table_header.create(null, []) : N.table_cell.create(null, []))
+    }
+    trs.push(N.table_row.create(null, cells))
+  }
+  return N.table.create(null, trs)
+}
+
+const twoRowTable = () => createTable(2, 2)
+
+// 选择器选中范围后插入：state/dispatch 由调用方传挑选时刻的最新值——选择器开着的时候
+// 用户可能又打了字，命令求值时那份 state 已过期
+export function insertTable(state, dispatch, rows, cols) {
+  return insertBelow(() => [createTable(rows, cols), para()])(state, dispatch)
+}
 
 // 在当前块之后插入若干块（分割线/表格/提示卡片：属于「追加」而非「转换」）
 function insertBelow(build) {

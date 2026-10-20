@@ -6,6 +6,8 @@
 //  · 选中后把当前段落整块替换为目标节点，用 Selection.near 把光标放进块内首个可编辑位置。
 import { Plugin, PluginKey, Selection } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
+import { createTable, insertTable } from './block-commands.js'
+import { showTableSizePicker } from './table-picker.js'
 import { setIcon } from './icons.js'
 import { t } from './i18n.js'
 
@@ -80,6 +82,27 @@ export function createSlashMenuPlugin() {
 
   function applyItem(view, spec, item) {
     const state = view.state
+    // 表格：先选 N×M 范围，选中后把 `/表格` 所在块整块换成表（与其它项同一落点）。
+    // 选择器开着的时候文档被动过（用户切走打了字），落回「当前块之后插入」，与 Ctrl+T 同路。
+    if (item.id === 'table') {
+      removeMenu()
+      const doc0 = state.doc
+      showTableSizePicker(view, {
+        pos: spec.from,
+        onPick: (rows, cols) => {
+          const st = view.state
+          if (st.doc === doc0) {
+            const tr = st.tr.replaceWith(spec.blockStart, spec.blockEnd, [createTable(rows, cols), para()])
+            try { tr.setSelection(Selection.near(tr.doc.resolve(spec.blockStart), 1)) } catch (_) {}
+            view.dispatch(tr.scrollIntoView())
+          } else {
+            insertTable(st, view.dispatch, rows, cols)
+          }
+          view.focus()
+        },
+      })
+      return
+    }
     let built
     try { built = item.build() } catch (_) { return }
     const content = Array.isArray(built) ? built : [built]

@@ -743,6 +743,7 @@ export default {
   'table.mergeCells': 'Fusionner les cellules',
   'table.splitCells': 'Scinder la cellule',
   'table.tableDelete': 'Supprimer le tableau',
+  'table.sizeHint': '{rows} × {cols}',
 
   // —— Barre de recherche (find-in-doc.js) ——
   'find.placeholder': 'Rechercher dans ce document…',
