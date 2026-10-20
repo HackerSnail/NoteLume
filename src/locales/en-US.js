@@ -174,6 +174,8 @@ export default {
   'ui.tipToday': 'Daily capture (global overlay, independent of the vault) (Ctrl+Shift+D)',
   'ui.source': 'Source',
   'ui.tipSource': 'Markdown source mode (raw text with highlighting and line numbers) (Ctrl+E)',
+  'ui.paragraph': 'Paragraph',
+  'ui.tipParagraph': 'Paragraph type (heading / list / quote / table / callout)',
   'ui.more': 'More',
   'ui.tipMore': 'More actions (export / print / graph / canvas / templates / modes)',
   'ui.tipDocstats': 'Writing stats (click to set a word goal)',

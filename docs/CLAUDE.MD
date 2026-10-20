@@ -135,6 +135,7 @@
 - 编辑器命令（标题、列表、表格、链接、删行等）在 ProseMirror keymap 里求值，源码态（CodeMirror）下撤销 / 重做单独走 CM 历史，其余命令对源码态不生效。仓库键位先装、baseKeymap 后装，仓库那一层返回 false 就退回原生行为，所以重绑一个键等于多插一层前置命令；上表五个结构键在 `editor-view.js` 的 map 里固定。
 - 应用命令（文件、标签页、视图、粘贴为纯文本）走 document 级 keydown 分发器；F2 这类无修饰键与 Ctrl+Tab 这类带修饰的 Tab 均已放行（keymap.js 的 `isFKey` 与 Tab 例外）。
 - 表格出表另有就地入口：右键菜单「表后另起一段」，与末格 Enter 同一个 `exitTableBelow`。表格 / 代码块 / 公式在文档末尾时下方有一个可点可打字的间隙落点（gapcursor），落点只是选区、不改文档，因此不判脏也不落盘。
+- 块类型菜单两个入口：mac 是原生「段落」菜单（`app-menu.js` 的 paragraph 组），Windows / Linux 是工具条「段落」按钮下拉（`main.js` 的 `openParagraphMenu`，按钮在 `.btn-group` 里，mac 该组整体隐藏）。两边同源：条目顺序与「当前块类型」单选勾都读 `menuCommands()`，执行走命令注册表。两平台的「表格」项与斜杠菜单的「表格」都先弹 Word 式 N×M 选择器（`src/table-picker.js`），Esc / 点外面关掉即不插。
 
 ## 标签页设计（2026-10-19 起：完整分栏模式，标签归窗格）
 

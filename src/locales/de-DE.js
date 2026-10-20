@@ -173,6 +173,8 @@ export default {
   'ui.tipToday': 'Tagesnotiz (globale Ebene, unabhängig vom Vault) (Ctrl+Shift+D)',
   'ui.source': 'Quelltext',
   'ui.tipSource': 'Markdown-Quelltextmodus (Rohtext mit Hervorhebung und Zeilennummern) (Ctrl+E)',
+  'ui.paragraph': 'Absatz',
+  'ui.tipParagraph': 'Absatztyp (Überschrift / Liste / Zitat / Tabelle / Karte)',
   'ui.more': 'Mehr',
   'ui.tipMore': 'Weitere Aktionen (Export / Druck / Grafik / Leinwand / Vorlagen / Modi)',
   'ui.tipDocstats': 'Schreibstatistik (Klick setzt ein Wortziel)',

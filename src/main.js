@@ -158,6 +158,7 @@ const els = {
   canvasMount: $('canvas-mount'),
   btnDaily: $('btn-daily'),
   btnSource: $('btn-source'),
+  btnParagraph: $('btn-paragraph'),
   btnMore: $('btn-more'),
   sourceMount: $('source-mount'),
   docstats: $('docstats'),
@@ -1528,6 +1529,39 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
   addMenuCmd(menu, 'app.toggleSidebar', 'sidebar')
   addMenuCmd(menu, 'app.toggleInspector', 'sliders')
+  const r = anchorEl.getBoundingClientRect()
+  placeMenu(menu, r.left, r.bottom + 4)
+}
+
+// 工具条「段落」菜单（Windows / Linux 用；mac 是原生「段落」菜单，两边不同时挂）：
+// 块类型 + 标题升 / 降级。条目顺序、勾选态都取 menuCommands() 那一份（与 mac 同源，
+// 含「当前块类型」单选勾与标题升降的可用性），文案剥掉注册表标题里的「段落：」前缀
+// ——按钮已经叫段落了。执行走 runViaShortcut → 命令注册表，与命令面板同一条链路。
+function openParagraphMenu(anchorEl) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  const icons = {
+    para: 'pilcrow', quote: 'quote', code: 'code', mermaid: 'diagram',
+    bullet: 'list-bullet', task: 'task', hr: 'hr', table: 'table', callout: 'lightbulb',
+  }
+  const cmds = menuCommands()
+  const prefix = t('menu.paraPrefix')
+  const item = (c, icon) => {
+    const key = commandBindingFor(c.id)
+    const title = String(c.title).startsWith(prefix) ? c.title.slice(prefix.length) : c.title
+    return makeMenuItem(title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(c.id), false, !!c.checked, icon)
+  }
+  for (const c of cmds) {
+    if (c.id.startsWith('editor.block.')) {
+      menu.appendChild(item(c, icons[c.id.slice('editor.block.'.length)] || null))
+    }
+  }
+  menu.appendChild(menuSep())
+  const up = cmds.find((c) => c.id === 'editor.headingUp')
+  const down = cmds.find((c) => c.id === 'editor.headingDown')
+  if (up) menu.appendChild(item(up))
+  if (down) menu.appendChild(item(down))
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
 }
@@ -3924,6 +3958,7 @@ async function boot() {
   els.btnTheme.addEventListener('click', toggleTheme)
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
   els.btnSource && els.btnSource.addEventListener('click', toggleSourceMode)
+  els.btnParagraph && els.btnParagraph.addEventListener('click', (e) => openParagraphMenu(e.currentTarget))
   els.btnMore && els.btnMore.addEventListener('click', (e) => openMoreMenu(e.currentTarget))
   els.docstats && els.docstats.addEventListener('click', setWordGoal)
   updateDocStats()

@@ -173,6 +173,8 @@ export default {
   'ui.tipToday': 'Note du jour (calque globale, indépendante du coffre) (Ctrl+Shift+D)',
   'ui.source': 'Source',
   'ui.tipSource': 'Mode source Markdown (texte brut avec coloration et numéros de ligne) (Ctrl+E)',
+  'ui.paragraph': 'Paragraphe',
+  'ui.tipParagraph': 'Type de paragraphe (titre / liste / citation / tableau / encadré)',
   'ui.more': 'Plus',
   'ui.tipMore': 'Plus d’actions (export / impression / graphe / canevas / modèles / modes)',
   'ui.tipDocstats': 'Statistiques d’écriture (clic pour définir un objectif de mots)',

@@ -173,6 +173,8 @@ export default {
   'ui.tipToday': '今日速記（全域浮層，獨立於知識庫） (Ctrl+Shift+D)',
   'ui.source': '原始碼',
   'ui.tipSource': 'Markdown 原始碼模式（原文，帶高亮/行號） (Ctrl+E)',
+  'ui.paragraph': '段落',
+  'ui.tipParagraph': '段落類型（標題 / 列表 / 引用 / 表格 / 卡片）',
   'ui.more': '更多',
   'ui.tipMore': '更多操作（匯出 / 列印 / 圖譜 / 畫布 / 模板 / 模式）',
   'ui.tipDocstats': '寫作統計（點擊設定字數目標）',
