@@ -301,8 +301,8 @@ body {
   white-space: nowrap;
   flex: none;
 }
-/* 承载上述按钮/徽标的行：装不下就换到下一行，而不是溢出栏宽 */
-.toolbar,
+/* 承载上述按钮/徽标的行：装不下就换到下一行，而不是溢出栏宽。
+   工具条例外：窗口按钮（三大金刚）不换行，空间不够时由文件名与写作统计收缩出省略号 */
 .nl-git-actions,
 .nl-git-sync-actions,
 .nl-git-sync-row,
@@ -324,18 +324,24 @@ body {
   height: 14px;
 }
 /* 写作统计（工具条内联，点击设置当日字数目标） */
+/* 写作统计：可收缩，窄窗口里先砍这里与文件名的省略号，保住右侧窗口按钮不换行。
+   用 block 而非 inline-flex：flex 容器里的匿名文本项不吃 text-overflow，出不了省略号 */
 .docstats {
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  flex: none;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   user-select: none;
   padding: 3px 8px;
   border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  display: block;
+}
+.docstats .nl-ico {
+  margin-right: 5px;
 }
 .docstats:hover {
   background: var(--hover);
