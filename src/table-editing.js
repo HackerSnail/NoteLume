@@ -319,7 +319,11 @@ function isMergedSel(sel) {
   return !!(n && (n.attrs.colspan > 1 || n.attrs.rowspan > 1))
 }
 
-// 在单元格上右键：弹出行列操作菜单。非表格区域不拦截（保留浏览器/应用默认行为）。
+// 编辑器内右键：一律压掉 WebView2 的原生菜单（返回 / 刷新 / 另存为 / 打印 / 检查那一套，
+// 打包版里出现在正文上很突兀），表格上弹表格菜单，其余位置不弹。原生菜单靠 contextmenu
+// 上的 preventDefault 就能压掉——单元格右键本来就是这么压的（实测打包版有效）。
+// 落在表格上但不在格里（表格元素 / 包裹层空白 / 边框）时按指针位置找最近格，
+// 找不到（如表外包一层空白）就不弹，别甩一个对空气说话的菜单出去。
 export function attachTableContextMenu(view) {
   let menuEl = null
   const close = () => {
@@ -351,16 +355,18 @@ export function attachTableContextMenu(view) {
   }
 
   view.dom.addEventListener('contextmenu', (e) => {
-    const cell = e.target && e.target.closest ? e.target.closest('td, th') : null
-    if (!cell) return
     e.preventDefault()
+    const onTable = !!(e.target && e.target.closest && e.target.closest('table'))
+    if (!onTable) return
     close()
 
     // 把光标落到右键命中的单元格，后续命令都基于该单元格选区。
     // 但若已有跨格 CellSelection（多选准备合并），保留它不重置。
     const coords = view.posAtCoords({ left: e.clientX, top: e.clientY })
-    if (coords && !(view.state.selection instanceof CellSelection)) {
-      const $pos = view.state.doc.resolve(coords.pos)
+    if (!coords) return
+    const $pos = view.state.doc.resolve(coords.pos)
+    if (!cellAround($pos)) return
+    if (!(view.state.selection instanceof CellSelection)) {
       view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
     }
     // 绑定当前 view：命令读取此刻（选区已更新）的 state
