@@ -92,6 +92,9 @@ export function dispatch(ctx, cmd, params) {
     return { ok: true, result: result === undefined ? null : result }
   } catch (e) {
     const text = e && e.message ? String(e.message) : String(e)
+    // 落一份日志：沙盒里失败只回 {ok:false}，前端的导入对话框又只报计数（「0/1 篇，1 失败」），
+    // 不记日志就只能靠用户描述猜原因。desktop-only 是设计内的拒绝，不算错误，不打。
+    if (!(e && e.code)) console.error(`[invoke] ${cmd} 失败（sid=${(ctx && ctx.sid) || '-'}）：${text}`)
     // code 原样带上：前端靠 'desktop-only' 把这句提示提示到屏幕上，其余失败只有文案
     return e && e.code ? { ok: false, error: text, code: String(e.code) } : { ok: false, error: text }
   }

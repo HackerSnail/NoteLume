@@ -373,6 +373,7 @@ export default {
   'dlg.docxAcceptVault': 'Accept & Save to Vault',
   'msg.tailSkipped': ', {n} skipped',
   'msg.tailFailed': ', {n} failed',
+  'msg.importFailedReason': ' (reason: {err})',
   'doc.importWhereVault': ' into the vault',
   'doc.importWhereTemp': ' (temp dir, save them yourself)',
   'status.wordImportDone': 'Word import done: {done}/{total} {where}{tail}',

@@ -372,6 +372,7 @@ export default {
   'dlg.docxAcceptVault': '接受并落库',
   'msg.tailSkipped': '，{n} 跳过',
   'msg.tailFailed': '，{n} 失败',
+  'msg.importFailedReason': '（原因：{err}）',
   'doc.importWhereVault': '入库',
   'doc.importWhereTemp': '（临时目录，可自行保存）',
   'status.wordImportDone': 'Word 导入完成：{done}/{total} 篇{where}{tail}',

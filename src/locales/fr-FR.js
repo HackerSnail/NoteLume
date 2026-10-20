@@ -373,6 +373,7 @@ export default {
   'dlg.docxAcceptVault': 'Accepter et enregistrer dans le coffre',
   'msg.tailSkipped': ', {n} ignorés',
   'msg.tailFailed': ', {n} échoués',
+  'msg.importFailedReason': ' (raison : {err})',
   'doc.importWhereVault': ' dans le coffre',
   'doc.importWhereTemp': ' (dossier temporaire, à enregistrer vous-même)',
   'status.wordImportDone': 'Import Word terminé : {done}/{total} {where}{tail}',

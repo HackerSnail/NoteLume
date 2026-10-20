@@ -153,6 +153,58 @@ test('非法字节 → 报错而非崩', () => {
   bad('docx_preview', { args: { srcB64: 'notazip', srcDisplayName: 'x.docx', destDir: '' } }, '坏 zip')
 })
 
+// ---------- 结构鲁棒性： silent empty 比报错更坏 ----------
+const wrapDoc = (documentXml) => {
+  const z = new AdmZip()
+  z.addFile('[Content_Types].xml', Buffer.from(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`, 'utf8'))
+  z.addFile('_rels/.rels', Buffer.from(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="word/document.xml"/></Relationships>`, 'utf8'))
+  z.addFile('word/document.xml', Buffer.isBuffer(documentXml) ? documentXml : Buffer.from(documentXml, 'utf8'))
+  return z.toBuffer()
+}
+const docXml = (body) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:body>${body}<w:sectPr/></w:body></w:document>`
+
+test('body 级 sdt（内容控件）包着的内容要解析出来，不是静默空文档', () => {
+  // Word Online / 模板常见形态：整篇被 <w:sdt> 包着；此前 mapBody 只认 p/tbl，内容整段丢失
+  const buf = wrapDoc(docXml(`<w:sdt><w:sdtPr><w:alias w:val="正文"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>控件里的标题</w:t></w:r></w:p><w:p><w:r><w:t>第二段</w:t></w:r></w:p></w:sdtContent></w:sdt>`))
+  const p = ok('docx_preview', { args: { srcB64: b64(buf), srcDisplayName: 'sdt.docx', destDir: '', withFrontmatter: false, maxImageBytes: 8388608, dedupIndex: {} } }, 'sdt 预览')
+  assert.ok(p.md.includes('控件里的标题'), 'sdt 里的段落不该丢：' + p.md)
+  assert.ok(p.md.includes('第二段'), 'sdt 里的第二段不该丢')
+})
+
+test('customXml / smartTag 外壳同样只取内容', () => {
+  const buf = wrapDoc(docXml(`<w:customXml><w:p><w:r><w:t>customXml 内容</w:t></w:r></w:p></w:customXml>`))
+  const p = ok('docx_preview', { args: { srcB64: b64(buf), srcDisplayName: 'cx.docx', destDir: '', withFrontmatter: false, maxImageBytes: 8388608, dedupIndex: {} } }, 'customXml 预览')
+  assert.ok(p.md.includes('customXml 内容'), 'customXml 里的内容不该丢：' + p.md)
+})
+
+test('UTF-16LE 的 document.xml 要能解（BOM 分流，不再解析成空文档）', () => {
+  // 真实 UTF-16 XML 文件带 BOM（FF FE）；Node 的 Buffer.from(_, 'utf16le') 不写，手动拼
+  const buf = wrapDoc(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(docXml(`<w:p><w:r><w:t>UTF-16 的正文</w:t></w:r></w:p>`), 'utf16le')]))
+  const inner = new AdmZip(buf).getEntry('word/document.xml').getData()
+  assert.equal(inner.slice(0, 2).toString('hex'), 'fffe', '夹具应带 UTF-16 BOM') // 防回归：确认 BOM 真拼上了
+  const p = ok('docx_preview', { args: { srcB64: b64(buf), srcDisplayName: 'u16.docx', destDir: '', withFrontmatter: false, maxImageBytes: 8388608, dedupIndex: {} } }, 'UTF-16 预览')
+  assert.ok(p.md.includes('UTF-16 的正文'), 'UTF-16 文档应解出正文：' + JSON.stringify(p.md))
+})
+
+test('缺 w:body 明确报错，不像以前那样给个空文档', () => {
+  const buf = wrapDoc(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:notBody/></w:document>`)
+  const r = bad('docx_preview', { args: { srcB64: b64(buf), srcDisplayName: 'nobody.docx', destDir: '' } }, '缺 body')
+  assert.ok(/w:body/.test(r.error), '错误应点名 w:body：' + r.error)
+})
+
+test('空正文给 emptyDoc 警告，不静默', () => {
+  const buf = wrapDoc(docXml(''))
+  const p = ok('docx_preview', { args: { srcB64: b64(buf), srcDisplayName: 'empty.docx', destDir: '', withFrontmatter: false, maxImageBytes: 8388608, dedupIndex: {} } }, '空文档预览')
+  assert.ok(p.warnings.some((w) => w.code === 'emptyDoc'), '应有 emptyDoc 警告：' + JSON.stringify(p.warnings))
+})
+
+test('顶层未登记块级元素丢内容但给 blockDropped 警告', () => {
+  const buf = wrapDoc(docXml(`<w:p><w:r><w:t>正常段</w:t></w:r></w:p><w:altChunk><w:p><w:r><w:t>嵌的 HTML</w:t></w:r></w:p></w:altChunk>`))
+  const p = ok('docx_preview', { args: { srcB64: b64(buf), srcDisplayName: 'alt.docx', destDir: '', withFrontmatter: false, maxImageBytes: 8388608, dedupIndex: {} } }, 'altChunk 预览')
+  assert.ok(p.md.includes('正常段'), '正常段落要保留')
+  assert.ok(p.warnings.some((w) => w.code === 'blockDropped'), '未支持块要有警告：' + JSON.stringify(p.warnings))
+})
+
 // ---------- jail 下的 commit：目标子目录尚未落盘，校验不能误杀 ----------
 // 回归：样例文档的 plannedDocRel 自带一层标题子目录（NoteLume-Word-导入示例/…），
 // assertInsideJail 原先对「不存在的目录」直接 ENOENT，沙盒里点「接受并落库」必崩；

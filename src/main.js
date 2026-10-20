@@ -1181,7 +1181,11 @@ async function importWordFlow(sources, destDir = '', target = {}) {
       opts: { vaultRoot, destDir, withFrontmatter: true, maxImageBytes: DEFAULT_MAX_IMAGE_BYTES },
     })
     const { committed, skipped, failed, total } = res.stats
-    const tail = (skipped ? t('msg.tailSkipped', { n: skipped }) : '') + (failed ? t('msg.tailFailed', { n: failed }) : '')
+    // 失败要把原因带上：只显示「1 失败」用户不知道该改什么。entry.error 是后端给的本地化
+    // 文案（docxInvalid: …这类），取第一条即可——批量导入罕见，全部罗列反而读不动。
+    const failedEntry = (res.queue || []).find((e) => e.status === 'failed')
+    const reason = failedEntry && failedEntry.error ? t('msg.importFailedReason', { err: failedEntry.error }) : ''
+    const tail = (skipped ? t('msg.tailSkipped', { n: skipped }) : '') + (failed ? t('msg.tailFailed', { n: failed }) : '') + reason
     if (committedRels.length) {
       // 立即回显：独立模式先把 temp 一次性目录作为工作根打开（侧栏树列出全部导入篇、可点），再打开首篇
       if (!intoVault && tempRoot) {
@@ -1205,7 +1209,7 @@ async function importWordFlow(sources, destDir = '', target = {}) {
         done: committed,
         total,
         where: intoVault ? t('doc.importWhereVault') : '',
-        tail: (skipped ? t('msg.skippedUnaccepted', { n: skipped }) : '') + (failed ? t('msg.tailFailed', { n: failed }) : ''),
+        tail: (skipped ? t('msg.skippedUnaccepted', { n: skipped }) : '') + (failed ? t('msg.tailFailed', { n: failed }) : '') + reason,
       }), 'info')
     }
   } catch (e) {

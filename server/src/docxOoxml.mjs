@@ -52,6 +52,15 @@ function textOf(n) {
 }
 
 // ---------- zip 读取 ----------
+/** XML 部件解码：Word 写 UTF-8，但总有别的工具写 UTF-16（带 BOM）；直接按 utf8 读会得到
+ *  一串 NUL 垃圾、解析成空文档还不报错。BOM 优先，其余按 utf8，顺口剥掉开头 BOM。 */
+function decodeXml(b) {
+  if (b.length >= 2 && b[0] === 0xff && b[1] === 0xfe) return stripBom(b.toString('utf16le'))
+  if (b.length >= 2 && b[0] === 0xfe && b[1] === 0xff) return stripBom(b.swap16().toString('utf16le'))
+  return stripBom(b.toString('utf8'))
+}
+const stripBom = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s)
+
 function readZip(buffer) {
   const zip = new AdmZip(buffer)
   const map = new Map()
@@ -61,7 +70,7 @@ function readZip(buffer) {
   }
   const txt = (name) => {
     const b = map.get(name)
-    return b ? b.toString('utf8') : null
+    return b ? decodeXml(b) : null
   }
   return { map, document: txt('word/document.xml'), styles: txt('word/styles.xml'), rels: txt('word/_rels/document.xml.rels'), numbering: txt('word/numbering.xml'), footnotes: txt('word/footnotes.xml'), endnotes: txt('word/endnotes.xml') }
 }
@@ -205,6 +214,7 @@ export function docxToMarkdown(buffer, opts = {}) {
   const srcName = opts.srcName || 'document.docx'
   const stem = srcName.includes('.') ? srcName.slice(0, srcName.lastIndexOf('.')) : srcName
   const bodyEl = findFirst(tree, 'body')
+  if (!bodyEl) throw new Error('docxInvalid: document.xml 里找不到正文（w:body），可能不是 Word 存出的 .docx')
 
   const ctx = {
     rels, styles, zip, opts, warnings, stats, warn,
@@ -224,6 +234,7 @@ export function docxToMarkdown(buffer, opts = {}) {
 
   const blocks = mapBody(bodyEl, ctx)
   let md = blocks.filter((b) => b != null).join('\n\n')
+  if (!md.trim()) ctx.warn('emptyDoc', '未解析出正文内容（空文档，或格式不被网页解析支持）', '')
   if (opts.withFrontmatter) {
     const imported = localDate()
     md = `---\nsource: "${srcName}"\nimported: "${imported}"\n---\n\n` + md
@@ -291,6 +302,14 @@ function detectFirstHeading(bodyEl, ctx) {
 }
 
 // ---------- 正文块 ----------
+// 顶层可无声跳过的元素：节属性、结构锚点、编辑限制、各种 *Pr 属性袋
+const BODY_SKIP = new Set([
+  'sectPr', 'sdtPr', 'sdtEndPr', 'customXmlPr', 'smartTagPr',
+  'bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd',
+  'proofErr', 'permStart', 'permEnd',
+  'moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd',
+])
+
 function mapBody(bodyEl, ctx) {
   if (!bodyEl) return []
   const out = []
@@ -299,7 +318,17 @@ function mapBody(bodyEl, ctx) {
     const l = local(c)
     if (l === 'p') out.push(mapParagraph(c, ctx))
     else if (l === 'tbl') out.push(mapTable(c, ctx))
-    // sectPr 等忽略
+    else if (l === 'sdt') {
+      // 内容控件（Word Online / 模板常见）：外壳跳过，sdtContent 里的块照常映射
+      const content = childEl(c, 'sdtContent')
+      if (content) out.push(...mapBody(content, ctx))
+    } else if (l === 'customXml' || l === 'smartTag') {
+      // 同 sdt：一层包装外壳，直接拆开取内容
+      out.push(...mapBody(c, ctx))
+    } else if (!BODY_SKIP.has(l)) {
+      // 其余顶层块（AltChunk、未登记的自定义元素）：解析不了，丢内容可以，但要出声
+      ctx.warn('blockDropped', `不支持的块级元素 <w:${l}> 已跳过`, '')
+    }
   }
   return out
 }
