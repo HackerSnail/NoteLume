@@ -185,7 +185,75 @@ export function tableKeymap() {
   return keymap({
     Tab: (state, dispatch, view) => (isInTable(state) ? goToNextCell(1)(state, dispatch, view) : false),
     'Shift-Tab': (state, dispatch, view) => (isInTable(state) ? goToNextCell(-1)(state, dispatch, view) : false),
+    ArrowUp: cellArrow(-1),
+    ArrowDown: cellArrow(1),
   })
+}
+
+// —— 表格里上下方向键移格 ——
+// prosemirror-tables 自带上下键（tableEditing 的 handleKeyDown → arrow('vert') →
+// atEndOfCell），但那条链路在本项目是死的：atEndOfCell 的深度循环从 $head.depth - 1
+// 起找 tableRole == 'cell' 的层，而本项目 cellContent 是 'inline*'（文字直接在单元格里，
+// 单元格就是最内层，$head.depth 即单元格那一层），循环永远少看一层、恒返回 null。
+// 落空后上下键交回浏览器原生行为，而 Chromium 原生不做表格内的上下移格（裸
+// contenteditable 表格对照实验：ArrowUp / Down 不跨行，ArrowLeft / Right 才跨格），
+// 表现就是只能左右移。这里自己补：格内没得走了（首行按上 / 末行按下）才移格，
+// 多行格子的中间行照样让给原生。带 CellSelection 时不接——那条路库的分支还活着
+// （在 atEndOfCell 之前判），让它把选区收进邻格。
+function cellPosUnder($pos) {
+  for (let d = $pos.depth; d > 0; d--) {
+    const role = $pos.node(d).type.spec.tableRole
+    if (role === 'cell' || role === 'header_cell') return $pos.before(d)
+  }
+  return null
+}
+
+// 同列上 / 下一格的内容起点；到表缘（首行之上 / 末行之下）返回 'edge'；
+// 邻格就是自己（rowspan 复用格）返回 null——那种格上下是一个整体，不挪，交回原生。
+// 合并格按 TableMap 定位：取格子在 map 里的首个下标算行号，colspan 格取起始列
+function verticalCellPos(state, cellPos, dir) {
+  const $cell = state.doc.resolve(cellPos)
+  const table = $cell.node(-1)
+  if (!table || table.type.spec.tableRole !== 'table') return null
+  const map = TableMap.get(table)
+  const start = $cell.start(-1)
+  const index = map.map.indexOf(cellPos - start)
+  if (index < 0) return null
+  const col = index % map.width
+  const row = (index - col) / map.width
+  const targetRow = row + dir
+  if (targetRow < 0 || targetRow >= map.height) return 'edge'
+  const target = map.map[targetRow * map.width + col]
+  if (target === cellPos - start) return null
+  return start + target + 1 // 单元格内容起点
+}
+
+function cellArrow(dir) {
+  return (state, dispatch, view) => {
+    if (!view || !isInTable(state)) return false
+    const sel = state.selection
+    if (!sel.empty || sel instanceof CellSelection) return false
+    // 格内还能朝该方向走（多行格子的中间行）就让给原生
+    if (!view.endOfTextblock(dir < 0 ? 'up' : 'down')) return false
+    const cellPos = cellPosUnder(sel.$head)
+    if (cellPos == null) return false
+    const target = verticalCellPos(state, cellPos, dir)
+    if (target === 'edge') {
+      // 到头 / 到尾：出表。上方已有块就把光标搬过去；表就是文档首块则无处可去（不动）
+      if (dir < 0) {
+        const before = sel.$head.before(1)
+        if (before <= 0) return false
+        const out = TextSelection.near(state.doc.resolve(before), -1)
+        if (!out) return false
+        if (dispatch) dispatch(state.tr.setSelection(out).scrollIntoView())
+        return true
+      }
+      return exitTableBelow(state, dispatch)
+    }
+    if (target == null) return false
+    if (dispatch) dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(target), 1)).scrollIntoView())
+    return true
+  }
 }
 
 // —— 表格内的回车 ——

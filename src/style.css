@@ -2918,12 +2918,11 @@ html.nl-dragging * {
 }
 /* 悬停列边界时插件往格尾插行内拖拽手柄，PM 围着它补 separator 图和行尾 br；
    这两个盒留在流里 WebKit 就按当前列重量整表 max-content，二三列互换 33.3px，
-   边界一挪鼠标脱出 5px 命中区、手柄消失、宽度翻回来。两个都得隐，隐一个仍翻 */
-.ProseMirror th .ProseMirror-trailingBreak,
-.ProseMirror td .ProseMirror-trailingBreak {
-  display: none;
-}
-.ProseMirror .column-resize-handle + .ProseMirror-separator {
+   边界一挪鼠标脱出 5px 命中区、手柄消失、宽度翻回来。两个都得隐，隐一个仍翻。
+   但只在悬停态（句柄在）隐：行尾 br 是空单元格里唯一的线框，平时隐掉它行高就只剩
+   内边距（实测 17.5px），比一行文字（29.75px）还矮，光标比行高 */
+.ProseMirror .column-resize-handle + .ProseMirror-separator,
+.ProseMirror .column-resize-handle ~ .ProseMirror-trailingBreak {
   display: none;
 }
 .ProseMirror th {
