@@ -1584,8 +1584,8 @@ function attachEditorContextMenu(inst) {
   const withKey = (label, key) => (key ? label + '  ' + key : label)
   pane.addEventListener('contextmenu', (e) => {
     if (e.defaultPrevented) return
-    const t = e.target
-    if (t && t.closest && t.closest(SKIP)) return
+    const hit = e.target
+    if (hit && hit.closest && hit.closest(SKIP)) return
     e.preventDefault()
     closeTreeMenu()
     // 右键落在这个窗格：命令对这个窗格的编辑器求值，别打到焦点窗格上去
