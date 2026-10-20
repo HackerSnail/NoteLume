@@ -319,9 +319,10 @@ function isMergedSel(sel) {
   return !!(n && (n.attrs.colspan > 1 || n.attrs.rowspan > 1))
 }
 
-// 编辑器内右键：一律压掉 WebView2 的原生菜单（返回 / 刷新 / 另存为 / 打印 / 检查那一套，
-// 打包版里出现在正文上很突兀），表格上弹表格菜单，其余位置不弹。原生菜单靠 contextmenu
-// 上的 preventDefault 就能压掉——单元格右键本来就是这么压的（实测打包版有效）。
+// 编辑器内右键：表格上弹本菜单，其余位置不接——通用菜单（main.js 的 attachEditorContextMenu，
+// 挂在窗格上）负责压掉 WebView2 原生菜单与出「剪切 / 复制 / 粘贴 / 插入」那一套。
+// 两个监听器都听 contextmenu：本监听器挂 view.dom（事件先到它这儿），通用那个挂 .nl-pane
+// 且见 defaultPrevented 就让路，所以表格右键不会出两个菜单。
 // 落在表格上但不在格里（表格元素 / 包裹层空白 / 边框）时按指针位置找最近格，
 // 找不到（如表外包一层空白）就不弹，别甩一个对空气说话的菜单出去。
 export function attachTableContextMenu(view) {
@@ -355,9 +356,9 @@ export function attachTableContextMenu(view) {
   }
 
   view.dom.addEventListener('contextmenu', (e) => {
-    e.preventDefault()
     const onTable = !!(e.target && e.target.closest && e.target.closest('table'))
-    if (!onTable) return
+    if (!onTable) return // 非表格：交给窗格上的通用右键菜单
+    e.preventDefault()
     close()
 
     // 把光标落到右键命中的单元格，后续命令都基于该单元格选区。

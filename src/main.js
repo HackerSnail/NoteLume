@@ -1,6 +1,7 @@
 // main.js —— 应用装配：布局、知识库文件树、大纲、标签、主题、快捷键、打开/保存/跳转
 // P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
 // 自动保存 + 库内备份、HTML 导出、打印。
+import { selectAll } from 'prosemirror-commands'
 import { createEditor, editorCommandDefs } from './editor-view.js'
 import { createFindBar } from './find-in-doc.js'
 import { createFrontmatterPanel } from './frontmatter-panel.js'
@@ -1299,9 +1300,10 @@ function placeMenu(menu, clientX, clientY) {
   menu.style.top = y + 'px'
   treeMenuEl = menu
 }
-function makeMenuItem(label, fn, danger, checked, icon) {
+function makeMenuItem(label, fn, danger, checked, icon, disabled) {
   const b = document.createElement('button')
   b.className = 'cv-menu-item' + (danger ? ' danger' : '')
+  if (disabled) b.disabled = true
   const chk = document.createElement('span')
   chk.className = 'cv-menu-check'
   if (checked) setIcon(chk, 'check')
@@ -1311,7 +1313,9 @@ function makeMenuItem(label, fn, danger, checked, icon) {
   if (icon) setIcon(lab, icon, label)
   else lab.textContent = label
   b.appendChild(lab)
+  b.addEventListener('mousedown', (e) => e.preventDefault()) // 不夺编辑器焦点
   b.addEventListener('click', () => {
+    if (b.disabled) return
     closeTreeMenu()
     fn()
   })
@@ -1564,6 +1568,88 @@ function openParagraphMenu(anchorEl) {
   if (down) menu.appendChild(item(down))
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
+}
+
+// —— 编辑器通用右键菜单（窗格内：剪切 / 复制 / 粘贴 + 行内格式 + 插入块）——
+// 挂在窗格（.nl-pane）而不是 view.dom：编辑器上下留白、文档下方的空白也归编辑部，
+// 那些位置右键照样出这个菜单，不再冒 WebView2 的原生菜单（返回 / 刷新 / 检查那一套）。
+// 表格范围不接——表格菜单挂在 view.dom 上、事件先到它那儿且已 preventDefault，
+// 这里见 defaultPrevented 就让路，不会出两个菜单。标签条 / 查找栏 / 源码模式 /
+// 画布 / 输入框不接，保留原生（那边要的是输入框的复制粘贴）。
+function attachEditorContextMenu(inst) {
+  const pane = inst.view.dom.closest('.nl-pane')
+  if (!pane) return
+  const SKIP = '.nl-pane-strip, .nl-find-bar, .nl-source, #canvas-mount, input, textarea, select'
+  const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
+  const withKey = (label, key) => (key ? label + '  ' + key : label)
+  pane.addEventListener('contextmenu', (e) => {
+    if (e.defaultPrevented) return
+    const t = e.target
+    if (t && t.closest && t.closest(SKIP)) return
+    e.preventDefault()
+    closeTreeMenu()
+    // 右键落在这个窗格：命令对这个窗格的编辑器求值，别打到焦点窗格上去
+    inst.focusEditor()
+    const view = inst.view
+    const sel = view.state.selection
+    const hasSel = !!(sel && !sel.empty)
+    const selText = () => view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, '\n', '\n')
+    const writeClip = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text)
+        return true
+      } catch (err) {
+        setStatus(t('status.clipFail', { err: errText(err) }))
+        return false
+      }
+    }
+    const menu = document.createElement('div')
+    menu.className = 'cv-menu tree-menu'
+    // 剪切 / 复制写纯文本（markdown 编辑器要的就是纯文本）；剪切 = 复制成功后按 PM 事务
+    // 删选区，不依赖 execCommand('cut') 的 DOM 副作用
+    menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), async () => {
+      if (!hasSel) return
+      if (await writeClip(selText())) {
+        const { from, to } = view.state.selection
+        view.dispatch(view.state.tr.delete(from, to))
+      }
+    }, false, false, null, !hasSel))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), async () => {
+      if (hasSel) await writeClip(selText())
+    }, false, false, null, !hasSel))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), async () => {
+      let text = null
+      try {
+        text = await navigator.clipboard.readText()
+      } catch (err) {
+        setStatus(t('status.clipFail', { err: errText(err) }))
+        return
+      }
+      if (!text) {
+        setStatus(t('status.clipEmpty'))
+        return
+      }
+      inst.insertPlainText(text)
+    }))
+    menu.appendChild(menuSep())
+    const cmd = (id, labelKey) => makeMenuItem(withKey(t(labelKey), commandBindingFor(id)), () => inst.runEditorCommand(id))
+    menu.appendChild(cmd('editor.bold', 'cmd.editor.bold'))
+    menu.appendChild(cmd('editor.italic', 'cmd.editor.italic'))
+    menu.appendChild(cmd('editor.strike', 'cmd.editor.strike'))
+    menu.appendChild(cmd('editor.code', 'cmd.editor.code'))
+    menu.appendChild(menuSep())
+    menu.appendChild(cmd('editor.block.table', 'cmd.block.table'))
+    menu.appendChild(cmd('editor.block.code', 'cmd.block.code'))
+    menu.appendChild(cmd('editor.block.quote', 'cmd.block.quote'))
+    menu.appendChild(cmd('editor.block.hr', 'cmd.block.hr'))
+    menu.appendChild(cmd('editor.block.callout', 'cmd.block.callout'))
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), () => {
+      selectAll(view.state, view.dispatch)
+      view.focus()
+    }))
+    placeMenu(menu, e.clientX, e.clientY)
+  })
 }
 
 // —— 最近打开（全局记录于 localStorage，跨知识库；点条目按原库根重开该文件）——
@@ -3324,6 +3410,7 @@ function ensurePaneEditor(paneId) {
   paneBodyFor(paneId)
   const { editorDiv, sourceDiv } = panes.mounts.get(paneId)
   const inst = createPaneEditor(paneId, editorDiv, sourceDiv)
+  attachEditorContextMenu(inst)
   panes.editors.set(paneId, inst)
   paneCtx(paneId)
   if (!paneCtx(paneId).rel) showPaneEmpty(paneId, true)

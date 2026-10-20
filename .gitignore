@@ -17,3 +17,13 @@ cache/
 # 编辑器/系统噪音
 .DS_Store
 Thumbs.db
+
+# 无头调试产物（CDP 测试驱动与输出）
+.cdp-profile/
+src/__appdriver.mjs
+src/app-err.txt
+src/app-out.txt
+src/app-result.txt
+
+# 站外草稿
+docs/zhihu-notelume-draft.md
