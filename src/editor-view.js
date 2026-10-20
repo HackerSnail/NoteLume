@@ -7,7 +7,8 @@ import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
 import { Fragment, Slice } from 'prosemirror-model'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
-import { baseKeymap, toggleMark, chainCommands, exitCode, selectNodeBackward } from 'prosemirror-commands'
+import { baseKeymap, toggleMark, exitCode } from 'prosemirror-commands'
+import { gapCursor } from 'prosemirror-gapcursor'
 import { schema, parseMarkdown, serializeMarkdown, serializeMarkdownMapped } from './editor-schema.js'
 import { emphasisInputTr } from './inline-input-rules.js'
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js'
@@ -23,7 +24,7 @@ import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editi
 import { mermaidPlugin } from './mermaid-preview.js'
 import { attachCodeLangPicker } from './code-lang-picker.js'
 import { createSlashMenuPlugin, SLASH_ITEMS } from './slash-menu.js'
-import { BLOCK_COMMANDS, activeBlockKey, headingStep } from './block-commands.js'
+import { BLOCK_COMMANDS, activeBlockKey, headingStep, nlBackspace, nlEnter, nlHardBreak } from './block-commands.js'
 import { createModesPlugin } from './editor-modes.js'
 import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plugin.js'
 import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
@@ -34,9 +35,10 @@ import { setHighlightMark, selectionHasHighlight, highlightColorAt } from './hig
 import { t } from './i18n.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
-// 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Shift-Enter（硬换行）、
-// Backspace（节点后向删除）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进注册表。
-// 默认键位按 Typora/Obsidian 主流习惯配（见 docs/CLUADE.MD「快捷键规范」）。
+// 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Enter（分块）、Shift-Enter（硬换行）、
+// Backspace（块首合并 / 选中整块）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进可重绑键位表；
+// Mod-Enter（离开代码块）由 baseKeymap 提供，见下方注册表 exitBlock 一条。
+// 默认键位按 Typora/Obsidian 主流习惯配（见 docs/CLAUDE.MD「快捷键规范」）。
 // 标题是词条键（titleKey），registration 时按当前语言取值；换语言由 main.js 重注册刷新。
 const EDITOR_COMMAND_DEFS = [
   { id: 'editor.undo', titleKey: 'cmd.editor.undo', defaultKey: 'Mod-z' },
@@ -61,6 +63,9 @@ const EDITOR_COMMAND_DEFS = [
   // 标题升 / 降级：Typora 的「段落」菜单项，作用于选区所在标题，越出 1..6 即命令返回 false（菜单置灰）
   { id: 'editor.headingUp', titleKey: 'cmd.editor.headingUp', defaultKey: 'Mod-]' },
   { id: 'editor.headingDown', titleKey: 'cmd.editor.headingDown', defaultKey: 'Mod-[' },
+  // 离开代码块 / 容器块：实际响应由 baseKeymap 的 Mod-Enter 提供，入表只为让面板与设置页可见可搜
+  // （绑定串法不收 Enter，defaultKey 只能留空）
+  { id: 'editor.exitBlock', titleKey: 'cmd.editor.exitBlock', defaultKey: null },
 ]
 
 // 段落命令入同一张表：项表复用斜杠菜单（一份定义），公式块不在这里（已有 editor.mathBlock）。
@@ -105,22 +110,18 @@ const PM_COMMANDS = {
 
 PM_COMMANDS['editor.headingUp'] = headingStep(-1)
 PM_COMMANDS['editor.headingDown'] = headingStep(1)
+PM_COMMANDS['editor.exitBlock'] = exitCode
 for (const id of BLOCK_CMD_IDS) {
   PM_COMMANDS['editor.block.' + id] = BLOCK_COMMANDS[id]
 }
-
-// 硬换行命令（由固定结构键 Shift-Enter 触发）
-const nlHardBreak = chainCommands(exitCode, (state, dispatch) => {
-  dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView())
-  return true
-})
 
 // 「默认键 ∪ 覆盖」→ 编辑器 keymap 插件；固定别名/结构键始终保留
 function buildEditorKeymap(overrides) {
   const map = {
     'Shift-Mod-z': redo,
+    'Enter': nlEnter,
     'Shift-Enter': nlHardBreak,
-    Backspace: selectNodeBackward,
+    Backspace: nlBackspace,
   }
   const ov = overrides && typeof overrides === 'object' ? overrides : {}
   for (const def of EDITOR_COMMANDS) {
@@ -272,6 +273,9 @@ export function createEditor(opts) {
       modes.plugin,
       fold.plugin,
       ...tablePlugins(),
+      // 块间隙光标：表格 / 代码块 / 公式在文末时给它下方一个可点可打字的位置，
+      // 不改文档所以不判脏；放在表格插件之后，让列宽拖拽先取得鼠标事件
+      gapCursor(),
     ],
   })
 

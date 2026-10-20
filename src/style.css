@@ -1795,6 +1795,31 @@ html.nl-dragging * {
   white-space: var(--editor-white-space, pre-wrap);
   overflow-wrap: break-word;
   overflow-x: auto;
+  /* gapcursor 的伪光标位绝对定位在编辑区上（见文件末尾的 .ProseMirror-gapcursor） */
+  position: relative;
+}
+/* —— 块间隙光标（prosemirror-gapcursor）：表格 / 代码块 / 公式下方可点、可打字的落点 —— */
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+.ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid var(--text-editor);
+  animation: nl-gapcursor-blink 1.1s steps(2, start) infinite;
+}
+@keyframes nl-gapcursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
 }
 /* —— 文档内查找（find-in-doc.js）：命中高亮为视图层装饰，不改文档内容 —— */
 .nl-find-match {

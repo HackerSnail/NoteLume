@@ -82,6 +82,7 @@ export default {
   'cmd.editor.highlight': '高亮選取文字',
   'cmd.editor.headingUp': '提升標題層級',
   'cmd.editor.headingDown': '降低標題層級',
+  'cmd.editor.exitBlock': '離開程式碼塊',
 
   // 段落類命令（mac「段落」選單 / 命令面板用，標題帶「段落：」前綴，選單裡會剝掉）
   'cmd.editor.block.para': '段落：正文',
@@ -730,6 +731,7 @@ export default {
   // —— 表格右鍵選單（table-editing.js） ——
   'table.rowAbove': '上方插入行',
   'table.rowBelow': '下方插入行',
+  'table.afterPara': '表後另起一段',
   'table.rowDelete': '刪除本行',
   'table.colLeft': '左側插入欄',
   'table.colRight': '右側插入欄',

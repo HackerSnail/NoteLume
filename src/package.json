@@ -30,7 +30,11 @@
     "test:vault-path": "node tests/vault-path.test.mjs",
     "test:drop-open": "node tests/drop-open.test.mjs",
     "test:pane-drag": "node tests/pane-drag.test.mjs",
-    "test:pane-drag-dom": "node tests/pane-drag-dom.test.mjs"
+    "test:pane-drag-dom": "node tests/pane-drag-dom.test.mjs",
+    "test:backspace": "node tests/backspace.test.mjs",
+    "test:enter-blocks": "node tests/enter-blocks.test.mjs",
+    "test:table-enter": "node tests/table-enter.test.mjs",
+    "test:gapcursor": "node tests/gapcursor.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
@@ -50,6 +54,7 @@
     "markdown-it-footnote": "^4.0.0",
     "mermaid": "^12.2.0",
     "prosemirror-commands": "^1.6.0",
+    "prosemirror-gapcursor": "^1.4.1",
     "prosemirror-history": "^1.4.1",
     "prosemirror-keymap": "^1.2.2",
     "prosemirror-markdown": "^1.13.1",

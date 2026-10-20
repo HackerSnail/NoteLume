@@ -82,6 +82,7 @@ export default {
   'cmd.editor.highlight': 'Highlight Selection',
   'cmd.editor.headingUp': 'Increase Heading Level',
   'cmd.editor.headingDown': 'Decrease Heading Level',
+  'cmd.editor.exitBlock': 'Exit Code Block',
 
   // Paragraph commands (mac "Paragraph" menu / command palette; title carries the
   // "Paragraph: " prefix that the menu strips off)
@@ -731,6 +732,7 @@ export default {
   // —— Table context menu (table-editing.js) ——
   'table.rowAbove': 'Insert Row Above',
   'table.rowBelow': 'Insert Row Below',
+  'table.afterPara': 'Paragraph After Table',
   'table.rowDelete': 'Delete Row',
   'table.colLeft': 'Insert Column Left',
   'table.colRight': 'Insert Column Right',

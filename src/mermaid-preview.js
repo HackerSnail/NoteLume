@@ -5,8 +5,8 @@
 //    parse/serialize 走原生 fence <-> code_block 路径，GFM 往返零风险。
 //  · Typora 式「只见图，点图就地出码」：源码块的可见性完全由**光标位置**决定——光标不在该块内
 //    → 挂 .nl-mm-source（display:none）并在块尾挂图 widget；光标在块内 → 换成 .nl-mm-editing 描边、
-//    摘掉图。于是「斜杠菜单刚建好块」「点图把光标送进块」两种进入方式天然成立，Esc / Shift-Enter /
-//    点击别处让光标离开即回到图态；同一时刻最多一块出码（选区只有一个）。
+//    摘掉图。于是「斜杠菜单刚建好块」「点图把光标送进块」两种进入方式天然成立，Esc / Mod-Enter /
+//    点击别处让光标离开即回到图态（Shift-Enter 归位成块内换行，不再兼作摘图）；同一时刻最多一块出码。
 //  · 图 widget 上的点击由元素自己的监听器处理（PM 对 widget 的 stopEvent 事件会先忽略，
 //    handleDOMEvents 收不到），监听器只做一件事：把光标放进该块。
 //  · mermaid 是重依赖，用 await import('mermaid') 动态加载：vite 自动分包，

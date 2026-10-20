@@ -96,8 +96,11 @@ const extendedNodes = baseSchema.spec.nodes
   // 表格：采用 prosemirror-tables 生成的 spec（带 colspan/rowspan/colwidth + TableMap），
   // 使增删行列 / Tab 跨格 / 列宽拖拽可用；节点名仍为 table/table_row/table_header/table_cell，
   // 故 Markdown 解析 tokens 与 serializeTable 无需改动。
-  .addToEnd('table', nlTableNodes.table)
-  .addToEnd('table_row', nlTableNodes.table_row)
+  // allowGapCursor:false 挡表内落点：间隙光标的判定看「所在父块」，行首/行尾位置的父块是 table_row，
+  // 其 contentMatch 默认类型是 table_cell，方向键从格内左右越界就会停在那里（实测 dir=-1 得 pos=10
+  // 父=table_row），再敲一次键就往行里插一个格。表前后的落点父块是 doc，不受这条影响。
+  .addToEnd('table', { ...nlTableNodes.table, allowGapCursor: false })
+  .addToEnd('table_row', { ...nlTableNodes.table_row, allowGapCursor: false })
   .addToEnd('table_header', nlTableNodes.table_header)
   .addToEnd('table_cell', nlTableNodes.table_cell)
   // [[wikilink]] —— 行内叶节点
@@ -225,6 +228,10 @@ const extendedNodes = baseSchema.spec.nodes
     group: 'block',
     code: true,
     defining: true,
+    // 文末代码块下方的可点落点：gapcursor 判定「相邻块是否需要间隙」时看这个标记
+    // （源码 needsGap = isAtom || isolating || createGapCursor），代码块三者都不占，
+    // 不写就点不出落点，实测见 tests/gapcursor.test.mjs
+    createGapCursor: true,
     attrs: { params: { default: '' } },
     parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }],
     toDOM(node) {

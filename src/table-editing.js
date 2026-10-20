@@ -188,6 +188,47 @@ export function tableKeymap() {
   })
 }
 
+// —— 表格内的回车 ——
+// 单元格是 inline* + isolating，splitBlock 与 exitCode 在里面恒 false：回车必须给专用命令。
+// 出表时表后面已有块就只搬光标（不改文档，也就不判脏）；表是末块才补一个空段落，
+// 该段落存盘时会被序列化吃掉（实测），持久落点靠 gapcursor。
+function tablePos($from) {
+  for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'table') return d
+  return 0
+}
+
+export function exitTableBelow(state, dispatch) {
+  const $from = state.selection.$from
+  const d = tablePos($from)
+  if (!d) return false
+  const after = $from.after(d)
+  const tr = state.tr
+  if (after < state.doc.content.size) {
+    const sel = TextSelection.near(tr.doc.resolve(after), 1)
+    if (!sel) return false
+    if (dispatch) dispatch(tr.setSelection(sel).scrollIntoView())
+    return true
+  }
+  const para = state.schema.nodes.paragraph.create()
+  if (dispatch) dispatch(tr.insert(after, para).setSelection(TextSelection.near(tr.doc.resolve(after), 1)).scrollIntoView())
+  return true
+}
+
+// Enter：非末格走下一格，末格出表。表内一律接管、不看选区：goToNextCell 会留下一个同格内长度 1
+// 的跨边界选区，按「有选区就让行」判定会把连按的第二下挡断；而放行交回后续回车链，
+// splitBlock / newlineInCode / liftEmptyBlock 在 inline* + isolating 的格内实测全 false，等于回到陷阱。
+export function nlCellEnter(state, dispatch, view) {
+  if (!isInTable(state)) return false
+  if (goToNextCell(1)(state, dispatch, view)) return true
+  return exitTableBelow(state, dispatch)
+}
+
+// Shift-Enter：上一格。格内插 hard_break 会把表写坏（序列化出行内换行，反解后行数与格数都变）
+export function nlCellBack(state, dispatch, view) {
+  if (!isInTable(state)) return false
+  return goToNextCell(-1)(state, dispatch, view)
+}
+
 // —— 功能项 J：合并/拆分的选区判定 ——
 // 选区跨越 ≥2 个单元格（CellSelection）才可合并
 function isMultiCellSel(sel) {
@@ -274,6 +315,7 @@ export function attachTableContextMenu(view) {
     menu.className = 'cv-menu table-menu'
     menu.appendChild(item(t('table.rowAbove'), run(addRowBefore)))
     menu.appendChild(item(t('table.rowBelow'), run(addRowAfter)))
+    menu.appendChild(item(t('table.afterPara'), run(exitTableBelow)))
     menu.appendChild(item(t('table.rowDelete'), run(deleteRow), true))
     menu.appendChild(sep())
     menu.appendChild(item(t('table.colLeft'), run(addColumnBefore)))
