@@ -66,6 +66,19 @@ npm run dev      # 开发模式（首次约 5–10 分钟编译 Rust 依赖）
 npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 ```
 
+### 网页剪藏
+
+把浏览器里的网页正文存进知识库：按模板落盘成标准 md，图片进 `assets/`，文末自动关联库内相关笔记。
+
+1. **装扩展**：Edge 地址栏输 `edge://extensions`，打开左下角「开发人员模式」，点「加载已解压缩的扩展」选仓库里的 `extension/` 目录（Chrome 是 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」）。加载后建议在工具栏拼图菜单里把「NoteLume 剪藏」固定出来。
+2. **NoteLume 里开服务**：工具条「更多 → 网页剪藏设置」，勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数。
+3. **扩展里配对**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），令牌填设置里那串 32 位十六进制，「测试连接」应回「连接正常 · 已打开知识库」。NoteLume 里重新生成令牌后，这里要同步改。
+4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段。
+
+剪藏落在 `Clippings/<日期>-<标题>.md`，图片在 `Clippings/assets/`（按内容去重，md 里是 `./assets/` 相对链接），文末「## 相关笔记」列出打分最高的相关文档，点开即跳；被关联文档的反链面板里也能看到这篇剪藏。
+
+服务只绑 `127.0.0.1`，请求必须带令牌。NoteLume 没开、没开知识库、令牌不符、内容超过 8MB 时，扩展会弹对应的失败通知。详细错误对照见 `extension/README.md`。
+
 ### 快捷键
 
 mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置，全部可在「更多」→「快捷键设置…」重绑（冲突会硬阻止保存）。
@@ -185,6 +198,19 @@ cd src && npm install && cd ..
 npm run dev      # dev mode (first Rust build takes ~5–10 min)
 npm run build    # release bundles, output under src-tauri/target/release/bundle/
 ```
+
+### Web Clipping
+
+Save web pages into your vault: content lands as standard Markdown per your template, images go to `assets/`, and related notes are linked at the end of the clip.
+
+1. **Install the extension**: open `edge://extensions` (Chrome: `chrome://extensions`), turn on developer mode, click "Load unpacked" and pick the `extension/` folder in this repo. Pin "NoteLume 剪藏" to the toolbar from the puzzle menu.
+2. **Start the server in NoteLume**: toolbar → More → Web clipping settings, check "Enable clipping server" and save. The status bar shows the actual address (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`) and how many related notes to link.
+3. **Pair the extension**: right-click the extension icon → Options, fill in the address shown in NoteLume and the 32-character token, then "Test connection" should report OK with an open vault. If you regenerate the token in NoteLume, update it here too.
+4. **Clip**: click the pinned icon for the whole page, or select text first and right-click → "剪藏选中内容到 NoteLume" for just the selection.
+
+Clips land at `Clippings/<date>-<title>.md`, images at `Clippings/assets/` (content-deduplicated, referenced as `./assets/` relative links), with a "## 相关笔记" section at the end listing the highest-scoring related documents — clickable both ways, since the linked documents also see the clip in their backlinks panel.
+
+The server listens on `127.0.0.1` only and every request must carry the token. The extension notifies you when NoteLume isn't running, no vault is open, the token mismatches, or the payload exceeds 8 MB. See `extension/README.md` for the full error table.
 
 ### Keyboard Shortcuts
 
