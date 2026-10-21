@@ -1,4 +1,3 @@
-
 # 项目：Markdown 知识库编辑器（定位介于 Typora & Obsidian 之间）
 
 ## 项目定位
@@ -45,7 +44,8 @@
 1. 双向链接面板：当前文档的「引用本文件」+「本文件引用的其他文件」列表（Obsidian反向链接）
 2. 全局搜索：在整个知识库内搜索md文件内容+文件名+标签，支持预览匹配片段（Rust后端做文件扫描索引，提升搜索速度）
 3. 自动保存 + 备份机制
-4. KaTeX数学公式支持（行内公式 $...$、块公式 
+4. KaTeX数学公式支持（行内公式 $...$、块公式
+
    $$
    ...
    $$
@@ -69,53 +69,53 @@
 
 第一档（肌肉记忆级，缺了会不顺手）：
 
-| 功能 | Win/Linux | Mac |
-| --- | --- | --- |
-| 新建文件 | Ctrl+N | Cmd+N |
-| 保存 | Ctrl+S | Cmd+S |
-| 撤销 / 重做 | Ctrl+Z / Ctrl+Shift+Z | Cmd+Z / Cmd+Shift+Z |
-| 查找 / 替换 | Ctrl+F / Ctrl+H | Cmd+F / Cmd+H |
-| 加粗 / 斜体 | Ctrl+B / Ctrl+I | Cmd+B / Cmd+I |
-| 插入链接 | Ctrl+K | Cmd+K |
-| 代码块 | Ctrl+Shift+K | Cmd+Shift+K |
-| 行内代码 | Ctrl+` | Cmd+` |
-| 标题 1~6 | Ctrl+1~6 | Cmd+1~6 |
-| 切换编辑 / 预览 | Ctrl+E | Cmd+E |
-| 打印 / 另存 PDF | Ctrl+P | Cmd+P |
+| 功能            | Win/Linux             | Mac                 |
+| --------------- | --------------------- | ------------------- |
+| 新建文件        | Ctrl+N                | Cmd+N               |
+| 保存            | Ctrl+S                | Cmd+S               |
+| 撤销 / 重做     | Ctrl+Z / Ctrl+Shift+Z | Cmd+Z / Cmd+Shift+Z |
+| 查找 / 替换     | Ctrl+F / Ctrl+H       | Cmd+F / Cmd+H       |
+| 加粗 / 斜体     | Ctrl+B / Ctrl+I       | Cmd+B / Cmd+I       |
+| 插入链接        | Ctrl+K                | Cmd+K               |
+| 代码块          | Ctrl+Shift+K          | Cmd+Shift+K         |
+| 行内代码        | Ctrl+`                | Cmd+`               |
+| 标题 1~6        | Ctrl+1~6              | Cmd+1~6             |
+| 切换编辑 / 预览 | Ctrl+E                | Cmd+E               |
+| 打印 / 另存 PDF | Ctrl+P                | Cmd+P               |
 
 第二档（区分「能用」与「好用」）：
 
-| 功能 | Win/Linux | Mac |
-| --- | --- | --- |
-| 命令面板 | Ctrl+Shift+P | Cmd+Shift+P |
-| 快速打开文件 | Ctrl+O | Cmd+O |
-| 粘贴为纯文本 | Ctrl+Shift+V | Cmd+Shift+V |
-| 任务列表 | Ctrl+Shift+L | Cmd+Shift+L |
-| 无序 / 有序列表 | Ctrl+Shift+[ / Ctrl+Shift+] | Cmd+Shift+[ / Cmd+Shift+] |
-| 插入表格 | Ctrl+T | Cmd+T |
-| 插入图片 | Ctrl+Shift+I | Cmd+Shift+I |
-| 引用块 | Ctrl+Shift+Q | Cmd+Shift+Q |
-| 删除当前行 / 段落 | Ctrl+D | Cmd+D |
-| 提升 / 降低标题级别 | Ctrl+] / Ctrl+[ | Cmd+] / Cmd+[ |
-| 关闭当前标签页 | Ctrl+W | Cmd+W |
-| 切换下一个 / 上一个标签页 | Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab |
+| 功能                      | Win/Linux                   | Mac                       |
+| ------------------------- | --------------------------- | ------------------------- |
+| 命令面板                  | Ctrl+Shift+P                | Cmd+Shift+P               |
+| 快速打开文件              | Ctrl+O                      | Cmd+O                     |
+| 粘贴为纯文本              | Ctrl+Shift+V                | Cmd+Shift+V               |
+| 任务列表                  | Ctrl+Shift+L                | Cmd+Shift+L               |
+| 无序 / 有序列表           | Ctrl+Shift+[ / Ctrl+Shift+] | Cmd+Shift+[ / Cmd+Shift+] |
+| 插入表格                  | Ctrl+T                      | Cmd+T                     |
+| 插入图片                  | Ctrl+Shift+I                | Cmd+Shift+I               |
+| 引用块                    | Ctrl+Shift+Q                | Cmd+Shift+Q               |
+| 删除当前行 / 段落         | Ctrl+D                      | Cmd+D                     |
+| 提升 / 降低标题级别       | Ctrl+] / Ctrl+[             | Cmd+] / Cmd+[             |
+| 关闭当前标签页            | Ctrl+W                      | Cmd+W                     |
+| 切换下一个 / 上一个标签页 | Ctrl+Tab / Ctrl+Shift+Tab   | Ctrl+Tab / Ctrl+Shift+Tab |
 
 第三档（加分项，已做的）：
 
-| 功能 | Win/Linux | Mac |
-| --- | --- | --- |
+| 功能                 | Win/Linux    | Mac         |
+| -------------------- | ------------ | ----------- |
 | 专注模式（沉浸写作） | Ctrl+Shift+` | Cmd+Shift+` |
-| 重命名当前文件 | F2 | F2 |
+| 重命名当前文件       | F2           | F2          |
 
 固定结构键（不进注册表：`normalizeBinding` 只认单字符基础键、F1–F12 与带修饰的 Tab，这几个键串判非法，重绑不了）：
 
-| 键 | 行为 |
-| --- | --- |
-| Enter | 分块。表格里走下一格、末格出表；列表项内新起一项（空项退出列表）；标题把光标后的文字降到下方正文段，行首则在标题上方空一段；脚注项内换行；代码块内只加行；其余走原生链 |
-| Shift-Enter | 块内硬换行（序列化成行尾反斜杠）。表格里=上一格；代码块内=块内加行（与 Enter 同果）；标题里=无事发生，标题的硬换行没有 markdown 形态，插进去会写坏原文 |
-| Mod-Enter | 离开代码块 / 容器块，实际响应由 baseKeymap 提供；注册表项 `editor.exitBlock` 默认键留空，只负责让命令在面板与快捷键设置页可见可搜 |
-| Backspace | 块首：上一块是代码块或原子块则选中整块（再按删块），否则合并回上一块、正文不丢；单元格里不越 isolating 边界 |
-| Shift-Mod-z | 重做的标准别名 |
+| 键          | 行为                                                                                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enter       | 分块。表格里走下一格、末格出表；列表项内新起一项（空项退出列表）；标题把光标后的文字降到下方正文段，行首则在标题上方空一段；脚注项内换行；代码块内只加行；其余走原生链 |
+| Shift-Enter | 块内硬换行（序列化成行尾反斜杠）。表格里=上一格；代码块内=块内加行（与 Enter 同果）；标题里=无事发生，标题的硬换行没有 markdown 形态，插进去会写坏原文                 |
+| Mod-Enter   | 离开代码块 / 容器块，实际响应由 baseKeymap 提供；注册表项 `editor.exitBlock` 默认键留空，只负责让命令在面板与快捷键设置页可见可搜                                    |
+| Backspace   | 块首：上一块是代码块或原子块则选中整块（再按删块），否则合并回上一块、正文不丢；单元格里不越 isolating 边界                                                            |
+| Shift-Mod-z | 重做的标准别名                                                                                                                                                         |
 
 冲突裁决（同一键被两个习惯占用时，按档位取舍，低档位改键）：
 
@@ -181,6 +181,18 @@
 - 落边拆分（2026-10-19 起）：`splitPane(tree, paneId, orientation, newPaneId, newFirst)` 与 `view.split(...)` 同签名，`newFirst` 为真时新窗格居左 / 上（树里 children 对调，DOM 顺序 `[新, bar, 旧]`，比例样式落在新叶上）。拖拽落边走它，按钮 / 命令不传参，行为不变。
 - 拖拽的落点判定在 `src/pane-drag.js`：`dropZoneFor(rect, x, y)` 认外圈 25% 的四个落区，其余算中心；`tabDropIndex(rects, x, skip)` 算条内排序的插入位置。拖拽本身走 pointer 事件（与分割条同源），不用 HTML5 DnD——外部文件拖入已经占着 `.body` 的 `drop` 事件（`drop-open.js`），两套 DnD 混在会互相抢。
 - 不做：复制式拖放（Alt / Ctrl 拖）、拖出成独立窗口；全局总览栏。
+
+## 网页剪藏（2026-10-21）
+
+链路四段：浏览器扩展提取 → 本地 HTTP 推给 Tauri 主进程 → Rust 按模板落盘 → 笔记里自动关联已有知识。设计依据 `docs/superpowers/specs/2026-10-21-web-clip-design.md`，实现计划 `docs/superpowers/plans/2026-10-21-web-clip-plan.md`。
+
+- 扩展在 `extension/`（MV3，无构建无 npm）：`background.js` 是 service worker，入口三个——工具栏图标剪藏整页，右键菜单剪藏选中片段 / 整页。提取走 `chrome.scripting.executeScript` 按需注入 `vendor/Readability.js` + `vendor/turndown.js` + `content/extract.js`，不常驻 content script（`activeTab` 权限）；图片由后台 fetch 成 data URI（`host_permissions: <all_urls>`），取不到只留远程 URL。安装与配置见 `extension/README.md`。
+- 本地服务在 `src-tauri/src/webclip.rs`，手写 `std::net::TcpListener`，只绑 `127.0.0.1`，不引 crate。路由三条：`POST /clip`、`GET /health`、`OPTIONS` 预检。端口默认 3210，被占顺延 +1 至多 10 个，实际端口记运行态并经 `/health` 与设置面板回显。listener 设 nonblocking，accept 循环每 5ms 查关闭标志；每连接一线程。
+- 安全三道闸都在响应前校验：`X-NL-Token` 头与配置令牌恒定时间比对，不符 401；`Origin` 存在时必须是 `chrome-extension://` / `moz-extension://` 开头，否则 403（挡恶意网页直连本机端口）；`Host` 去端口后必须是 `127.0.0.1` / `localhost` / `::1`，否则 403（挡 DNS rebinding）。载荷上限整体 8MB、markdown 2MB、单图 5MB，超限 413。
+- 落盘：模板取库内 `Templates/` 下设置里选的 md，扩展选项页填了目录 / 模板就是单次覆盖；模板读失败或未选回落内置默认模板。变量与 `src/template.js` 的 `applyTemplate` 同语义（未知 token 原样保留）：`{{title}}` `{{url}}` `{{site}}` `{{author}}` `{{description}}` `{{content}}` `{{tags}}`（逗号分隔，frontmatter 用）`{{hashtags}}`（`#a #b`，正文用）`{{date}}` `{{time}}` `{{datetime}}` `{{year}}` `{{month}}` `{{day}}` `{{weekday}}`（走后端词表，五语言）。目标目录默认 `Clippings/`；文件名模式默认 `{{date}}-{{title}}`，非法字符换 `-`、截断 80 字符、重名追加 `-2`。图片落 `<目标目录>/assets/`，同内容复用、异内容追加 fnv1a 指纹，markdown 里的远程 URL 改写为 `./assets/<name>`。越界校验复用 `vault_join` + 父目录 canonicalize，与 `write_md_file` 同一套。
+- 自动关联：写盘后用 `VaultIndex` 打分，标签交集 ×3、标题词重叠 ×2、正文命中 ×1（每词封顶 3 次）；CJK 取 2 字滑窗，拉丁词 4 字符以上并去停用词。取前 `maxLinks`（默认 5），文末追加 `## 相关笔记` 段，链接用根绝对形式 `[[/目录/文件名|标题]]`——剪藏多在一级子目录，相对路径会因参照目录不同解析不到。只改新剪藏，不动已有笔记；反向连接由现有反链面板在 `index_doc_into` 注册 outgoing 后自然呈现。索引未就绪（没开库或正在重建）时跳过关联，响应里 `linked` 为 0。
+- 前端：`src/clip-settings.js` 是设置面板（工具条「更多」与命令面板 `app.clipSettings` 两个入口），配置存 settings.json 的 `clip` 段，字段与 Rust 侧 `ClipConfig` 一一对应；「保存」时经 `clip_server_apply` 停旧起新服务。boot 里监听 `nl:clip-saved`：刷文件树 + 状态栏出「已剪藏：{rel}（关联 n 篇）」，不自动打开（设置里 `openAfterSave` 可开）。后端错误文案走 `ui_lang.rs` 五语言词表，界面文案进 `src/locales/` 五份。
+- 错误码：401 令牌不符、403 来源不允许、409 没开知识库、413 超限、400 畸形请求、404 接口不存在、500 写盘失败；响应体统一 `{ok, code?, message?}`，成功时回 `{rel, title, linked, imagesSaved, imagesFailed}`。
 
 ## 架构设计
 

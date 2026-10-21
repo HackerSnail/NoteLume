@@ -43,6 +43,7 @@
 * 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；不联网也绝不上传，删除进系统回收站
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
 * 🔄 **Git 内置**：状态 / 历史 / 单文件 diff / 提交 / 推送 / 合并冲突解决全部内建（`git2` 引擎，没装 git 也能 fetch/pull）
+* 🌐 **网页剪藏**：浏览器扩展（`extension/`，MV3）把网页正文 POST 给本机服务，Rust 按模板落盘、图片进 `assets/`，并自动在文末关联库内相关笔记；只绑 127.0.0.1、令牌闸门
 * 📦 **轻**：macOS DMG 约 6 MB；整库导出静态站、插件系统（`.notelume-plugins/`）同样内建
 
 ### 快速开始
@@ -162,6 +163,7 @@ Tired of cloud notes that spin forever, but unwilling to give up speed for struc
 * 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; nothing ever leaves your machine; deletions go to the system trash
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
 * 🔄 **Git built in**: status / history / per-file diff / commit / push / merge-conflict resolution, powered by embedded `git2` — works even without a system Git installed
+* 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, stores images under `assets/`, and appends links to related notes — loopback-only with a token gate
 * 📦 **Featherweight**: the macOS DMG is about 6 MB; full-vault static-site export and a plugin system (`.notelume-plugins/`) come standard
 
 ### Quick Start
