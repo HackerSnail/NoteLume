@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+// mac 回收站走 NSFileManager 而非 Finder AppleScript，见 delete_file
+#[cfg(target_os = "macos")]
+use trash::macos::TrashContextExtMacos;
+
 // 批次 E · 子项目 R1-B：内置远程（libgit2）后端。Phase 1 先挂纯逻辑与结构体；
 // Phase 3 会在同文件补 fetch/upstream/ahead_behind/pull_ff 实现。
 mod git_builtin;
@@ -269,14 +273,33 @@ fn create_md_file(vault_root: String, args: CreateDocArgs) -> Result<String, Str
     Ok(rel)
 }
 
+/// 回收站报错取人可读的那一段。`trash::Error` 的 Display 就是 Debug，直接抛给界面会连着
+/// `Os { code, description }` 的外壳一起显示。
+fn trash_err(e: trash::Error) -> String {
+    match e {
+        trash::Error::Os { description, .. } | trash::Error::Unknown { description } => description,
+        trash::Error::CouldNotAccess { target } => target,
+        other => other.to_string(),
+    }
+}
+
 /// 把库内单个文件（md / canvas）移入系统回收站：路径经 abs_in_vault 限定库内，拒绝目录与越界。
+///
+/// mac 上显式选 `NsFileManager`：crate 默认的 `Finder` 方式是 fork `osascript` 让 Finder
+/// 执行 AppleScript，未获「Apple 事件」授权就报 -1743。`trashItemAtURL` 是系统调用，
+/// 不需要额外授权，代价是没有 Finder 的删除音，部分系统回收站条目右键少了「放回原处」。
 #[tauri::command]
 fn delete_file(vault_root: String, path: String) -> Result<(), String> {
     let abs = abs_in_vault(&vault_root, &path)?;
     if abs.is_dir() {
         return Err(ui_msg!("noFolderDelete"));
     }
-    trash::delete(&abs).map_err(|e| ui_msg!("trashFailed", "err" => e))?;
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))] // 非 mac 没有可选的通道
+    let mut ctx = trash::TrashContext::new();
+    #[cfg(target_os = "macos")]
+    ctx.set_delete_method(trash::macos::DeleteMethod::NsFileManager);
+    ctx.delete(&abs)
+        .map_err(|e| ui_msg!("trashFailed", "err" => trash_err(e)))?;
     Ok(())
 }
 
