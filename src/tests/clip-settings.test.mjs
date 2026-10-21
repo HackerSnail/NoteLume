@@ -55,6 +55,23 @@ test('normalizeClip: 布尔只认布尔', () => {
   assert.strictEqual(normalizeClip({ openAfterSave: true }).openAfterSave, true)
 })
 
+test('normalizeClip: v2 三个开关（图片本地化 / 整页兜底 / 默认 clip 标签）', () => {
+  // 默认值：图片本地化关、整页兜底关、默认 clip 标签开（与 Rust 侧一一对应）
+  assert.strictEqual(DEFAULT_CLIP.localizeImages, false)
+  assert.strictEqual(DEFAULT_CLIP.fullPageFallback, false)
+  assert.strictEqual(DEFAULT_CLIP.defaultClipTag, true)
+  assert.strictEqual(normalizeClip(null).localizeImages, false)
+  assert.strictEqual(normalizeClip(null).fullPageFallback, false)
+  assert.strictEqual(normalizeClip(null).defaultClipTag, true)
+  assert.strictEqual(normalizeClip({ localizeImages: true }).localizeImages, true)
+  assert.strictEqual(normalizeClip({ fullPageFallback: true }).fullPageFallback, true)
+  assert.strictEqual(normalizeClip({ defaultClipTag: false }).defaultClipTag, false)
+  // 布尔只认布尔
+  assert.strictEqual(normalizeClip({ localizeImages: 'yes' }).localizeImages, false)
+  assert.strictEqual(normalizeClip({ fullPageFallback: 1 }).fullPageFallback, false)
+  assert.strictEqual(normalizeClip({ defaultClipTag: null }).defaultClipTag, true)
+})
+
 test('normalizeClip: 不篡改默认对象', () => {
   const before = JSON.stringify(DEFAULT_CLIP)
   normalizeClip({ enabled: true, port: 4000, folder: 'x' })

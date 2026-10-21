@@ -2,12 +2,14 @@
 //
 // 剪藏链路：浏览器扩展 POST 到本机 Rust 起的 HTTP 服务（只绑 127.0.0.1，来源闸门是
 // Origin + Host 检查，不带令牌），Rust 按模板落盘并自动关联库内笔记。这里管的是设置：
-// 开关、端口、目标目录、模板、文件名模式、自动关联、剪藏后是否打开。
+// 开关、端口、目标目录、模板、文件名模式、自动关联、剪藏后是否打开、图片本地化、
+// 整页兜底、默认 clip 标签。
 //
 // 持久化：并进 settings.json 的 clip 段（settings-store.js 读写）；「保存」时除写设置
 // 外还调 clip_server_apply 让 Rust 侧停旧起新服务。面板关着时服务照常运行。
 //
 // 设计依据：docs/superpowers/specs/2026-10-21-web-clip-design.md
+// v2 增量：docs/superpowers/specs/2026-10-21-web-clip-v2-design.md
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
@@ -23,6 +25,9 @@ export const DEFAULT_CLIP = {
   autoLink: true,
   maxLinks: 5,
   openAfterSave: false,
+  localizeImages: false,
+  fullPageFallback: false,
+  defaultClipTag: true,
 }
 
 function clampNum(v, min, max, def) {
@@ -38,6 +43,9 @@ export function normalizeClip(raw) {
   if (typeof raw.enabled === 'boolean') s.enabled = raw.enabled
   if (typeof raw.openAfterSave === 'boolean') s.openAfterSave = raw.openAfterSave
   if (typeof raw.autoLink === 'boolean') s.autoLink = raw.autoLink
+  if (typeof raw.localizeImages === 'boolean') s.localizeImages = raw.localizeImages
+  if (typeof raw.fullPageFallback === 'boolean') s.fullPageFallback = raw.fullPageFallback
+  if (typeof raw.defaultClipTag === 'boolean') s.defaultClipTag = raw.defaultClipTag
   if (raw.port != null) s.port = clampNum(raw.port, 1024, 65535, DEFAULT_CLIP.port)
   if (raw.maxLinks != null) s.maxLinks = clampNum(raw.maxLinks, 0, 20, DEFAULT_CLIP.maxLinks)
   if (typeof raw.template === 'string') s.template = raw.template.trim().slice(0, 200)
@@ -177,6 +185,14 @@ export function createClipSettings(deps) {
 
     textRow('clip.filename', draft.filename, (v) => { draft.filename = v })
     hint('clip.filenameHint')
+
+    // v2：图片本地化 / 整页兜底 / 默认 clip 标签三个开关（都在落盘这一步生效）
+    checkRow('clip.localizeImages', draft.localizeImages, (v) => { draft.localizeImages = v })
+    hint('clip.localizeImagesHint')
+    checkRow('clip.fullPageFallback', draft.fullPageFallback, (v) => { draft.fullPageFallback = v })
+    hint('clip.fullPageFallbackHint')
+    checkRow('clip.defaultClipTag', draft.defaultClipTag, (v) => { draft.defaultClipTag = v })
+    hint('clip.defaultClipTagHint')
   }
 
   function renderLink() {

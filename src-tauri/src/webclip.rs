@@ -42,22 +42,44 @@ pub const MAX_MARKDOWN: usize = 2 * 1024 * 1024;
 /// 单张图片上限
 pub const MAX_IMAGE: usize = 5 * 1024 * 1024;
 
-/// 内置默认模板：未选模板或模板读失败时用。变量语义与 src/template.js 的 applyTemplate 一致
-/// （未知 token 原样保留），{{tags}} 逗号分隔供 frontmatter，{{hashtags}} 是 #a #b 形式。
-pub const DEFAULT_TEMPLATE: &str = concat!(
+/// 内置 article 模板：未选模板或模板读失败时用（整页剪藏）。变量语义与
+/// src/template.js 的 applyTemplate 一致（未知 token 原样保留），{{tags}} 逗号分隔供
+/// frontmatter，{{hashtags}} 是 #a #b 形式。frontmatter 字段见 v2 spec §2：
+/// published_at 页面给了才填、clipped_at 本地时区 ISO 8601、template 记本次实际模板名。
+pub const DEFAULT_TEMPLATE_ARTICLE: &str = concat!(
     "---\n",
     "title: {{title}}\n",
     "source: {{url}}\n",
-    "site: {{site}}\n",
     "author: {{author}}\n",
-    "published: {{published}}\n",
-    "clipped: {{datetime}}\n",
+    "published_at: {{published_at}}\n",
+    "clipped_at: {{clipped_at}}\n",
     "tags: [{{tags}}]\n",
+    "template: {{template}}\n",
     "---\n",
     "\n",
     "# {{title}}\n",
     "\n",
     "> {{description}}\n",
+    "\n",
+    "{{content}}\n",
+);
+
+/// 内置 highlight 模板：选区剪藏用。来源行进引用块，与整页剪藏拉开观感；
+/// frontmatter 同 article（template 字段渲染成 highlight）。
+pub const DEFAULT_TEMPLATE_HIGHLIGHT: &str = concat!(
+    "---\n",
+    "title: {{title}}\n",
+    "source: {{url}}\n",
+    "author: {{author}}\n",
+    "published_at: {{published_at}}\n",
+    "clipped_at: {{clipped_at}}\n",
+    "tags: [{{tags}}]\n",
+    "template: {{template}}\n",
+    "---\n",
+    "\n",
+    "# {{title}}\n",
+    "\n",
+    "> 摘录自 [{{site}}]({{url}})\n",
     "\n",
     "{{content}}\n",
 );
@@ -112,7 +134,7 @@ pub struct ClipOutcome {
     pub images_failed: usize,
 }
 
-/// 剪藏配置。前八个字段来自 settings.json 的 clip 段；bound_port 是运行态
+/// 剪藏配置。前 11 个字段来自 settings.json 的 clip 段；bound_port 是运行态
 ///（端口占用顺延后的实际绑定值），不落盘。
 #[derive(Clone, Debug)]
 pub struct ClipConfig {
@@ -124,6 +146,12 @@ pub struct ClipConfig {
     pub auto_link: bool,
     pub max_links: usize,
     pub open_after_save: bool,
+    /// 图片本地化开关。false（默认）时扩展不取图、Rust 完全不碰图，正文保留 https:// 原链接
+    pub localize_images: bool,
+    /// 整页兜底开关。两级提取器都失败时，true 才退化 document.body；false 报「提取失败」
+    pub full_page_fallback: bool,
+    /// frontmatter 的 tags 第一项是否放默认 clip 标签（页面关键词接在其后）
+    pub default_clip_tag: bool,
     pub bound_port: Option<u16>,
 }
 
@@ -138,6 +166,9 @@ impl Default for ClipConfig {
             auto_link: true,
             max_links: DEFAULT_MAX_LINKS,
             open_after_save: false,
+            localize_images: false,
+            full_page_fallback: false,
+            default_clip_tag: true,
             bound_port: None,
         }
     }
@@ -187,6 +218,15 @@ pub fn clip_config_from_json(v: &serde_json::Value) -> ClipConfig {
     }
     if let Some(b) = obj.get("openAfterSave").and_then(|x| x.as_bool()) {
         cfg.open_after_save = b;
+    }
+    if let Some(b) = obj.get("localizeImages").and_then(|x| x.as_bool()) {
+        cfg.localize_images = b;
+    }
+    if let Some(b) = obj.get("fullPageFallback").and_then(|x| x.as_bool()) {
+        cfg.full_page_fallback = b;
+    }
+    if let Some(b) = obj.get("defaultClipTag").and_then(|x| x.as_bool()) {
+        cfg.default_clip_tag = b;
     }
     cfg
 }
@@ -254,15 +294,22 @@ fn fmt_date(fmt: &str, now: &DateTime<Local>) -> String {
     out
 }
 
-/// 剪藏模板变量集。weekday 走后端词表（clip.weekday.0..6），与界面语言一致。
-pub fn clip_vars(payload: &ClipPayload) -> HashMap<String, String> {
+/// 剪藏模板变量集。weekday 走后端词表（clip.weekday.0..6），与界面语言一致；
+/// clipped_at 是本地时区 ISO 8601（带偏移，如 2026-10-22T14:30:05+08:00）；
+/// tags 第一项默认放 clip（cfg.default_clip_tag 可关），页面关键词接在其后，
+/// 页面里已有 clip（大小写不敏感）时不重复加。template 变量由 write_clip 在模板
+/// 解析后插入（内置 article / highlight 或用户模板主名）。
+pub fn clip_vars(payload: &ClipPayload, cfg: &ClipConfig) -> HashMap<String, String> {
     let now = Local::now();
-    let tags: Vec<String> = payload
+    let mut tags: Vec<String> = payload
         .tags
         .iter()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
+    if cfg.default_clip_tag && !tags.iter().any(|t| t.eq_ignore_ascii_case("clip")) {
+        tags.insert(0, "clip".to_string());
+    }
     let hashtags: Vec<String> = tags.iter().map(|t| format!("#{}", t)).collect();
     let mut m = HashMap::new();
     m.insert("title".into(), payload.title.trim().to_string());
@@ -271,6 +318,8 @@ pub fn clip_vars(payload: &ClipPayload) -> HashMap<String, String> {
     m.insert("author".into(), payload.byline.trim().to_string());
     m.insert("description".into(), payload.excerpt.trim().to_string());
     m.insert("published".into(), payload.published.trim().to_string());
+    m.insert("published_at".into(), payload.published.trim().to_string());
+    m.insert("clipped_at".into(), now.format("%Y-%m-%dT%H:%M:%S%:z").to_string());
     m.insert("content".into(), payload.markdown.clone());
     m.insert("tags".into(), tags.join(", "));
     m.insert("hashtags".into(), hashtags.join(" "));
@@ -320,20 +369,35 @@ pub fn render_template(tpl: &str, vars: &HashMap<String, String>) -> String {
     out
 }
 
-/// 读用户模板（库内相对路径）。未选 / 读失败 / 内容为空一律回落内置默认模板——
-/// 剪藏不能因为一份坏模板整体失败。
-pub fn read_clip_template(root: &Path, template_rel: &str) -> String {
-    let rel = template_rel.trim().replace('\\', "/").trim_matches('/').to_string();
+/// 模板解析：用户显式选过（设置里的 template_rel，或扩展选项页的单次覆盖）就用库内
+/// 模板，读失败 / 内容为空回落内置；没选过时按剪藏类型挑内置模板——选区走 highlight
+/// （来源行进引用块），其余走 article。返回 (模板文本, 模板名)，模板名写进 frontmatter
+/// 的 template 字段（用户模板取主名，不含目录与扩展名）。
+fn resolve_template(root: &Path, cfg: &ClipConfig, payload: &ClipPayload) -> (String, String) {
+    let rel = if payload.template.trim().is_empty() {
+        cfg.template_rel.trim()
+    } else {
+        payload.template.trim()
+    };
     if !rel.is_empty() {
-        if let Ok(abs) = crate::vault_join(root, &rel) {
+        if let Ok(abs) = crate::vault_join(root, rel) {
             if let Ok(text) = fs::read_to_string(&abs) {
                 if !text.trim().is_empty() {
-                    return text;
+                    let name = rel.rsplit(['/', '\\']).next().unwrap_or(rel);
+                    let stem = match name.rsplit_once('.') {
+                        Some((s, _)) => s,
+                        None => name,
+                    };
+                    return (text, stem.to_string());
                 }
             }
         }
     }
-    DEFAULT_TEMPLATE.to_string()
+    if payload.clip_type == "selection" {
+        (DEFAULT_TEMPLATE_HIGHLIGHT.to_string(), "highlight".to_string())
+    } else {
+        (DEFAULT_TEMPLATE_ARTICLE.to_string(), "article".to_string())
+    }
 }
 
 // ==================== 文件名 ====================
@@ -654,8 +718,9 @@ pub fn append_related(md: &str, links: &[(String, String)]) -> String {
 
 // ==================== 落盘 ====================
 
-/// 剪藏落盘：模板渲染 → 图片进 assets/ 并改写 URL → 关联段追加 → 写 md → 增量更新索引。
-/// index 传 Some 时同时用于关联计算与索引回写（调用方持有锁，避免内部重复加锁）。
+/// 剪藏落盘：模板渲染 →（localize_images 开时）图片进 assets/ 并改写 URL → 关联段
+/// 追加 → 写 md → 增量更新索引。index 传 Some 时同时用于关联计算与索引回写
+/// （调用方持有锁，避免内部重复加锁）。
 pub fn write_clip(
     root: &Path,
     payload: &ClipPayload,
@@ -665,14 +730,9 @@ pub fn write_clip(
     if payload.markdown.trim().is_empty() {
         return Err(crate::ui_msg!("clip.emptyContent"));
     }
-    let vars = clip_vars(payload);
-    // 单次覆盖：扩展选项页填了目录 / 模板就按载荷的来，否则用设置里的值
-    let tpl_rel = if payload.template.trim().is_empty() {
-        cfg.template_rel.as_str()
-    } else {
-        payload.template.as_str()
-    };
-    let template = read_clip_template(root, tpl_rel);
+    let (template, template_name) = resolve_template(root, cfg, payload);
+    let mut vars = clip_vars(payload, cfg);
+    vars.insert("template".into(), template_name);
     let mut content = render_template(&template, &vars);
 
     let folder = normalize_folder(if payload.folder.trim().is_empty() {
@@ -682,7 +742,8 @@ pub fn write_clip(
     });
     let mut images_saved = 0usize;
     let mut images_failed = 0usize;
-    if !payload.images.is_empty() {
+    // 图片本地化默认关：扩展侧不发图，这里同样不碰图，正文保留 https:// 原链接
+    if cfg.localize_images && !payload.images.is_empty() {
         let assets_dir = crate::vault_join(root, &folder).map(|p| p.join("assets"))?;
         for img in &payload.images {
             match save_clip_image(&assets_dir, img) {
@@ -1104,6 +1165,21 @@ fn handle_clip(
     write_response(stream, code, &body)
 }
 
+/// /health 响应体。localizeImages / fullPageFallback 随健康检查下发：扩展每次剪藏前
+/// GET 一次 /health（localhost 轻请求）读这两个开关——前者决定要不要把图 fetch 成
+/// data URI，后者决定两级提取器都失败时报「提取失败」还是退化整页。
+fn health_json(cfg: &ClipConfig, has_vault: bool) -> String {
+    serde_json::json!({
+        "ok": true,
+        "app": "notelume",
+        "port": cfg.bound_port,
+        "hasVault": has_vault,
+        "localizeImages": cfg.localize_images,
+        "fullPageFallback": cfg.full_page_fallback,
+    })
+    .to_string()
+}
+
 /// 单连接处理：来源检查（Host / Origin）→ 路由 → 响应。
 fn handle_conn(
     mut stream: TcpStream,
@@ -1136,14 +1212,7 @@ fn handle_conn(
         ("OPTIONS", _) => write_response(&mut stream, 204, ""),
         ("GET", "/health") => {
             let has_vault = index.lock().map(|g| !g.vault_root.is_empty()).unwrap_or(false);
-            let body = serde_json::json!({
-                "ok": true,
-                "app": "notelume",
-                "port": cfg.bound_port,
-                "hasVault": has_vault,
-            })
-            .to_string();
-            write_response(&mut stream, 200, &body)
+            write_response(&mut stream, 200, &health_json(cfg, has_vault))
         }
         ("POST", "/clip") => handle_clip(&mut stream, index, cfg, &req, emit),
         _ => write_response(&mut stream, 404, &err_json("not_found", &crate::ui_msg!("clip.notFound"))),
@@ -1256,7 +1325,8 @@ mod tests {
         // 索引条目对应的真实文件也要在盘上：resolve_one 解析 [[...]] 要查文件存在性
         fs::create_dir_all(root.join("notes")).unwrap();
         fs::write(root.join("notes/rust.md"), "rust 编程指南").unwrap();
-        let cfg = ClipConfig::default();
+        // 图片本地化默认关，这条用例要验落图链路，显式打开
+        let cfg = ClipConfig { localize_images: true, ..ClipConfig::default() };
         let out = write_clip(&root, &p, &cfg, Some(&mut idx)).unwrap();
 
         assert!(out.rel.starts_with("Clippings/"));
@@ -1277,7 +1347,59 @@ mod tests {
     }
 
     #[test]
-    fn write_clip_keeps_remote_url_when_no_data_uri() {
+    fn write_clip_frontmatter_new_fields() {
+        let dir = std::env::temp_dir().join("notelume-clip-frontmatter-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        let p = payload("测试页面", "正文");
+        let p = ClipPayload { tags: vec!["rust".into()], published: "2026-10-01".into(), ..p };
+        let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        // frontmatter 字段（v2 spec §2）
+        assert!(text.contains("source: https://example.com/a"));
+        assert!(text.contains("author: "), "缺 author 行");
+        assert!(text.contains("published_at: 2026-10-01"), "页面给了发布时间才填");
+        // clipped_at：本地时区 ISO 8601，带偏移（如 2026-10-22T14:30:05+08:00）
+        let clipped = text
+            .lines()
+            .find_map(|l| l.strip_prefix("clipped_at: "))
+            .expect("缺 clipped_at 行");
+        let bytes = clipped.as_bytes();
+        assert_eq!(bytes.len(), 25, "长度不对：{clipped}");
+        assert_eq!(bytes[4], b'-', "年月日分隔：{clipped}");
+        assert_eq!(bytes[7], b'-', "月日分隔：{clipped}");
+        assert_eq!(bytes[10], b'T', "日期时间分隔：{clipped}");
+        assert!(matches!(bytes[19], b'+' | b'-'), "带时区偏移：{clipped}");
+        assert_eq!(bytes[22], b':', "偏移里的冒号：{clipped}");
+        // tags 第一项默认 clip，页面关键词接后；template 记本次实际模板名
+        assert!(text.contains("tags: [clip, rust]"));
+        assert!(text.contains("template: article"), "整页剪藏落 article");
+        assert!(!text.contains("site: "), "旧 frontmatter 字段已移除");
+        assert!(!text.contains("clipped: "), "旧 frontmatter 字段已移除");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_clip_uses_highlight_template_for_selection() {
+        let dir = std::env::temp_dir().join("notelume-clip-highlight-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        // 选区剪藏：highlight 模板，来源行进引用块
+        let p = payload("测试页面", "划中的片段");
+        let p = ClipPayload { clip_type: "selection".into(), site_name: "示例站".into(), ..p };
+        let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        assert!(text.contains("template: highlight"));
+        assert!(text.contains("> 摘录自 [示例站](https://example.com/a)"), "{text}");
+        assert!(text.contains("# 测试页面"), "标题段照旧");
+        assert!(text.contains("划中的片段"), "正文是选区内容");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_clip_keeps_remote_url_when_localize_off() {
         let dir = std::env::temp_dir().join("notelume-clip-nodata-test");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
@@ -1289,10 +1411,37 @@ mod tests {
         };
         let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
         let text = fs::read_to_string(root.join(&out.rel)).unwrap();
-        assert!(text.contains("https://example.com/b.png"), "无副本时保留远程 URL");
+        assert!(text.contains("https://example.com/b.png"), "本地化关着：保留远程 URL");
+        // 开关关着时 Rust 完全不碰图：两个计数都是 0，也不建 assets
         assert_eq!(out.images_saved, 0);
-        assert_eq!(out.images_failed, 1);
+        assert_eq!(out.images_failed, 0);
         assert!(!root.join("Clippings/assets").exists(), "没有图片就不建 assets");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_clip_localizes_images_when_enabled() {
+        let dir = std::env::temp_dir().join("notelume-clip-localize-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let p = payload("测试页面", "![图](https://example.com/a.png)");
+        let p = ClipPayload {
+            images: vec![ClipImage {
+                url: "https://example.com/a.png".into(),
+                data_uri: Some(format!("data:image/png;base64,{}", png)),
+            }],
+            ..p
+        };
+        let cfg = ClipConfig { localize_images: true, ..ClipConfig::default() };
+        let out = write_clip(&root, &p, &cfg, None).unwrap();
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        assert_eq!(out.images_saved, 1);
+        assert_eq!(out.images_failed, 0);
+        assert!(text.contains("./assets/a.png"), "{text}");
+        assert!(!text.contains("https://example.com/a.png"), "远程 URL 已改写");
+        assert!(root.join("Clippings/assets/a.png").exists(), "图片落盘");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1391,10 +1540,15 @@ mod tests {
         assert_eq!(cfg.filename_pattern, DEFAULT_FILENAME);
         assert_eq!(cfg.max_links, DEFAULT_MAX_LINKS);
         assert!(cfg.auto_link);
+        // v2 三个开关的默认值
+        assert!(!cfg.localize_images, "图片本地化默认关");
+        assert!(!cfg.full_page_fallback, "整页兜底默认关");
+        assert!(cfg.default_clip_tag, "默认 clip 标签默认开");
 
         let v = serde_json::json!({
             "enabled": true, "port": 999999, "folder": "  ", "maxLinks": 99,
-            "filename": "  ", "template": "Templates/x.md"
+            "filename": "  ", "template": "Templates/x.md",
+            "localizeImages": true, "fullPageFallback": true, "defaultClipTag": false
         });
         let cfg = clip_config_from_json(&v);
         assert!(cfg.enabled);
@@ -1403,22 +1557,110 @@ mod tests {
         assert_eq!(cfg.max_links, 20, "上限夹取");
         assert_eq!(cfg.filename_pattern, DEFAULT_FILENAME, "空模式回落默认");
         assert_eq!(cfg.template_rel, "Templates/x.md");
+        assert!(cfg.localize_images);
+        assert!(cfg.full_page_fallback);
+        assert!(!cfg.default_clip_tag);
+        // 坏类型（字符串等）不认，保持默认
+        let bad = serde_json::json!({ "localizeImages": "yes", "fullPageFallback": 1, "defaultClipTag": null });
+        let cfg = clip_config_from_json(&bad);
+        assert!(!cfg.localize_images);
+        assert!(!cfg.full_page_fallback);
+        assert!(cfg.default_clip_tag);
     }
 
     #[test]
-    fn read_clip_template_falls_back() {
+    fn clip_vars_default_tag_and_timestamps() {
+        let mut p = payload("测试页面", "正文");
+        p.tags = vec!["rust".into(), "  ".into(), "编程".into()];
+        p.published = "2026-10-01T08:00:00+08:00".into();
+        let vars = clip_vars(&p, &ClipConfig::default());
+        // tags 第一项默认 clip，页面关键词接后；空关键词被滤掉
+        assert_eq!(vars.get("tags").unwrap(), "clip, rust, 编程");
+        assert_eq!(vars.get("hashtags").unwrap(), "#clip #rust #编程");
+        // published_at 页面给了才填（与 published 同值）
+        assert_eq!(vars.get("published_at").unwrap(), "2026-10-01T08:00:00+08:00");
+        // clipped_at：本地时区 ISO 8601，结构 2026-10-22T14:30:05+08:00（25 字符）
+        let clipped = vars.get("clipped_at").unwrap();
+        assert_eq!(clipped.len(), 25, "{clipped}");
+        assert!(clipped[19..].starts_with('+') || clipped[19..].starts_with('-'), "{clipped}");
+        assert_eq!(&clipped[22..23], ":", "{clipped}");
+
+        // 页面关键词里已有 clip（大小写不敏感）不重复加
+        p.tags = vec!["Clip".into(), "rust".into()];
+        let vars = clip_vars(&p, &ClipConfig::default());
+        assert_eq!(vars.get("tags").unwrap(), "Clip, rust");
+        // 关掉默认标签：只放页面关键词
+        let cfg = ClipConfig { default_clip_tag: false, ..ClipConfig::default() };
+        p.tags = vec!["rust".into()];
+        let vars = clip_vars(&p, &cfg);
+        assert_eq!(vars.get("tags").unwrap(), "rust");
+        assert_eq!(vars.get("hashtags").unwrap(), "#rust");
+    }
+
+    #[test]
+    fn resolve_template_picks_builtin_by_clip_type() {
         let dir = std::env::temp_dir().join("notelume-clip-tpl-test");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let root = fs::canonicalize(&dir).unwrap();
-        // 未选 / 读失败 → 内置默认
-        assert_eq!(read_clip_template(&root, ""), DEFAULT_TEMPLATE);
-        assert_eq!(read_clip_template(&root, "Templates/不存在.md"), DEFAULT_TEMPLATE);
-        // 正常读用户模板
+        let page = payload("t", "正文");
+        let sel = ClipPayload { clip_type: "selection".into(), ..payload("t", "正文") };
+
+        // 没选过模板：整页走 article、选区走 highlight
+        let (text, name) = resolve_template(&root, &ClipConfig::default(), &page);
+        assert_eq!(name, "article");
+        assert_eq!(text, DEFAULT_TEMPLATE_ARTICLE);
+        let (text, name) = resolve_template(&root, &ClipConfig::default(), &sel);
+        assert_eq!(name, "highlight");
+        assert_eq!(text, DEFAULT_TEMPLATE_HIGHLIGHT);
+
+        // 设置里选过模板：优先于内置（选区也不例外）
         fs::create_dir_all(root.join("Templates")).unwrap();
-        fs::write(root.join("Templates/t.md"), "# {{title}}\n").unwrap();
-        assert_eq!(read_clip_template(&root, "Templates/t.md"), "# {{title}}\n");
+        fs::write(root.join("Templates/我的模板.md"), "# {{title}}\n").unwrap();
+        let cfg = ClipConfig { template_rel: "Templates/我的模板.md".into(), ..ClipConfig::default() };
+        let (text, name) = resolve_template(&root, &cfg, &sel);
+        assert_eq!(text, "# {{title}}\n");
+        assert_eq!(name, "我的模板", "模板名取主名，不带目录与扩展名");
+
+        // 单次覆盖（载荷 template）优先于设置里的选择
+        let p = ClipPayload { template: "Templates/我的模板.md".into(), ..payload("t", "正文") };
+        let (text, name) = resolve_template(&root, &ClipConfig::default(), &p);
+        assert_eq!(text, "# {{title}}\n");
+        assert_eq!(name, "我的模板");
+
+        // 读失败 / 内容为空 → 回落内置（按剪藏类型）
+        let cfg = ClipConfig { template_rel: "Templates/不存在.md".into(), ..ClipConfig::default() };
+        let (_, name) = resolve_template(&root, &cfg, &page);
+        assert_eq!(name, "article");
+        fs::write(root.join("Templates/空.md"), "  \n").unwrap();
+        let cfg = ClipConfig { template_rel: "Templates/空.md".into(), ..ClipConfig::default() };
+        let (_, name) = resolve_template(&root, &cfg, &page);
+        assert_eq!(name, "article");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn health_json_carries_switches() {
+        let cfg = ClipConfig {
+            bound_port: Some(3211),
+            localize_images: true,
+            full_page_fallback: true,
+            ..ClipConfig::default()
+        };
+        let body = health_json(&cfg, true);
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["port"], 3211);
+        assert_eq!(v["hasVault"], true);
+        assert_eq!(v["localizeImages"], true);
+        assert_eq!(v["fullPageFallback"], true);
+        // 端口未绑定时是 null，开关缺省即 false
+        let body = health_json(&ClipConfig::default(), false);
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(v["port"].is_null());
+        assert_eq!(v["hasVault"], false);
+        assert_eq!(v["localizeImages"], false);
+        assert_eq!(v["fullPageFallback"], false);
     }
 
     // ---------- HTTP 层 ----------

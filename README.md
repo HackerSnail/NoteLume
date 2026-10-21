@@ -43,7 +43,7 @@
 * 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；不联网也绝不上传，删除进系统回收站
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
 * 🔄 **Git 内置**：状态 / 历史 / 单文件 diff / 提交 / 推送 / 合并冲突解决全部内建（`git2` 引擎，没装 git 也能 fetch/pull）
-* 🌐 **网页剪藏**：浏览器扩展（`extension/`，MV3）把网页正文 POST 给本机服务，Rust 按模板落盘、图片进 `assets/`，并自动在文末关联库内相关笔记；只绑 127.0.0.1，只收扩展来源的请求
+* 🌐 **网页剪藏**：浏览器扩展（`extension/`，MV3）把网页正文 POST 给本机服务，Rust 按模板落盘、图片可选本地化进 `assets/`，并自动在文末关联库内相关笔记；只绑 127.0.0.1，只收扩展来源的请求
 * 📦 **轻**：macOS DMG 约 6 MB；整库导出静态站、插件系统（`.notelume-plugins/`）同样内建
 
 ### 快速开始
@@ -71,11 +71,13 @@ npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 把浏览器里的网页正文存进知识库：按模板落盘成标准 md，图片进 `assets/`，文末自动关联库内相关笔记。
 
 1. **装扩展**：Edge 地址栏输 `edge://extensions`，打开左下角「开发人员模式」，点「加载已解压缩的扩展」选仓库里的 `extension/` 目录（Chrome 是 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」）。加载后建议在工具栏拼图菜单里把「NoteLume 剪藏」固定出来。
-2. **NoteLume 里开服务**：工具条「更多 → 网页剪藏设置」，勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数。
+2. **NoteLume 里开服务**：工具条「更多 → 网页剪藏设置」，勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
 3. **扩展里填地址**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），「测试连接」应回「连接正常 · 已打开知识库」。填这一项就够了，没有令牌要配。
-4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段。
+4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段（用内置 highlight 模板落盘，来源行进引用块）。
 
-剪藏落在 `Clippings/<日期>-<标题>.md`，图片在 `Clippings/assets/`（按内容去重，md 里是 `./assets/` 相对链接），文末「## 相关笔记」列出打分最高的相关文档，点开即跳；被关联文档的反链面板里也能看到这篇剪藏。
+正文提取按优先级降级：Defuddle → Readability + Turndown →（设置里打开「整页兜底」才有）整页 HTML。剪藏落在 `Clippings/<日期>-<标题>.md`，frontmatter 记 `title / source / author / published_at / clipped_at / tags / template`，文末「## 相关笔记」列出打分最高的相关文档，点开即跳；被关联文档的反链面板里也能看到这篇剪藏。
+
+图片本地化默认关：正文保留网页原链接，剪藏快，但外链图在离线 / 防盗链场景会裂图。在剪藏设置里勾选「图片本地化」后，扩展才把图取成 data URI 落 `Clippings/assets/`（按内容去重，md 里是 `./assets/` 相对链接）。
 
 服务只绑 `127.0.0.1`，且只收扩展来源的请求（网页的 fetch 到不了）。NoteLume 没开、没开知识库、内容超过 8MB 时，扩展会弹对应的失败通知。详细错误对照见 `extension/README.md`。
 
@@ -176,7 +178,7 @@ Tired of cloud notes that spin forever, but unwilling to give up speed for struc
 * 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; nothing ever leaves your machine; deletions go to the system trash
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
 * 🔄 **Git built in**: status / history / per-file diff / commit / push / merge-conflict resolution, powered by embedded `git2` — works even without a system Git installed
-* 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, stores images under `assets/`, and appends links to related notes — loopback-only, extension-origin gated
+* 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, can localize images under `assets/` (off by default), and appends links to related notes — loopback-only, extension-origin gated
 * 📦 **Featherweight**: the macOS DMG is about 6 MB; full-vault static-site export and a plugin system (`.notelume-plugins/`) come standard
 
 ### Quick Start
@@ -204,11 +206,13 @@ npm run build    # release bundles, output under src-tauri/target/release/bundle
 Save web pages into your vault: content lands as standard Markdown per your template, images go to `assets/`, and related notes are linked at the end of the clip.
 
 1. **Install the extension**: open `edge://extensions` (Chrome: `chrome://extensions`), turn on developer mode, click "Load unpacked" and pick the `extension/` folder in this repo. Pin "NoteLume 剪藏" to the toolbar from the puzzle menu.
-2. **Start the server in NoteLume**: toolbar → More → Web clipping settings, check "Enable clipping server" and save. The status bar shows the actual address (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`) and how many related notes to link.
+2. **Start the server in NoteLume**: toolbar → More → Web clipping settings, check "Enable clipping server" and save. The status bar shows the actual address (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`), how many related notes to link, and the two switches for image localization and whole-page fallback.
 3. **Point the extension at it**: right-click the extension icon → Options, fill in the address shown in NoteLume (default `http://127.0.0.1:3210`), then "Test connection" should report OK with an open vault. That's the only field you need — no token.
-4. **Clip**: click the pinned icon for the whole page, or select text first and right-click → "剪藏选中内容到 NoteLume" for just the selection.
+4. **Clip**: click the pinned icon for the whole page, or select text first and right-click → "剪藏选中内容到 NoteLume" for just the selection (which lands through the built-in highlight template, with the source as a block quote).
 
-Clips land at `Clippings/<date>-<title>.md`, images at `Clippings/assets/` (content-deduplicated, referenced as `./assets/` relative links), with a "## 相关笔记" section at the end listing the highest-scoring related documents — clickable both ways, since the linked documents also see the clip in their backlinks panel.
+Content extraction falls back in order: Defuddle → Readability + Turndown → whole-page HTML (only if "Fall back to the whole page" is enabled). Clips land at `Clippings/<date>-<title>.md` with a `title / source / author / published_at / clipped_at / tags / template` frontmatter, and a "## 相关笔记" section at the end listing the highest-scoring related documents — clickable both ways, since the linked documents also see the clip in their backlinks panel.
+
+Image localization is off by default: markdown keeps the original remote links, which is fast but breaks offline or behind hotlink protection. Enable "Localize images" in the clipping settings and the extension fetches images as data URIs into `Clippings/assets/` (content-deduplicated, referenced as `./assets/` relative links).
 
 The server listens on `127.0.0.1` only and accepts extension-origin requests only (web pages can't reach it). The extension notifies you when NoteLume isn't running, no vault is open, or the payload exceeds 8 MB. See `extension/README.md` for the full error table.
 
