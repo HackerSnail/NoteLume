@@ -24,6 +24,9 @@ mod docx_export;
 // 词表与五种语言见 ui_lang.rs；前端启动与切换语言时调 set_ui_lang 上报。
 mod ui_lang;
 
+// 网页剪藏：本地 HTTP 服务 + 载荷落盘（模板渲染 / 图片 / 自动关联）。
+mod webclip;
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
@@ -429,7 +432,7 @@ fn import_vault_file(vault_root: String, args: ImportArgs) -> Result<String, Str
 }
 
 /// FNV-1a 64 位哈希：用于图片内容去重（同名不同内容时追加内容指纹）
-fn fnv1a(bytes: &[u8]) -> u64 {
+pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
         h ^= *b as u64;
@@ -657,7 +660,7 @@ fn read_image_data_uri(vault_root: String, md_rel: String, src: String) -> Resul
 }
 
 /// 按字节魔数嗅图片 MIME，扩展名兜底（远程图 URL 可能不带扩展名）。
-fn sniff_image_mime(bytes: &[u8], url: &str) -> Option<&'static str> {
+pub(crate) fn sniff_image_mime(bytes: &[u8], url: &str) -> Option<&'static str> {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
         return Some("image/png");
     }
@@ -721,7 +724,7 @@ fn fetch_remote_image_data_uri(url: String) -> Result<String, String> {
 }
 
 #[cfg(windows)]
-fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
+pub(crate) fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "urlmon")]
     extern "system" {
@@ -775,13 +778,13 @@ fn save_image_from_data_uri(path: String, data_uri: String) -> Result<(), String
 
 /// 内部：每个 md 一条 DocEntry（含原文用于快速搜索与片段）
 #[derive(Clone)]
-struct DocEntry {
-    path: String,
-    title: String,
-    tags: Vec<String>,
-    outgoing: Vec<String>,   // 解析成功的目标 rel path
-    unresolved: Vec<String>, // 未能解析的目标（保留原 name）
-    content: String,
+pub(crate) struct DocEntry {
+    pub(crate) path: String,
+    pub(crate) title: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) outgoing: Vec<String>, // 解析成功的目标 rel path
+    pub(crate) unresolved: Vec<String>, // 未能解析的目标（保留原 name）
+    pub(crate) content: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -935,7 +938,7 @@ fn extract_tags(md: &str) -> Vec<String> {
 }
 
 /// 首个 `# heading` 作为标题；否则用文件名去 .md
-fn extract_title(md: &str, path: &str) -> String {
+pub(crate) fn extract_title(md: &str, path: &str) -> String {
     for line in md.lines() {
         let t = line.trim_start();
         if t.starts_with('#') {
@@ -1330,12 +1333,19 @@ fn update_index_doc(
     if !g.ready {
         return Ok(()); // rebuild 中：忽略，rebuild 结束时会拿到最新文件
     }
+    index_doc_into(&mut g, &path, &content);
+    Ok(())
+}
+
+/// 把一条文档写进索引（含 backlinks 增量维护）。update_index_doc 命令层与网页剪藏
+/// （webclip.rs 的 write_clip）共用，避免剪藏落盘后索引对不上。
+pub(crate) fn index_doc_into(g: &mut VaultIndex, path: &str, content: &str) {
     let root = PathBuf::from(&g.vault_root);
-    let raw = extract_wikilinks(&content);
+    let raw = extract_wikilinks(content);
     let mut outgoing: Vec<String> = Vec::new();
     let mut unresolved: Vec<String> = Vec::new();
     for r in raw {
-        match resolve_one(&root, &path, &r) {
+        match resolve_one(&root, path, &r) {
             Some(hit) => {
                 if hit != path {
                     outgoing.push(hit);
@@ -1348,35 +1358,34 @@ fn update_index_doc(
     outgoing.dedup();
     unresolved.sort();
     unresolved.dedup();
-    let title = extract_title(&content, &path);
-    let tags = extract_tags(&content);
+    let title = extract_title(content, path);
+    let tags = extract_tags(content);
     let old_outgoing: Vec<String> = g
         .docs
-        .get(&path)
+        .get(path)
         .map(|d| d.outgoing.clone())
         .unwrap_or_default();
     g.docs.insert(
-        path.clone(),
-        DocEntry { path: path.clone(), title, tags, outgoing, unresolved, content },
+        path.to_string(),
+        DocEntry { path: path.to_string(), title, tags, outgoing, unresolved, content: content.to_string() },
     );
     for tgt in &old_outgoing {
         if let Some(lst) = g.backlinks.get_mut(tgt) {
-            lst.retain(|p| p != &path);
+            lst.retain(|p| p != path);
         }
     }
     let new_outgoing: Vec<String> = g
         .docs
-        .get(&path)
+        .get(path)
         .map(|d| d.outgoing.clone())
         .unwrap_or_default();
     for tgt in new_outgoing {
         let e = g.backlinks.entry(tgt).or_default();
-        if !e.contains(&path) {
-            e.push(path.clone());
+        if !e.contains(&path.to_string()) {
+            e.push(path.to_string());
             e.sort();
         }
     }
-    Ok(())
 }
 
 /// 从索引移除一条文档：清掉它写入他人 backlinks 的贡献，再删自身条目与作为 target 的 backlinks。
@@ -3451,6 +3460,23 @@ fn write_settings_json(app: tauri::AppHandle, settings: serde_json::Value) -> Re
     Ok(())
 }
 
+/// 剪藏设置保存后调用：按新的 clip 段停旧起新本地 HTTP 服务。返回运行态
+/// （含实际绑定端口与令牌——令牌可能是 Rust 侧现场生成的，前端要落回设置）。
+#[tauri::command]
+fn clip_server_apply(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, webclip::ClipServerState>,
+    clip: serde_json::Value,
+) -> Result<webclip::ClipStatus, String> {
+    webclip::apply(&app, &state, clip)
+}
+
+/// 查询剪藏服务运行态：{ running, port, token }。设置面板打开时拉一次。
+#[tauri::command]
+fn clip_server_status(state: tauri::State<'_, webclip::ClipServerState>) -> webclip::ClipStatus {
+    webclip::status(&state)
+}
+
 /// 前端在「最近文件」变化时调用，重建「打开最近」子菜单。非 mac 为空操作。
 #[tauri::command]
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
@@ -3479,6 +3505,7 @@ pub fn run() {
         }))
         .manage(LaunchPaths(std::sync::Mutex::new(launch)))
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
+        .manage(webclip::ClipServerState::default())
         .setup(|app| {
             // 非 macOS：去掉原生标题栏，改由前端 .titlebar 顶替。
             // macOS 保留 Overlay（红黄绿按钮 + 透明标题条），不碰。
@@ -3495,6 +3522,25 @@ pub fn run() {
                 // 菜单栏状态图标（NSStatusItem + NSMenu）；创建失败不阻断启动，仅打日志
                 if let Err(e) = build_tray(app.handle()) {
                     eprintln!("NoteLume 菜单栏图标创建失败：{e}");
+                }
+            }
+            // 网页剪藏：settings.json 的 clip 段启用时起本地 HTTP 服务（只绑 127.0.0.1）。
+            // 端口全被占等失败不阻断启动，仅打日志——前端设置面板能看到未运行状态。
+            {
+                use tauri::Manager;
+                let handle = app.handle();
+                match read_settings_json(handle.clone()) {
+                    Ok(v) => {
+                        let cfg = webclip::clip_config_from_json(
+                            v.get("clip").unwrap_or(&serde_json::Value::Null),
+                        );
+                        if cfg.enabled {
+                            if let Err(e) = webclip::start(&handle, &handle.state::<webclip::ClipServerState>(), cfg) {
+                                eprintln!("NoteLume 剪藏服务启动失败：{e}");
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("NoteLume settings.json 读取失败，剪藏服务未启动：{e}"),
                 }
             }
             Ok(())
@@ -3580,6 +3626,9 @@ pub fn run() {
             // 应用设置（settings.json）：外观等跨会话状态，启动时前端先读回再装配界面
             read_settings_json,
             write_settings_json,
+            // 网页剪藏：本地 HTTP 服务（只绑 127.0.0.1，令牌闸门）
+            clip_server_apply,
+            clip_server_status,
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
             take_launch_paths
         ])

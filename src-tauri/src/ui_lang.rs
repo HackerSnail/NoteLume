@@ -964,6 +964,78 @@ const TABLE: &[Entry] = &[
         "l’image n’a pas pu être décodée et a été ignorée : {rel}",
         "das Bild konnte nicht dekodiert werden und wurde übersprungen: {rel}",
     ]},
+
+    // ---------- 网页剪藏 ----------
+    Entry { key: "clip.noVault", texts: [
+        "请先在 NoteLume 打开一个知识库",
+        "請先開啟一個知識庫",
+        "Open a vault in NoteLume first",
+        "Ouvrez d’abord un coffre dans NoteLume",
+        "Öffnen Sie zuerst einen Vault in NoteLume",
+    ]},
+    Entry { key: "clip.badToken", texts: [
+        "访问令牌不匹配，请在剪藏设置里核对令牌",
+        "存取權杖不符，請在剪藏設定裡核對權杖",
+        "Access token mismatch. Check the token in the clipping settings",
+        "Jeton d’accès incorrect. Vérifiez le jeton dans les réglages de capture",
+        "Zugriffstoken stimmt nicht. Prüfen Sie das Token in den Clipping-Einstellungen",
+    ]},
+    Entry { key: "clip.forbidden", texts: [
+        "请求来源不被允许",
+        "請求來源不被允許",
+        "Request origin is not allowed",
+        "L’origine de la requête n’est pas autorisée",
+        "Anfragequelle ist nicht zulässig",
+    ]},
+    Entry { key: "clip.tooLarge", texts: [
+        "剪藏内容超过大小上限",
+        "剪藏內容超過大小上限",
+        "The clipped content exceeds the size limit",
+        "Le contenu capturé dépasse la limite de taille",
+        "Der geclippte Inhalt überschreitet die Größenbegrenzung",
+    ]},
+    Entry { key: "clip.badRequest", texts: [
+        "请求格式错误",
+        "請求格式錯誤",
+        "Malformed request",
+        "Requête mal formée",
+        "Fehlerhafte Anfrage",
+    ]},
+    Entry { key: "clip.notFound", texts: [
+        "接口不存在",
+        "介面不存在",
+        "Endpoint not found",
+        "Point d’entrée introuvable",
+        "Endpunkt nicht gefunden",
+    ]},
+    Entry { key: "clip.portBusy", texts: [
+        "端口 {port} 及顺延的 10 个端口都被占用，请换一个端口",
+        "連接埠 {port} 及順延的 10 個連接埠都被佔用，請更換連接埠",
+        "Port {port} and the next 10 ports are all in use. Pick another port",
+        "Le port {port} et les 10 suivants sont tous occupés. Choisissez un autre port",
+        "Port {port} und die nächsten 10 Ports sind belegt. Wählen Sie einen anderen Port",
+    ]},
+    Entry { key: "clip.writeFailed", texts: [
+        "剪藏写盘失败：{err}",
+        "剪藏寫盤失敗：{err}",
+        "Failed to write the clip: {err}",
+        "Échec de l’écriture de la capture : {err}",
+        "Clipping konnte nicht geschrieben werden: {err}",
+    ]},
+    Entry { key: "clip.emptyContent", texts: [
+        "剪藏内容为空",
+        "剪藏內容為空",
+        "The clipped content is empty",
+        "Le contenu capturé est vide",
+        "Der geclippte Inhalt ist leer",
+    ]},
+    Entry { key: "clip.weekday.0", texts: ["周日", "週日", "Sunday", "dimanche", "Sonntag"] },
+    Entry { key: "clip.weekday.1", texts: ["周一", "週一", "Monday", "lundi", "Montag"] },
+    Entry { key: "clip.weekday.2", texts: ["周二", "週二", "Tuesday", "mardi", "Dienstag"] },
+    Entry { key: "clip.weekday.3", texts: ["周三", "週三", "Wednesday", "mercredi", "Mittwoch"] },
+    Entry { key: "clip.weekday.4", texts: ["周四", "週四", "Thursday", "jeudi", "Donnerstag"] },
+    Entry { key: "clip.weekday.5", texts: ["周五", "週五", "Friday", "vendredi", "Freitag"] },
+    Entry { key: "clip.weekday.6", texts: ["周六", "週六", "Saturday", "samedi", "Samstag"] },
 ];
 
 #[cfg(test)]
