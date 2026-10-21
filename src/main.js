@@ -91,6 +91,7 @@ import {
   THEME_CHOICES as THEMES,
   THEME_ICON,
 } from './appearance-settings.js'
+import { createClipSettings, normalizeClip } from './clip-settings.js'
 import { createSettingsStore } from './settings-store.js'
 import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } from './i18n.js'
 import { LOCALES } from './locales/index.js'
@@ -177,6 +178,7 @@ let palette = null
 let keySettings = null
 let hlBar = null // 选区高亮浮动工具栏（p5plan §6.4）
 let apSettings = null // 「设置-外观」面板（appearance-settings.js）
+let clipSettings = null // 「网页剪藏」设置面板（clip-settings.js）
 let settingsStore = null // settings.json 读写（boot 最开始装配）
 let gitPanel = null
 let snapshotPanel = null
@@ -706,6 +708,21 @@ function persistAppearance(patch) {
   const next = normalizeAppearance({ ...prev, ...patch })
   if (JSON.stringify(next) === JSON.stringify(prev)) return
   settingsStore.update({ appearance: next })
+}
+
+// 剪藏设置：settings.json 的 clip 段。Rust 侧的本地 HTTP 服务按它起停（启动时读一次，
+// 设置面板「保存」时经 clip_server_apply 停旧起新）；前端在 boot 里监听 nl:clip-saved。
+function currentClip() {
+  return normalizeClip(settingsStore ? settingsStore.get().clip : null)
+}
+
+/** 合并改动进 settings.json 的 clip 段（防抖写盘）；内容没变则不写 */
+function persistClip(next) {
+  if (!settingsStore) return
+  const clip = normalizeClip(next)
+  const prev = settingsStore.get().clip
+  if (JSON.stringify(prev) === JSON.stringify(clip)) return
+  settingsStore.update({ clip })
 }
 
 /** 设置面板的每次改动：主题切换 + 全量 CSS 变量 + 侧栏比例 → 像素，然后落盘 */
@@ -1528,6 +1545,7 @@ function openMoreMenu(anchorEl) {
   // 这两项是子菜单而非命令，注册表里没有对应条目，文案走词条
   menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
   menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
+  addMenuCmd(menu, 'app.clipSettings', 'clipboard')
   // 语言：子菜单列出全部语言，当前语言打勾
   menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
   addMenuCmd(menu, 'app.about', 'info')
@@ -3056,6 +3074,8 @@ function registerAppCommands() {
   app('app.shortcuts', null, () => { if (keySettings) keySettings.open() })
   // 外观设置：主题 / 颜色 / 字体 / 字号 / 行高 / 自动换行 / 侧栏比例，走 settings.json
   app('app.appearance', null, () => { if (apSettings) apSettings.open() })
+  // 网页剪藏：本地 HTTP 服务（只绑 127.0.0.1，令牌闸门）的开关 / 端口 / 模板 / 自动关联
+  app('app.clipSettings', null, () => { if (clipSettings) clipSettings.open() })
   // 分栏（P5 §6.1）：在焦点窗格里横分 / 竖分。编辑区右上角也有同款按钮
   app('app.splitH', null, () => splitFocusedPane('horizontal'))
   app('app.splitV', null, () => splitFocusedPane('vertical'))
@@ -4167,6 +4187,15 @@ async function boot() {
     flush: () => settingsStore.flush(),
     setStatus,
   })
+  // 「网页剪藏」：设置写 settings.json 的 clip 段，「保存」时经 clip_server_apply
+  // 让 Rust 侧停旧起新本地 HTTP 服务；面板关着时服务照常运行
+  clipSettings = createClipSettings({
+    getClip: currentClip,
+    apply: persistClip,
+    flush: () => settingsStore.flush(),
+    setStatus,
+    listTemplates: () => (state.vaultRoot ? listMdInDir(TEMPLATE_DIR()) : []),
+  })
   // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到
   // Dock 图标，二次唤起）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次
   // 工作区。拖入 / 唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
@@ -4190,6 +4219,20 @@ async function boot() {
         if (targets && targets.length) return handleOpenTargets(targets, { interactive: true, preview: true })
       })
       .catch(() => {}) // 无后端 / 取回失败：静默，界面本来就没有这条路
+  }).catch(() => {}) // 纯 web 构建没有事件通道，忽略
+  // 网页剪藏落盘（Rust 服务线程 emit）：刷文件树 + 状态栏，不自动打开以免打断当前编辑；
+  // openAfterSave 开着才顺带打开新剪藏的那一篇
+  listen('nl:clip-saved', (e) => {
+    const p = (e && e.payload) || {}
+    if (!p.path) return
+    if (state.vaultRoot) {
+      scanVault(state.vaultRoot)
+        .then((tree) => renderTree(tree))
+        .catch(() => {})
+    }
+    const linked = p.linked == null ? 0 : p.linked
+    setStatus(t('clip.saved', { rel: p.path, linked }))
+    if (currentClip().openAfterSave) openFile(p.path)
   }).catch(() => {}) // 纯 web 构建没有事件通道，忽略
   await handleLaunchArgs()
   bindShortcuts()

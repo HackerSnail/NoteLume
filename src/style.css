@@ -1561,6 +1561,19 @@ details.panel[open] > summary::before {
   min-width: 0;
   accent-color: var(--accent);
 }
+/* 网页剪藏设置（clip-settings.js）：复用 .nl-ap 行式布局与模态壳，只补令牌行 */
+.nl-clip-token-row .nl-ap-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.nl-clip-token-row .nl-ks-btn {
+  flex: none;
+}
+.nl-ap-row input[type="number"].nl-ap-text {
+  flex: none;
+  max-width: 96px;
+}
+
 /* 预览区：直接消费那六个文字颜色变量与源底色，用户改色即时可见 */
 .nl-ap-preview {
   margin: 4px 0 8px;

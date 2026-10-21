@@ -408,6 +408,16 @@ export function writeSettingsJson(settings) {
   return invoke('write_settings_json', { settings })
 }
 
+/** 剪藏设置保存后停旧起新本地 HTTP 服务，返回 { running, port, token } */
+export function clipServerApply(clip) {
+  return invoke('clip_server_apply', { clip })
+}
+
+/** 查询剪藏服务运行态：{ running, port, token }（设置面板打开时拉一次） */
+export function clipServerStatus() {
+  return invoke('clip_server_status', {})
+}
+
 /** P5 §6.6：取走启动参数（[{ path, isDir }]，取后即清）；无参数返回 [] */
 export function takeLaunchPaths() {
   return invoke('take_launch_paths', {})
