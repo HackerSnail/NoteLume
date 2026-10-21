@@ -365,6 +365,20 @@ const TABLE: &[Entry] = &[
         "Image introuvable : {src}",
         "Bild nicht gefunden: {src}",
     ]},
+    Entry { key: "downloadImgFailed", texts: [
+        "下载图片失败（{code}）",
+        "下載圖片失敗（{code}）",
+        "Failed to download the image ({code})",
+        "Échec du téléchargement de l’image ({code})",
+        "Bild konnte nicht heruntergeladen werden ({code})",
+    ]},
+    Entry { key: "downloadImgUnsupported", texts: [
+        "此平台暂不支持下载外链图片",
+        "此平台暫不支援下載外連圖片",
+        "Downloading remote images is not supported on this platform yet",
+        "Le téléchargement d’images distantes n’est pas encore pris en charge sur cette plateforme",
+        "Das Herunterladen externer Bilder wird auf dieser Plattform noch nicht unterstützt",
+    ]},
 
     // ---------- 索引 / 备份 / 插件 ----------
     Entry { key: "writeBackupFailed", texts: [

@@ -257,6 +257,16 @@ export function readImageDataUri(vaultRoot, mdRel, src) {
   return invoke('read_image_data_uri', { vaultRoot, mdRel, src })
 }
 
+/** 远程图取字节回 data: URL（Windows 走系统 URLDownloadToFileW，不带 Referer，绕开图床防盗链） */
+export function fetchRemoteImageDataUri(url) {
+  return invoke('fetch_remote_image_data_uri', { url })
+}
+
+/** 把 data: URL 的图片字节写到指定绝对路径（图片右键「另存为」） */
+export function saveImageDataUri(path, dataUri) {
+  return invoke('save_image_from_data_uri', { path, dataUri })
+}
+
 /** 导出到库外任意路径（由系统保存对话框给出） */
 export function exportFile(absPath, content) {
   return invoke('export_file', { args: { absPath, content } })

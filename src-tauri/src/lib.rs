@@ -656,6 +656,121 @@ fn read_image_data_uri(vault_root: String, md_rel: String, src: String) -> Resul
     Ok(format!("data:{};base64,{}", mime_for_ext(&ext), b64_encode(&bytes)))
 }
 
+/// 按字节魔数嗅图片 MIME，扩展名兜底（远程图 URL 可能不带扩展名）。
+fn sniff_image_mime(bytes: &[u8], url: &str) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF8") {
+        return Some("image/gif");
+    }
+    if bytes.len() > 12 && bytes[0..4] == *b"RIFF" && bytes[8..12] == *b"WEBP" {
+        return Some("image/webp");
+    }
+    if bytes.starts_with(b"BM") {
+        return Some("image/bmp");
+    }
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(256)]);
+    let trimmed = head.trim_start();
+    if trimmed.starts_with("<svg") || trimmed.starts_with("<?xml") {
+        return Some("image/svg+xml");
+    }
+    let ext = url
+        .split(['?', '#'])
+        .next()?
+        .rsplit('.')
+        .next()?
+        .to_lowercase();
+    match mime_for_ext(&ext) {
+        "application/octet-stream" => None,
+        m => Some(m),
+    }
+}
+
+/// 远程图取字节回 data: URL（图片右键「复制图像 / 另存为」共用）。下载走 Windows 系统的
+/// URLDownloadToFileW：系统自带网络栈、不引 TLS 依赖、请求不带 Referer（Gitee 等图床的
+/// 防盗链对 localhost Referer 直接 403，无 Referer 反而放行）。非 Windows 平台暂不支持。
+#[tauri::command]
+fn fetch_remote_image_data_uri(url: String) -> Result<String, String> {
+    let lower = url.to_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return Err(ui_msg!("unsupportedImgType", "ext" => "url"));
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let tmp = std::env::temp_dir().join(format!("notelume-img-{}.part", stamp));
+    let _ = fs::remove_file(&tmp); // 同毫秒残留兜底
+    let res = (|| -> Result<String, String> {
+        download_remote(&url, &tmp)?;
+        let meta = fs::metadata(&tmp).map_err(|e| ui_msg!("readImgFailed", "err" => e))?;
+        if meta.len() > 32 * 1024 * 1024 {
+            return Err(ui_msg!("readImgFailed", "err" => "image > 32MB"));
+        }
+        let bytes = fs::read(&tmp).map_err(|e| ui_msg!("readImgFailed", "err" => e))?;
+        let mime = sniff_image_mime(&bytes, &url)
+            .ok_or_else(|| ui_msg!("unsupportedImgType", "ext" => "bytes"))?;
+        Ok(format!("data:{};base64,{}", mime, b64_encode(&bytes)))
+    })();
+    let _ = fs::remove_file(&tmp); // 临时文件无论如何清掉
+    res
+}
+
+#[cfg(windows)]
+fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "urlmon")]
+    extern "system" {
+        fn URLDownloadToFileW(
+            pcaller: *mut core::ffi::c_void,
+            szurl: *const u16,
+            szfilename: *const u16,
+            dwreserved: u32,
+            lpfncb: *mut core::ffi::c_void,
+        ) -> i32;
+    }
+    let mut wurl: Vec<u16> = url.encode_utf16().chain([0]).collect();
+    let mut wdest: Vec<u16> = dest.as_os_str().encode_wide().chain([0]).collect();
+    let hr = unsafe {
+        URLDownloadToFileW(
+            std::ptr::null_mut(),
+            wurl.as_ptr(),
+            wdest.as_ptr(),
+            0,
+            std::ptr::null_mut(),
+        )
+    };
+    if hr == 0 {
+        Ok(())
+    } else {
+        Err(ui_msg!("downloadImgFailed", "code" => format!("0x{:08X}", hr as u32)))
+    }
+}
+
+#[cfg(not(windows))]
+fn download_remote(_url: &str, _dest: &std::path::Path) -> Result<(), String> {
+    Err(ui_msg!("downloadImgUnsupported"))
+}
+
+/// 把 data: URL 的图片字节写到任意路径（图片右键「另存为」；路径来自前端保存对话框）。
+#[tauri::command]
+fn save_image_from_data_uri(path: String, data_uri: String) -> Result<(), String> {
+    let payload = data_uri
+        .strip_prefix("data:")
+        .and_then(|rest| rest.split_once(";base64,"))
+        .map(|(_, payload)| payload)
+        .ok_or_else(|| ui_msg!("writeImgFailed", "err" => "not a base64 data URI"))?;
+    let bytes = b64_decode(payload).map_err(|e| ui_msg!("writeImgFailed", "err" => e))?;
+    if bytes.is_empty() {
+        return Err(ui_msg!("writeImgFailed", "err" => "empty payload"));
+    }
+    fs::write(&path, &bytes).map_err(|e| ui_msg!("writeImgFailed", "err" => e))
+}
+
 // ==================== P1 新增：知识库索引 / 双向链接 / 搜索 / 预览 / 备份 / 导出 ====================
 
 /// 内部：每个 md 一条 DocEntry（含原文用于快速搜索与片段）
@@ -2833,6 +2948,40 @@ mod tests {
     }
 
     #[test]
+    fn sniff_image_mime_detects_magic_then_ext() {
+        assert_eq!(sniff_image_mime(&[0x89, b'P', b'N', b'G', 1, 2], "https://x/a"), Some("image/png"));
+        assert_eq!(sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0], "https://x/a.bin"), Some("image/jpeg"));
+        assert_eq!(sniff_image_mime(b"RIFF1234WEBPVP8 ", "https://x/a"), Some("image/webp"));
+        assert_eq!(sniff_image_mime(b"  <svg xmlns>", "https://x/a"), Some("image/svg+xml"));
+        // 魔数不认识时按扩展名兜底；两处都不认识返回 None
+        assert_eq!(sniff_image_mime(b"???", "https://x/pic.avif"), Some("image/avif"));
+        assert_eq!(sniff_image_mime(b"???", "https://x/pic.txt"), None);
+    }
+
+    #[test]
+    fn fetch_remote_image_rejects_non_http_scheme() {
+        assert!(fetch_remote_image_data_uri("data:image/png;base64,AAAA".into()).is_err());
+        assert!(fetch_remote_image_data_uri("./assets/x.png".into()).is_err());
+        assert!(fetch_remote_image_data_uri("javascript:alert(1)".into()).is_err());
+    }
+
+    #[test]
+    fn save_image_from_data_uri_decodes_and_writes() {
+        let tmp = std::env::temp_dir().join(format!("notelume-save-img-{}.png", std::process::id()));
+        let _ = fs::remove_file(&tmp);
+        // "QUJD" == "ABC"
+        save_image_from_data_uri(tmp.to_string_lossy().to_string(), "data:image/png;base64,QUJD".into()).unwrap();
+        assert_eq!(fs::read(&tmp).unwrap(), b"ABC");
+        let _ = fs::remove_file(&tmp);
+
+        // 非 data URI、空 payload 要报错且不落文件
+        let bad = std::env::temp_dir().join(format!("notelume-save-img-bad-{}.png", std::process::id()));
+        assert!(save_image_from_data_uri(bad.to_string_lossy().to_string(), "https://x/a.png".into()).is_err());
+        assert!(save_image_from_data_uri(bad.to_string_lossy().to_string(), "data:image/png;base64,".into()).is_err());
+        assert!(!bad.exists());
+    }
+
+    #[test]
     fn read_image_data_uri_encodes_and_guards_path() {
         let tmp = std::env::temp_dir().join(format!("notelume-img-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
@@ -3364,6 +3513,8 @@ pub fn run() {
             copy_image_asset,
             save_image_bytes,
             read_image_data_uri,
+            fetch_remote_image_data_uri,
+            save_image_from_data_uri,
             // P1
             rebuild_index,
             get_index_status,

@@ -47,6 +47,9 @@ import {
   exportDocx,
   fileToBase64,
   takeLaunchPaths,
+  readImageDataUri,
+  fetchRemoteImageDataUri,
+  saveImageDataUri,
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages } from './site-export.js'
 import { docToIR } from './docx-export.js'
@@ -1576,16 +1579,24 @@ function openParagraphMenu(anchorEl) {
 // 表格范围不接——表格菜单挂在 view.dom 上、事件先到它那儿且已 preventDefault，
 // 这里见 defaultPrevented 就让路，不会出两个菜单。标签条 / 查找栏 / 源码模式 /
 // 画布 / 输入框不接，保留原生（那边要的是输入框的复制粘贴）。
-function attachEditorContextMenu(inst) {
+function attachEditorContextMenu(paneId, inst) {
   const pane = inst.view.dom.closest('.nl-pane')
   if (!pane) return
-  // 图片放行走原生菜单：WebView2 自带「另存图片为 / 复制图片」，自定义菜单没有这些
-  const SKIP = '.nl-pane-strip, .nl-find-bar, .nl-source, #canvas-mount, input, textarea, select, img, .nl-img-host'
+  const SKIP = '.nl-pane-strip, .nl-find-bar, .nl-source, #canvas-mount, input, textarea, select'
   const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
   const withKey = (label, key) => (key ? label + '  ' + key : label)
   pane.addEventListener('contextmenu', (e) => {
     if (e.defaultPrevented) return
     const hit = e.target
+    // 图片命中（节点视图的 .nl-img-host 或裸 img）走自绘图片菜单，不进文本菜单也不放行原生
+    const imgEl = (hit && hit.closest && hit.closest('.nl-img-host'))
+      ? hit.closest('.nl-img-host').querySelector('img')
+      : (hit && hit.tagName === 'IMG' ? hit : null)
+    if (imgEl) {
+      e.preventDefault()
+      openImageContextMenu(e, paneId, imgEl)
+      return
+    }
     if (hit && hit.closest && hit.closest(SKIP)) return
     e.preventDefault()
     closeTreeMenu()
@@ -1651,6 +1662,65 @@ function attachEditorContextMenu(inst) {
     }))
     placeMenu(menu, e.clientX, e.clientY)
   })
+}
+
+// 图片右键的自绘菜单：另存为 / 复制图像 / 复制图像链接（远程图）。字节统一走 data: URL——
+// 本地图 readImageDataUri（限库内），远程图 fetchRemoteImageDataUri（Rust 系统下载，无 Referer，
+// 前端 fetch 被 CORS 挡死拿不到外链字节）。复制图像经 canvas 转 PNG，避开剪贴板对源格式的挑剔。
+function openImageContextMenu(e, paneId, imgEl) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  const src = imgEl.getAttribute('src') || ''
+  const isRemote = /^https?:/i.test(src)
+  const name = decodeURIComponent((src.split('?')[0].split('#')[0].split('/').pop() || '').trim()) || 'image.png'
+  const dataUriFor = () => (isRemote
+    ? fetchRemoteImageDataUri(src)
+    : readImageDataUri(paneCtx(paneId).vaultRoot || '', paneCtx(paneId).rel || '', src))
+  menu.appendChild(makeMenuItem(t('ctx.imgSave'), async () => {
+    try {
+      const dest = await pickSaveAs(name)
+      if (!dest) return
+      await saveImageDataUri(dest, await dataUriFor())
+      setStatus(t('status.imgSaved', { name: dest.split(/[\\/]/).pop() }))
+    } catch (err) {
+      setStatus(t('status.imgFail', { msg: errText(err) }))
+    }
+  }))
+  menu.appendChild(makeMenuItem(t('ctx.imgCopy'), async () => {
+    try {
+      const blob = await dataUriToPngBlob(await dataUriFor())
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      setStatus(t('status.imgCopied'))
+    } catch (err) {
+      setStatus(t('status.imgFail', { msg: errText(err) }))
+    }
+  }))
+  if (isRemote) {
+    menu.appendChild(makeMenuItem(t('ctx.imgCopyLink'), async () => {
+      try {
+        await navigator.clipboard.writeText(src)
+        setStatus(t('status.imgLinkCopied'))
+      } catch (err) {
+        setStatus(t('status.imgFail', { msg: errText(err) }))
+      }
+    }))
+  }
+  placeMenu(menu, e.clientX, e.clientY)
+}
+
+// data: URL → PNG blob（data URI 不污染画布；SVG 无固有尺寸时兜底 1024 宽）
+async function dataUriToPngBlob(uri) {
+  const img = new Image()
+  img.src = uri
+  await img.decode()
+  const w = img.naturalWidth || 1024
+  const h = img.naturalHeight || Math.round(1024 / (img.width / img.height || 1)) || 1024
+  const cv = document.createElement('canvas')
+  cv.width = w
+  cv.height = h
+  cv.getContext('2d').drawImage(img, 0, 0, w, h)
+  return await new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), 'image/png'))
 }
 
 // —— 最近打开（全局记录于 localStorage，跨知识库；点条目按原库根重开该文件）——
@@ -3424,7 +3494,7 @@ function ensurePaneEditor(paneId) {
   paneBodyFor(paneId)
   const { editorDiv, sourceDiv } = panes.mounts.get(paneId)
   const inst = createPaneEditor(paneId, editorDiv, sourceDiv)
-  attachEditorContextMenu(inst)
+  attachEditorContextMenu(paneId, inst)
   panes.editors.set(paneId, inst)
   paneCtx(paneId)
   if (!paneCtx(paneId).rel) showPaneEmpty(paneId, true)
