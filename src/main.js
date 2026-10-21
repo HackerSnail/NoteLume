@@ -113,6 +113,7 @@ const state = {
   dirty: false,
   indexReady: false,
   singleFile: null, // 非空 = 单文件模式（打开的是单个 md / canvas，侧栏只列它，不铺开目录）
+  vaultFromFolder: false, // 当前 vaultRoot 是把「文件夹当库打开」得来的，还是只因为打开了夹在里面的某个文件
   docNames: [], // 全库 .md 文件名（去 .md）——供 [[ 自动补全
   tagNames: [], // 全库标签——供 # 自动补全
   tree: [], // 最近一次 scanVault 的文件树——供模板/每日笔记列目录
@@ -748,6 +749,7 @@ async function openFolder() {
       return
     }
     state.vaultRoot = root
+    state.vaultFromFolder = true
     state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
     const tree = await scanVault(root)
     renderTree(tree)
@@ -817,6 +819,7 @@ async function openAbsPath(abs, preview = false) {
   const { dir, name } = splitAbs(abs)
   leaveCurrentVault(dir) // 跨目录打开：旧根的标签页与文档态作废，避免还指着上一个库
   state.vaultRoot = dir
+  state.vaultFromFolder = false // 这个根只是「某个文件所在的目录」，不是用户选的库
   state.tempImportRoot = ''
   state.singleFile = isCanvasPath(name) ? null : name // 画布也铺单文件树，但索引照扫全目录
   const canvas = isCanvasPath(name)
@@ -833,7 +836,15 @@ async function openAbsPath(abs, preview = false) {
 function persistWorkspace() {
   if (!settingsStore) return
   const cur = settingsStore.get().workspace || {}
-  const next = { ...cur, lastVault: state.vaultRoot || null, lastFile: state.currentFile || null }
+  const next = {
+    ...cur,
+    lastVault: state.vaultRoot || null,
+    lastFile: state.currentFile || null,
+    // 只有「文件夹被当作库打开」那次才配在下次启动时重铺整棵树；单独打开一个文档
+    // （选择器 / 拖入 / 启动参数）顺带把它所在的目录记成根，重启就变成没人要求的
+    // 「把那个文件夹里所有内容打开」
+    folderVault: !!state.vaultRoot && state.vaultFromFolder,
+  }
   if (JSON.stringify(next) === JSON.stringify(cur)) return
   settingsStore.update({ workspace: next })
 }
@@ -845,11 +856,13 @@ async function openVaultPath(root, rel) {
   if (normVaultPath(root) === normVaultPath(state.vaultRoot)) {
     // 就是当前库：不重扫不重建，只补开指定文档
     if (rel) await openFile(rel)
+    state.vaultFromFolder = true // 文件夹是被点名打开的，即便它先前只是某个文件的目录
     persistWorkspace()
     return
   }
   leaveCurrentVault(root)
   state.vaultRoot = root
+  state.vaultFromFolder = true // 这是「把文件夹当库打开」，不是某个文件顺带所在的目录
   state.singleFile = null // 正式库接管，退出单文件模式
   state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
   const tree = await scanVault(root)
@@ -930,7 +943,7 @@ async function handleLaunchArgs() {
       const s = panes.strips.get(id)
       return s && s.tabs.list().length > 0
     })
-    if (ws && ws.lastVault && !restoredTabs) {
+    if (ws && ws.lastVault && ws.folderVault === true && !restoredTabs) {
       try {
         await openVaultPath(ws.lastVault, ws.lastFile || null)
       } catch (e) {
@@ -1200,6 +1213,7 @@ async function importWordFlow(sources, destDir = '', target = {}) {
       // 立即回显：独立模式先把 temp 一次性目录作为工作根打开（侧栏树列出全部导入篇、可点），再打开首篇
       if (!intoVault && tempRoot) {
         state.vaultRoot = tempRoot
+        state.vaultFromFolder = true
         state.tempImportRoot = tempRoot
         state.currentFile = null
         renderTree(await scanVault(tempRoot))
@@ -1805,6 +1819,7 @@ async function reopenRecent(entry) {
     // 两个库各有一个 README.md 时，不清 currentFile 会让新库的那个点不动）
     leaveCurrentVault(entry.root)
     state.vaultRoot = entry.root
+    state.vaultFromFolder = true // 整棵目录树已铺开，这个根就是个库
     state.tempImportRoot = ''
     state.scratch = false
     const tree = await scanVault(entry.root)
@@ -2087,8 +2102,9 @@ async function loadDocIntoPane(paneId, doc) {
     if (paneId === panes.focused) {
       if (rootChangedNow) {
         // 跨根：树与索引跟着这个窗格的文档走（既有跨库切页链路）
-        if (ctx.scratch || state.singleFile) {
-          // 临时目录 / 单文件模式：侧栏不铺开目录，只列当前这一个
+        if (ctx.scratch || state.singleFile || !prevGlobal.root) {
+          // 临时目录 / 单文件模式 / 启动恢复时并没有开过库（只记住了那篇文档）：
+          // 侧栏不铺开目录，只列当前这一个
           state.tree = []
           renderSingleFileTree(doc.rel)
         } else {
@@ -2257,6 +2273,7 @@ async function saveScratchAs() {
     const { dir, name } = splitAbs(abs)
     await writeMdFile(dir, name, md)
     state.vaultRoot = dir
+    state.vaultFromFolder = false // 选的是「这个文件存哪儿」，不是把该目录当库打开
     state.tempImportRoot = ''
     state.scratch = false
     state.currentFile = name
@@ -2505,6 +2522,7 @@ async function saveTempAsFormal() {
     await relocateImport(tempRoot, target)
     // 4) 切换工作根到新目录：同 rel 内容已存在，无需重开文件，只换 vaultRoot 标识
     state.vaultRoot = target
+    state.vaultFromFolder = true // 目录是用户在保存对话框里点名的库位
     paneCtx(panes.focused).vaultRoot = target
     state.tempImportRoot = ''
     state.scratch = false
@@ -4042,6 +4060,17 @@ async function boot() {
   hlBar = panes.hlBars.get(panes.focused) || null
   await syncFocusedEditor() // 焦点可能不是首窗格：els.editor 等挂载点指针跟着焦点走
   updatePaneChrome()
+  // 上次会话里文件夹是被当库打开的：先把目录树铺回来，标签里的文档随后装载。
+  // 只在 folderVault 为真时铺——单文件打开记住的根不该在重启后摊成整个文件夹。
+  const wsBoot = settingsStore.get().workspace || {}
+  if (wsBoot.folderVault === true && wsBoot.lastVault) {
+    try {
+      await openVaultPath(wsBoot.lastVault, null)
+    } catch (e) {
+      console.warn('[restore] 打开上次的知识库失败', e)
+      setStatus(t('ws.restoreFailed', { msg: (e && e.message) || e }))
+    }
+  }
   // 还原各窗格的标签列（预览不恢复，一律按固定），每个窗格只读活动标签的内容，
   // 其余标签点击时再读。恢复出的文档可能已被移走：摘掉该标签留空态，不打断启动。
   for (const paneId of paneIds(panes.tree)) {
