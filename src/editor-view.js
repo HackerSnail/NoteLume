@@ -834,9 +834,11 @@ function loadImgSrc(img, host, src, getVault) {
     img.__key = null
     return
   }
-  // 远程 / 内联 / 剪贴板 blob：直接透传
+  // 远程 / 内联 / 剪贴板 blob：直接透传。no-referrer 防外链图床拒图（Gitee 对 localhost 等
+  // 非本站 Referer 直接 403）；本地图走 data URI，无影响
   if (/^(https?:|data:|blob:)/i.test(src)) {
     img.__key = null
+    img.referrerPolicy = 'no-referrer'
     img.src = src
     return
   }
