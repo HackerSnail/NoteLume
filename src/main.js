@@ -1579,7 +1579,8 @@ function openParagraphMenu(anchorEl) {
 function attachEditorContextMenu(inst) {
   const pane = inst.view.dom.closest('.nl-pane')
   if (!pane) return
-  const SKIP = '.nl-pane-strip, .nl-find-bar, .nl-source, #canvas-mount, input, textarea, select'
+  // 图片放行走原生菜单：WebView2 自带「另存图片为 / 复制图片」，自定义菜单没有这些
+  const SKIP = '.nl-pane-strip, .nl-find-bar, .nl-source, #canvas-mount, input, textarea, select, img, .nl-img-host'
   const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
   const withKey = (label, key) => (key ? label + '  ' + key : label)
   pane.addEventListener('contextmenu', (e) => {
