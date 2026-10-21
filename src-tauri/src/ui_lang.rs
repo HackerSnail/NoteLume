@@ -109,6 +109,13 @@ const TABLE: &[Entry] = &[
         "Échec de résolution du chemin {path} : {err}",
         "Pfad {path} konnte nicht aufgelöst werden: {err}",
     ]},
+    Entry { key: "fileNotFound", texts: [
+        "文件已不存在：{path}",
+        "檔案已不存在：{path}",
+        "File no longer exists: {path}",
+        "Le fichier n'existe plus : {path}",
+        "Die Datei existiert nicht mehr: {path}",
+    ]},
     Entry { key: "pathOutsideVault", texts: [
         "非法路径：目标不在知识库根目录内",
         "非法路徑：目標不在知識庫根目錄內",
@@ -949,9 +956,19 @@ const TABLE: &[Entry] = &[
 mod tests {
     use super::*;
 
+    // 当前语言是进程内静态量，默认多线程跑测时 A 刚 set 完就会被 B 改掉，
+    // 取词断言随之随机翻脸。改语言的用例共用这把锁排成串行。
+    static LANG_TEST_LOCK: Mutex<()> = Mutex::new(());
+    fn lang_lock() -> std::sync::MutexGuard<'static, ()> {
+        match LANG_TEST_LOCK.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
     #[test]
     fn set_lang_accepts_known_and_rejects_unknown() {
-        // 单测之间共享进程内静态量，显式归位避免相互影响
+        let _g = lang_lock();
         assert!(set_lang("en-US"));
         assert_eq!(current_lang(), "en-US");
         assert!(!set_lang("xx-XX"));
@@ -962,6 +979,7 @@ mod tests {
 
     #[test]
     fn msg_returns_localized_text() {
+        let _g = lang_lock();
         set_lang("zh-CN");
         assert_eq!(msg("readFailed", &[("err", "boom".to_string())]), "读取失败：boom");
         set_lang("en-US");
@@ -976,6 +994,7 @@ mod tests {
 
     #[test]
     fn msg_unknown_key_returns_key_and_unknown_lang_falls_back() {
+        let _g = lang_lock();
         set_lang("en-US");
         assert_eq!(msg("__nope__", &[]), "__nope__");
         set_lang("qq-QQ"); // set_lang 拒绝，不应改当前语言

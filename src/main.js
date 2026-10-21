@@ -1960,6 +1960,10 @@ async function loadDocIntoPane(paneId, doc) {
   // 失败回滚用：读取 / 装载半路抛错时上下文退回原状。留着 doc.rel 的「幽灵 ctx」
   // 会让 openFile 的同文档早退误命中——窗格明明是空态，点那个文件却再没反应
   const prev = { vaultRoot: ctx.vaultRoot, rel: ctx.rel, scratch: ctx.scratch }
+  // 全局镜像另记一份：开库只设 state.vaultRoot，焦点窗格的 ctx.vaultRoot 要等首个文档
+  // 装载才写。按 ctx 的旧值回退全局会把「库已打开」抹掉，之后点文件树全在
+  // openFile 开头静默返回
+  const prevGlobal = { root: state.vaultRoot, file: state.currentFile, scratch: state.scratch }
   ctx.vaultRoot = doc.root
   ctx.rel = doc.rel
   ctx.scratch = !!doc.scratch
@@ -2014,9 +2018,9 @@ async function loadDocIntoPane(paneId, doc) {
   } catch (e) {
     Object.assign(ctx, prev)
     if (paneId === panes.focused) {
-      state.currentFile = prev.rel
-      state.scratch = prev.scratch
-      state.vaultRoot = prev.vaultRoot // 装载失败一并退回，别留下指向新根的镜像
+      state.currentFile = prevGlobal.file
+      state.scratch = prevGlobal.scratch
+      state.vaultRoot = prevGlobal.root // 镜像退回装载前的值，别留下指向新根的残留
     }
     throw e
   }
@@ -2028,11 +2032,14 @@ async function loadDocIntoPane(paneId, doc) {
 async function closePaneIfEmpty(paneId) {
   clearPane(paneId)
   if (paneIds(panes.tree).length > 1) {
-    await closePaneUi(paneId)
+    await closePaneUi(paneId) // 整格关掉那条由 closePaneUi 自己落盘
     return
   }
   refreshLinkPanels()
   if (snapshotPanel) snapshotPanel.refresh()
+  // 末窗格留空态这条分支没人落盘：关光的标签与 lastFile 还留在设置里，下次启动又恢复回来
+  persistPanes()
+  persistWorkspace()
 }
 
 // 关一个标签（× / 中键 / Ctrl+W）。标签只可能属于焦点窗格（条子就挂在窗格上）：
@@ -2235,6 +2242,12 @@ async function openFile(rel, preview = false) {
     editor.focus()
   } catch (e) {
     await messageDialog(t('status.openFailed', { msg: e }))
+    // 打不开多半是这一条已被外部删走 / 移走：重扫一次，别让死行留在树上等人再点
+    try {
+      renderTree(await scanVault(state.vaultRoot))
+    } catch (_) {
+      /* 连库根都取不到：留给下一次开库的提示 */
+    }
   }
 }
 

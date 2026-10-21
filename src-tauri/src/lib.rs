@@ -81,10 +81,17 @@ fn is_image(name: &str) -> bool {
 
 /// 拒绝越出库根的恶意路径（`..` 逃逸等）；root 与 target 均已 canonicalize
 fn ensure_inside_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
-    let target = fs::canonicalize(target)
-        .map_err(|e| ui_msg!("pathResolveFailed", "path" => target.display(), "err" => e))?;
-    if target.starts_with(root) {
-        Ok(target)
+    // 文件不存在单独成一句：库外删掉 / 移走的文档，界面只该看到「文件已不存在」，
+    // 不是 canonicalize 的 `No such file or directory (os error 2)`。
+    let resolved = fs::canonicalize(target).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            ui_msg!("fileNotFound", "path" => target.display())
+        } else {
+            ui_msg!("pathResolveFailed", "path" => target.display(), "err" => e)
+        }
+    })?;
+    if resolved.starts_with(root) {
+        Ok(resolved)
     } else {
         Err(ui_msg!("pathOutsideVault"))
     }
@@ -2624,6 +2631,20 @@ mod tests {
         // 三条拒绝均在调用回收站前就返回 Err，note.md 应仍在原处
         assert!(tmp.join("note.md").exists());
         // 注：成功路径会真的把文件移入系统回收站，为避免污染用户回收站，happy path 交由手动验证
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn missing_file_reports_plain_words() {
+        let tmp = std::env::temp_dir().join(format!("notelume-gone-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let root = tmp.to_string_lossy().to_string();
+        let err = abs_in_vault(&root, "ghost.md").unwrap_err();
+        // 取词按界面语言走（测试进程里语言可能被别的用例设过），只锁两点：带路径、不带 errno 原文
+        assert!(err.contains("ghost.md"), "{err}");
+        assert!(!err.contains("os error"), "{err}");
 
         let _ = fs::remove_dir_all(&tmp);
     }
