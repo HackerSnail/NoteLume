@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>NoteLume 剪藏 · 选项</title>
+  <style>
+    body {
+      font: 13px/1.6 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+      margin: 24px auto;
+      max-width: 560px;
+      padding: 0 16px;
+      color: #1f2328;
+    }
+    h1 { font-size: 16px; margin: 0 0 16px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .hint { font-size: 12px; color: #57606a; margin: 2px 0 0; }
+    .row { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+    button {
+      padding: 6px 14px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      background: #f6f8fa;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button.primary { background: #8b5cf6; border-color: #8b5cf6; color: #fff; }
+    #status { font-size: 12px; color: #57606a; }
+    #status.ok { color: #1a7f37; }
+    #status.err { color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>NoteLume 剪藏</h1>
+
+  <label for="serverUrl">服务器地址</label>
+  <input id="serverUrl" type="text" placeholder="http://127.0.0.1:3210" />
+  <p class="hint">NoteLume 剪藏设置里显示的地址（端口被占用顺延时以 NoteLume 里显示的实际端口为准）。</p>
+
+  <label for="token">访问令牌</label>
+  <input id="token" type="text" placeholder="NoteLume 剪藏设置里生成的那一串" />
+  <p class="hint">只存在浏览器本地（chrome.storage.sync）。NoteLume 里重新生成令牌后，这里要同步改。</p>
+
+  <label for="folder">默认目标目录（可选）</label>
+  <input id="folder" type="text" placeholder="留空 = 用 NoteLume 剪藏设置里的目录" />
+  <p class="hint">库内相对目录，如 Clippings/。填了就对每次剪藏生效，覆盖 NoteLume 设置里的值。</p>
+
+  <label for="template">默认模板（可选）</label>
+  <input id="template" type="text" placeholder="留空 = 用 NoteLume 剪藏设置里的模板" />
+  <p class="hint">库内相对路径，如 Templates/网页剪藏.md。填了就对每次剪藏生效。</p>
+
+  <div class="row">
+    <button id="save" class="primary">保存</button>
+    <button id="test">测试连接</button>
+    <span id="status"></span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
