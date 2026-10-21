@@ -1,8 +1,8 @@
 // clip-settings.js —— 「网页剪藏」设置：配置归一化（纯逻辑，可 Node 单测）+ 设置面板
 //
-// 剪藏链路：浏览器扩展 POST 到本机 Rust 起的 HTTP 服务（只绑 127.0.0.1，令牌闸门），
-// Rust 按模板落盘并自动关联库内笔记。这里管的是设置：开关、端口、令牌、目标目录、
-// 模板、文件名模式、自动关联、剪藏后是否打开。
+// 剪藏链路：浏览器扩展 POST 到本机 Rust 起的 HTTP 服务（只绑 127.0.0.1，来源闸门是
+// Origin + Host 检查，不带令牌），Rust 按模板落盘并自动关联库内笔记。这里管的是设置：
+// 开关、端口、目标目录、模板、文件名模式、自动关联、剪藏后是否打开。
 //
 // 持久化：并进 settings.json 的 clip 段（settings-store.js 读写）；「保存」时除写设置
 // 外还调 clip_server_apply 让 Rust 侧停旧起新服务。面板关着时服务照常运行。
@@ -17,7 +17,6 @@ import { clipServerApply, clipServerStatus } from './tauri-bridge.js'
 export const DEFAULT_CLIP = {
   enabled: false,
   port: 3210,
-  token: '',
   folder: 'Clippings',
   template: '',
   filename: '{{date}}-{{title}}',
@@ -41,24 +40,12 @@ export function normalizeClip(raw) {
   if (typeof raw.autoLink === 'boolean') s.autoLink = raw.autoLink
   if (raw.port != null) s.port = clampNum(raw.port, 1024, 65535, DEFAULT_CLIP.port)
   if (raw.maxLinks != null) s.maxLinks = clampNum(raw.maxLinks, 0, 20, DEFAULT_CLIP.maxLinks)
-  if (typeof raw.token === 'string') s.token = raw.token.trim().slice(0, 64)
   if (typeof raw.template === 'string') s.template = raw.template.trim().slice(0, 200)
   const folder = typeof raw.folder === 'string' ? raw.folder.trim().replace(/[\\]+/g, '/').replace(/^\/+|\/+$/g, '') : ''
   s.folder = folder || DEFAULT_CLIP.folder
   const filename = typeof raw.filename === 'string' ? raw.filename.trim() : ''
   s.filename = filename || DEFAULT_CLIP.filename
   return s
-}
-
-/** 生成 32 位十六进制令牌（与 Rust 侧 webclip::gen_token 同格式）。优先 Web Crypto 安全随机 */
-export function genClipToken() {
-  const buf = new Uint8Array(16)
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(buf)
-  } else {
-    for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256)
-  }
-  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /** 扩展里要填的服务器地址（端口取草稿值，可能与实际绑定不同——以保存后状态栏为准） */
@@ -155,44 +142,6 @@ export function createClipSettings(deps) {
     hint('clip.enableHint')
     numRow('clip.port', draft.port, (v) => { draft.port = v })
     hint('clip.portHint')
-
-    // 令牌：只读展示 + 复制 + 重新生成。空 = 保存时由前端生成
-    const row = document.createElement('div')
-    row.className = 'nl-ap-row nl-clip-token-row'
-    const label = document.createElement('span')
-    label.className = 'nl-ap-label'
-    label.textContent = t('clip.token')
-    const input = document.createElement('input')
-    input.type = 'text'
-    input.className = 'nl-ap-text'
-    input.readOnly = true
-    input.value = draft.token
-    input.placeholder = t('clip.tokenEmpty')
-    const copyBtn = document.createElement('button')
-    copyBtn.type = 'button'
-    copyBtn.className = 'nl-ks-btn'
-    copyBtn.textContent = t('clip.tokenCopy')
-    copyBtn.addEventListener('click', async () => {
-      const tok = draft.token || (await clipServerStatus().catch(() => null))?.token || ''
-      if (!tok) return
-      try {
-        await navigator.clipboard.writeText(tok)
-        setStatus(t('clip.tokenCopyDone'))
-      } catch {
-        setStatus(t('clip.tokenCopyFail'))
-      }
-    })
-    const genBtn = document.createElement('button')
-    genBtn.type = 'button'
-    genBtn.className = 'nl-ks-btn'
-    genBtn.textContent = t('clip.tokenRegen')
-    genBtn.addEventListener('click', () => {
-      draft.token = genClipToken()
-      input.value = draft.token
-    })
-    row.append(label, input, copyBtn, genBtn)
-    bodyEl.appendChild(row)
-    hint('clip.tokenHint')
   }
 
   function renderSave() {
@@ -287,17 +236,10 @@ export function createClipSettings(deps) {
 
   async function save() {
     const next = normalizeClip(draft)
-    // 启用而没令牌：前端生成（Rust 侧也会兜底生成，但前端先生成便于一次性展示给用户）
-    if (next.enabled && !next.token) next.token = genClipToken()
     apply(next)
     if (flush) await flush()
     try {
       const st = await clipServerApply(next)
-      // Rust 侧可能现场生成了令牌（设置里带空令牌启用时）：落回设置，避免下次启用对不上
-      if (st && st.token && st.token !== next.token) {
-        apply({ ...next, token: st.token })
-        if (flush) await flush()
-      }
       setStatus(st && st.running ? t('clip.statusRunning', { port: st.port }) : t('clip.statusStopped'))
     } catch (e) {
       setStatus(t('clip.applyFailed', { err: (e && e.message) || e }))
@@ -321,10 +263,7 @@ export function createClipSettings(deps) {
     // 拉一次运行态：端口可能顺延过、令牌可能是 Rust 生成的，以运行态为准修正草稿
     try {
       const st = await clipServerStatus()
-      if (st && st.running) {
-        if (st.port) draft.port = st.port
-        if (st.token) draft.token = st.token
-      }
+      if (st && st.running && st.port) draft.port = st.port
     } catch {
       /* 纯 web 构建没有这条命令：用设置里的值 */
     }

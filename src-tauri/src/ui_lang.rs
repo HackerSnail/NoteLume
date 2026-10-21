@@ -973,13 +973,6 @@ const TABLE: &[Entry] = &[
         "Ouvrez d’abord un coffre dans NoteLume",
         "Öffnen Sie zuerst einen Vault in NoteLume",
     ]},
-    Entry { key: "clip.badToken", texts: [
-        "访问令牌不匹配，请在剪藏设置里核对令牌",
-        "存取權杖不符，請在剪藏設定裡核對權杖",
-        "Access token mismatch. Check the token in the clipping settings",
-        "Jeton d’accès incorrect. Vérifiez le jeton dans les réglages de capture",
-        "Zugriffstoken stimmt nicht. Prüfen Sie das Token in den Clipping-Einstellungen",
-    ]},
     Entry { key: "clip.forbidden", texts: [
         "请求来源不被允许",
         "請求來源不被允許",

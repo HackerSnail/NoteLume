@@ -4,6 +4,10 @@
 // 再用 VaultIndex 的既有条目算相关笔记，文末追加「## 相关笔记」段。
 // HTTP 服务与 Tauri 装配在同文件下半部分（serve_loop / handle_conn）。
 //
+// 服务只绑 127.0.0.1，不带令牌：来源闸门是 Origin（存在时必须是扩展来源）+ Host（必须
+// 回环名）两道，浏览器侧攻击面由此全覆盖；本机其他进程本就写得了库里的文件，令牌拦不住
+// 它却要每个用户手工复制粘贴，不划算。决策依据见 spec §2。
+//
 // 设计依据：docs/superpowers/specs/2026-10-21-web-clip-design.md
 // 实现计划：docs/superpowers/plans/2026-10-21-web-clip-plan.md
 
@@ -29,8 +33,6 @@ pub const DEFAULT_FOLDER: &str = "Clippings";
 pub const DEFAULT_FILENAME: &str = "{{date}}-{{title}}";
 /// 自动关联默认上限
 pub const DEFAULT_MAX_LINKS: usize = 5;
-/// 令牌请求头（小写；HTTP 头名大小写不敏感，查找时已统一小写）
-pub const TOKEN_HEADER: &str = "x-nl-token";
 /// 关联段标题（写进 md 的固定中文，用户可自行改写）
 pub const RELATED_HEADING: &str = "## 相关笔记";
 /// 整个请求体上限
@@ -110,13 +112,12 @@ pub struct ClipOutcome {
     pub images_failed: usize,
 }
 
-/// 剪藏配置。前九个字段来自 settings.json 的 clip 段；bound_port 是运行态
+/// 剪藏配置。前八个字段来自 settings.json 的 clip 段；bound_port 是运行态
 ///（端口占用顺延后的实际绑定值），不落盘。
 #[derive(Clone, Debug)]
 pub struct ClipConfig {
     pub enabled: bool,
     pub port: u16,
-    pub token: String,
     pub folder: String,
     pub template_rel: String,
     pub filename_pattern: String,
@@ -131,7 +132,6 @@ impl Default for ClipConfig {
         ClipConfig {
             enabled: false,
             port: DEFAULT_PORT,
-            token: String::new(),
             folder: DEFAULT_FOLDER.to_string(),
             template_rel: String::new(),
             filename_pattern: DEFAULT_FILENAME.to_string(),
@@ -166,9 +166,7 @@ pub fn clip_config_from_json(v: &serde_json::Value) -> ClipConfig {
     if let Some(n) = obj.get("port").and_then(|x| x.as_u64()) {
         cfg.port = n.clamp(1024, 65535) as u16;
     }
-    if let Some(s) = obj.get("token").and_then(|x| x.as_str()) {
-        cfg.token = s.trim().to_string();
-    }
+    // 历史版本 settings.json 里可能留有 token 段：本版本不带令牌，读档时忽略
     if let Some(s) = obj.get("folder").and_then(|x| x.as_str()) {
         cfg.folder = normalize_folder(s);
     }
@@ -738,18 +736,6 @@ pub fn write_clip(
     })
 }
 
-// ==================== 令牌 ====================
-
-/// 生成 32 位十六进制令牌。两枚 RandomState 的 64 位空输入哈希（OS 播种）拼成 128 位，
-/// 对本机回环服务的防护足够，不引 rand / getrandom。
-pub fn gen_token() -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-    let a = RandomState::new().build_hasher().finish();
-    let b = RandomState::new().build_hasher().finish();
-    format!("{:016x}{:016x}", a, b)
-}
-
 // ==================== 本地 HTTP 服务 ====================
 
 /// 服务状态回给前端（camelCase）。
@@ -758,7 +744,6 @@ pub fn gen_token() -> String {
 pub struct ClipStatus {
     pub running: bool,
     pub port: Option<u16>,
-    pub token: String,
 }
 
 /// 运行中的服务。handle 留着只为 stop 时 join 等 accept 循环退出（listener 在线程里 drop）。
@@ -775,12 +760,8 @@ pub struct ClipServerState(Arc<Mutex<Option<ClipServer>>>);
 /// 事件发射回调。serve_loop / handle_conn 不直接依赖 AppHandle，测试可传空实现。
 type EmitFn = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 
-/// 起服务。端口占用时顺延 +1 至多 10 个；令牌为空时现场生成（前端随后把 status 里的
-/// 令牌落回 settings.json）。端口全被占才返回错误。
+/// 起服务。端口占用时顺延 +1 至多 10 个；端口全被占才返回错误。
 pub fn start(app: &tauri::AppHandle, state: &ClipServerState, mut cfg: ClipConfig) -> Result<(), String> {
-    if cfg.token.is_empty() {
-        cfg.token = gen_token();
-    }
     let mut listener = None;
     let mut bound = None;
     for off in 0..10u16 {
@@ -839,16 +820,15 @@ pub fn status(state: &ClipServerState) -> ClipStatus {
     let g = match state.0.lock() {
         Ok(g) => g,
         Err(_) => {
-            return ClipStatus { running: false, port: None, token: String::new() }
+            return ClipStatus { running: false, port: None }
         }
     };
     match g.as_ref() {
         Some(srv) => ClipStatus {
             running: true,
             port: srv.cfg.bound_port,
-            token: srv.cfg.token.clone(),
         },
-        None => ClipStatus { running: false, port: None, token: String::new() },
+        None => ClipStatus { running: false, port: None },
     }
 }
 
@@ -1017,23 +997,12 @@ fn host_ok(host: &str) -> bool {
     h == "127.0.0.1" || h == "localhost" || h == "::1" || h == "[::1]"
 }
 
-/// Origin 检查：存在时只放行扩展来源。浏览器里恶意网页的 fetch 会带 http(s) Origin，
-/// 在这里被挡掉；扩展 service worker 带 chrome-extension Origin，curl 不带 Origin。
+/// Origin 检查：存在时只放行扩展来源。浏览器里恶意网页的 fetch / 表单提交必带
+/// http(s) Origin，在这里被挡掉；扩展 service worker 带 chrome-extension Origin。
+/// 不带 Origin 的请求（Firefox 扩展、curl、本机进程）放行——本机进程本来写得了库里
+/// 的文件，HTTP 服务没给它任何新能力，为此设令牌只会把成本转嫁给正常用户。
 fn origin_ok(origin: &str) -> bool {
     origin.starts_with("chrome-extension://") || origin.starts_with("moz-extension://")
-}
-
-/// 恒定时间令牌比对（长度泄露不可避免，内容不按字节逐个早退）。
-fn token_eq(a: &str, b: &str) -> bool {
-    let (ab, bb) = (a.as_bytes(), b.as_bytes());
-    if ab.len() != bb.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for i in 0..ab.len() {
-        diff |= ab[i] ^ bb[i];
-    }
-    diff == 0
 }
 
 fn err_json(code: &str, message: &str) -> String {
@@ -1056,7 +1025,7 @@ fn write_response(stream: &mut TcpStream, code: u16, body: &str) -> Result<(), S
         _ => "OK",
     };
     let head = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type, x-nl-token\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Max-Age: 600\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Max-Age: 600\r\nConnection: close\r\n\r\n",
         code, reason, body.len()
     );
     stream
@@ -1071,17 +1040,14 @@ fn write_response(stream: &mut TcpStream, code: u16, body: &str) -> Result<(), S
     Ok(())
 }
 
-/// /clip 的业务核心：鉴权 → 解析 → 落盘。返回 (HTTP 码, 响应体, 待发事件)。
-/// 事件由调用方发（测试里可断言其内容，运行时才真的 emit 给前端）。
+/// /clip 的业务核心：来源之外的校验（载荷大小 / JSON / 知识库）→ 落盘。返回
+/// (HTTP 码, 响应体, 待发事件)。事件由调用方发（测试里可断言其内容，运行时才真的 emit）。
+/// 来源闸门（Origin / Host）在 handle_conn，请求到不了这里。
 fn process_clip(
     index: &Arc<Mutex<crate::VaultIndex>>,
     cfg: &ClipConfig,
     req: &RawRequest,
 ) -> (u16, String, Option<serde_json::Value>) {
-    let token = req.header(TOKEN_HEADER).unwrap_or_default();
-    if !token_eq(token, &cfg.token) {
-        return (401, err_json("bad_token", &crate::ui_msg!("clip.badToken")), None);
-    }
     if req.body.len() > MAX_BODY {
         return (413, err_json("too_large", &crate::ui_msg!("clip.tooLarge")), None);
     }
@@ -1440,14 +1406,6 @@ mod tests {
     }
 
     #[test]
-    fn gen_token_is_32_hex() {
-        let t = gen_token();
-        assert_eq!(t.len(), 32);
-        assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(t, gen_token(), "两次生成不重复");
-    }
-
-    #[test]
     fn read_clip_template_falls_back() {
         let dir = std::env::temp_dir().join("notelume-clip-tpl-test");
         let _ = fs::remove_dir_all(&dir);
@@ -1473,14 +1431,14 @@ mod tests {
     fn parse_request_reads_post_body() {
         let body = r#"{"title":"t"}"#;
         let raw = format!(
-            "POST /clip HTTP/1.1\r\nHost: 127.0.0.1:3210\r\nX-NL-Token: abc\r\nContent-Length: {}\r\n\r\n{}",
+            "POST /clip HTTP/1.1\r\nHost: 127.0.0.1:3210\r\nOrigin: chrome-extension://abc\r\nContent-Length: {}\r\n\r\n{}",
             body.len(),
             body
         );
         let req = raw_request(&raw);
         assert_eq!(req.method, "POST");
         assert_eq!(req.path, "/clip");
-        assert_eq!(req.header("x-nl-token"), Some("abc"));
+        assert_eq!(req.header("origin"), Some("chrome-extension://abc"));
         assert_eq!(req.header("host"), Some("127.0.0.1:3210"));
         assert_eq!(String::from_utf8_lossy(&req.body), body);
     }
@@ -1512,15 +1470,6 @@ mod tests {
     }
 
     #[test]
-    fn token_eq_exact_only() {
-        assert!(token_eq("abc123", "abc123"));
-        assert!(!token_eq("abc123", "abc124"));
-        assert!(!token_eq("abc123", "abc1234"));
-        assert!(!token_eq("", "a"));
-        assert!(token_eq("", ""));
-    }
-
-    #[test]
     fn process_clip_gates_and_writes() {
         let dir = std::env::temp_dir().join("notelume-clip-process-test");
         let _ = fs::remove_dir_all(&dir);
@@ -1529,31 +1478,16 @@ mod tests {
 
         let index = Arc::new(Mutex::new(VaultIndex::default()));
         index.lock().unwrap().vault_root = root.to_string_lossy().into_owned();
-        let cfg = ClipConfig { token: "tok-123".into(), ..Default::default() };
+        let cfg = ClipConfig::default();
         let body = serde_json::json!({"title": "p", "url": "https://e.com/a", "markdown": "正文"}).to_string();
 
-        // 错令牌 → 401
-        let bad = format!(
-            "POST /clip HTTP/1.1\r\nX-NL-Token: wrong\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        let (code, resp, ev) = process_clip(&index, &cfg, &raw_request(&bad));
-        assert_eq!(code, 401);
-        assert!(resp.contains("bad_token"));
-        assert!(ev.is_none());
-
         // 坏 JSON → 400
-        let bad = "POST /clip HTTP/1.1\r\nX-NL-Token: tok-123\r\nContent-Length: 3\r\n\r\nxxx";
+        let bad = "POST /clip HTTP/1.1\r\nContent-Length: 3\r\n\r\nxxx";
         let (code, _, _) = process_clip(&index, &cfg, &raw_request(bad));
         assert_eq!(code, 400);
 
-        // 正确载荷 → 200 + 落盘 + 事件
-        let ok = format!(
-            "POST /clip HTTP/1.1\r\nX-NL-Token: tok-123\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
+        // 正确载荷（不带任何鉴权头）→ 200 + 落盘 + 事件
+        let ok = format!("POST /clip HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}", body.len(), body);
         let (code, resp, ev) = process_clip(&index, &cfg, &raw_request(&ok));
         assert_eq!(code, 200);
         assert!(resp.contains("\"rel\""), "{resp}");
@@ -1582,7 +1516,7 @@ mod tests {
 
         let index = Arc::new(Mutex::new(VaultIndex::default()));
         index.lock().unwrap().vault_root = root.to_string_lossy().into_owned();
-        let cfg = ClipConfig { token: "tok-123".into(), ..Default::default() };
+        let cfg = ClipConfig::default();
         let shutdown = Arc::new(AtomicBool::new(false));
         let emit: EmitFn = Arc::new(|_, _| {});
         let idx2 = index.clone();
@@ -1590,12 +1524,19 @@ mod tests {
         let sd2 = shutdown.clone();
         thread::spawn(move || serve_loop(listener, idx2, cfg2, sd2, emit));
 
-        let post = |body: &str, token: &str| -> String {
+        // 发一个 POST 并读完全部响应（服务端写完即关连接）。extra_headers 是附加头
+        // （不带 \r\n），空串表示只带默认头
+        let post = |body: &str, extra_headers: &str| -> String {
             let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
             s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let head = if extra_headers.is_empty() {
+                format!("Host: 127.0.0.1:{}", port)
+            } else {
+                format!("Host: 127.0.0.1:{}\r\n{}", port, extra_headers)
+            };
             let req = format!(
-                "POST /clip HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nX-NL-Token: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                port, token, body.len(), body
+                "POST /clip HTTP/1.1\r\n{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                head, body.len(), body
             );
             s.write_all(req.as_bytes()).unwrap();
             let mut resp = Vec::new();
@@ -1612,22 +1553,28 @@ mod tests {
 
         let body =
             serde_json::json!({"title": "http 测试", "url": "https://e.com/a", "markdown": "正文"}).to_string();
-        let resp = post(&body, "tok-123");
+        // 扩展来源 → 200
+        let resp = post(&body, "Origin: chrome-extension://abc");
         assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
         assert!(resp.contains("\"rel\""), "{resp}");
         let entries: Vec<_> = fs::read_dir(root.join("Clippings")).unwrap().collect();
         assert_eq!(entries.len(), 1, "落盘一篇");
         assert!(entries[0].as_ref().unwrap().path().extension().unwrap() == "md");
 
-        // 错令牌 → 401
-        let resp = post(&body, "wrong");
-        assert!(resp.starts_with("HTTP/1.1 401"), "{resp}");
+        // 无 Origin（Firefox 扩展 / curl / 本机进程）→ 放行
+        let resp = post(&body, "");
+        assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
 
-        // 非回环 Host → 403
+        // 网页来源 → 403（挡恶意网页直连本机端口）
+        let resp = post(&body, "Origin: https://evil.com");
+        assert!(resp.starts_with("HTTP/1.1 403"), "{resp}");
+        assert!(resp.contains("forbidden"));
+
+        // 非回环 Host（DNS rebinding）→ 403
         let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         let req = format!(
-            "POST /clip HTTP/1.1\r\nHost: evil.com\r\nX-NL-Token: tok-123\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            "POST /clip HTTP/1.1\r\nHost: evil.com\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(),
             body
         );

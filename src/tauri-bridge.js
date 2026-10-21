@@ -408,12 +408,12 @@ export function writeSettingsJson(settings) {
   return invoke('write_settings_json', { settings })
 }
 
-/** 剪藏设置保存后停旧起新本地 HTTP 服务，返回 { running, port, token } */
+/** 剪藏设置保存后停旧起新本地 HTTP 服务，返回 { running, port } */
 export function clipServerApply(clip) {
   return invoke('clip_server_apply', { clip })
 }
 
-/** 查询剪藏服务运行态：{ running, port, token }（设置面板打开时拉一次） */
+/** 查询剪藏服务运行态：{ running, port }（设置面板打开时拉一次） */
 export function clipServerStatus() {
   return invoke('clip_server_status', {})
 }

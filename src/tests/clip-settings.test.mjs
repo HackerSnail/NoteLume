@@ -4,7 +4,6 @@ import assert from 'node:assert'
 import {
   DEFAULT_CLIP,
   normalizeClip,
-  genClipToken,
   clipServerUrl,
 } from '../clip-settings.js'
 
@@ -45,9 +44,7 @@ test('normalizeClip: 目录与文件名归一化', () => {
   assert.strictEqual(normalizeClip({ filename: ' {{date}} ' }).filename, '{{date}}')
 })
 
-test('normalizeClip: 令牌与模板串净化', () => {
-  assert.strictEqual(normalizeClip({ token: '  abc  ' }).token, 'abc')
-  assert.strictEqual(normalizeClip({ token: 'x'.repeat(100) }).token.length, 64)
+test('normalizeClip: 模板串净化', () => {
   assert.strictEqual(normalizeClip({ template: ' Templates/a.md ' }).template, 'Templates/a.md')
 })
 
@@ -62,14 +59,6 @@ test('normalizeClip: 不篡改默认对象', () => {
   const before = JSON.stringify(DEFAULT_CLIP)
   normalizeClip({ enabled: true, port: 4000, folder: 'x' })
   assert.strictEqual(JSON.stringify(DEFAULT_CLIP), before)
-})
-
-test('genClipToken: 32 位十六进制且不重复', () => {
-  const a = genClipToken()
-  const b = genClipToken()
-  assert.match(a, /^[0-9a-f]{32}$/)
-  assert.match(b, /^[0-9a-f]{32}$/)
-  assert.notStrictEqual(a, b)
 })
 
 test('clipServerUrl: 拼本机地址', () => {

@@ -23,11 +23,12 @@
 
 端口默认 3210，占用时顺延 `+1` 至多 10 个，实际端口记进运行态并经 `/health` 与设置面板回显。
 
-安全闸门三道，全部在响应前校验：
+安全闸门两道，全部在响应前校验，不带令牌：
 
-1. `X-NL-Token` 头与配置令牌恒定时间比对，不符 401
-2. `Origin` 头存在时必须是 `chrome-extension://` 或 `moz-extension://` 开头，否则 403（挡恶意网页直接 fetch 本机端口；扩展 service worker 的请求带 chrome-extension Origin，curl 不带 Origin，两者都放行）
-3. `Host` 头去端口后必须是 `127.0.0.1` / `localhost` / `::1`，否则 403（挡 DNS rebinding）
+1. `Origin` 头存在时必须是 `chrome-extension://` 或 `moz-extension://` 开头，否则 403。浏览器里恶意网页的 fetch 与表单提交必带 http(s) Origin，到不了 `/clip`
+2. `Host` 头去端口后必须是 `127.0.0.1` / `localhost` / `::1`，否则 403（挡 DNS rebinding）
+
+不带 Origin 的请求（Firefox 扩展、curl、本机进程）放行。2026-10-21 修订：原设计有第三道 `X-NL-Token` 令牌闸门，实现后撤掉——它唯一能防的「恶意网页直连本机端口」已被 Origin 检查完整覆盖，而它真正区别对待的「本机其他进程」本来就能直接写库里的文件，HTTP 服务没给它们任何新能力。令牌的成本（每个用户找令牌、复制、粘贴、同步改）是实的，收益是虚的。
 
 载荷上限 8MB、markdown 2MB、单图 5MB，超限 413。
 

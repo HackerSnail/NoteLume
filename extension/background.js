@@ -3,13 +3,13 @@
 // 三个入口：点工具栏图标 = 剪藏整页；右键菜单「剪藏选中内容」/「剪藏整页」。
 // 提取在页面里跑（executeScript 注入 vendor + content/extract.js）；图片由本后台
 // fetch 成 data URI（host_permissions 覆盖任意源，不受页面 CORS 限制），再 POST 到
-// NoteLume 主进程起的本地 HTTP 服务（只绑 127.0.0.1，X-NL-Token 闸门）。
+// NoteLume 主进程起的本地 HTTP 服务（只绑 127.0.0.1；来源闸门是 Rust 侧的 Origin /
+// Host 检查，无令牌，装上填个地址就能用）。
 //
 // 服务契约：docs/superpowers/specs/2026-10-21-web-clip-design.md
 
 const DEFAULTS = {
   serverUrl: 'http://127.0.0.1:3210',
-  token: '',
   folder: '',
   template: '',
 }
@@ -23,7 +23,6 @@ async function getConfig() {
   const cfg = await chrome.storage.sync.get(DEFAULTS)
   return {
     serverUrl: String(cfg.serverUrl || DEFAULTS.serverUrl).trim().replace(/\/+$/, ''),
-    token: String(cfg.token || '').trim(),
     folder: String(cfg.folder || '').trim(),
     template: String(cfg.template || '').trim(),
   }
@@ -105,7 +104,7 @@ async function postClip(payload, cfg) {
   try {
     resp = await fetch(cfg.serverUrl + '/clip', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NL-Token': cfg.token },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     })
@@ -129,7 +128,6 @@ async function postClip(payload, cfg) {
 
 function errMessage(e) {
   if (e && e.name === 'AbortError') return '请求超时：NoteLume 可能没有在运行'
-  if (e && e.status === 401) return '令牌不匹配：请把选项页的令牌改成 NoteLume 剪藏设置里显示的那一串'
   if (e && e.status === 409) return '请先在 NoteLume 里打开一个知识库'
   if (e && e.status === 413) return '内容超过大小上限（8MB）：换小一些的页面，或只剪藏选中片段'
   if (e && (e.status === 400 || e.status === 404 || e.status === 500)) {

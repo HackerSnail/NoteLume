@@ -10,7 +10,7 @@
 
 1. 本地 HTTP 服务手写 `std::net::TcpListener`，不引 crate。协议面只有 `POST /clip`、`OPTIONS` 预检、`GET /health` 三个，解析加响应约 150 行；引 `tiny_http` 一类 crate 只省这点代码，多一份依赖维护。
 2. 只绑 `127.0.0.1`，不绑 `0.0.0.0`。端口默认 3210，占用时顺延尝试至多 10 个，实际端口记进 `ClipServerState` 并经 `/health` 与设置界面回显。
-3. 令牌闸门：首次启用时生成 32 位十六进制（`RandomState` 双 64 位拼hex，零新依赖），存 settings.json 的 `clip.token`。请求须带 `X-NL-Token` 头，恒定时间比较；`Origin` 存在且不是 `chrome-extension://` / `moz-extension://` 开头的一律拒（挡恶意网页直接 fetch 本机端口）；`Host` 必须是 `127.0.0.1` / `localhost`（挡 DNS rebinding）。CORS 预检返回 `Access-Control-Allow-Origin: *`——令牌才是真闸门，放开 Origin 是为了扩展的 service worker 能发请求。
+3. 来源闸门，不带令牌（2026-10-21 修订，原设计含 `X-NL-Token` 令牌闸门，撤掉）：`Origin` 存在且不是 `chrome-extension://` / `moz-extension://` 开头的一律拒（浏览器里恶意网页的 fetch 与表单提交必带 http(s) Origin，到不了 `/clip`）；`Host` 必须是 `127.0.0.1` / `localhost`（挡 DNS rebinding）。令牌唯一能防的场景已被 Origin 检查覆盖，而它区别对待的本机其他进程本来写得了库里的文件，为它让每个用户复制粘贴不划算。CORS 预检返回 `Access-Control-Allow-Origin: *`，放开 Origin 是为了扩展的 service worker 能发请求。
 4. 载荷为 JSON，上限 8MB，单图 5MB、markdown 2MB，超限 413。字段：`title` `url` `byline` `excerpt` `siteName` `published` `markdown` `tags[]` `images[{url,dataUri}]` `template` `folder` `clipType`（`page` / `selection`）。目录与模板填了就是对本次剪藏的单次覆盖，不填用设置里的值。
 5. 图片由扩展侧 fetch 成 data URI 再随载荷传来（扩展有 `<all_urls>` 权限，页面内图基本取得到），Rust 复用既有 `b64_decode` + `fnv1a` 内容去重落 `assets/`，并把 markdown 里的远程 URL 改写为相对路径；取不到的图保留远程 URL（GFM 合法），Windows 上再走现有 `download_remote` 兜底，非 Windows 不兜底。
 6. 模板取库内 `Templates/` 下的一个 md（设置里选），Rust 起服务/重启时读入；没选或读失败用内置默认模板。变量与 `src/template.js` 同语义（未知 `{{token}}` 原样保留）：`{{title}}` `{{url}}` `{{site}}` `{{author}}` `{{date}}` `{{time}}` `{{datetime}}` `{{description}}` `{{content}}` `{{tags}}` `{{year}}` `{{month}}` `{{day}}` `{{weekday}}`。
