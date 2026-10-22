@@ -1,6 +1,9 @@
 // background.js —— NoteLume 剪藏扩展的 service worker。
 //
-// 三个入口：点工具栏图标 = 剪藏整页；右键菜单「剪藏选中内容」/「剪藏整页」。
+// 三个入口：工具栏图标（mode='auto'，页面上有选区就剪选区、没有才剪整页——图标是
+// 唯一的显眼入口，用户选了文字点图标，要的就是那段文字）；右键菜单「剪藏选中内容」
+// （mode='selection'，只剪选区）；右键菜单「剪藏整页」（mode='page'，显式要整页，
+// 有选区也剪整页）。
 // 提取在页面里跑（executeScript 注入 vendor + content/extract.js）；图片由本后台
 // fetch 成 data URI（host_permissions 覆盖任意源，不受页面 CORS 限制），再 POST 到
 // NoteLume 主进程起的本地 HTTP 服务（只绑 127.0.0.1；来源闸门是 Rust 侧的 Origin /
@@ -168,7 +171,8 @@ function errMessage(e) {
   return String((e && e.message) || e)
 }
 
-async function clipActiveTab(selection, selectionText) {
+// mode：'auto'（工具栏图标）/ 'selection'（右键剪藏选中内容）/ 'page'（右键剪藏整页）
+async function clipActiveTab(mode, selectionText) {
   let tab = null
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -201,10 +205,13 @@ async function clipActiveTab(selection, selectionText) {
         extracted && extracted.reason ? '页面提取失败：' + extracted.reason : '页面提取失败'
       )
     }
-    if (selection && !extracted.selectionMarkdown) {
+    // 图标路径认选区：页面上有选区就按选区剪（extract.js 反正两份都算了）；
+    // 右键的「剪藏整页」是显式要整页，有选区也剪整页
+    const wantSelection = mode === 'selection' || (mode === 'auto' && !!extracted.selectionMarkdown)
+    if (wantSelection && !extracted.selectionMarkdown) {
       throw new Error('没有选中内容：先在页面上选中要剪藏的文字')
     }
-    const payload = await buildPayload(extracted, selection, cfg, sw)
+    const payload = await buildPayload(extracted, wantSelection, cfg, sw)
     const out = await postClip(payload, cfg)
     await setBadge('')
     const parts = [out.title || payload.title, out.rel].filter(Boolean)
@@ -221,7 +228,7 @@ async function clipActiveTab(selection, selectionText) {
   }
 }
 
-chrome.action.onClicked.addListener(() => clipActiveTab(false))
+chrome.action.onClicked.addListener(() => clipActiveTab('auto'))
 
 // 右键菜单幂等重建。菜单注册在浏览器侧，扛不过浏览器重启与扩展重载，而重建代码跑在
 // 可能被逐出的 service worker 里：只在 onInstalled 里建一次不够——浏览器重启后
@@ -250,6 +257,6 @@ chrome.contextMenus.onClicked.addListener((info) => {
   // selectionText 是 Chrome 在点击选区菜单项时给的选中文本。isolated world 的
   // getSelection 有两个盲区——iframe 里的选区和输入框里的选区都读不到，这段纯文本
   // 经 opts 传给 extract.js 兜底（没有图片与链接，但总比报「没有选中内容」好）
-  if (info.menuItemId === 'nl-clip-selection') clipActiveTab(true, info.selectionText || '')
-  else if (info.menuItemId === 'nl-clip-page') clipActiveTab(false)
+  if (info.menuItemId === 'nl-clip-selection') clipActiveTab('selection', info.selectionText || '')
+  else if (info.menuItemId === 'nl-clip-page') clipActiveTab('page')
 })

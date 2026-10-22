@@ -97,6 +97,21 @@
     return div
   }
 
+  // Defuddle 可用性判断。它内部提取失败时不抛错，而是把整个 body 序列化后当作
+  // content 返回（_fallbackResponse），wordCount 按全页算，轻易越过字数门槛；
+  // 没有语义主标的页面（div 汤）也会退到 body 入口，把导航、侧栏一起留下来。
+  // 三种情况都算没提取到，降级 Readability：content 长度接近整个 body、元数据全空
+  // （_emptyMetadata 的特征）、wordCount 不足。误判的代价只是改用 Readability，
+  // 它同样能提取这类页面。
+  function defuddleUsable(d, doc) {
+    if (!d || !d.content) return false
+    if (d.wordCount != null && d.wordCount < MIN_WORD_COUNT) return false
+    const bodyLen = doc.body ? doc.body.innerHTML.length : 0
+    if (bodyLen > 0 && d.content.length >= bodyLen * 0.9) return false
+    if (!(d.title || d.author || d.description || d.site || d.published)) return false
+    return true
+  }
+
   try {
     const doc = document.cloneNode(true)
     const imageUrls = []
@@ -107,7 +122,7 @@
     let article = null
     try {
       const d = new Defuddle(doc.cloneNode(true), { url: location.href }).parse()
-      if (d && d.content && (d.wordCount == null || d.wordCount >= MIN_WORD_COUNT)) {
+      if (defuddleUsable(d, doc)) {
         article = { html: d.content, meta: d }
       }
     } catch (e) {

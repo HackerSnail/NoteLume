@@ -9,7 +9,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "剪藏本页到 NoteLume",
+    "default_title": "剪藏到 NoteLume（有选区剪选区，否则整页）",
     "default_icon": {
       "32": "icons/icon32.png",
       "64": "icons/icon64.png",
