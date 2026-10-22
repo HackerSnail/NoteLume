@@ -65,6 +65,41 @@
     return td.turndown(html)
   }
 
+  // 尾部签名块：博客平台常在正文末尾挂一段签名页脚（本文作者 / 本文链接 / 版权声明 /
+  // posted @ 阅读(…) 评论(…) 收藏 举报 / © …），不是正文，留着就是剪藏里一坨页脚垃圾。
+  // 从结尾往前扫：跳过空行，命中签名行就把切口上移，签名块上方常挂的图（入群二维码
+  // 之类）一并切掉，碰到正文行就停。只认整行以签名开头的，正文里提到这些词不受影响；
+  // 切口落在内容前 60% 之内才动手，避免误伤以这类词开头的短文。
+  var FOOTER_SIGNATURES = [
+    /^posted @/i,
+    /^本文(作者|链接|出处)[：:]/,
+    /^关于博文[：:]/,
+    /^版权声明[：:]/,
+    /^日常交流[：:]/,
+    /^copyright\b/i,
+    /^©\s/,
+  ]
+
+  function stripFooterSignatures(md) {
+    var lines = md.split('\n')
+    var cut = -1
+    for (var i = lines.length - 1; i >= 0; i--) {
+      var line = lines[i].trim()
+      if (!line) continue
+      if (FOOTER_SIGNATURES.some(function (re) { return re.test(line) })) {
+        cut = i
+        continue
+      }
+      if (cut >= 0 && /^!\[[^\]]*\]\([^)]*\)$/.test(line)) {
+        cut = i
+        continue
+      }
+      break
+    }
+    if (cut <= 0 || cut < lines.length * 0.6) return md
+    return lines.slice(0, cut).join('\n').replace(/\s+$/, '') + '\n'
+  }
+
   // metaInfo 两级取值（v2 spec §1）：提取器结果里的 author / description / site /
   // published 优先，og:* / article:* / keywords 兜底；site 一路空下来才回落 hostname。
   // Readability 的字段名是 byline / excerpt / siteName / publishedTime。
@@ -140,7 +175,7 @@
       article = { html: doc.body.innerHTML, meta: null }
     }
 
-    const markdown = article ? toMarkdown(article.html).trim() : ''
+    const markdown = article ? stripFooterSignatures(toMarkdown(article.html).trim()) : ''
 
     // 选中片段：单独一份（src 同样绝对化）。isolated world 的 getSelection 读不到
     // iframe 里的选区与输入框里的选区，这两种情况用 background 经 opts 送来的
