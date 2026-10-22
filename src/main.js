@@ -50,6 +50,8 @@ import {
   readImageDataUri,
   fetchRemoteImageDataUri,
   saveImageDataUri,
+  startVaultWatcher,
+  stopVaultWatcher,
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages } from './site-export.js'
 import { docToIR } from './docx-export.js'
