@@ -11,7 +11,6 @@
 // - 事件发给前端 `nl:vault-changed`，携带 { vaultRoot, kind }
 
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -22,11 +21,10 @@ use tauri::{AppHandle, Emitter, State};
 #[derive(Default)]
 pub struct FsWatcherState(pub Arc<Mutex<Option<FsWatcherInner>>>);
 
-struct FsWatcherInner {
+/// 监听器内部状态。pub(crate) 让 FsWatcherState 能公开引用它。
+pub(crate) struct FsWatcherInner {
     watcher: RecommendedWatcher,
     _root: PathBuf,
-    // 事件去抖：每个库根只记最后一次事件时间，500ms 内忽略重复
-    last_emit: std::time::Instant,
 }
 
 impl FsWatcherState {
@@ -54,7 +52,6 @@ impl FsWatcherState {
         }
 
         // 创建新监听
-        let app_handle = app.clone();
         let root_for_watcher = root_canon.clone();
         let debounce = Duration::from_millis(500);
 
@@ -77,12 +74,11 @@ impl FsWatcherState {
         *guard = Some(FsWatcherInner {
             watcher,
             _root: root_for_watcher.clone(),
-            last_emit: std::time::Instant::now(),
         });
 
         // 后台线程处理事件，做防抖
-        let app_handle = app.clone();
         let root_for_thread = root_for_watcher;
+        let app_handle = app.clone();
         thread::spawn(move || {
             let mut last_emit = std::time::Instant::now();
             for ev in rx {
