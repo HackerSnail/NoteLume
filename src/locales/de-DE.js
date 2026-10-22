@@ -930,7 +930,7 @@ export default {
   'clip.folderHint': 'Vault-relativer Ordner, Standard Clippings/; Bilder landen im Unterordner assets/',
   'clip.template': 'Vorlage',
   'clip.templateNone': 'Eingebaute Standardvorlage',
-  'clip.templateHint': 'Eine Markdown-Datei aus dem Templates/-Ordner des Vaults. Variablen: {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}; unbekannte Variablen bleiben unverändert. Ohne gewählte Vorlage gilt die eingebaute: article für Ganzseiten-Clips, highlight für Auswahlen (Quelle als Zitat)',
+  'clip.templateHint': 'Eine Markdown-Datei aus dem Templates/-Ordner des Vaults. Variablen: {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}; unbekannte Variablen bleiben unverändert. Ohne gewählte Vorlage gilt die eingebaute: article für Ganzseiten-Clips, highlight für Auswahlen (Quelle als Zitat), shot für Auswahl-Screenshots',
   'clip.templateNoVault': 'Öffnen Sie einen Vault, um eine Vorlage aus dessen Templates/-Ordner zu wählen; bis dahin gilt die eingebaute Standardvorlage',
   'clip.filename': 'Dateinamensmuster',
   'clip.filenameHint': 'Standard {{date}}-{{title}}; ungültige Zeichen werden zu -, Duplikate erhalten eine Nummer',

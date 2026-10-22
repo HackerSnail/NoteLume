@@ -1,19 +1,26 @@
 // background.js —— NoteLume 剪藏扩展的 service worker。
 //
-// 三个入口：工具栏图标（mode='auto'，页面上有选区就剪选区、没有才剪整页——图标是
+// 四个入口：工具栏图标（mode='auto'，页面上有选区就剪选区、没有才剪整页——图标是
 // 唯一的显眼入口，用户选了文字点图标，要的就是那段文字）；右键菜单「剪藏选中内容」
 // （mode='selection'，只剪选区）；右键菜单「剪藏整页」（mode='page'，显式要整页，
-// 有选区也剪整页）。
+// 有选区也剪整页）；右键菜单「截取选区图片」与快捷键 Alt+Shift+S（mode='shot'，
+// 把选区那块画面截下来存成图）。
 // 提取在页面里跑（executeScript 注入 vendor + content/extract.js）；图片由本后台
 // fetch 成 data URI（host_permissions 覆盖任意源，不受页面 CORS 限制），再 POST 到
 // NoteLume 主进程起的本地 HTTP 服务（只绑 127.0.0.1；来源闸门是 Rust 侧的 Origin /
 // Host 检查，无令牌，装上填个地址就能用）。
 //
+// 截图剪藏走另一条路：页面侧量出选区矩形（content/shot.js）→ captureVisibleTab 拍下
+// 可视视口 → 本后台用 OffscreenCanvas 裁出那块 → 连同选中的文字一起 POST，Rust 落成
+// 一篇带图的笔记。截图是剪藏内容本身，与 localizeImages 开关无关，恒定落盘。
+//
 // 每次剪藏前先 GET 一次 /health，读 NoteLume 剪藏设置里的两个开关：localizeImages
-// （图片本地化，默认关）与 fullPageFallback（提取失败时退化整页，默认关）。
+// （图片本地化，默认关）与 fullPageFallback（提取失败时退化整页，默认关）。截图剪藏
+// 不取正文、不取远程图，这两个开关对它没有影响，不读。
 //
 // 服务契约：docs/superpowers/specs/2026-10-21-web-clip-design.md
 // v2 增量：docs/superpowers/specs/2026-10-21-web-clip-v2-design.md
+// 截图增量：docs/superpowers/specs/2026-10-22-web-clip-screenshot-design.md
 
 const DEFAULTS = {
   serverUrl: 'http://127.0.0.1:3210',
@@ -25,6 +32,12 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_IMAGES = 30
 const POST_TIMEOUT_MS = 15000
 const BADGE_COLOR = '#8b5cf6'
+
+// 截图裁剪后的长边像素上限：截图按设备像素比拍，2 倍屏上一块大区域能到几千像素，
+// 整块 base64 发过去会顶到 8MB 的载荷上限，先等比缩到这条线以内
+const MAX_SHOT_EDGE = 2000
+// PNG 超过这个体积就转 JPEG（截图里的照片、渐变图压不小）
+const MAX_SHOT_BYTES = 3.5 * 1024 * 1024
 
 // /health 读不到时的开关默认值：不取图（剪藏快）、提取失败不退化整页（噪声最多）。
 // NoteLume 没起来时按默认值继续，后面的 POST 会以「连不上」报错，提示一致。
@@ -230,6 +243,143 @@ async function clipActiveTab(mode, selectionText) {
 
 chrome.action.onClicked.addListener(() => clipActiveTab('auto'))
 
+// 裁剪框：选区矩形（CSS 像素）∩ 视口，再按图片尺寸换算成图上的像素坐标。
+// 选区有一截在视口外时只能截到看得见的那部分，clipped 标出来给通知用。
+function cropBox(prep, imgW, imgH) {
+  const vw = prep.vw || imgW
+  const vh = prep.vh || imgH
+  const scaleX = imgW / vw
+  const scaleY = imgH / vh
+  const x0 = Math.max(0, prep.rect.x)
+  const y0 = Math.max(0, prep.rect.y)
+  const x1 = Math.min(vw, prep.rect.x + prep.rect.width)
+  const y1 = Math.min(vh, prep.rect.y + prep.rect.height)
+  const sw = Math.round((x1 - x0) * scaleX)
+  const sh = Math.round((y1 - y0) * scaleY)
+  if (sw <= 0 || sh <= 0) return null
+  return {
+    sx: Math.round(x0 * scaleX),
+    sy: Math.round(y0 * scaleY),
+    sw: sw,
+    sh: sh,
+    clipped:
+      prep.rect.x < 0 ||
+      prep.rect.y < 0 ||
+      x1 < prep.rect.x + prep.rect.width ||
+      y1 < prep.rect.y + prep.rect.height,
+  }
+}
+
+// 截图剪藏：选区 → 画面 → 一篇带图的笔记
+//
+// 只拍得到可视视口：captureVisibleTab 给的是当前窗口里那个活动标签的视口画面，
+// 所以选区要先滚进视口（页面侧 prepare 干这事），截不全的部分（选区比视口还大）
+// 按可见的那部分截，通知里会说明。
+async function captureRegion(tab, prep) {
+  const shotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+  const blob = await (await fetch(shotUrl)).blob()
+  const bmp = await createImageBitmap(blob)
+  try {
+    const box = cropBox(prep, bmp.width, bmp.height)
+    if (!box) throw new Error('选区不在当前视口里')
+    let dw = box.sw
+    let dh = box.sh
+    const long = Math.max(box.sw, box.sh)
+    if (long > MAX_SHOT_EDGE) {
+      const k = MAX_SHOT_EDGE / long
+      dw = Math.max(1, Math.round(box.sw * k))
+      dh = Math.max(1, Math.round(box.sh * k))
+    }
+    const canvas = new OffscreenCanvas(dw, dh)
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(bmp, box.sx, box.sy, box.sw, box.sh, 0, 0, dw, dh)
+    let out = await canvas.convertToBlob({ type: 'image/png' })
+    if (out.size > MAX_SHOT_BYTES) {
+      out = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 })
+    }
+    return {
+      dataUri: await blobToDataUri(out),
+      width: dw,
+      height: dh,
+      clipped: box.clipped,
+    }
+  } finally {
+    bmp.close()
+  }
+}
+
+async function clipShot() {
+  let tab = null
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+    tab = tabs && tabs[0]
+  } catch (e) {
+    /* 查询失败按下面无 tab 分支处理 */
+  }
+  if (!tab || !tab.id || !/^https?:/i.test(tab.url || '')) {
+    await notify('无法剪藏', '只支持 http/https 页面（浏览器内置页面不行）')
+    return
+  }
+  await setBadge('…')
+  try {
+    const cfg = await getConfig()
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content/shot.js'],
+    })
+    const [prepRes] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async () => (window.__NL_SHOT ? await window.__NL_SHOT.prepare() : { ok: false }),
+    })
+    const prep = prepRes && prepRes.result
+    if (!prep || !prep.ok) {
+      throw new Error('没有选中内容：先在页面上选中要截的那一块（图片、图表、段落都行）')
+    }
+    const [metaRes] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => (window.__NL_SHOT ? window.__NL_SHOT.pageMeta() : {}),
+    })
+    const meta = (metaRes && metaRes.result) || {}
+    let shot
+    try {
+      shot = await captureRegion(tab, prep)
+    } catch (e) {
+      throw new Error('截取当前标签页失败：' + String((e && e.message) || e))
+    }
+    const text = String(prep.text || '').trim()
+    const payload = {
+      title: meta.title || '',
+      url: meta.url || tab.url || '',
+      byline: meta.byline || '',
+      excerpt: (text || meta.description || '').slice(0, 200),
+      siteName: meta.siteName || '',
+      published: meta.published || '',
+      markdown: text.slice(0, 2000),
+      tags: meta.tags || [],
+      images: [],
+      clipType: 'screenshot',
+      screenshot: { dataUri: shot.dataUri },
+    }
+    // 选项页填了默认目录 / 模板才作为单次覆盖发过去；空值由 NoteLume 设置里的值决定
+    if (cfg.folder) payload.folder = cfg.folder
+    if (cfg.template) payload.template = cfg.template
+    const out = await postClip(payload, cfg)
+    await setBadge('')
+    const parts = [out.title || payload.title, out.rel].filter(Boolean)
+    const tail = []
+    if (out.imagesSaved) tail.push(out.imagesSaved + ' 张图')
+    if (out.linked) tail.push('关联 ' + out.linked + ' 篇')
+    if (shot.clipped || prep.clipped) tail.push('选区比视口大，只截到看得见的那部分')
+    await notify(
+      '已截取并剪藏到 NoteLume',
+      parts.join('　→　') + (tail.length ? '（' + tail.join('，') + '）' : '')
+    )
+  } catch (e) {
+    await setBadge('!')
+    await notify('剪藏失败', errMessage(e))
+  }
+}
+
 // 右键菜单幂等重建。菜单注册在浏览器侧，扛不过浏览器重启与扩展重载，而重建代码跑在
 // 可能被逐出的 service worker 里：只在 onInstalled 里建一次不够——浏览器重启后
 // onInstalled 不触发，菜单会静默消失，用户只剩工具栏图标（那就「只能剪整页」）。
@@ -240,6 +390,11 @@ function installMenus() {
     chrome.contextMenus.create({
       id: 'nl-clip-selection',
       title: '剪藏选中内容到 NoteLume',
+      contexts: ['selection'],
+    })
+    chrome.contextMenus.create({
+      id: 'nl-clip-shot',
+      title: '截取选区图片剪藏到 NoteLume',
       contexts: ['selection'],
     })
     chrome.contextMenus.create({
@@ -259,4 +414,12 @@ chrome.contextMenus.onClicked.addListener((info) => {
   // 经 opts 传给 extract.js 兜底（没有图片与链接，但总比报「没有选中内容」好）
   if (info.menuItemId === 'nl-clip-selection') clipActiveTab('selection', info.selectionText || '')
   else if (info.menuItemId === 'nl-clip-page') clipActiveTab('page')
+  else if (info.menuItemId === 'nl-clip-shot') clipShot()
 })
+
+// 快捷键：Alt+Shift+S 截取选区。manifest 的 commands 段登记，浏览器自己派发
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener((cmd) => {
+    if (cmd === 'clip-shot') clipShot()
+  })
+}

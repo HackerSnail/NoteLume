@@ -931,7 +931,7 @@ export default {
   'clip.folderHint': '庫內相對目錄，預設 Clippings/；圖片落在該目錄下的 assets/',
   'clip.template': '範本',
   'clip.templateNone': '內建預設範本',
-  'clip.templateHint': '取庫內 Templates/ 下的一個 md；可用變數 {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}，未知變數原樣保留。沒選範本時用內建範本：整頁剪藏走 article，選區剪藏走 highlight（來源行進引用塊）',
+  'clip.templateHint': '取庫內 Templates/ 下的一個 md；可用變數 {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}，未知變數原樣保留。沒選範本時用內建範本：整頁剪藏走 article，選區剪藏走 highlight（來源行進引用塊），選區截圖走 shot',
   'clip.templateNoVault': '開啟知識庫後可選庫內 Templates/ 下的範本；目前用內建預設範本',
   'clip.filename': '檔案名模式',
   'clip.filenameHint': '預設 {{date}}-{{title}}；非法字元替換為 -，同名自動加序號',

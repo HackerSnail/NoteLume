@@ -16,6 +16,14 @@
       "128": "icons/icon128.png"
     }
   },
+  "commands": {
+    "clip-shot": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "截取选区图片剪藏到 NoteLume"
+    }
+  },
   "icons": {
     "32": "icons/icon32.png",
     "64": "icons/icon64.png",

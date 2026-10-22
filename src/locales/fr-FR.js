@@ -930,7 +930,7 @@ export default {
   'clip.folderHint': 'Dossier relatif au coffre, Clippings/ par défaut ; les images vont dans son sous-dossier assets/',
   'clip.template': 'Modèle',
   'clip.templateNone': 'Modèle intégré par défaut',
-  'clip.templateHint': 'Un fichier markdown du dossier Templates/ du coffre. Variables : {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}} ; les variables inconnues sont conservées telles quelles. Sans modèle choisi, le modèle intégré s’applique : article pour les pages entières, highlight pour les sélections (source en citation)',
+  'clip.templateHint': 'Un fichier markdown du dossier Templates/ du coffre. Variables : {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}} ; les variables inconnues sont conservées telles quelles. Sans modèle choisi, le modèle intégré s’applique : article pour les pages entières, highlight pour les sélections (source en citation), shot pour les captures de sélection',
   'clip.templateNoVault': 'Ouvrez un coffre pour choisir un modèle dans son dossier Templates/ ; le modèle intégré est utilisé pour l’instant',
   'clip.filename': 'Motif de nom de fichier',
   'clip.filenameHint': 'Par défaut {{date}}-{{title}} ; les caractères interdits deviennent -, les doublons reçoivent un suffixe numérique',

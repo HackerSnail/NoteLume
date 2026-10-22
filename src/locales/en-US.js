@@ -932,7 +932,7 @@ export default {
   'clip.folderHint': 'Vault-relative folder, default Clippings/; images go to its assets/ subfolder',
   'clip.template': 'Template',
   'clip.templateNone': 'Built-in default template',
-  'clip.templateHint': 'A markdown file from the vault\'s Templates/ folder. Variables: {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}; unknown variables are kept as-is. Without a picked template the built-in one is used: article for whole-page clips, highlight for selections (source line as a block quote)',
+  'clip.templateHint': 'A markdown file from the vault\'s Templates/ folder. Variables: {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}; unknown variables are kept as-is. Without a picked template the built-in one is used: article for whole-page clips, highlight for selections (source line as a block quote), shot for selection screenshots',
   'clip.templateNoVault': 'Open a vault to pick a template from its Templates/ folder; the built-in default is used for now',
   'clip.filename': 'Filename pattern',
   'clip.filenameHint': 'Default {{date}}-{{title}}; illegal characters become -, duplicates get a numeric suffix',

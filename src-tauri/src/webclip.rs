@@ -84,6 +84,26 @@ pub const DEFAULT_TEMPLATE_HIGHLIGHT: &str = concat!(
     "{{content}}\n",
 );
 
+/// 内置 shot 模板：选区截图剪藏用。正文是截下来的那张图（后面跟选中的文字，
+/// 选了文字才有），来源行进引用块——与整页剪藏、选区摘录都拉开观感。
+pub const DEFAULT_TEMPLATE_SHOT: &str = concat!(
+    "---\n",
+    "title: {{title}}\n",
+    "source: {{url}}\n",
+    "author: {{author}}\n",
+    "published_at: {{published_at}}\n",
+    "clipped_at: {{clipped_at}}\n",
+    "tags: [{{tags}}]\n",
+    "template: {{template}}\n",
+    "---\n",
+    "\n",
+    "# {{title}}\n",
+    "\n",
+    "> 截自 [{{site}}]({{url}})\n",
+    "\n",
+    "{{content}}\n",
+);
+
 // ==================== 载荷与配置 ====================
 
 /// 扩展传来的一张图：url 是 markdown 里出现的地址；dataUri 是扩展侧取到的本地副本
@@ -94,6 +114,15 @@ pub struct ClipImage {
     pub url: String,
     #[serde(default)]
     pub data_uri: Option<String>,
+}
+
+/// 选区截图：扩展截下页面上一块画面（data URI）。
+/// 与 images 分开走——截图是剪藏内容本身，不是正文里的远程图，
+/// 不受 localize_images 开关影响，恒定落进 assets/ 并写进正文。
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipScreenshot {
+    pub data_uri: String,
 }
 
 /// POST /clip 的 JSON 载荷。字符串字段缺省按空串（与 CreateDocArgs 的风格一致）。
@@ -121,6 +150,9 @@ pub struct ClipPayload {
     pub folder: String,
     #[serde(default)]
     pub clip_type: String,
+    /// 选区截图（clipType='screenshot' 时有）：扩展截下页面那块画面的 data URI
+    #[serde(default)]
+    pub screenshot: Option<ClipScreenshot>,
 }
 
 /// 落盘结果，回给扩展（camelCase）。
@@ -370,9 +402,10 @@ pub fn render_template(tpl: &str, vars: &HashMap<String, String>) -> String {
 }
 
 /// 模板解析：用户显式选过（设置里的 template_rel，或扩展选项页的单次覆盖）就用库内
-/// 模板，读失败 / 内容为空回落内置；没选过时按剪藏类型挑内置模板——选区走 highlight
-/// （来源行进引用块），其余走 article。返回 (模板文本, 模板名)，模板名写进 frontmatter
-/// 的 template 字段（用户模板取主名，不含目录与扩展名）。
+/// 模板，读失败 / 内容为空回落内置；没选过时按剪藏类型挑内置模板——选区摘录走
+/// highlight（来源行进引用块），选区截图走 shot，其余走 article。返回 (模板文本,
+/// 模板名)，模板名写进 frontmatter 的 template 字段（用户模板取主名，不含目录与
+/// 扩展名）。
 fn resolve_template(root: &Path, cfg: &ClipConfig, payload: &ClipPayload) -> (String, String) {
     let rel = if payload.template.trim().is_empty() {
         cfg.template_rel.trim()
@@ -395,6 +428,8 @@ fn resolve_template(root: &Path, cfg: &ClipConfig, payload: &ClipPayload) -> (St
     }
     if payload.clip_type == "selection" {
         (DEFAULT_TEMPLATE_HIGHLIGHT.to_string(), "highlight".to_string())
+    } else if payload.clip_type == "screenshot" {
+        (DEFAULT_TEMPLATE_SHOT.to_string(), "shot".to_string())
     } else {
         (DEFAULT_TEMPLATE_ARTICLE.to_string(), "article".to_string())
     }
@@ -573,6 +608,58 @@ fn save_clip_image(assets_dir: &Path, img: &ClipImage) -> Result<Option<String>,
     Ok(Some(format!("./assets/{}", name)))
 }
 
+/// 落一张选区截图。固定进 <目标目录>/assets/，文件名带时间戳（同秒两张加序号）。
+/// 与正文里的远程图不同，截图是剪藏内容本身，恒定落盘——不受 localize_images 影响。
+/// 返回 Ok(Some(相对链接)) = 已落盘；Ok(None) = data URI 畸形 / 超限 / 非图片。
+fn save_clip_screenshot(assets_dir: &Path, shot: &ClipScreenshot) -> Result<Option<String>, String> {
+    let (mime, bytes) = match parse_data_uri(&shot.data_uri) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    if bytes.len() > MAX_IMAGE {
+        return Ok(None);
+    }
+    let ext = match ext_for_mime(&mime) {
+        Some(e) => e,
+        None => return Ok(None),
+    };
+    fs::create_dir_all(assets_dir).map_err(|e| crate::ui_msg!("clip.writeFailed", "err" => e))?;
+    let stamp = Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let mut name = format!("clip-{}.{}", stamp, ext);
+    let mut n = 2;
+    while assets_dir.join(&name).exists() && n < 1000 {
+        name = format!("clip-{}-{}.{}", stamp, n, ext);
+        n += 1;
+    }
+    fs::write(assets_dir.join(&name), &bytes)
+        .map_err(|e| crate::ui_msg!("clip.writeFailed", "err" => e))?;
+    Ok(Some(format!("./assets/{}", name)))
+}
+
+/// 截图的 alt 文本：页面标题（方括号换成全角、换行折成空格，免得写坏图片语法），
+/// 空则「截图」
+fn shot_alt(payload: &ClipPayload) -> String {
+    let t = payload
+        .title
+        .trim()
+        .replace(['[', ']'], "（）")
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ");
+    if t.is_empty() {
+        "截图".to_string()
+    } else {
+        t
+    }
+}
+
+/// 截图的 markdown 行：`![标题](./assets/xxx.png)`。
+/// 不写 Typora 的 `=宽x` 尺寸形态——那不是标准 GFM，Obsidian / GitHub 会把整段当纯文本，
+/// 图片在这些阅读器里就废了；图按原图大小显示，由阅读器自己按栏宽收。
+fn shot_markdown(payload: &ClipPayload, rel: &str) -> String {
+    format!("![{}]({})", shot_alt(payload), rel)
+}
+
 // ==================== 自动关联 ====================
 
 /// 拉丁停用词（4 字符以上才可能命中，短词天然被长度过滤挡掉大半）
@@ -727,14 +814,13 @@ pub fn write_clip(
     cfg: &ClipConfig,
     mut index: Option<&mut crate::VaultIndex>,
 ) -> Result<ClipOutcome, String> {
-    if payload.markdown.trim().is_empty() {
+    // 截图剪藏可以没有文字（选区是一张图），有截图就不算空内容
+    if payload.markdown.trim().is_empty() && payload.screenshot.is_none() {
         return Err(crate::ui_msg!("clip.emptyContent"));
     }
     let (template, template_name) = resolve_template(root, cfg, payload);
     let mut vars = clip_vars(payload, cfg);
     vars.insert("template".into(), template_name);
-    let mut content = render_template(&template, &vars);
-
     let folder = normalize_folder(if payload.folder.trim().is_empty() {
         &cfg.folder
     } else {
@@ -742,6 +828,39 @@ pub fn write_clip(
     });
     let mut images_saved = 0usize;
     let mut images_failed = 0usize;
+    // 截图先落盘：正文里要写它的相对路径，路径得先知道
+    let mut shot_rel: Option<String> = None;
+    if let Some(shot) = payload.screenshot.as_ref() {
+        let assets_dir = crate::vault_join(root, &folder).map(|p| p.join("assets"))?;
+        match save_clip_screenshot(&assets_dir, shot) {
+            Ok(Some(rel)) => {
+                images_saved += 1;
+                shot_rel = Some(rel);
+            }
+            Ok(None) => images_failed += 1,
+            Err(e) => return Err(e),
+        }
+    }
+    // 截图剪藏的正文：图在前，选中的文字在后（没选文字就只有图）
+    if let Some(rel) = shot_rel.as_ref() {
+        let mut body = shot_markdown(payload, rel);
+        let text = payload.markdown.trim();
+        if !text.is_empty() {
+            body.push_str("\n\n");
+            body.push_str(text);
+        }
+        vars.insert("content".into(), body);
+    }
+    let mut content = render_template(&template, &vars);
+    // 用户的模板里没有 {{content}} 时把图补到文末，别让截下来的画面丢了
+    if let Some(rel) = shot_rel.as_ref() {
+        if !content.contains(rel.as_str()) {
+            if !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&format!("\n{}\n", shot_markdown(payload, rel)));
+        }
+    }
     // 图片本地化默认关：扩展侧不发图，这里同样不碰图，正文保留 https:// 原链接
     if cfg.localize_images && !payload.images.is_empty() {
         let assets_dir = crate::vault_join(root, &folder).map(|p| p.join("assets"))?;
@@ -1395,6 +1514,123 @@ mod tests {
         assert!(text.contains("> 摘录自 [示例站](https://example.com/a)"), "{text}");
         assert!(text.contains("# 测试页面"), "标题段照旧");
         assert!(text.contains("划中的片段"), "正文是选区内容");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 截图剪藏：图片恒定落盘（不受 localize_images 影响），正文写本地相对路径
+    /// 截图载荷的字段名：扩展发的是 camelCase（screenshot.dataUri）
+    #[test]
+    fn clip_payload_reads_screenshot_field() {
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let json = format!(
+            r#"{{"title":"t","url":"https://example.com/a","markdown":"","clipType":"screenshot","screenshot":{{"dataUri":"data:image/png;base64,{}"}}}}"#,
+            png
+        );
+        let p: ClipPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(p.clip_type, "screenshot");
+        let shot = p.screenshot.expect("screenshot 字段读到了");
+        assert!(shot.data_uri.starts_with("data:image/png;base64,"));
+        // 字段缺失时是 None，不报错（老的扩展发来的载荷照样能解）
+        let p2: ClipPayload =
+            serde_json::from_str(r#"{"title":"t","url":"u","markdown":"x"}"#).unwrap();
+        assert!(p2.screenshot.is_none());
+    }
+
+    #[test]
+    fn write_clip_saves_screenshot_and_embeds_it() {
+        let dir = std::env::temp_dir().join("notelume-clip-shot-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        // 截图剪藏可以没有文字：选区就是一张图
+        let p = ClipPayload {
+            clip_type: "screenshot".into(),
+            screenshot: Some(ClipScreenshot {
+                data_uri: format!("data:image/png;base64,{}", png),
+            }),
+            ..payload("测试页面", "")
+        };
+        // 图片本地化默认关，截图照样落盘——它是剪藏内容本身
+        let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
+        assert_eq!(out.images_saved, 1);
+        assert_eq!(out.images_failed, 0);
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        assert!(text.contains("template: shot"), "{text}");
+        assert!(text.contains("> 截自 ["), "来源行：{text}");
+        assert!(
+            text.contains("![测试页面](./assets/clip-"),
+            "正文写的是本地相对路径：{text}"
+        );
+        assert!(!text.contains("=400x"), "不写非标准的尺寸形态：{text}");
+        let assets = fs::read_dir(root.join("Clippings/assets")).unwrap().count();
+        assert_eq!(assets, 1, "截图落进 Clippings/assets");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 截图剪藏：选中的文字接在图后面
+    #[test]
+    fn write_clip_screenshot_keeps_selected_text_after_image() {
+        let dir = std::env::temp_dir().join("notelume-clip-shot-text-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let p = ClipPayload {
+            clip_type: "screenshot".into(),
+            screenshot: Some(ClipScreenshot {
+                data_uri: format!("data:image/png;base64,{}", png),
+            }),
+            ..payload("测试页面", "选中的文字")
+        };
+        let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        let img_at = text.find("![测试页面](./assets/").expect("图在正文里");
+        let txt_at = text.find("选中的文字").expect("文字在正文里");
+        assert!(img_at < txt_at, "图在前、文字在后：{text}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 截图剪藏：用户的模板里没有 {{content}} 时，图补到文末（别把画面丢了）
+    #[test]
+    fn write_clip_screenshot_appends_image_when_template_has_no_content() {
+        let dir = std::env::temp_dir().join("notelume-clip-shot-tpl-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        fs::create_dir_all(root.join("Templates")).unwrap();
+        fs::write(root.join("Templates/t.md"), "# {{title}}\n").unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let p = ClipPayload {
+            clip_type: "screenshot".into(),
+            screenshot: Some(ClipScreenshot {
+                data_uri: format!("data:image/png;base64,{}", png),
+            }),
+            ..payload("测试页面", "")
+        };
+        let cfg = ClipConfig { template_rel: "Templates/t.md".into(), ..ClipConfig::default() };
+        let out = write_clip(&root, &p, &cfg, None).unwrap();
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        assert!(text.contains("![测试页面](./assets/clip-"), "图补进正文：{text}");
+        assert!(text.trim_end().ends_with(".png)"), "图在文末：{text}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 截图 data URI 畸形时不算空内容之外的失败：正文照落，只是没有图
+    #[test]
+    fn write_clip_screenshot_rejects_bad_data_uri() {
+        let dir = std::env::temp_dir().join("notelume-clip-shot-bad-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        let p = ClipPayload {
+            clip_type: "screenshot".into(),
+            screenshot: Some(ClipScreenshot { data_uri: "not-a-data-uri".into() }),
+            ..payload("测试页面", "")
+        };
+        let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
+        assert_eq!(out.images_saved, 0);
+        assert_eq!(out.images_failed, 1);
         let _ = fs::remove_dir_all(&dir);
     }
 

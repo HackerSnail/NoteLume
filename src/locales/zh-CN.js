@@ -932,7 +932,7 @@ export default {
   'clip.folderHint': '库内相对目录，默认 Clippings/；图片落在该目录下的 assets/',
   'clip.template': '模板',
   'clip.templateNone': '内置默认模板',
-  'clip.templateHint': '取库内 Templates/ 下的一个 md；可用变量 {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}，未知变量原样保留。没选模板时用内置模板：整页剪藏走 article，选区剪藏走 highlight（来源行进引用块）',
+  'clip.templateHint': '取库内 Templates/ 下的一个 md；可用变量 {{title}} {{url}} {{site}} {{author}} {{description}} {{content}} {{tags}} {{hashtags}} {{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}} {{weekday}} {{published_at}} {{clipped_at}} {{template}}，未知变量原样保留。没选模板时用内置模板：整页剪藏走 article，选区剪藏走 highlight（来源行进引用块），选区截图走 shot',
   'clip.templateNoVault': '打开知识库后可选库内 Templates/ 下的模板；当前用内置默认模板',
   'clip.filename': '文件名模式',
   'clip.filenameHint': '默认 {{date}}-{{title}}；非法字符替换为 -，重名自动加序号',
