@@ -1,10 +1,12 @@
 // background.js —— NoteLume 剪藏扩展的 service worker。
 //
-// 四个入口：工具栏图标（mode='auto'，页面上有选区就剪选区、没有才剪整页——图标是
+// 五个入口：工具栏图标（mode='auto'，页面上有选区就剪选区、没有才剪整页——图标是
 // 唯一的显眼入口，用户选了文字点图标，要的就是那段文字）；右键菜单「剪藏选中内容」
 // （mode='selection'，只剪选区）；右键菜单「剪藏整页」（mode='page'，显式要整页，
 // 有选区也剪整页）；右键菜单「截取选区图片」与快捷键 Alt+Shift+S（mode='shot'，
-// 把选区那块画面截下来存成图）。
+// 把选区那块画面截下来存成图）；右键菜单「框选区域截图」与快捷键 Alt+Shift+D
+// （mode='shot-box'，页面上拖一个矩形，截那一块——浏览器的选区只能圈文字，
+// 圈不住图表与插图）。
 // 提取在页面里跑（executeScript 注入 vendor + content/extract.js）；图片由本后台
 // fetch 成 data URI（host_permissions 覆盖任意源，不受页面 CORS 限制），再 POST 到
 // NoteLume 主进程起的本地 HTTP 服务（只绑 127.0.0.1；来源闸门是 Rust 侧的 Origin /
@@ -38,6 +40,14 @@ const BADGE_COLOR = '#8b5cf6'
 const MAX_SHOT_EDGE = 2000
 // PNG 超过这个体积就转 JPEG（截图里的照片、渐变图压不小）
 const MAX_SHOT_BYTES = 3.5 * 1024 * 1024
+
+// 手动框选的遮罩样式。用 insertCSS 注入（页面的 CSP 管不到它；写成元素的 style
+// 属性反而会被严格 CSP 拦下），选框与提示都不吃鼠标事件，只有遮罩接拖动。
+const SHOT_CSS = `
+.nl-shot-mask{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,.35);cursor:crosshair}
+.nl-shot-box{position:absolute;display:none;border:1px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.65);background:rgba(255,255,255,.10);pointer-events:none}
+.nl-shot-hint{position:absolute;left:50%;top:24px;transform:translateX(-50%);padding:6px 12px;border-radius:6px;background:rgba(20,20,20,.88);color:#fff;font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none}
+`
 
 // /health 读不到时的开关默认值：不取图（剪藏快）、提取失败不退化整页（噪声最多）。
 // NoteLume 没起来时按默认值继续，后面的 POST 会以「连不上」报错，提示一致。
@@ -186,17 +196,8 @@ function errMessage(e) {
 
 // mode：'auto'（工具栏图标）/ 'selection'（右键剪藏选中内容）/ 'page'（右键剪藏整页）
 async function clipActiveTab(mode, selectionText) {
-  let tab = null
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-    tab = tabs && tabs[0]
-  } catch (e) {
-    /* 查询失败按下面无 tab 分支处理 */
-  }
-  if (!tab || !tab.id || !/^https?:/i.test(tab.url || '')) {
-    await notify('无法剪藏', '只支持 http/https 页面（浏览器内置页面不行）')
-    return
-  }
+  const tab = await activeTab()
+  if (!tab) return
   await setBadge('…')
   try {
     const cfg = await getConfig()
@@ -275,8 +276,7 @@ function cropBox(prep, imgW, imgH) {
 // 只拍得到可视视口：captureVisibleTab 给的是当前窗口里那个活动标签的视口画面，
 // 所以选区要先滚进视口（页面侧 prepare 干这事），截不全的部分（选区比视口还大）
 // 按可见的那部分截，通知里会说明。
-async function captureRegion(tab, prep) {
-  const shotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+async function captureRegion(tab, prep) {  const shotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
   const blob = await (await fetch(shotUrl)).blob()
   const bmp = await createImageBitmap(blob)
   try {
@@ -308,7 +308,8 @@ async function captureRegion(tab, prep) {
   }
 }
 
-async function clipShot() {
+// 当前活动标签（只支持 http/https 页面；浏览器内置页面截不了也剪不了）
+async function activeTab() {
   let tab = null
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -318,8 +319,62 @@ async function clipShot() {
   }
   if (!tab || !tab.id || !/^https?:/i.test(tab.url || '')) {
     await notify('无法剪藏', '只支持 http/https 页面（浏览器内置页面不行）')
-    return
+    return null
   }
+  return tab
+}
+
+// 页面 meta（标题 / 作者 / 站点 / 关键词）
+async function pageMeta(tabId) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: () => (window.__NL_SHOT ? window.__NL_SHOT.pageMeta() : {}),
+  })
+  return (res && res[0] && res[0].result) || {}
+}
+
+// 截好的一块 → 落盘成一篇带图的笔记（选区截图与手动框选共用这一段）
+async function clipShotPrep(tab, cfg, prep, meta) {
+  let shot
+  try {
+    shot = await captureRegion(tab, prep)
+  } catch (e) {
+    throw new Error('截取当前标签页失败：' + String((e && e.message) || e))
+  }
+  const text = String(prep.text || '').trim()
+  const payload = {
+    title: meta.title || '',
+    url: meta.url || tab.url || '',
+    byline: meta.byline || '',
+    excerpt: (text || meta.description || '').slice(0, 200),
+    siteName: meta.siteName || '',
+    published: meta.published || '',
+    markdown: text.slice(0, 2000),
+    tags: meta.tags || [],
+    images: [],
+    clipType: 'screenshot',
+    screenshot: { dataUri: shot.dataUri },
+  }
+  // 选项页填了默认目录 / 模板才作为单次覆盖发过去；空值由 NoteLume 设置里的值决定
+  if (cfg.folder) payload.folder = cfg.folder
+  if (cfg.template) payload.template = cfg.template
+  const out = await postClip(payload, cfg)
+  await setBadge('')
+  const parts = [out.title || payload.title, out.rel].filter(Boolean)
+  const tail = []
+  if (out.imagesSaved) tail.push(out.imagesSaved + ' 张图')
+  if (out.linked) tail.push('关联 ' + out.linked + ' 篇')
+  if (shot.clipped || prep.clipped) tail.push('选区比视口大，只截到看得见的那部分')
+  await notify(
+    '已截取并剪藏到 NoteLume',
+    parts.join('　→　') + (tail.length ? '（' + tail.join('，') + '）' : '')
+  )
+}
+
+// 选区截图：浏览器给的选区（文字、图片都算）→ 画面 → 一篇带图的笔记
+async function clipShot() {
+  const tab = await activeTab()
+  if (!tab) return
   await setBadge('…')
   try {
     const cfg = await getConfig()
@@ -335,49 +390,95 @@ async function clipShot() {
     if (!prep || !prep.ok) {
       throw new Error('没有选中内容：先在页面上选中要截的那一块（图片、图表、段落都行）')
     }
-    const [metaRes] = await chrome.scripting.executeScript({
+    const meta = await pageMeta(tab.id)
+    await clipShotPrep(tab, cfg, prep, meta)
+  } catch (e) {
+    await setBadge('!')
+    await notify('剪藏失败', errMessage(e))
+  }
+}
+
+// 手动框选截图：页面上拖一个矩形，截那一块。浏览器的选区只能圈文字，
+// 圈不住图表与插图，框选是补这一段。
+async function clipShotBox() {
+  const tab = await activeTab()
+  if (!tab) return
+  await setBadge('…')
+  try {
+    const cfg = await getConfig()
+    // 遮罩样式走 insertCSS：页面的 CSP 管不到它，内联 style 属性反而会被拦
+    await chrome.scripting.insertCSS({ target: { tabId: tab.id }, css: SHOT_CSS })
+    await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => (window.__NL_SHOT ? window.__NL_SHOT.pageMeta() : {}),
+      files: ['content/shot.js'],
     })
-    const meta = (metaRes && metaRes.result) || {}
-    let shot
-    try {
-      shot = await captureRegion(tab, prep)
-    } catch (e) {
-      throw new Error('截取当前标签页失败：' + String((e && e.message) || e))
+    // startPick 里的 Promise 不在这儿等：拖完由页面自己报回来（消息 + 轮询两路）
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        if (window.__NL_SHOT) window.__NL_SHOT.startPick()
+      },
+    })
+    const pick = await waitForPick(tab.id)
+    if (!pick) {
+      // 用户自己取消的（Esc 或误点），不算失败
+      await setBadge('')
+      await notify('已取消', '没有框选区域，剪藏未执行')
+      return
     }
-    const text = String(prep.text || '').trim()
-    const payload = {
-      title: meta.title || '',
-      url: meta.url || tab.url || '',
-      byline: meta.byline || '',
-      excerpt: (text || meta.description || '').slice(0, 200),
-      siteName: meta.siteName || '',
-      published: meta.published || '',
-      markdown: text.slice(0, 2000),
-      tags: meta.tags || [],
-      images: [],
-      clipType: 'screenshot',
-      screenshot: { dataUri: shot.dataUri },
-    }
-    // 选项页填了默认目录 / 模板才作为单次覆盖发过去；空值由 NoteLume 设置里的值决定
-    if (cfg.folder) payload.folder = cfg.folder
-    if (cfg.template) payload.template = cfg.template
-    const out = await postClip(payload, cfg)
-    await setBadge('')
-    const parts = [out.title || payload.title, out.rel].filter(Boolean)
-    const tail = []
-    if (out.imagesSaved) tail.push(out.imagesSaved + ' 张图')
-    if (out.linked) tail.push('关联 ' + out.linked + ' 篇')
-    if (shot.clipped || prep.clipped) tail.push('选区比视口大，只截到看得见的那部分')
-    await notify(
-      '已截取并剪藏到 NoteLume',
-      parts.join('　→　') + (tail.length ? '（' + tail.join('，') + '）' : '')
+    const meta = await pageMeta(tab.id)
+    await clipShotPrep(
+      tab,
+      cfg,
+      { rect: pick.rect, vw: pick.vw, vh: pick.vh, clipped: false, text: '' },
+      meta
     )
   } catch (e) {
     await setBadge('!')
     await notify('剪藏失败', errMessage(e))
   }
+}
+
+// 等页面把框选结果报回来：runtime 消息优先（页面里拿不到 chrome.runtime 时靠轮询兜底）
+function waitForPick(tabId, timeoutMs) {
+  const limit = timeoutMs || 180000
+  return new Promise(function (resolve) {
+    let done = false
+    function finish(v) {
+      if (done) return
+      done = true
+      chrome.runtime.onMessage.removeListener(onMsg)
+      resolve(v)
+    }
+    function onMsg(msg) {
+      if (msg && msg.type === 'nl-shot-picked') finish(msg.pick || null)
+    }
+    chrome.runtime.onMessage.addListener(onMsg)
+    const t0 = Date.now()
+    async function poll() {
+      if (done) return
+      try {
+        const res = await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: () => (window.__NL_SHOT && window.__NL_SHOT.lastPick) || null,
+        })
+        const pick = res && res[0] && res[0].result
+        if (pick) {
+          finish(pick)
+          return
+        }
+      } catch (e) {
+        finish(null) // 页面跳走了：按取消处理
+        return
+      }
+      if (Date.now() - t0 > limit) {
+        finish(null)
+        return
+      }
+      setTimeout(poll, 200)
+    }
+    poll()
+  })
 }
 
 // 右键菜单幂等重建。菜单注册在浏览器侧，扛不过浏览器重启与扩展重载，而重建代码跑在
@@ -398,6 +499,11 @@ function installMenus() {
       contexts: ['selection'],
     })
     chrome.contextMenus.create({
+      id: 'nl-clip-shot-box',
+      title: '框选区域截图剪藏到 NoteLume',
+      contexts: ['page', 'selection'],
+    })
+    chrome.contextMenus.create({
       id: 'nl-clip-page',
       title: '剪藏整页到 NoteLume',
       contexts: ['page'],
@@ -415,11 +521,14 @@ chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === 'nl-clip-selection') clipActiveTab('selection', info.selectionText || '')
   else if (info.menuItemId === 'nl-clip-page') clipActiveTab('page')
   else if (info.menuItemId === 'nl-clip-shot') clipShot()
+  else if (info.menuItemId === 'nl-clip-shot-box') clipShotBox()
 })
 
-// 快捷键：Alt+Shift+S 截取选区。manifest 的 commands 段登记，浏览器自己派发
+// 快捷键：Alt+Shift+S 截取选区，Alt+Shift+D 手动框选。
+// manifest 的 commands 段登记，浏览器自己派发
 if (chrome.commands && chrome.commands.onCommand) {
   chrome.commands.onCommand.addListener((cmd) => {
     if (cmd === 'clip-shot') clipShot()
+    else if (cmd === 'clip-shot-box') clipShotBox()
   })
 }

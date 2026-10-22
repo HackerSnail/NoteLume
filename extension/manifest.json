@@ -22,6 +22,12 @@
         "default": "Alt+Shift+S"
       },
       "description": "截取选区图片剪藏到 NoteLume"
+    },
+    "clip-shot-box": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "框选区域截图剪藏到 NoteLume"
     }
   },
   "icons": {
