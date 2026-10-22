@@ -25,5 +25,9 @@ src/app-err.txt
 src/app-out.txt
 src/app-result.txt
 
+# 扩展签名产物（.pem 是私钥，.crx 是打包结果，都不入库）
+extension.pem
+extension.crx
+
 # 站外草稿
 docs/zhihu-notelume-draft.md
