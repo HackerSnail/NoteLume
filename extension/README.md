@@ -1,6 +1,6 @@
 # NoteLume 剪藏（浏览器扩展）
 
-把网页正文剪藏到本机 NoteLume 知识库：按模板落盘成标准 GFM md，图片可选本地化，文末自动追加「## 相关笔记」关联库内已有文档。
+把网页正文剪藏到本机 NoteLume 知识库：按模板落盘成标准 GFM md，图片可选本地化，文末自动追加「\#\# 相关笔记」关联库内已有文档。
 
 MV3，无构建、无 npm 依赖。`vendor/` 下是三个原样放入的库：
 
@@ -10,7 +10,7 @@ MV3，无构建、无 npm 依赖。`vendor/` 下是三个原样放入的库：
 
 ## 安装
 
-Edge / Chrome：开 `edge://extensions`（或 `chrome://extensions`）→ 打开左下角「开发人员模式」→「加载已解包的扩展」→ 选本目录。
+Edge / Chrome：开 `edge://extensions`（或 `chrome://extensions`）→ 打开左下角「开发人员模式」→「加载已解包的扩展/加载未打包的扩展程序」→ 选本目录。
 
 ## 配置
 
