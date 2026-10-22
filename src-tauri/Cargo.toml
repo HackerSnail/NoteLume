@@ -34,3 +34,5 @@ sha2 = "0.10"
 # 若关掉 image，docx-rs 仅能正确写 PNG（new_with_dimensions 不转码），而 ① 要导出的图格式不定→正确性优先。
 # Docx::build()→XMLDocx 暴露 document/media 等原始部件，供③ OMML 注入。
 docx-rs = "0.4"
+# 文件系统监听：检测外部对库文件的增删改，自动刷新树
+notify = { version = "6", features = ["crossbeam-channel"] }

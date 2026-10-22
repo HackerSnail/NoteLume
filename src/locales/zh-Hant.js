@@ -362,6 +362,7 @@ export default {
   'doc.canvasName': '畫布',
   'status.inVault': '已在目前知識庫：{root}',
   'status.vaultLoaded': '知識庫已載入：{root}（索引建置中…）',
+  'status.vaultChanged': '檔案系統變動：{kind}（已同步刷新）',
   'msg.openVaultFailed': '開啟知識庫失敗：{msg}',
   'msg.openFileFailedDlg': '開啟檔案失敗：{msg}',
   'status.openFailed': '開啟失敗：{msg}',

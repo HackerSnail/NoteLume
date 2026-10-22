@@ -27,6 +27,9 @@ mod ui_lang;
 // 网页剪藏：本地 HTTP 服务 + 载荷落盘（模板渲染 / 图片 / 自动关联）。
 mod webclip;
 
+// 文件系统监听：检测外部对库文件的增删改，自动刷新树。
+mod fs_watcher;
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
@@ -3506,6 +3509,7 @@ pub fn run() {
         .manage(LaunchPaths(std::sync::Mutex::new(launch)))
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
         .manage(webclip::ClipServerState::default())
+        .manage(fs_watcher::FsWatcherState::default())
         .setup(|app| {
             // 非 macOS：去掉原生标题栏，改由前端 .titlebar 顶替。
             // macOS 保留 Overlay（红黄绿按钮 + 透明标题条），不碰。
@@ -3561,6 +3565,9 @@ pub fn run() {
             read_image_data_uri,
             fetch_remote_image_data_uri,
             save_image_from_data_uri,
+            // 文件系统监听
+            fs_watcher::start_vault_watcher,
+            fs_watcher::stop_vault_watcher,
             // P1
             rebuild_index,
             get_index_status,

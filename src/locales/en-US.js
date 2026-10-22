@@ -363,6 +363,7 @@ export default {
   'doc.canvasName': 'canvas',
   'status.inVault': 'Already in vault: {root}',
   'status.vaultLoaded': 'Vault loaded: {root} (building index…)',
+  'status.vaultChanged': 'File system changed: {kind} (tree synced)',
   'msg.openVaultFailed': 'Failed to open vault: {msg}',
   'msg.openFileFailedDlg': 'Failed to open file: {msg}',
   'status.openFailed': 'Open failed: {msg}',

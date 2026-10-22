@@ -362,6 +362,7 @@ export default {
   'doc.canvasName': 'canevas',
   'status.inVault': 'Déjà dans le coffre : {root}',
   'status.vaultLoaded': 'Coffre chargé : {root} (indexation en cours…)',
+  'status.vaultChanged': 'Système de fichiers modifié : {kind} (arborescence synchronisée)',
   'msg.openVaultFailed': 'Ouverture du coffre impossible : {msg}',
   'msg.openFileFailedDlg': 'Ouverture du fichier impossible : {msg}',
   'status.openFailed': 'Ouverture impossible : {msg}',

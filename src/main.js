@@ -755,6 +755,8 @@ async function openFolder() {
     renderTree(tree)
     setStatus(t('status.vaultLoaded', { root }))
     startIndexPolling()
+    // 启动文件系统监听：外部增删改自动刷树 + 重建索引
+    startVaultWatcher(root).catch(() => {})
     // 面板按新库重取：反链 / 全局标签 / 快照列表都不许残留旧库内容
     refreshLinkPanels()
     refreshGlobalTags()
@@ -869,6 +871,8 @@ async function openVaultPath(root, rel) {
   renderTree(tree)
   setStatus(t('status.vaultLoaded', { root }))
   startIndexPolling()
+  // 启动文件系统监听：外部增删改自动刷树 + 重建索引
+  startVaultWatcher(root).catch(() => {})
   // 面板按新库重取：反链 / 全局标签 / 快照列表都不许残留旧库内容
   refreshLinkPanels()
   refreshGlobalTags()
@@ -2237,6 +2241,8 @@ function leaveCurrentVault(root) {
   if (normVaultPath(root) === normVaultPath(state.vaultRoot)) return false
   const tabs = ftabs()
   if (tabs) tabs.clear()
+  // 停止旧库的文件系统监听
+  stopVaultWatcher().catch(() => {})
   state.singleFile = null
   resetToNoDoc()
   // 搜索结果还挂着旧库的命中：点进去会用新根打开一个同名（或不存在）的文件
@@ -4263,6 +4269,19 @@ async function boot() {
     setStatus(t('clip.saved', { rel: p.path, linked }))
     if (currentClip().openAfterSave) openFile(p.path)
   }).catch(() => {}) // 纯 web 构建没有事件通道，忽略
+  // 外部文件系统变动（Rust fs_watcher emit）：刷文件树 + 重建索引，不自动打开
+  listen('nl:vault-changed', (e) => {
+    const p = (e && e.payload) || {}
+    if (!p.vaultRoot) return
+    // 只对当前打开的库响应；其它库的变动忽略
+    if (state.vaultRoot && normVaultPath(p.vaultRoot) === normVaultPath(state.vaultRoot)) {
+      scanVault(state.vaultRoot)
+        .then((tree) => renderTree(tree))
+        .catch(() => {})
+      startIndexPolling()
+      setStatus(t('status.vaultChanged', { kind: p.kind || '' }))
+    }
+  }).catch(() => {})
   await handleLaunchArgs()
   bindShortcuts()
   setupCloseGuard()

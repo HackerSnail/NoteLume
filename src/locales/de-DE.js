@@ -362,6 +362,7 @@ export default {
   'doc.canvasName': 'Leinwand',
   'status.inVault': 'Bereits im Vault: {root}',
   'status.vaultLoaded': 'Vault geladen: {root} (Index wird aufgebaut…)',
+  'status.vaultChanged': 'Dateisystem geändert: {kind} (Struktur synchronisiert)',
   'msg.openVaultFailed': 'Vault konnte nicht geöffnet werden: {msg}',
   'msg.openFileFailedDlg': 'Datei konnte nicht geöffnet werden: {msg}',
   'status.openFailed': 'Öffnen fehlgeschlagen: {msg}',

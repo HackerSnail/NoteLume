@@ -466,3 +466,13 @@ export function gitRCommitMerge(vaultRoot, args) {
 export function gitRTrustHost(args) {
   return invoke('git_r_trust_host', { args })
 }
+
+/** 文件系统监听：开始监听库根目录变动（外部增删改），自动刷新树 */
+export function startVaultWatcher(vaultRoot) {
+  return invoke('start_vault_watcher', { vaultRoot })
+}
+
+/** 文件系统监听：停止监听 */
+export function stopVaultWatcher() {
+  return invoke('stop_vault_watcher', {})
+}
