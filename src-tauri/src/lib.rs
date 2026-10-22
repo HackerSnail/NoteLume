@@ -736,8 +736,8 @@ pub(crate) fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), S
             lpfncb: *mut core::ffi::c_void,
         ) -> i32;
     }
-    let mut wurl: Vec<u16> = url.encode_utf16().chain([0]).collect();
-    let mut wdest: Vec<u16> = dest.as_os_str().encode_wide().chain([0]).collect();
+    let wurl: Vec<u16> = url.encode_utf16().chain([0]).collect();
+    let wdest: Vec<u16> = dest.as_os_str().encode_wide().chain([0]).collect();
     let hr = unsafe {
         URLDownloadToFileW(
             std::ptr::null_mut(),
