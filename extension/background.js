@@ -168,7 +168,7 @@ function errMessage(e) {
   return String((e && e.message) || e)
 }
 
-async function clipActiveTab(selection) {
+async function clipActiveTab(selection, selectionText) {
   let tab = null
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -188,7 +188,7 @@ async function clipActiveTab(selection) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: (opts) => { window.__NL_CLIP_OPTS = opts },
-      args: [{ fullPageFallback: sw.fullPageFallback }],
+      args: [{ fullPageFallback: sw.fullPageFallback, selectionText: selectionText || '' }],
     })
     // 注入顺序即提取优先级：defuddle → Readability → turndown → extract.js
     const results = await chrome.scripting.executeScript({
@@ -223,7 +223,12 @@ async function clipActiveTab(selection) {
 
 chrome.action.onClicked.addListener(() => clipActiveTab(false))
 
-chrome.runtime.onInstalled.addListener(() => {
+// 右键菜单幂等重建。菜单注册在浏览器侧，扛不过浏览器重启与扩展重载，而重建代码跑在
+// 可能被逐出的 service worker 里：只在 onInstalled 里建一次不够——浏览器重启后
+// onInstalled 不触发，菜单会静默消失，用户只剩工具栏图标（那就「只能剪整页」）。
+// 安装 / 更新 / 重载走 onInstalled，浏览器启动走 onStartup，两个入口都重建；
+// removeAll + create 天然幂等，重复触发不会报 duplicate id。
+function installMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: 'nl-clip-selection',
@@ -236,9 +241,15 @@ chrome.runtime.onInstalled.addListener(() => {
       contexts: ['page'],
     })
   })
-})
+}
+
+chrome.runtime.onInstalled.addListener(installMenus)
+chrome.runtime.onStartup.addListener(installMenus)
 
 chrome.contextMenus.onClicked.addListener((info) => {
-  if (info.menuItemId === 'nl-clip-selection') clipActiveTab(true)
+  // selectionText 是 Chrome 在点击选区菜单项时给的选中文本。isolated world 的
+  // getSelection 有两个盲区——iframe 里的选区和输入框里的选区都读不到，这段纯文本
+  // 经 opts 传给 extract.js 兜底（没有图片与链接，但总比报「没有选中内容」好）
+  if (info.menuItemId === 'nl-clip-selection') clipActiveTab(true, info.selectionText || '')
   else if (info.menuItemId === 'nl-clip-page') clipActiveTab(false)
 })

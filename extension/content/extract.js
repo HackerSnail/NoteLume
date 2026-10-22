@@ -127,13 +127,18 @@
 
     const markdown = article ? toMarkdown(article.html).trim() : ''
 
-    // 选中片段：单独一份（src 同样绝对化）
+    // 选中片段：单独一份（src 同样绝对化）。isolated world 的 getSelection 读不到
+    // iframe 里的选区与输入框里的选区，这两种情况用 background 经 opts 送来的
+    // selectionText（Chrome 菜单点击时给的纯文本）兜底
     let selectionMarkdown = ''
     const frag = selectionFragment()
     if (frag) {
       absolutizeImages(frag, imageUrls)
       const text = toMarkdown(frag.innerHTML).trim()
       if (text) selectionMarkdown = text
+    }
+    if (!selectionMarkdown && opts().selectionText) {
+      selectionMarkdown = String(opts().selectionText).trim()
     }
 
     if (!markdown && !selectionMarkdown) {
