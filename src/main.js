@@ -54,6 +54,8 @@ import {
   stopVaultWatcher,
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages } from './site-export.js'
+import { buildSlidesHtml } from './slides-export.js'
+import { slidesAssets } from './slides-assets.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -1562,6 +1564,7 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.shortcuts', 'sliders')
   addMenuCmd(menu, 'app.appearance', 'palette')
   addMenuCmd(menu, 'app.export', 'export')
+  addMenuCmd(menu, 'app.exportSlides', 'export')
   addMenuCmd(menu, 'app.exportSite', 'globe')
   addMenuCmd(menu, 'app.importWord', 'file')
   addMenuCmd(menu, 'app.exportWord', 'export')
@@ -2855,6 +2858,30 @@ async function exportHTML() {
   }
 }
 
+// —— 导出为演示文稿（单文档 → 自包含 reveal.js HTML，spec 见 docs/superpowers/specs/2026-10-25-slides-export-design.md）——
+async function exportSlides() {
+  if (!state.currentFile) {
+    setStatus(t('status.openDocFirst'))
+    return
+  }
+  if (state.mode === 'canvas') {
+    setStatus(t('status.canvasNoSlides'))
+    return
+  }
+  try {
+    const full = editor.getMarkdown()
+    const md = splitFrontmatter(full).body
+    const html = buildSlidesHtml(md, { title: state.currentFile, assets: slidesAssets })
+    const defaultName = state.currentFile.replace(/\.md$/i, '.slides.html')
+    const abs = await pickSaveAs(defaultName)
+    if (!abs) return
+    await exportFile(abs, html)
+    setStatus(t('status.exportedSlides', { abs }))
+  } catch (e) {
+    await messageDialog(t('msg.exportFailed', { err: (e && e.message) || e }))
+  }
+}
+
 // —— 批次 F ①：当前文档 → Word(.docx)（前端产 Docx-IR，Rust export_docx 落盘）——
 
 // 把 IR 内所有图片 src 解析为库根相对 rel（Rust 按 vaultRoot + rel 读字节）。
@@ -3112,6 +3139,7 @@ function registerAppCommands() {
   app('app.splitH', null, () => splitFocusedPane('horizontal'))
   app('app.splitV', null, () => splitFocusedPane('vertical'))
   app('app.export', null, () => exportHTML())
+  app('app.exportSlides', null, () => exportSlides())
   app('app.exportSite', null, () => exportSiteFull())
   app('app.importWord', null, () => importWordViaDialog())
   app('app.exportWord', null, () => exportWordViaDialog())
@@ -3253,7 +3281,7 @@ let macMenuSig = ''
 let macTitle = ''
 const lastRunAt = new Map()
 
-const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.print', 'app.closeFile', 'app.renameFile'])
+const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.exportSlides', 'app.print', 'app.closeFile', 'app.renameFile'])
 const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
 // 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
 const MENU_NEEDS_MD = new Set(['app.exportWord', 'app.insertImage'])
