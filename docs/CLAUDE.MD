@@ -196,6 +196,14 @@
 - 前端：`src/clip-settings.js` 是设置面板（工具条「更多」与命令面板 `app.clipSettings` 两个入口），配置存 settings.json 的 `clip` 段，字段与 Rust 侧 `ClipConfig` 一一对应；「保存」时经 `clip_server_apply` 停旧起新服务。boot 里监听 `nl:clip-saved`：刷文件树 + 状态栏出「已剪藏：{rel}（关联 n 篇）」，不自动打开（设置里 `openAfterSave` 可开）。后端错误文案走 `ui_lang.rs` 五语言词表，界面文案进 `src/locales/` 五份。
 - 错误码：403 来源不允许、409 没开知识库、413 超限、400 畸形请求、404 接口不存在、500 写盘失败；响应体统一 `{ok, code?, message?}`，成功时回 `{rel, title, linked, imagesSaved, imagesFailed}`。
 
+## 幻灯片导出（2026-10-25）
+
+单文档入口 `app.exportSlides`（`main.js` 的 `exportSlides`，与 `app.export` 同骨架），把当前一篇 md 编译成单个自包含 HTML：内联 reveal.js 5（`src/slides-assets.js` 经 vite `?raw` 读 dist 文本），双击可放映，`xxx.slides.html` 默认名。设计 `docs/superpowers/specs/2026-10-25-slides-export-design.md`，计划 `docs/superpowers/plans/2026-10-25-slides-export.md`。
+
+- 切片在 markdown-it token 流上做（`src/slides-export.js` 的 `splitSlides`）：有顶层连字符水平线 `---` 按它切（`***` / `___` 不算，当普通水平线渲染），否则按 `##` 切、`###` 不切；首个切片点前的引言独立成首页。md 源文件不引入私有标记，`---` 就是标准 GFM 水平线，Obsidian 幻灯片插件同规则。
+- `::: notes` … `:::` 摘进该片的 `<aside class="notes">`（未闭合吃到片尾，fence 内不算）；演讲者视图按 S 弹出——reveal 5 的 notes 插件自己 `document.write` 内嵌页面，不请求外部资源，单文件开箱即用（设计时按 reveal 4 预判的 blob URL 方案实现时删了）。
+- 每片正文复用 `site-export.js` 的 `renderSite` 全保真渲染；KaTeX css 走 CDN（断网时公式降级）；主题字体 `@import` 构建期剥掉，回退系统字体栈。图片相对路径按导出文件所在目录解析，与单篇 HTML 导出同口径。整库编译幻灯片、垂直分页、主题选择不做（YAGNI，整库版后续单独立项）。
+
 ## 架构设计
 
 ### Rust（src-tauri）职责
