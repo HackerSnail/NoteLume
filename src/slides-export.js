@@ -5,6 +5,7 @@
 //  md 源文件保持标准 GFM：切片只依赖标准语法，--- 是普通水平线、::: notes 是普通文本。
 
 import { tokenizer } from './editor-schema.js'
+import { renderSite } from './site-export.js'
 
 // 把切片边界行号收集出来。模式判定（spec §三）：
 //  文档里存在顶层连字符水平线（---）→ hr 模式，按它切；否则 → h2 模式，按 ## 切。
@@ -68,4 +69,90 @@ export function splitSlides(md) {
     .filter(s => s.body.trim() !== '' || s.notes !== '') // 文档以 ## / --- 开头时引言片为空，丢掉
   const titleMatch = /^#\s+(.+)$/m.exec(md)
   return { title: titleMatch ? titleMatch[1].trim() : '', slides }
+}
+
+// ============ 产物拼装 ============
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ))
+}
+
+// 片内排印：reveal 默认居中且字号偏大，改成贴近 NoteLume 阅读排版的左对齐
+function slidesCss() {
+  return `
+.reveal section{text-align:left;font-size:.72em}
+.reveal section h1,.reveal section h2,.reveal section h3{line-height:1.3;margin:0 0 .6em;text-transform:none}
+.reveal section p,.reveal section li{line-height:1.65}
+.reveal section code{font-family:"SFMono-Regular",Consolas,monospace;background:rgba(127,127,127,.15);padding:.1em .35em;border-radius:4px}
+.reveal section pre{width:100%;box-shadow:none}
+.reveal section pre code{background:none;padding:0}
+.reveal section table{border-collapse:collapse;margin:1em 0;font-size:.9em}
+.reveal section th,.reveal section td{border:1px solid rgba(127,127,127,.4);padding:6px 10px}
+.reveal section img{max-width:100%;max-height:70vh}
+.reveal section blockquote{border-left:3px solid rgba(127,127,127,.4);padding:.1em 1em;font-style:normal}
+.reveal section .nl-math-block{overflow-x:auto}
+`
+}
+
+/**
+ * 拼装自包含 reveal.js 产物（单个 HTML 字符串，reveal 本体零外部依赖）。
+ * @param {string} md 已剥 frontmatter 的正文
+ * @param {object} opts { title?: string, assets: { revealJs, revealCss, themeCss, notesJs, notesHtml } }
+ *  assets 五项均为字符串：真实值由构建期 vite ?raw 注入（src/slides-assets.js），测试传占位串。
+ *  title 回退顺序：入参 → md 首个 H1 → 'Slides'。
+ */
+export function buildSlidesHtml(md, opts = {}) {
+  const assets = opts.assets || {}
+  const { title: autoTitle, slides } = splitSlides(md)
+  const title = opts.title || autoTitle || 'Slides'
+
+  const sections = slides.map(s => {
+    const notes = s.notes
+      ? `<aside class="notes">${renderSite(s.notes, {})}</aside>`
+      : ''
+    return `<section>${renderSite(s.body, {})}${notes}</section>`
+  }).join('\n')
+
+  // 演讲者视图：单文件没有 plugin/notes/notes.html 这个资源，把 notes.js 内联进 notes.html，
+  // 运行时经 blob URL 交给被改写的 window.open（reveal notes 插件按 S 请求的就是这个相对路径）。
+  const notesHtml = String(assets.notesHtml || '').replace(
+    /<script[^>]*src="[^"]*notes\.js"[^>]*>\s*<\/script>/,
+    `<script>${assets.notesJs || ''}</script>`,
+  )
+
+  const initScript = [
+    'var NOTES_HTML = ' + JSON.stringify(notesHtml) + ';',
+    "var notesUrl = URL.createObjectURL(new Blob([NOTES_HTML], { type: 'text/html' }));",
+    'var _open = window.open.bind(window);',
+    'window.open = function (u) {',
+    "  var s = String(u || '');",
+    '  var args = Array.prototype.slice.call(arguments);',
+    "  if (s.indexOf('plugin/notes/notes.html') !== -1) args[0] = notesUrl;",
+    '  return _open.apply(null, args);',
+    '};',
+    'Reveal.initialize({ hash: true, plugins: [RevealNotes] });',
+  ].join('\n')
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title)}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<style>${assets.revealCss || ''}</style>
+<style>${assets.themeCss || ''}</style>
+<style>${slidesCss()}</style>
+</head><body>
+<div class="reveal"><div class="slides">
+${sections}
+</div></div>
+<script>${assets.revealJs || ''}</script>
+<script>${assets.notesJs || ''}</script>
+<script>
+${initScript}
+</script>
+</body></html>
+`
 }
