@@ -204,6 +204,15 @@
 - `::: notes` … `:::` 摘进该片的 `<aside class="notes">`（未闭合吃到片尾，fence 内不算）；演讲者视图按 S 弹出——reveal 5 的 notes 插件自己 `document.write` 内嵌页面，不请求外部资源，单文件开箱即用（设计时按 reveal 4 预判的 blob URL 方案实现时删了）。
 - 每片正文复用 `site-export.js` 的 `renderSite` 全保真渲染；KaTeX css 走 CDN（断网时公式降级）；主题字体 `@import` 构建期剥掉，回退系统字体栈。图片相对路径按导出文件所在目录解析，与单篇 HTML 导出同口径。整库编译幻灯片、垂直分页、主题选择不做（YAGNI，整库版后续单独立项）。
 
+## 打印排版（2026-10-25）
+
+Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-options-dialog.js`，四个勾选：自动目录页 / 页码与页眉标题 / H1 起新页 / 封面页，存 localStorage `nl-print-options`，首启只勾页码与页眉），确认后 Paged.js 预分页再走系统打印；取消不打印，canvas 模式直出老打印。设计 `docs/superpowers/specs/2026-10-25-print-pagedjs-design.md`。
+
+- 内容源是焦点窗格 `.ProseMirror` 的 DOM 克隆（`src/print-paged.js` 的 `printPaged`）：图片已是 data URI、公式与 mermaid 已出图，应用内重渲染必裂图；frontmatter 本就不在编辑器 DOM 里。H1/H2 用与编辑器同一套 `anchorSlug` 补锚点，目录页码靠 `target-counter` 自动算。
+- 打印 CSS 在 `printStyles` 按勾选拼（Paged.js 只处理传给它的样式）；标题进 `@top-center` 前要转义引号与反斜杠，不转义整条 `@page` 静默失效；H1 分页带 `h1:first-child` 例外，否则封面 / 目录后空出首页。
+- 隔离：`#print-root` 常态移出屏外（预分页需要真实布局，`display:none` 会量出零尺寸），body 打 `data-paged-print` 标记后 `@media print` 只显示分页容器；老打印路径不打标记不受影响。`printPaged` 的 `finally` 摘容器与标记，抛错时 main.js 回退 `window.print()`。
+- 依赖 `pagedjs@^0.4`（Previewer API，动态 import；不用 polyfill 自动模式——那会接管全页样式与应用样式打架）。纸型边距维持 A4 / 18mm 20mm，不加选项。
+
 ## 架构设计
 
 ### Rust（src-tauri）职责
