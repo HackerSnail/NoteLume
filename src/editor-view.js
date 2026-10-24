@@ -17,6 +17,7 @@ import { createPosMapper } from './pos-map.js'
 import * as yaml from 'js-yaml'
 import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
+import { emojiPlugin } from './emoji-decorations.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
 import { hydrateBlockImages } from './html-block-images.js'
@@ -285,6 +286,7 @@ export function createEditor(opts) {
       inputRulesPlugin,
       pasteImagesPlugin,
       highlightPlugin(),
+      emojiPlugin(),
       mermaidPlugin(),
       footnotePlugin(),
       findPlugin(),
