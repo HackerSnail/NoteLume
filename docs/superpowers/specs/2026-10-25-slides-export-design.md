@@ -1,6 +1,6 @@
 # 设计：单文档导出 reveal.js 演示文稿（v1）
 
-- 状态：设计完成，待实现
+- 状态：实现中——演讲者视图方案有一处偏差：reveal 5 的 notes 插件自带内嵌演讲者页面（document.write），无需 blob URL 改写，见 §五
 - 日期：2026-10-25
 - 来源：评估 `.others/quarkdown`（Kotlin 排版系统）可移植功能时选定的第一项；PDF 排版改造（Paged.js）与 Emoji 短代码随后各立一案
 - 决策原则锚定：md 源文件保持标准 GFM，不引入私有标记；产物离线可用；复用既有渲染管线与导出链路
@@ -47,7 +47,8 @@
 
 - 复用 `editor-schema.js` 导出的共享 `tokenizer` 实例挂渲染规则（site-export 既有做法：编辑器只 tokenize 不 render，挂规则零污染），不新建 `exportMd` 那种低配实例——幻灯片里出现 wikilink、callout、公式时保真度对齐整库导出。
 - 数学公式：`katex.renderToString`（同 site-export）；KaTeX css 与字体沿用现有导出的 CDN 引用（jsdelivr），产物放映需联网加载公式字体——reveal 本体不依赖网络，断网时公式降级显示，接受。
-- 演讲者视图是单文件形态下的一个坑：reveal notes 插件按 S 会 `window.open('plugin/notes/notes.html?client=true')`，单文件没有这个资源。处理：把 `notes.html` 内容也内联进产物，并在注入的初始化脚本里把插件对该路径的请求改写到 blob URL（`URL.createObjectURL(new Blob([...]))`），S 键照常弹出演讲者窗口。
+- 演讲者视图（实现时核实 reveal 5 后修正）：v5 的 notes 插件按 S 时 `window.open('about:blank')` 后用 `document.write` 写出内嵌的演讲者页面（marked 渲染器也打包在插件里），不请求 `plugin/notes/notes.html`，单文件形态开箱即用，无需 blob URL 改写——设计时按 reveal 4 的行为预判了 blob 方案，实现时删去。
+- 主题 css 自带 `@import url(./fonts/...)` 字体引用，内联时剥掉（构建期处理），字体回退到片内排印样式声明的系统字体栈，产物保持零外部依赖。
 - 图片相对路径：`![](./assets/x.png)` 在产物里按导出文件所在目录解析，与现有单文档 HTML 导出同款行为，不新增处理。
 
 ## 六、i18n

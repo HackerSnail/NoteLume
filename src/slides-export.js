@@ -99,8 +99,8 @@ function slidesCss() {
 /**
  * 拼装自包含 reveal.js 产物（单个 HTML 字符串，reveal 本体零外部依赖）。
  * @param {string} md 已剥 frontmatter 的正文
- * @param {object} opts { title?: string, assets: { revealJs, revealCss, themeCss, notesJs, notesHtml } }
- *  assets 五项均为字符串：真实值由构建期 vite ?raw 注入（src/slides-assets.js），测试传占位串。
+ * @param {object} opts { title?: string, assets: { revealJs, revealCss, themeCss, notesJs } }
+ *  assets 四项均为字符串：真实值由构建期 vite ?raw 注入（src/slides-assets.js），测试传占位串。
  *  title 回退顺序：入参 → md 首个 H1 → 'Slides'。
  */
 export function buildSlidesHtml(md, opts = {}) {
@@ -115,25 +115,9 @@ export function buildSlidesHtml(md, opts = {}) {
     return `<section>${renderSite(s.body, {})}${notes}</section>`
   }).join('\n')
 
-  // 演讲者视图：单文件没有 plugin/notes/notes.html 这个资源，把 notes.js 内联进 notes.html，
-  // 运行时经 blob URL 交给被改写的 window.open（reveal notes 插件按 S 请求的就是这个相对路径）。
-  const notesHtml = String(assets.notesHtml || '').replace(
-    /<script[^>]*src="[^"]*notes\.js"[^>]*>\s*<\/script>/,
-    `<script>${assets.notesJs || ''}</script>`,
-  )
-
-  const initScript = [
-    'var NOTES_HTML = ' + JSON.stringify(notesHtml) + ';',
-    "var notesUrl = URL.createObjectURL(new Blob([NOTES_HTML], { type: 'text/html' }));",
-    'var _open = window.open.bind(window);',
-    'window.open = function (u) {',
-    "  var s = String(u || '');",
-    '  var args = Array.prototype.slice.call(arguments);',
-    "  if (s.indexOf('plugin/notes/notes.html') !== -1) args[0] = notesUrl;",
-    '  return _open.apply(null, args);',
-    '};',
-    'Reveal.initialize({ hash: true, plugins: [RevealNotes] });',
-  ].join('\n')
+  // 演讲者视图：reveal 5 的 notes 插件按 S 时 window.open('about:blank') 后 document.write
+  // 内嵌的演讲者页面（marked 也在插件里自带），不请求任何外部资源，单文件开箱即用。
+  const initScript = 'Reveal.initialize({ hash: true, plugins: [RevealNotes] });'
 
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head>
