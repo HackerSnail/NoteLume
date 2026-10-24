@@ -4577,6 +4577,24 @@ html.nl-dragging * {
 
 
 /* ==================== 打印 / 导出 PDF：只出正文 ==================== */
+/* Paged.js 排版打印（body[data-paged-print]）的预分页容器：预分页需要真实布局，移出屏外而非 display:none */
+#print-root {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  width: 210mm;
+}
+@media print {
+  /* 排版打印时只上 #print-root，应用壳与其余浮层一律不上纸 */
+  body[data-paged-print] > :not(#print-root) {
+    display: none !important;
+  }
+  body[data-paged-print] #print-root {
+    position: static;
+    left: auto;
+    width: auto;
+  }
+}
 @media print {
   /* 纸上页边距：A4 上下 18mm、左右 20mm。经 window.print() 存 PDF 时，打印对话框边距选「默认」即生效 */
   @page {

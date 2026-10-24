@@ -5,6 +5,7 @@
 //  前半可离线单测；预分页本体依赖真实布局引擎，归真机验收。
 
 import { anchorSlug } from './heading-anchor.js'
+import { getLocale, t } from './i18n.js'
 
 // ============ 选项存取（localStorage，UI 偏好不进 settings.json） ============
 
@@ -80,6 +81,20 @@ export function printStyles(options, title) {
   const o = options || {}
   const chunks = []
   chunks.push('@page { margin: 18mm 20mm; }')
+  // 排版件之外的基版：克隆进来的 ProseMirror DOM 带的是屏幕样式类，纸面排印自给
+  chunks.push(
+    '.nl-print-doc { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 11pt; line-height: 1.65; color: #111; }' +
+    '.nl-print-doc h1 { font-size: 1.7em; margin: 1.2em 0 .6em; }' +
+    '.nl-print-doc h2 { font-size: 1.4em; margin: 1.1em 0 .5em; }' +
+    '.nl-print-doc h3 { font-size: 1.2em; margin: 1em 0 .5em; }' +
+    '.nl-print-doc code { font-family: Consolas, monospace; background: rgba(127,127,127,.12); padding: .1em .35em; border-radius: 4px; font-size: .9em; }' +
+    '.nl-print-doc pre { background: rgba(127,127,127,.08); padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }' +
+    '.nl-print-doc pre code { background: none; padding: 0; }' +
+    '.nl-print-doc table { border-collapse: collapse; margin: 1em 0; width: 100%; }' +
+    '.nl-print-doc th, .nl-print-doc td { border: 1px solid #ccc; padding: 5px 9px; }' +
+    '.nl-print-doc img { max-width: 100%; }' +
+    '.nl-print-doc a { color: inherit; }',
+  )
   if (o.pageNumbers) {
     chunks.push(
       '@page {' +
@@ -110,4 +125,83 @@ export function printStyles(options, title) {
     chunks.push('.nl-pbody h1 { break-before: page; } .nl-pbody h1:first-child { break-before: auto; }')
   }
   return chunks.join('\n')
+}
+
+// ============ 编排：克隆 → 排版件 → 预分页 → 打印 → 清理 ============
+
+/**
+ * 打印排版主链路（Ctrl+P 确认选项后调用）。
+ * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean }} options
+ * @param {string} title 页眉 / 封面标题（main.js 传当前文件名主干）
+ *  焦点窗格取不到内容时直接 window.print()（空态兜底）；预分页抛错向上抛，
+ *  `#print-root` 与 body 标记在 finally 里摘除——打印完与抛错两条路都不留残骸。
+ */
+export async function printPaged(options, title = '') {
+  const sourceEl = document.querySelector('.nl-pane.focused .ProseMirror')
+  if (!sourceEl) {
+    window.print()
+    return
+  }
+
+  const doc = document.createElement('div')
+  doc.className = 'nl-print-doc'
+
+  if (options.cover) {
+    const cover = document.createElement('div')
+    cover.className = 'nl-pcover'
+    const coverTitle = document.createElement('div')
+    coverTitle.className = 'nl-pcover-title'
+    coverTitle.textContent = title || t('print.untitled')
+    const coverDate = document.createElement('div')
+    coverDate.className = 'nl-pcover-date'
+    coverDate.textContent = new Date().toLocaleDateString(getLocale())
+    cover.append(coverTitle, coverDate)
+    doc.appendChild(cover)
+  }
+
+  // 克隆屏幕上已渲染的节点：图片是 data URI、公式与 mermaid 已出图，应用内重渲染反而会裂图
+  const clone = sourceEl.cloneNode(true)
+  assignHeadingIds(clone)
+
+  if (options.toc) {
+    const nodes = buildTocNodes(clone)
+    if (nodes.length) {
+      const toc = document.createElement('div')
+      toc.className = 'nl-ptoc'
+      const tocTitle = document.createElement('div')
+      tocTitle.className = 'nl-ptoc-title'
+      tocTitle.textContent = t('dlg.printTocHeading')
+      toc.appendChild(tocTitle)
+      for (const n of nodes) {
+        const a = document.createElement('a')
+        a.href = '#' + n.id
+        if (n.level === 2) a.className = 'lv2'
+        a.textContent = n.text
+        toc.appendChild(a)
+      }
+      doc.appendChild(toc)
+    }
+  }
+
+  const pbody = document.createElement('div')
+  pbody.className = 'nl-pbody'
+  pbody.appendChild(clone)
+  doc.appendChild(pbody)
+
+  const printRoot = document.createElement('div')
+  printRoot.id = 'print-root'
+  printRoot.appendChild(doc)
+  document.body.appendChild(printRoot)
+  document.body.setAttribute('data-paged-print', '')
+
+  try {
+    // 动态 import：pagedjs 只在真打印时加载，node 单测不必拖它进来
+    const { Previewer } = await import('pagedjs')
+    const previewer = new Previewer()
+    await previewer.preview(doc, [printStyles(options, title)], printRoot)
+    window.print()
+  } finally {
+    if (printRoot.parentNode) printRoot.parentNode.removeChild(printRoot)
+    document.body.removeAttribute('data-paged-print')
+  }
 }
