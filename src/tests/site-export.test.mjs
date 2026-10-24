@@ -3,9 +3,11 @@
 //
 // 覆盖 spec §9 测试计划里前端可离线验证的部分：
 //  链接重写（.md→.html、锚点、外部）、wikilink 解析落地 / 缺失降级、反链反推、
-//  任务清单、callout / 数学 / tag / 嵌入图的渲染、图片镜像路径与资源收集、搜索索引构建、路径映射。
+//  任务清单、callout / 数学 / tag / 嵌入图的渲染、图片镜像路径与资源收集、搜索索引构建、路径映射、
+//  字面 HTML 块的净化与镜像。
 
 import assert from 'node:assert'
+import { JSDOM } from 'jsdom'
 import {
   buildWikiLookup,
   buildBacklinks,
@@ -18,6 +20,14 @@ import {
   buildBacklinksHtml,
   renderSite,
 } from '../site-export.js'
+import { tokenizer } from '../editor-schema.js'
+
+// 正文里的字面 HTML 要过白名单（净化器用 DOMParser），故这套离线断言也带一份 jsdom
+const jsdom = new JSDOM('<!doctype html><html><body></body></html>')
+global.DOMParser = jsdom.window.DOMParser
+global.Node = jsdom.window.Node
+global.Element = jsdom.window.Element
+global.HTMLElement = jsdom.window.HTMLElement
 
 let pass = 0, fail = 0
 function check(name, fn) {
@@ -225,6 +235,55 @@ check('renderSite 交叉引用锚点 <a id> 保真渲染', () => {
   assert.ok(html.includes('<a id="_Ref52"></a>'), '锚点应原样渲染: ' + html)
   assert.ok(!html.includes('&lt;a id'), '锚点不应被转义为文本: ' + html)
   assert.ok(html.includes('href="#_Ref52"'), '引用应渲染为 #id 链接: ' + html)
+})
+
+// —— 字面 HTML（WordPress / 各类导出器写的正文）：站点这一趟认块与行内 HTML，且一律过白名单 ——
+check('renderSite 字面 HTML 块渲染成元素，不再当转义文本', () => {
+  const md = '<h2 class="wp-block-heading" id="这是什么">这是什么</h2>\n\n<p>正文 <code>x</code> 与 &amp; 号</p>\n'
+  const html = renderSite(md, { __site: true, selfRel: 'a/b.md', fromDir: 'a' })
+  assert.ok(html.includes('<h2 class="wp-block-heading" id="这是什么">这是什么</h2>'), html)
+  assert.ok(html.includes('<p>正文 <code>x</code> 与 &amp; 号</p>'), html)
+  assert.ok(!html.includes('&lt;h2'), '不该被转义成文本: ' + html)
+})
+
+check('renderSite 字面 HTML 里的脚本与事件属性进不了发布物', () => {
+  const md = '<div onclick="evil()">点我</div>\n\n<script>alert(1)</script>\n'
+  const html = renderSite(md, { __site: true, selfRel: 'x.md', fromDir: '' })
+  assert.ok(!/<script/i.test(html), '脚本标签（含内容）应整块丢弃: ' + html)
+  assert.ok(!/onclick/i.test(html), '事件属性不应出现: ' + html)
+  assert.ok(html.includes('>点我</div>'), html)
+})
+
+check('renderSite 块内 <img> 走同一套镜像与相对路径改写', () => {
+  const assets = new Set()
+  const md = '<figure><img src="./assets/pic.png" alt="图" /><figcaption>说明</figcaption></figure>\n'
+  const html = renderSite(md, {
+    __site: true, selfRel: 'Daily/x.md', fromDir: 'Daily', assets,
+    imageSet: new Set(['assets/pic.png']),
+    imgByBase: new Map([['pic.png', 'assets/pic.png']]),
+  })
+  assert.ok(/src="\.\.\/assets\/pic\.png"/.test(html), html)
+  assert.ok(assets.has('assets/pic.png'), '应登记库内真实 rel 供拷贝')
+  assert.ok(html.includes('<figcaption>说明</figcaption>'), html)
+})
+
+check('renderSite 行内字面 HTML 仍是转义文本（不拆散配对）', () => {
+  const html = renderSite('一段 <b>加粗</b> 与换行<br>结束\n', { __site: true, selfRel: 'x.md', fromDir: '' })
+  assert.ok(html.includes('&lt;b&gt;加粗&lt;/b&gt;'), html)
+  assert.ok(!html.includes('<b>'), '不得产出配对被拆散的裸标签: ' + html)
+})
+
+check('开 html 不抢 anchor / highlight（两条行内规则排在 html_inline 之前）', () => {
+  const md = '<a id="_Ref9"></a>正文与<mark data-color="#f4d398">高亮</mark>收尾\n'
+  const html = renderSite(md, { __site: true, selfRel: 'x.md', fromDir: '' })
+  assert.ok(html.includes('<a id="_Ref9"></a>'), '空锚仍走 anchor 规则: ' + html)
+  assert.ok(html.includes('<mark color="#f4d398">高亮</mark>'), '高亮走 highlight 规则: ' + html)
+  assert.ok(!html.includes('data-color'), '不该退化成原样 <mark data-color>: ' + html)
+})
+
+check('renderSite 退出后 tokenizer 的 html 开关回到 false', () => {
+  renderSite('<p>x</p>', { __site: true, selfRel: 'x.md', fromDir: '' })
+  assert.strictEqual(tokenizer.options.html, false, '编辑器解析不得被站点这一趟带开')
 })
 
 console.log(`\n结果：${pass} passed, ${fail} failed`)

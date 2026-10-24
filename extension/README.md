@@ -1,6 +1,6 @@
 # NoteLume 剪藏（浏览器扩展）
 
-把网页正文剪藏到本机 NoteLume 知识库：按模板落盘成标准 GFM md，图片可选本地化，文末自动追加「## 相关笔记」关联库内已有文档。
+把网页正文剪藏到本机 NoteLume 知识库：按模板落盘成标准 GFM md，图片可选本地化，文末自动追加「\#\# 相关笔记」关联库内已有文档。
 
 MV3，无构建、无 npm 依赖。`vendor/` 下是三个原样放入的库：
 
@@ -10,7 +10,7 @@ MV3，无构建、无 npm 依赖。`vendor/` 下是三个原样放入的库：
 
 ## 安装
 
-Edge / Chrome：开 `edge://extensions`（或 `chrome://extensions`）→ 打开左下角「开发人员模式」→「加载已解包的扩展」→ 选本目录。
+Edge / Chrome：开 `edge://extensions`（或 `chrome://extensions`）→ 打开左下角「开发人员模式」→「加载已解包的扩展/加载未打包的扩展程序」→ 选本目录。
 
 ## 配置
 
@@ -23,7 +23,7 @@ Edge / Chrome：开 `edge://extensions`（或 `chrome://extensions`）→ 打开
 
 每次剪藏前扩展也会读一次 `/health`，拿 NoteLume 剪藏设置里的两个开关：图片本地化（`clip.localizeImages`，默认关）与整页兜底（`clip.fullPageFallback`，默认关）。NoteLume 没启动时按默认值继续，随后的 POST 会以「连不上」报错。
 
-NoteLume 侧：工具条「更多 → 网页剪藏设置」里启用服务、选模板与目标目录、目标目录、图片本地化与整页兜底两个开关。
+NoteLume 侧：mac 从菜单栏「NoteLume → 网页剪藏设置」进入，Windows / Linux 走工具条「更多 → 网页剪藏设置」；里面启用服务、选模板与目标目录、图片本地化与整页兜底两个开关。
 
 ## 使用
 

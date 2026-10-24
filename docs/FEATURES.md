@@ -23,6 +23,7 @@
 * Obsidian callout `> [!NOTE]` 渲染为彩色卡片（自定义块规则 + CSS，与文件互通）
 * 表格完整编辑：增删行列、Tab 跨格、列宽拖拽、右键行列菜单（`prosemirror-tables`）
 * 编辑器无损扩展（功能项 J）：脚注 `[^n]`（Typora 式上标角标、点角标定位、正文自动收集到文末脚注区可编辑，`markdown-it-footnote` 并入主 tokenizer）+ 合并单元格表格（含 `colspan/rowspan` 的表存真正的 `<table>` HTML 往返，右键菜单接 `mergeCells` / `splitCell`，无合并仍出 GFM）
+* 块级裸 HTML 透传（html_block 节点）：外部导出的 md 里整段 `<h2>` / `<figure>` / `<table>` / `<blockquote>` 这类块级 HTML 存成原子块、原样保留，渲染态净化后就地显示（排版吃 `.ProseMirror` 的后代选择器），单击原地切源码编辑、失焦或 Esc 提交、改成全空白即删块；块内 `h1`–`h6` 计入大纲，点大纲整块选中并滚动；块内相对路径的图片按当前文档读库内字节显示（与正文图片同口径，远程图透传），站点与单篇 HTML 导出同样渲染，站点侧块内 `<img>` 镜像进 `assets/`，Word 导出降级为纯文本段落
 * 图片拖拽 / 粘贴自动落库 `assets/` 并生成相对链接；正文图片右下角把手拖拽缩放，宽度作为节点属性写回 Markdown（Typora `![…](… =328x)` / Obsidian `![[…|328]]`），双击回原尺寸，导出静态站同样带上
 * 正文 Markdown 源码双模式：CodeMirror 6，`Ctrl+E` 整篇互切，语法高亮与行号，原文保真、保存不重排
 * 编辑器手感包：空行 `/` 弹块类型菜单 + 写作统计（字数 / 阅读时长 / 目标）+ 专注模式 `Ctrl+Shift+\`` + 打字机模式 `Ctrl+Shift+T`
@@ -56,7 +57,7 @@
 * 侧栏「文件 / 大纲」两 tab 共用一块区域 + 栏外常驻图标（文件 / 大纲 / 检查器）
 * 右侧检查器栏：文档属性 / 标签 / 双向链接 / 历史版本 / Git / 插件集中于此，左栏只留文件与大纲（`Ctrl+Shift+B`）
 * 左右栏按住分隔条拖拽调宽：`180–520px`、记忆宽度、拖到边整栏收起（反向再拖回来）、双击回默认
-* macOS 原生菜单栏（应用 / 文件 / 编辑 / 格式 / 段落 / 视图 / 窗口，全中文含系统注入项；「段落」组按当前块类型勾选 + 标题升 / 降级），窗口内工具条沉底为状态条；Windows 工具条原样保留
+* macOS 原生菜单栏（应用 / 文件 / 编辑 / 格式 / 段落 / 视图 / 窗口，全中文含系统注入项；应用组含快捷键设置 / 外观设置 / 网页剪藏设置 / 界面语言，「段落」组按当前块类型勾选 + 标题升 / 降级），窗口内工具条沉底为状态条；Windows 工具条原样保留
 
 ### 导出与同步
 
@@ -223,9 +224,9 @@ npm run dev
 npm run test:roundtrip
 ```
 
-对「解析 → 序列化 → 再解析 → 再序列化」做幂等校验，57 项断言，覆盖：标题 / 行内混排 / 引用与列表 / 任务列表 / 代码块 / 图片 / `[[wikilink]]` / `#tag` / 表格 / 行内公式 / 块公式 / 组合 / Obsidian 图片嵌入 / 图片尺寸写回。
+对「解析 → 序列化 → 再解析 → 再序列化」做幂等校验，64 项断言，覆盖：标题 / 行内混排 / 引用与列表 / 任务列表 / 代码块 / 图片 / `[[wikilink]]` / `#tag` / 表格 / 行内公式 / 块公式 / 组合 / Obsidian 图片嵌入 / 图片尺寸写回。
 
-`src/tests/` 另有 13 个离线单测（keymap、footnote、merged-table、docx-import、plugin-manifest、outline-tree、fold、block-commands、site-export、source-sync、template、writing-stats、app-menu），直接 `node src/tests/<name>.test.mjs` 跑。
+`src/tests/` 共 40 个离线单测文件（keymap、footnote、merged-table、html-block、html-sanitize、docx-import、docx-export、plugin-manifest、outline-tree、fold、block-commands、site-export、source-sync、template、writing-stats、app-menu 等），逐个 `node src/tests/<name>.test.mjs` 跑、按退出码判定；根 `package.json` 只为 roundtrip / footnote / merged-table 三条留了转发入口，`src/package.json` 另有 29 条单文件入口，没有全量聚合脚本。
 
 ---
 
@@ -384,6 +385,7 @@ mac 上 `Ctrl` 即 `⌘`。键位按 Typora / Obsidian 主流习惯配，全部�
 * 纯 GFM，零私有格式：所有 md 文件可被 Typora / Obsidian 直接打开，无信息丢失
 * `[[wikilink]]` 与 `#tag` 是行内节点（非普通文本），通过 markdown-it 自定义 inline 规则识别、ProseMirror 序列化为标准 `[[…]]` / `#xxx`；输入规则让编辑器里敲下 `]]` 或紧跟空格的 `#xxx` 即自动生成节点
 * 表格与任务列表走 GFM 语义（表头行 + 对齐分隔行 + `- [x]` / `- [ ]`）；单元格允许行内内容，序列化时按列宽对齐输出；表格编辑（增删行列 / Tab 跨格 / 列宽拖拽 / 右键菜单）基于 `prosemirror-tables`
+* 块级裸 HTML 的块边界交回 markdown-it 判定（解析那一趟临时把 `options.html` 置 true，取 `html_block` token 的 `map`，随后复位），只接管顶格块且起始标签过白名单，不收类型 7——`<a id="x"></a>` 与 `<mark data-color=…>` 独占一行时仍归自定义行内规则 anchor / highlight；净化走「DOMParser 解析 + 白名单重拼字符串」，不用 `innerHTML = tree.innerHTML`（那条路有 mXSS 差异），编辑器 / 站点 / 单篇导出共用一份白名单
 * Frontmatter（YAML 头）：文件开头的 `--- … ---` 逐字节原样保留（解析前剥离、写回前补回），不丢失键顺序与注释；检查器「文档属性」可编辑，默认走源码编辑不重排，避免静默把 `date` 等改格式
 * Rust 后端只做文件 / 索引 / 路径处理，UI 与渲染全在 ProseMirror，职责清晰
 * 路径安全：`ensure_inside_root` + `..` 逃逸拒绝，避免 md 读写越出库根
@@ -396,6 +398,8 @@ mac 上 `Ctrl` 即 `⌘`。键位按 Typora / Obsidian 主流习惯配，全部�
 * Obsidian callout（`> [!TYPE]`）已渲染为带标题 / 图标的彩色卡片并与文件往返无损；但卡片标题 / type / 折叠标记存于节点属性（非正文 inline 可编），改标题需改源行；折叠 `-` / `+` 保留但不一键收起（编辑时正文始终可见）
 * 图片走字节 → base64 → 落盘路径，超大图（数十 MB）粘贴会比文件拖拽慢
 * Obsidian 图片嵌入 `![[图片]]` 已渲染为图并与文件往返无损（非图片的 `![[笔记]]` 仍作链接）；裸文件名按相对路径解析不到时，会按文件名在库内不区分大小写、先浅后深地回退查找并取第一个匹配，同名图片多处存在时可能命中非预期那一张；库内确实找不到该文件时不显空白框，而是就地显示「未找到图片：<路径>」提示
+* 块级裸 HTML 只处理块级（顶格起始）：段落里混排的行内字面 HTML（`<span style=…>` 之类）仍按转义文本显示；WordPress 专属 class（`has-text-align-center` / `has-vivid-red-color` / 字号类）不映射，只吃通用排版；块内图片不支持右下角把手拖拽缩放（无损写回只服务真 image 节点），`html_block` 内的链接点击不跟随；字数与阅读时长不计块内文字（atom 无 textContent，与图片 / 公式同口径），查找替换也不穿透源码；整块被白名单挡光时，纯注释块整体不显示（与 Typora 一致），纯 `<script>` / `<style>` 退回显示源码原文
+* 保存正文时两处空白会被规整：frontmatter 与正文之间的空行、文件末尾的空行。WordPress 导出的 md 首次保存因此少这两行，块与块之间的空行原样保留，标记与属性一字不动
 * KaTeX 公式双击编辑目前走 `window.prompt`，后续换成内置弹窗
 * 搜索为 substring 匹配，未上分词 / 拼音；索引内容全量存内存，知识库量级至数百 md 文件时无压力
 * `assets/` 目前放在每个 md 同目录（相对链接最稳）；库根级 `assets` 归一化留待后续

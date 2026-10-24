@@ -3,7 +3,7 @@
 // 点击链接跳转、大纲与标签提取。纯渲染/交互层，模型转换在 editor-schema.js。
 
 import { EditorView } from 'prosemirror-view'
-import { EditorState, TextSelection, Plugin } from 'prosemirror-state'
+import { EditorState, TextSelection, NodeSelection, Plugin } from 'prosemirror-state'
 import { Fragment, Slice } from 'prosemirror-model'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
@@ -18,6 +18,8 @@ import * as yaml from 'js-yaml'
 import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
+import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
+import { hydrateBlockImages } from './html-block-images.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
@@ -300,6 +302,7 @@ export function createEditor(opts) {
     nodeViews: {
       math_inline: mathInlineView,
       math_block: mathBlockView,
+      html_block: makeHtmlBlockView(() => opts.getVault()),
       image: makeImageNodeView(() => opts.getVault()),
     },
     dispatchTransaction(tr) {
@@ -333,10 +336,15 @@ export function createEditor(opts) {
   function jumpToPos(pos) {
     const open = unfoldCovering(view.state, pos)
     if (open) view.dispatch(open)
-    const tr = view.state.tr.setSelection(
-      TextSelection.create(view.state.doc, Math.min(pos + 1, view.state.doc.content.size))
-    )
-    view.dispatch(tr.scrollIntoView())
+    const $to = view.state.doc.resolve(Math.min(pos + 1, view.state.doc.content.size))
+    let sel = $to.parent.isTextblock ? TextSelection.create(view.state.doc, $to.pos) : null
+    // 无正文的原子块（html_block）：pos+1 落在块之间放不进光标，改选中整块——滚动与高亮都靠 nodeView 的 selectNode
+    if (!sel) {
+      const node = view.state.doc.nodeAt(pos)
+      if (node && NodeSelection.isSelectable(node)) sel = NodeSelection.create(view.state.doc, pos)
+    }
+    if (!sel) return
+    view.dispatch(view.state.tr.setSelection(sel).scrollIntoView())
     view.focus()
   }
 
@@ -739,6 +747,108 @@ const imgDataCache = new Map() // key(vault|md|src) -> dataUri
 
 const IMG_W_MIN = 40
 
+// HTML 块：把 attrs.source 净化后就地渲染成真实元素。源码只存属性，序列化原样写回，
+// 净化结果不落盘——换一台机器、改一次白名单都不动用户文件。
+// 单击块体就地改源码（textarea 长在块自己的位置上），失焦 / Esc 写回，改空即删块。
+// 块内图片的相对路径交给 html-block-images.js 读库内字节，不与 markdown 图片两套口径。
+function makeHtmlBlockView(getVault) {
+  return (node, view, getPos) => htmlBlockView(node, view, getPos, getVault)
+}
+
+function htmlBlockView(node, view, getPos, getVault) {
+  const dom = document.createElement('div')
+  dom.className = 'nl-html-block'
+  dom.setAttribute('contenteditable', 'false')
+  let cur = node
+  let editing = false
+  const paint = (n) => {
+    const src = n.attrs.source || ''
+    dom.setAttribute('data-source', src)
+    const safe = sanitizeHtml(src)
+    if (safe) {
+      dom.classList.remove('nl-html-raw', 'nl-html-hidden')
+      dom.innerHTML = safe
+      hydrateBlockImages(dom, getVault, imgDataCache)
+    } else if (!src.replace(/<!--[\s\S]*?-->/g, '').trim()) {
+      // 纯注释块（README / 文章末尾的 <!-- links --> 之类）：Typora 不显示，这里也不占位
+      dom.classList.remove('nl-html-raw')
+      dom.classList.add('nl-html-hidden')
+      dom.textContent = ''
+    } else {
+      // 其余整块被白名单挡光（纯 <script> / <style>）：退回显示源码，别静默丢内容
+      dom.classList.remove('nl-html-hidden')
+      dom.classList.add('nl-html-raw')
+      dom.textContent = src
+    }
+  }
+  const exitEdit = (commit) => {
+    if (!editing) return
+    const ta = dom.querySelector('textarea')
+    const src = ta ? ta.value : ''
+    editing = false
+    dom.classList.remove('nl-html-edit')
+    if (commit && src !== (cur.attrs.source || '') && typeof getPos === 'function') {
+      const pos = getPos()
+      const n = pos == null ? null : view.state.doc.nodeAt(pos)
+      if (n && n.type === schema.nodes.html_block) {
+        const tr = view.state.tr
+        if (src.trim()) tr.setNodeMarkup(pos, undefined, { ...n.attrs, source: src })
+        else tr.delete(pos, pos + n.nodeSize)
+        view.dispatch(tr)
+        return // 块被删则本 nodeView 随之销毁，否则 update() 会用新源码重绘
+      }
+    }
+    paint(cur)
+  }
+  const enterEdit = () => {
+    if (editing) return
+    const src = cur.attrs.source || ''
+    editing = true
+    dom.classList.add('nl-html-edit')
+    dom.innerHTML = ''
+    const ta = document.createElement('textarea')
+    ta.className = 'nl-html-src'
+    ta.spellcheck = false
+    ta.value = src
+    ta.rows = Math.min(24, Math.max(2, src.split('\n').length))
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        // 直接走退出路径，不等真失焦（无头环境与 webview 里 focus 未必在 textarea 上）；exitEdit 自带 editing 守卫
+        exitEdit(true)
+      }
+    })
+    ta.addEventListener('blur', () => exitEdit(true))
+    dom.appendChild(ta)
+    ta.focus()
+  }
+  dom.addEventListener('click', (e) => {
+    // 块内链接不跟（与编辑器其余链接一致，免得 webview 整页跳走），单击只用来就地改源码
+    if (e.target.closest('a[href]')) e.preventDefault()
+    enterEdit()
+  })
+  paint(node)
+  return {
+    dom,
+    // 块内事件（含编辑时 textarea 的键盘输入）一律交给我们自己，PM 不接管
+    stopEvent: () => true,
+    ignoreMutation: () => true,
+    update(n) {
+      if (n.type !== cur.type) return false
+      const changed = n.attrs.source !== cur.attrs.source
+      cur = n
+      if (changed && !editing) paint(n)
+      return true
+    },
+    selectNode() {
+      dom.classList.add('ProseMirror-selectednode')
+    },
+    deselectNode() {
+      dom.classList.remove('ProseMirror-selectednode')
+    },
+  }
+}
+
 function makeImageNodeView(getVault) {
   return (node, view, getPos) => {
     const img = document.createElement('img')
@@ -1018,6 +1128,10 @@ function emitMeta(view, opts) {
   view.state.doc.forEach((node, pos) => {
     if (node.type.name === 'heading') {
       outline.push({ level: node.attrs.level, text: node.textContent, pos })
+    }
+    // 大纲穿透：WordPress / 导出器写的正文里标题是字面 HTML，节点是无内容原子块，descendants 走不进去
+    if (node.type.name === 'html_block') {
+      for (const h of htmlHeadings(node.attrs.source)) outline.push({ level: h.level, text: h.text, pos })
     }
     node.descendants((child) => {
       if (child.type.name === 'tag' && !seen.has(child.attrs.tag)) {

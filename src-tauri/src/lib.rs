@@ -2,7 +2,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -216,8 +216,17 @@ fn find_md_by_basename(root: &Path, name: &str, depth: usize) -> Option<String> 
         if fname.starts_with('.') || SKIP_DIRS.contains(&fname.as_str()) || fname == "assets" {
             continue;
         }
+        // 符号链接一律不进：库里的 dmg 暂存目录会链到 /Applications，跟进去等于把库外整棵树
+        // 拖进扫描，且每条解析不掉的链接都要再走一遍（file_type 不跟随链接）
+        let ft = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if ft.is_symlink() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
+        if ft.is_dir() {
             if let Some(hit) = find_md_by_basename(&path, name, depth + 1) {
                 sub_hits.push(hit);
             }
@@ -562,7 +571,7 @@ fn mime_for_ext(ext: &str) -> &'static str {
 
 /// 百分号解码（至少把 %20 还原为空格）：markdown 图片链接遵循 URL 规范，
 /// 文件名里的空格等字符会被编码成 %XX，而磁盘上的真实文件名是解码后的。
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -696,9 +705,9 @@ pub(crate) fn sniff_image_mime(bytes: &[u8], url: &str) -> Option<&'static str> 
     }
 }
 
-/// 远程图取字节回 data: URL（图片右键「复制图像 / 另存为」共用）。下载走 Windows 系统的
-/// URLDownloadToFileW：系统自带网络栈、不引 TLS 依赖、请求不带 Referer（Gitee 等图床的
-/// 防盗链对 localhost Referer 直接 403，无 Referer 反而放行）。非 Windows 平台暂不支持。
+/// 远程图取字节回 data: URL（图片右键「复制图像 / 另存为」共用）。下载走各平台的系统网络栈
+/// （Windows 用 URLDownloadToFileW，其余平台用系统 curl）：不引 TLS 依赖、请求不带 Referer
+/// （Gitee 等图床的防盗链对 localhost Referer 直接 403，无 Referer 反而放行）。
 #[tauri::command]
 fn fetch_remote_image_data_uri(url: String) -> Result<String, String> {
     let lower = url.to_lowercase();
@@ -757,9 +766,28 @@ pub(crate) fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), S
     }
 }
 
+/// 非 Windows：走系统 curl（macOS 与主流 Linux 均预装），同样不引 TLS 依赖、不带 Referer。
+/// `--url` 收值，避免以 `-` 开头的地址被当成选项。
 #[cfg(not(windows))]
-fn download_remote(_url: &str, _dest: &std::path::Path) -> Result<(), String> {
-    Err(ui_msg!("downloadImgUnsupported"))
+fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    let out = std::process::Command::new("curl")
+        .arg("--fail")
+        .arg("--silent")
+        .arg("--show-error")
+        .arg("--location")
+        .arg("--max-time")
+        .arg("30")
+        .arg("--output")
+        .arg(dest)
+        .arg("--url")
+        .arg(url)
+        .output()
+        .map_err(|e| ui_msg!("downloadImgFailed", "code" => e))?;
+    if out.status.success() {
+        return Ok(())
+    }
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(ui_msg!("downloadImgFailed", "code" => if err.is_empty() { format!("curl {}", out.status) } else { err }))
 }
 
 /// 把 data: URL 的图片字节写到任意路径（图片右键「另存为」；路径来自前端保存对话框）。
@@ -1076,11 +1104,19 @@ fn collect_md_paths(dir: &Path, rel: &str, depth: usize, out: &mut Vec<String>) 
         if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
             continue;
         }
+        let ft = match e.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        // 符号链接不进索引：链到库外时读到的内容与键（库内相对路径）对不上，剪藏会写成死链
+        if ft.is_symlink() {
+            continue;
+        }
         let p = e.path();
         let cr = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
-        if p.is_dir() {
+        if ft.is_dir() {
             collect_md_paths(&p, &cr, depth + 1, out);
-        } else if p.is_file() && is_md(&name) {
+        } else if ft.is_file() && is_md(&name) {
             out.push(cr);
         }
     }
@@ -1340,17 +1376,55 @@ fn update_index_doc(
     Ok(())
 }
 
+/// 索引键的规范形态：库内相对路径（`/` 分隔、只收 `.md`），与 build_index 扫出来的键同一套。
+/// 库外文件也会走到 update_index_doc（打开 / 保存 /tmp 下的临时稿），此前没有这道闸，
+/// 绝对路径与非 md 文件都原样进索引；剪藏挑「相关笔记」时把它们写成 `[[/tmp/…]]` 死链。
+/// 绝对路径落在库内时归一成相对键；越界（库外、`..`、非 md）返回 None。
+fn index_key_in_vault(vault_root: &str, path: &str) -> Option<String> {
+    let p = Path::new(path);
+    let mut parts: Vec<String> = Vec::new();
+    if p.is_absolute() {
+        let root = fs::canonicalize(vault_root).ok()?;
+        let abs = fs::canonicalize(p).ok()?;
+        for c in abs.strip_prefix(&root).ok()?.components() {
+            match c {
+                Component::Normal(s) => parts.push(s.to_string_lossy().into_owned()),
+                Component::CurDir => {}
+                _ => return None,
+            }
+        }
+    } else {
+        for c in p.components() {
+            match c {
+                Component::Normal(s) => parts.push(s.to_string_lossy().into_owned()),
+                Component::CurDir => {}
+                Component::Prefix(_) | Component::RootDir | Component::ParentDir => return None,
+            }
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    let key = parts.join("/");
+    if is_md(&key) { Some(key) } else { None }
+}
+
 /// 把一条文档写进索引（含 backlinks 增量维护）。update_index_doc 命令层与网页剪藏
 /// （webclip.rs 的 write_clip）共用，避免剪藏落盘后索引对不上。
 pub(crate) fn index_doc_into(g: &mut VaultIndex, path: &str, content: &str) {
+    let Some(key) = index_key_in_vault(&g.vault_root, path) else {
+        // 库外 / 非 md：顺手清掉老版本可能已经写进去的同名条目
+        remove_doc_from_index(g, path);
+        return;
+    };
     let root = PathBuf::from(&g.vault_root);
     let raw = extract_wikilinks(content);
     let mut outgoing: Vec<String> = Vec::new();
     let mut unresolved: Vec<String> = Vec::new();
     for r in raw {
-        match resolve_one(&root, path, &r) {
+        match resolve_one(&root, &key, &r) {
             Some(hit) => {
-                if hit != path {
+                if hit != key {
                     outgoing.push(hit);
                 }
             }
@@ -1361,31 +1435,31 @@ pub(crate) fn index_doc_into(g: &mut VaultIndex, path: &str, content: &str) {
     outgoing.dedup();
     unresolved.sort();
     unresolved.dedup();
-    let title = extract_title(content, path);
+    let title = extract_title(content, &key);
     let tags = extract_tags(content);
     let old_outgoing: Vec<String> = g
         .docs
-        .get(path)
+        .get(&key)
         .map(|d| d.outgoing.clone())
         .unwrap_or_default();
     g.docs.insert(
-        path.to_string(),
-        DocEntry { path: path.to_string(), title, tags, outgoing, unresolved, content: content.to_string() },
+        key.clone(),
+        DocEntry { path: key.clone(), title, tags, outgoing, unresolved, content: content.to_string() },
     );
     for tgt in &old_outgoing {
         if let Some(lst) = g.backlinks.get_mut(tgt) {
-            lst.retain(|p| p != path);
+            lst.retain(|p| p != &key);
         }
     }
     let new_outgoing: Vec<String> = g
         .docs
-        .get(path)
+        .get(&key)
         .map(|d| d.outgoing.clone())
         .unwrap_or_default();
     for tgt in new_outgoing {
         let e = g.backlinks.entry(tgt).or_default();
-        if !e.contains(&path.to_string()) {
-            e.push(path.to_string());
+        if !e.contains(&key) {
+            e.push(key.clone());
             e.sort();
         }
     }
@@ -2508,6 +2582,21 @@ fn set_mac_menu(app: tauri::AppHandle, spec: MenuSpec) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    // 非 Windows 的远程图下载走系统 curl：用 file:// 起一个本地源，验证真把字节落到了目标路径
+    #[cfg(not(windows))]
+    #[test]
+    fn download_remote_reads_through_system_curl() {
+        let dir = std::env::temp_dir().join(format!("notelume-dl-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.txt");
+        fs::write(&src, b"payload").unwrap();
+        let dest = dir.join("dest.txt");
+        download_remote(&format!("file://{}", src.to_string_lossy()), &dest).unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), b"payload");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn extract_wikilinks_basic() {
         let s = "see [[A]] and [[B|alias]] and nested [[C]] [[B]]";
@@ -2806,6 +2895,90 @@ mod tests {
         // 删除不存在的 path 为空操作，不应 panic
         remove_doc_from_index(&mut idx, "ghost.md");
         assert!(idx.docs.contains_key("b.md"));
+    }
+
+    #[test]
+    fn index_doc_into_keeps_keys_vault_relative_and_drops_outside() {
+        let tmp = std::env::temp_dir().join(format!("notelume-idx-guard-{}", std::process::id()));
+        let root = tmp.join("vault");
+        let outside = tmp.join("outside.md");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("a.md"), "# a\n").unwrap();
+        fs::write(root.join("sub").join("b.md"), "# b\n").unwrap();
+        fs::write(&outside, "# outside\n").unwrap();
+
+        let entry = |path: &str| DocEntry {
+            path: path.into(),
+            title: path.into(),
+            tags: vec![],
+            outgoing: vec![],
+            unresolved: vec![],
+            content: String::new(),
+        };
+        let mut idx = VaultIndex::default();
+        idx.ready = true;
+        idx.vault_root = fs::canonicalize(&root).unwrap().to_string_lossy().into_owned();
+
+        // 库内相对键原样入索引
+        index_doc_into(&mut idx, "sub/b.md", "# b\n");
+        assert!(idx.docs.contains_key("sub/b.md"));
+
+        // 库内绝对路径归一成相对键，不另起一条绝对键
+        let abs_in = root.join("a.md").to_string_lossy().into_owned();
+        index_doc_into(&mut idx, &abs_in, "# a\n");
+        assert!(idx.docs.contains_key("a.md"));
+        assert!(!idx.docs.contains_key(&abs_in));
+
+        // 库外绝对路径（/tmp 下的临时稿）不入索引
+        let abs_out = outside.to_string_lossy().into_owned();
+        index_doc_into(&mut idx, &abs_out, "# outside\n");
+        assert!(!idx.docs.contains_key(&abs_out));
+        assert!(!idx.docs.contains_key("outside.md"));
+
+        // 老版本已经写进索引的库外键：同一路径再更新时顺手清掉
+        idx.docs.insert(abs_out.clone(), entry(&abs_out));
+        index_doc_into(&mut idx, &abs_out, "# outside\n");
+        assert!(!idx.docs.contains_key(&abs_out));
+
+        // `..` 越界与非 md 同样拒绝
+        index_doc_into(&mut idx, "../outside.md", "# x\n");
+        index_doc_into(&mut idx, "sub/../a.md", "# x\n");
+        index_doc_into(&mut idx, "notes.txt", "x");
+        assert!(!idx.docs.contains_key("../outside.md"));
+        assert!(!idx.docs.contains_key("sub/../a.md"));
+        assert!(!idx.docs.contains_key("notes.txt"));
+        assert!(!idx.docs.iter().any(|(k, _)| k.contains("outside")));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn index_scan_skips_symlinks_leading_outside_vault() {
+        use std::os::unix::fs::symlink;
+        let tmp = std::env::temp_dir().join(format!("notelume-idx-symlink-{}", std::process::id()));
+        let root = tmp.join("vault");
+        let outside = tmp.join("outside");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(root.join("a.md"), "# a\n").unwrap();
+        fs::write(outside.join("secret.md"), "# secret\n").unwrap();
+        symlink(&outside, root.join("linkdir")).unwrap();
+        symlink(outside.join("secret.md"), root.join("linkfile.md")).unwrap();
+
+        // 全量扫描只收库内真实文件；顺着链接会读到库外内容却挂在库内键下
+        let mut paths = Vec::new();
+        collect_md_paths(&root, "", 0, &mut paths);
+        assert_eq!(paths, vec!["a.md".to_string()]);
+
+        // 按文件名解析 wikilink 也不穿链接
+        assert_eq!(find_md_by_basename(&root, "a", 0).as_deref(), Some("a.md"));
+        assert_eq!(find_md_by_basename(&root, "secret", 0), None);
+        assert_eq!(find_md_by_basename(&root, "linkfile", 0), None);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
