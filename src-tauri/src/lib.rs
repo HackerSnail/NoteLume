@@ -571,7 +571,7 @@ fn mime_for_ext(ext: &str) -> &'static str {
 
 /// 百分号解码（至少把 %20 还原为空格）：markdown 图片链接遵循 URL 规范，
 /// 文件名里的空格等字符会被编码成 %XX，而磁盘上的真实文件名是解码后的。
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;

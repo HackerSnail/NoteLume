@@ -545,9 +545,12 @@ fn fetch_remote_bytes(url: &str) -> Result<Option<Vec<u8>>, String> {
 fn image_name(assets_dir: &Path, url: &str, ext: &str, bytes: &[u8]) -> String {
     let base = url.split(['?', '#']).next().unwrap_or("");
     let last = base.rsplit('/').next().unwrap_or(base);
+    // URL 路径段里的中文等字符是百分号编码；先按 URL 语义解码再落盘。否则磁盘上留下
+    // `%E7%A0%81…png`，读取端把 md 里的链接解码一次就找不到文件（图片显示为读取失败）
+    let last = crate::percent_decode(last);
     let raw_stem = match last.rsplit_once('.') {
         Some((s, _)) => s,
-        None => last,
+        None => last.as_str(),
     };
     let stem = {
         let s = sanitize_name(raw_stem);
@@ -1456,6 +1459,44 @@ mod tests {
         // 索引已增量收录新文档，反链可查
         assert!(idx.docs.contains_key(&out.rel));
         assert_eq!(idx.backlinks.get("notes/rust.md").map(|v| v.len()), Some(1));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_clip_decodes_percent_encoded_image_names() {
+        let dir = std::env::temp_dir().join(format!("notelume-clip-pct-image-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        // 1x1 PNG
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let encoded = "https://example.com/%E7%A0%81%E9%81%93%E7%99%BB%E5%BD%95%E9%A1%B5.png";
+        let p = payload("编码图名", &format!("# 编码图名\n\n![广告]({})\n", encoded));
+        let p = ClipPayload {
+            images: vec![ClipImage {
+                url: encoded.into(),
+                data_uri: Some(format!("data:image/png;base64,{}", png)),
+            }],
+            ..p
+        };
+        let cfg = ClipConfig { localize_images: true, ..ClipConfig::default() };
+        let out = write_clip(&root, &p, &cfg, None).unwrap();
+        assert_eq!(out.images_saved, 1);
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        // 磁盘与正文都用解码后的名字，不留百分号形态
+        assert!(text.contains("./assets/码道登录页.png"), "{text}");
+        assert!(root.join("Clippings/assets/码道登录页.png").exists());
+        assert!(!root
+            .join("Clippings/assets/%E7%A0%81%E9%81%93%E7%99%BB%E5%BD%95%E9%A1%B5.png")
+            .exists());
+        // 读取端（会先按 URL 语义解码一次）能按这条链接取到图
+        let uri = crate::read_image_data_uri(
+            root.to_string_lossy().into_owned(),
+            out.rel.clone(),
+            "./assets/码道登录页.png".into(),
+        )
+        .unwrap();
+        assert!(uri.starts_with("data:image/png;base64,"));
         let _ = fs::remove_dir_all(&dir);
     }
 
