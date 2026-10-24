@@ -56,6 +56,8 @@ import {
 import { exportSite, resolveImageRel, collectImages } from './site-export.js'
 import { buildSlidesHtml } from './slides-export.js'
 import { slidesAssets } from './slides-assets.js'
+import { printPaged } from './print-paged.js'
+import { printOptionsDialog } from './print-options-dialog.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -2858,6 +2860,25 @@ async function exportHTML() {
   }
 }
 
+// —— 打印（Ctrl+P）：画布直出老打印；普通文档先弹排版选项窗，Paged.js 预分页后再走系统打印，
+// 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）——
+async function printViaDialog() {
+  if (state.mode === 'canvas') {
+    window.print()
+    return
+  }
+  const options = await printOptionsDialog()
+  if (!options) return
+  setStatus(t('status.printPaging'))
+  try {
+    await printPaged(options, (state.currentFile || '').replace(/\.md$/i, ''))
+    setStatus('')
+  } catch (e) {
+    setStatus(t('status.printPagedFallback'))
+    window.print()
+  }
+}
+
 // —— 导出为演示文稿（单文档 → 自包含 reveal.js HTML，spec 见 docs/superpowers/specs/2026-10-25-slides-export-design.md）——
 async function exportSlides() {
   if (!state.currentFile) {
@@ -3119,7 +3140,7 @@ function registerAppCommands() {
   // Ctrl+E = 编辑 / 预览互切（Typora 语义，即源码 ⇄ 所见即所得）；Ctrl+/ 不再占默认键
   app('app.sourceMode', 'Mod-e', () => toggleSourceMode())
   // 打印保留 Ctrl+P（用户明确要求）；命令面板回 Ctrl+Shift+P
-  app('app.print', 'Mod-p', () => window.print())
+  app('app.print', 'Mod-p', () => printViaDialog())
   app('app.palette', 'Mod-Shift-p', () => { if (palette) palette.open() })
   app('app.graph', 'Mod-g', () => openGraphModal())
   app('app.dailyCapture', 'Mod-Shift-d', () => toggleDailyCapture())

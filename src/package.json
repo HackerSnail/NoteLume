@@ -59,6 +59,7 @@
     "markdown-it": "^14.1.0",
     "markdown-it-footnote": "^4.0.0",
     "mermaid": "^12.2.0",
+    "pagedjs": "^0.4.3",
     "prosemirror-commands": "^1.6.0",
     "prosemirror-gapcursor": "^1.4.1",
     "prosemirror-history": "^1.4.1",
