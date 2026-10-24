@@ -213,6 +213,14 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - 隔离：`#print-root` 常态移出屏外（预分页需要真实布局，`display:none` 会量出零尺寸），body 打 `data-paged-print` 标记后 `@media print` 只显示分页容器；老打印路径不打标记不受影响。`printPaged` 的 `finally` 摘容器与标记，抛错时 main.js 回退 `window.print()`。
 - 依赖 `pagedjs@^0.4`（Previewer API，动态 import；不用 polyfill 自动模式——那会接管全页样式与应用样式打架）。纸型边距维持 A4 / 18mm 20mm，不加选项。
 
+## Emoji 短代码（2026-10-25）
+
+`:smile:` 这类 GitHub 短代码只在显示层换脸，md 源文件永远是原文（`src/emoji-text.js`）。不能用 markdown-it-emoji 插件——它的 core 规则在 parse 阶段把文本 token 换成 emoji token，prosemirror-markdown 对未知 token 跳过，编辑器丢字、保存即删内容。
+
+- 编辑器显示：`src/emoji-decorations.js` 的装饰插件（emoji widget + 原文 `font-size:0` 隐藏，与 hl-decorations 同族），行内代码与代码块里不换脸。
+- 导出渲染：`mountEmojiRenderer` 只改 `renderer.rules.text`，挂在共享 tokenizer（整站 / 幻灯片导出）与 `main.js` 的 `exportMd`（单篇 HTML）上；docx 导出走 PM 文档树保持原文。
+- 词表：markdown-it-emoji 的 full 数据 + shortcuts 别名，约 1900 条。
+
 ## 架构设计
 
 ### Rust（src-tauri）职责
