@@ -3303,6 +3303,7 @@ function menuSpecCtx() {
     recents: loadRecents().map((e, i) => ({ id: 'recent:' + i, label: e.name })),
     templates: listMdInDir(TEMPLATE_DIR()).map((p) => ({ id: 'tpl:' + p, label: baseName(p).replace(/\.md$/i, '') })),
     themes: THEMES.map((name) => ({ id: 'theme:' + name, label: t('theme.' + name), checked: name === choice })),
+    languages: LOCALES.map((l) => ({ id: 'app.lang.' + l.id, label: l.name, checked: l.id === getLocale() })),
   }
 }
 

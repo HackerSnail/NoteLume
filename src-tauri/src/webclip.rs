@@ -518,9 +518,8 @@ fn ext_for_mime(mime: &str) -> Option<&'static str> {
     }
 }
 
-/// 无 data URI 时的远程兜底：Windows 走 lib.rs 的 download_remote（系统网络栈，不带 Referer），
-/// 下载失败与非 Windows 一律 Ok(None)——保留远程 URL，不阻断剪藏。
-#[cfg(windows)]
+/// 无 data URI 时的远程兜底：走 lib.rs 的 download_remote（各平台系统网络栈，不带 Referer），
+/// 下载失败一律 Ok(None)——保留远程 URL，不阻断剪藏。
 fn fetch_remote_bytes(url: &str) -> Result<Option<Vec<u8>>, String> {
     let lower = url.to_lowercase();
     if !(lower.starts_with("http://") || lower.starts_with("https://")) {
@@ -540,11 +539,6 @@ fn fetch_remote_bytes(url: &str) -> Result<Option<Vec<u8>>, String> {
         Ok(b) => Ok(Some(b)),
         Err(_) => Ok(None),
     }
-}
-
-#[cfg(not(windows))]
-fn fetch_remote_bytes(_url: &str) -> Result<Option<Vec<u8>>, String> {
-    Ok(None)
 }
 
 /// assets 内的文件名：URL 主名净化后加扩展名；已存在时同内容复用、异内容追加 fnv1a 指纹。

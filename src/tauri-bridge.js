@@ -257,7 +257,7 @@ export function readImageDataUri(vaultRoot, mdRel, src) {
   return invoke('read_image_data_uri', { vaultRoot, mdRel, src })
 }
 
-/** 远程图取字节回 data: URL（Windows 走系统 URLDownloadToFileW，不带 Referer，绕开图床防盗链） */
+/** 远程图取字节回 data: URL（各平台系统网络栈：Windows URLDownloadToFileW / 其他系统 curl，不带 Referer，绕开图床防盗链） */
 export function fetchRemoteImageDataUri(url) {
   return invoke('fetch_remote_image_data_uri', { url })
 }

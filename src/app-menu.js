@@ -95,6 +95,8 @@ export function buildMacMenuSpec(ctx = {}) {
       else if (entry.dynamic === 'templates') withTail(ctx.templates || [], t('menu.noTemplates'))
       else if (entry.dynamic === 'themes') {
         for (const r of ctx.themes || []) kids.push({ type: 'check', id: r.id, text: r.label, checked: !!r.checked })
+      } else if (entry.dynamic === 'languages') {
+        for (const r of ctx.languages || []) kids.push({ type: 'check', id: r.id, text: r.label, checked: !!r.checked })
       }
       if (kids.length) push({ type: 'submenu', id: entry.id, text: entry.text, dynamic: entry.dynamic, items: kids })
     }
@@ -109,6 +111,8 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       'app.shortcuts',
       'app.appearance',
+      'app.clipSettings',
+      submenu('language', t('menu.language'), 'languages'),
       'sep',
       role('Services'),
       'sep',
