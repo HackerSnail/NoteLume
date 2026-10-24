@@ -23,8 +23,10 @@ import {
 } from 'prosemirror-markdown'
 import MarkdownIt from 'markdown-it'
 import footnote from 'markdown-it-footnote'
+import { full as emoji } from 'markdown-it-emoji'
 import { tableNodes } from 'prosemirror-tables'
 import { t } from './i18n.js'
+import { mountEmojiRenderer } from './emoji-text.js'
 
 // —— 1. 扩展 schema ————————————————————————————————————————————————
 // 复用默认 schema 的 OrderedMap，追加/覆写节点与标记，避免重写 DOM 规格。
@@ -440,6 +442,10 @@ export const schema = new Schema({ nodes: extendedNodes, marks: extendedMarks })
 export const tokenizer = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
 // 功能项 J：并入脚注（[^n] 引用 + 文末定义）；无脚注时对本管线惰性，不改既有 commonmark 行为
 tokenizer.use(footnote)
+// emoji 短代码（:smile: → 😄）：只动 renderer（整站 / 幻灯片导出走 .render()），解析流水线零改动——
+// markdown-it-emoji 插件的 core 规则会把 parse 产物里的文本换成 emoji token，prosemirror-markdown
+// 对未知 token 跳过，编辑器会丢字，故不能用那个插件（见 emoji-text.js 头注）
+mountEmojiRenderer(tokenizer)
 
 // —— 中文标点紧邻的强调（加粗 / 斜体 / 删除线）———————————————————
 // CommonMark 的 flanking 判定假设文字按空白分词：定界符串外侧紧贴标点时，要构成可开合的

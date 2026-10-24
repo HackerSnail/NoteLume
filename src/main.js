@@ -58,6 +58,7 @@ import { buildSlidesHtml } from './slides-export.js'
 import { slidesAssets } from './slides-assets.js'
 import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
+import { mountEmojiRenderer } from './emoji-text.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -111,6 +112,7 @@ import { tempDir, join } from '@tauri-apps/api/path'
 // html 开着是为了认正文里的字面 HTML（WordPress 一类导出件），但导出件是独立文件，
 // 脚本 / 事件属性 / 危险协议一律走编辑器与站点同一份白名单
 const exportMd = MarkdownIt('commonmark', { html: true }).enable(['table', 'strikethrough'])
+mountEmojiRenderer(exportMd) // emoji 短代码：导出件里的 :name: 出 emoji，md 源文件不变
 exportMd.renderer.rules.html_block = (tokens, idx) => sanitizeHtml(tokens[idx].content)
 // 行内字面 HTML 保持转义文本：markdown-it 把 <b>x</b> 拆成三个 token，逐个净化会拆散标签配对
 exportMd.renderer.rules.html_inline = (tokens, idx, options, env, self) => self.rules.text(tokens, idx, options, env, self)
