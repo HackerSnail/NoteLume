@@ -227,6 +227,25 @@ t('主题子菜单为单选式勾选项', () => {
   assert.deepEqual(sub.items.map((i) => [i.type, i.checked]), [['check', true], ['check', false]])
 })
 
+t('语言子菜单跟随「更多」：列全部语言、当前语言打勾', () => {
+  const spec = specOf(base(), { languages: [
+    { id: 'app.lang.zh-CN', label: '简体中文', checked: true },
+    { id: 'app.lang.en-US', label: 'English', checked: false },
+  ] })
+  const sub = group(spec, 'app').items.find((i) => i.id === 'language')
+  assert.ok(sub, '应用组缺语言子菜单')
+  assert.equal(sub.text, '界面语言')
+  assert.deepEqual(sub.items.map((i) => [i.id, i.type, i.checked]), [
+    ['app.lang.zh-CN', 'check', true],
+    ['app.lang.en-US', 'check', false],
+  ])
+})
+
+t('语言子菜单：ctx 未给语言时不挂空子菜单', () => {
+  const spec = specOf()
+  assert.equal(group(spec, 'app').items.filter((i) => i.id === 'language').length, 0)
+})
+
 t('注册表几乎为空：只剩含原生角色项的组，格式/段落/视图消失', () => {
   const spec = specOf([C('app.save', '保存当前文件')])
   assert.deepEqual(spec.groups.map((g) => g.id), ['app', 'file', 'edit', 'window'])
@@ -274,6 +293,7 @@ t('叶子 id 全局唯一（原生菜单按 id 回调，重名会串事件）', 
     recents: [{ id: 'recent:0', label: 'a.md' }],
     templates: [{ id: 'tpl:0', label: 't' }],
     themes: [{ id: 'theme:light', label: '浅色', checked: true }],
+    languages: [{ id: 'app.lang.zh-CN', label: '简体中文', checked: true }],
   })
   const all = []
   const walk = (items) => items.forEach((i) => {

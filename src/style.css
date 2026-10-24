@@ -2548,6 +2548,79 @@ html.nl-dragging * {
   padding: 0.1em 1em;
   color: var(--text-quote);
 }
+/* 字面 HTML 块：净化后就地渲染，标题/段落/表格的排版由 .ProseMirror 后代选择器白拿。
+   容器不写上下边距、也不抹掉子元素首尾边距——段落边距照常穿透 div 折叠，连续两块之间才有正常段距；
+   只掐整篇第一块的上边距，与上面 > h1:first-child 同一条理由。 */
+.ProseMirror > .nl-html-block:first-child > :first-child {
+  margin-top: 0;
+}
+/* 块内是普通 HTML：空白按浏览器默认折叠。编辑区的 pre-wrap 只服务光标映射，
+   原子里没有可映射的文本，照抄会把源码换行变成真换行（徽章一行一个）。 */
+.ProseMirror .nl-html-block {
+  white-space: normal;
+}
+.ProseMirror .nl-html-block figcaption {
+  margin-top: 0.4em;
+  color: var(--muted);
+  font-size: 0.9em;
+  text-align: center;
+}
+.ProseMirror .nl-html-block img {
+  max-width: 100%;
+}
+/* 块内图片读不到：去掉破图图标，留 alt 文本 */
+.ProseMirror .nl-html-block img.nl-img-missing {
+  outline: 1px dashed var(--border);
+  outline-offset: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 1.2em;
+}
+.ProseMirror .nl-html-block {
+  cursor: pointer;
+}
+/* 就地改源码：单击块体后 textarea 长在块自己的位置上，改完失焦即回渲染态 */
+.ProseMirror .nl-html-block.nl-html-edit {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-panel);
+}
+.ProseMirror .nl-html-block.nl-html-edit textarea {
+  display: block;
+  width: 100%;
+  min-height: 4.5em;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  line-height: 1.5;
+  padding: 0.6em 0.8em;
+  tab-size: 2;
+}
+/* 纯注释块不占正文位置（Typora 同样不显示） */
+.ProseMirror .nl-html-block.nl-html-hidden {
+  display: none;
+}
+/* 整块被白名单挡光时退回显示源码 */
+.ProseMirror .nl-html-block.nl-html-raw {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--muted);
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+}
+.ProseMirror .nl-html-block.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 /* Obsidian callout 卡片：分型配色，颜色用 color-mix 随 light/dark/vampire 自适应 */
 .ProseMirror .nl-callout {
   --callout-hue: var(--accent);

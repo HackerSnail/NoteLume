@@ -38,7 +38,7 @@
 
 ### 功能亮点
 
-* ✍️ **所写即所得**：Markdown 与富文本双向无损往返；KaTeX 公式、Mermaid 图表、callout 卡片、合并单元格表格、脚注、代码块子语言高亮，全都在渲染态直接编辑
+* ✍️ **所写即所得**：Markdown 与富文本双向无损往返；KaTeX 公式、Mermaid 图表、callout 卡片、合并单元格表格、块级裸 HTML、脚注、代码块子语言高亮，全都在渲染态直接编辑
 * 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 力导向图谱、全库搜索、版本快照一键回滚
 * 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；不联网也绝不上传，删除进系统回收站
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
@@ -71,7 +71,7 @@ npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 把浏览器里的网页正文存进知识库：按模板落盘成标准 md，图片进 `assets/`，文末自动关联库内相关笔记。
 
 1. **装扩展**：Edge 地址栏输 `edge://extensions`，打开左下角「开发人员模式」，点「加载已解压缩的扩展」选仓库里的 `extension/` 目录（Chrome 是 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」）。加载后建议在工具栏拼图菜单里把「NoteLume 剪藏」固定出来。
-2. **NoteLume 里开服务**：工具条「更多 → 网页剪藏设置」，勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
+2. **NoteLume 里开服务**：mac 从菜单栏「NoteLume → 网页剪藏设置」进入，Windows / Linux 走工具条「更多 → 网页剪藏设置」；勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
 3. **扩展里填地址**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），「测试连接」应回「连接正常 · 已打开知识库」。填这一项就够了，没有令牌要配。
 4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段（用内置 highlight 模板落盘，来源行进引用块）。
 
@@ -83,7 +83,7 @@ npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 
 ### 快捷键
 
-mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置，全部可在「更多」→「快捷键设置…」重绑（冲突会硬阻止保存）。
+mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置，全部可在「快捷键设置…」里重绑（mac 在菜单栏 NoteLume 下，Windows / Linux 在工具条「更多」里；冲突会硬阻止保存）。
 
 **文件与导航**
 
@@ -173,7 +173,7 @@ Tired of cloud notes that spin forever, but unwilling to give up speed for struc
 
 ### Highlights
 
-* ✍️ **True WYSIWYG**: lossless Markdown round-trip; edit KaTeX math, Mermaid diagrams, callouts, merged-cell tables, footnotes, and syntax-highlighted code blocks right in the rendered view
+* ✍️ **True WYSIWYG**: lossless Markdown round-trip; edit KaTeX math, Mermaid diagrams, callouts, merged-cell tables, literal HTML blocks, footnotes, and syntax-highlighted code blocks right in the rendered view
 * 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, Canvas-based knowledge graph, vault-wide search, snapshot history with one-click rollback
 * 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; nothing ever leaves your machine; deletions go to the system trash
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
@@ -206,7 +206,7 @@ npm run build    # release bundles, output under src-tauri/target/release/bundle
 Save web pages into your vault: content lands as standard Markdown per your template, images go to `assets/`, and related notes are linked at the end of the clip.
 
 1. **Install the extension**: open `edge://extensions` (Chrome: `chrome://extensions`), turn on developer mode, click "Load unpacked" and pick the `extension/` folder in this repo. Pin "NoteLume 剪藏" to the toolbar from the puzzle menu.
-2. **Start the server in NoteLume**: toolbar → More → Web clipping settings, check "Enable clipping server" and save. The status bar shows the actual address (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`), how many related notes to link, and the two switches for image localization and whole-page fallback.
+2. **Start the server in NoteLume**: on macOS use the menu bar → NoteLume → Web clipping settings; on Windows / Linux use toolbar → More → Web clipping settings. Check "Enable clipping server" and save. The status bar shows the actual address (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`), how many related notes to link, and the two switches for image localization and whole-page fallback.
 3. **Point the extension at it**: right-click the extension icon → Options, fill in the address shown in NoteLume (default `http://127.0.0.1:3210`), then "Test connection" should report OK with an open vault. That's the only field you need — no token.
 4. **Clip**: click the pinned icon for the whole page, or select text first and right-click → "剪藏选中内容到 NoteLume" for just the selection (which lands through the built-in highlight template, with the source as a block quote).
 
