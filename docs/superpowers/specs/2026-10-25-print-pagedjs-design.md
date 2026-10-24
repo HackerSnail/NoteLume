@@ -36,7 +36,7 @@ Ctrl+P → app.print
 ```
 
 - **内容源用 DOM 克隆，不重新渲染 markdown**：编辑器里的图片已经过 `read_image_data_uri` 换成 data URI，在应用内新增容器里引用相对路径必裂图；克隆现成 DOM 零风险，wikilink、callout、任务清单的呈现与屏幕一致。
-- **Paged.js**（npm `pagedjs@^0.5`，MIT）走 Previewer API（`new Previewer().preview(content, styles, renderTo)`），不用 polyfill 自动模式——自动模式接管全页样式，会和应用自身样式打架。
+- **Paged.js**（npm `pagedjs@^0.4`，安装时取 0.4 最新，MIT）走 Previewer API（`new Previewer().preview(content, styles, renderTo)`），不用 polyfill 自动模式——自动模式接管全页样式，会和应用自身样式打架。
 - **打印隔离**：`@media print` 里按 `body[data-paged-print]` 隐藏 `body > :not(#print-root)`，只显示分页容器；这条规则与现有打印规则并存，现有路径不打这个标记就不受影响。
 - **四个排版件的实现**：
   - 页码 + 页眉：`@page` 边注——页脚居中 `counter(page)`，页眉居中文档标题（`string-set` 从标题节点取）；`:first` 页页眉留空（封面勾选时即封面页，未勾选时即正文首页）。
