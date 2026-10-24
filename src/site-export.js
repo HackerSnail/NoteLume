@@ -12,6 +12,7 @@
 
 import katex from 'katex'
 import { tokenizer } from './editor-schema.js'
+import { sanitizeHtml } from './html-sanitize.js'
 import { anchorSlug } from './heading-anchor.js'
 import { t, getLocale } from './i18n.js'
 
@@ -318,13 +319,34 @@ function ensureRenderRules() {
     return defaultLinkOpen(tokens, idx, opts, env, self)
   }
 
-  // 交叉引用锚点（批次 F 后续）：编辑器/导入侧的 `<a id="…"></a>`（非标题目标的跳转落点）。tokenizer 是
-  // html:false，默认渲染会把自定义 anchor token 当转义文本，故显式输出字面锚（id 已在导入侧净化为
-  // [A-Za-z0-9_-]，再走 escAttr 双保险），使站点里 `[文本](#id)` 能落到该锚点。
+  // 交叉引用锚点（批次 F 后续）：编辑器/导入侧的 `<a id="…"></a>`（非标题目标的跳转落点）。行内规则里
+  // anchor 排在 html_inline 之前（站点这一趟会临时开 html），故空锚仍归本规则；默认渲染会把自定义
+  // anchor token 当转义文本，故显式输出字面锚（id 已在导入侧净化为 [A-Za-z0-9_-]，再走 escAttr 双保险），
+  // 使站点里 `[文本](#id)` 能落到该锚点。
   R.anchor = (tokens, idx) => {
     const id = tokens[idx].attrGet('id') || ''
     return id ? `<a id="${escAttr(id)}"></a>` : ''
   }
+
+  // 字面 HTML（WordPress / 各类导出器写的正文）：站点是发布物，脚本、事件属性、危险协议一律挡在门外，
+  // 故与编辑器共用同一份白名单净化；块内 <img> 走普通图片同一套镜像与「当前页→资源」相对路径改写。
+  const htmlOut = (content, env) => {
+    if (env && env.__site) {
+      return sanitizeHtml(content, {
+        image: (raw) => {
+          const rel = resolveImageRel(env.fromDir, raw, env.imageSet, env.imgByBase)
+          if (!rel) return null
+          env.assets.add(rel)
+          return relpath(env.fromDir, rel)
+        },
+      })
+    }
+    return sanitizeHtml(content)
+  }
+  R.html_block = (tokens, idx, options, env) => htmlOut(tokens[idx].content, env)
+  // 行内字面 HTML 不进这一趟：markdown-it 把 <b>x</b> 拆成「开标签 / 文本 / 闭标签」三个 token，
+  // 逐个净化会把配对拆散（<b></b>x）。编辑器侧 html:false 时它本来就是转义文本，这里照旧。
+  R.html_inline = (tokens, idx, options, env, self) => self.rules.text(tokens, idx, options, env, self)
 
   // 标题锚定：给每个 <hN> 发 id=共享锚点（与导入侧 Rust assign_anchors / 编辑器点击同一套 slugAllInOrder）。
   // 标题纯文本 = inline token 子节点里 text/code_inline 的 content 拼接（强调/删除线等标记非 text token → 自然剔除，
@@ -350,12 +372,28 @@ function ensureRenderRules() {
 }
 let rulesReady = false
 
+// 站点这一趟要认字面 HTML（html_block / html_inline 出 token），但编辑器解析必须保持 html:false，
+// 否则 <a id> / <mark> 之类会被内联 HTML 规则接管，故只在渲染前后临时翻开关（与 extractHtmlBlocks 同法）。
+function ensureRules() {
+  if (!rulesReady) { ensureRenderRules(); rulesReady = true }
+}
+
+function renderWithHtml(md, env) {
+  const prev = tokenizer.options.html
+  tokenizer.options.html = true
+  try {
+    return taskFixup(tokenizer.render(md, env))
+  } finally {
+    tokenizer.options.html = prev
+  }
+}
+
 /** 渲染单页正文为站内 HTML（确保渲染规则已挂载）。ctx 见 exportSite 内部结构。 */
 export function renderSite(md, ctx = {}) {
-  if (!rulesReady) { ensureRenderRules(); rulesReady = true }
+  ensureRules()
   const env = { __site: true, selfRel: '', fromDir: '', wikiMap: new Map(), imageSet: new Set(), imgByBase: new Map(), assets: new Set(), ...ctx }
   if (!(env.wikiMap instanceof Map)) env.wikiMap = new Map()
-  return taskFixup(tokenizer.render(md, env))
+  return renderWithHtml(md, env)
 }
 
 // ============ 页面外壳 / CSS / 首页 / 搜索页 ============
@@ -504,9 +542,8 @@ function buildSearchPage() {
  * @returns {Promise<{ok:number,failed:number,total:number}>}
  */
 export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }) {
-  if (!rulesReady) { ensureRenderRules(); rulesReady = true }
+  ensureRules()
   const say = (m) => { try { setStatus(m) } catch { /* ignore */ } }
-
   say(t('site.building'))
   const graph = await io.buildGraph(vaultRoot)
   const docs = ((graph && graph.docs) || []).map((d) => ({ rel: normRel(d.rel), title: d.title }))
@@ -536,8 +573,7 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }
       const raw = await io.readMd(vaultRoot, d.rel)
       const body = stripFrontmatter(raw)
       const ctx = { __site: true, selfRel: d.rel, fromDir: dirname(d.rel), wikiMap, imageSet, imgByBase, assets }
-      const rendered = tokenizer.render(body, ctx)
-      const bodyHtml = taskFixup(rendered)
+      const bodyHtml = renderWithHtml(body, ctx)
       searchEntries.push({ rel: d.rel, title: d.title, text: htmlToText(bodyHtml) })
       const fromDir = dirname(d.rel)
       const sidebar = buildSidebar(docs, d.rel, fromDir)

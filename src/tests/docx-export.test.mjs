@@ -134,4 +134,12 @@ const orphanDefs = docToIR(orphanDoc).blocks.filter((b) => b.type === 'footnoteD
 assert.ok(orphanDefs.every((d) => typeof d.id === 'number'), 'footnoteDef.id 必须是数字（空 id 应被跳过）')
 assert.strictEqual(orphanDefs.length, 1, '空 id 的孤立定义应被跳过，只保留正常那条')
 
+// 字面 HTML 块 → Word 降级为可见文字：不静默丢内容，也不把标签字面量带进正文
+const htmlIr = mdToIR('<h2 class="wp-block-heading" id="x">建站初衷</h2>\n\n<p>正文 <code>y</code> 与 <script>evil()</script> 尾巴</p>\n')
+const htmlTexts = htmlIr.blocks.map((b) => (b.inline || []).map((i) => i.text || '').join(''))
+assert.ok(htmlTexts.includes('建站初衷'), 'HTML 块标题文字要落到 Word: ' + JSON.stringify(htmlIr.blocks))
+assert.ok(htmlTexts.some((s) => s.includes('正文') && s.includes('尾巴')), JSON.stringify(htmlTexts))
+assert.ok(!JSON.stringify(htmlIr).includes('<h2'), 'Word 正文不该带标签字面量')
+assert.ok(!JSON.stringify(htmlIr).includes('evil'), 'script 内容不进 Word 正文')
+
 console.log('docx-export.test.mjs: 全部通过（block 数=' + blocks.length + '）')

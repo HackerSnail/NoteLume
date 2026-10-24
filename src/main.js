@@ -98,12 +98,18 @@ import { createSettingsStore } from './settings-store.js'
 import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } from './i18n.js'
 import { LOCALES } from './locales/index.js'
 import { analyzeOutline, hiddenRows } from './outline-tree.js'
+import { sanitizeHtml } from './html-sanitize.js'
 import MarkdownIt from 'markdown-it'
 import { tempDir, join } from '@tauri-apps/api/path'
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
 // 与 editor-schema 里的 tokenizer 分开，避免污染 schema 层的解析器
-const exportMd = MarkdownIt('commonmark', { html: false }).enable(['table', 'strikethrough'])
+// html 开着是为了认正文里的字面 HTML（WordPress 一类导出件），但导出件是独立文件，
+// 脚本 / 事件属性 / 危险协议一律走编辑器与站点同一份白名单
+const exportMd = MarkdownIt('commonmark', { html: true }).enable(['table', 'strikethrough'])
+exportMd.renderer.rules.html_block = (tokens, idx) => sanitizeHtml(tokens[idx].content)
+// 行内字面 HTML 保持转义文本：markdown-it 把 <b>x</b> 拆成三个 token，逐个净化会拆散标签配对
+exportMd.renderer.rules.html_inline = (tokens, idx, options, env, self) => self.rules.text(tokens, idx, options, env, self)
 
 const state = {
   vaultRoot: null, // 知识库根（绝对路径）

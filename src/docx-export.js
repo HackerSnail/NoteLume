@@ -11,6 +11,7 @@
 // IR 契约与 Rust serde 结构一一对应（block 以 type 判别，camelCase）；详见 docx_export.rs 顶部定义。
 
 import { parseMarkdown } from './editor-schema.js'
+import { htmlToPlain } from './html-sanitize.js'
 
 // —— 行内收集：把一段落/单元格/列表项的 inline 子节点摊平成 IRInline[] ——
 function collectInline(parent, ctx) {
@@ -80,6 +81,12 @@ function blockToIR(node, ctx, blocks) {
       // 块级公式：① 降级为一个含纯文本 latex 的段落。
       blocks.push({ type: 'paragraph', inline: [{ text: node.attrs.latex || '', math: true }] })
       break
+    case 'html_block': {
+      // 字面 HTML 块：Word 侧没有对应结构，降级为可见文字（不静默丢内容，也不把标签原样塞进正文）
+      const text = htmlToPlain(node.attrs.source)
+      if (text) blocks.push({ type: 'paragraph', inline: [{ text }] })
+      break
+    }
     case 'blockquote':
       // 导入侧无引用概念；仍产出 Quote 供 Word 缩进保真。多子块拆成多条 Quote。
       flattenToQuote(node, ctx, blocks)

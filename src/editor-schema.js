@@ -281,6 +281,29 @@ const extendedNodes = baseSchema.spec.nodes
       ]
     },
   })
+  // HTML 块：原样承载一段字面 HTML 源码（WordPress / 各类导出器写的正文都是这种形态）。
+  // 源码只存 attrs.source，渲染侧交 nodeview 净化后注入，序列化原样写回，未经编辑时字节一致。
+  .addToEnd('html_block', {
+    atom: true,
+    group: 'block',
+    attrs: { source: { default: '' } },
+    parseDOM: [
+      {
+        tag: 'div.nl-html-block[data-source]',
+        getAttrs(dom) {
+          return { source: dom.getAttribute('data-source') || '' }
+        },
+      },
+    ],
+    toDOM(node) {
+      // 无 nodeview 的环境（如站点导出的临时 DOM 解析）退回显示源码，不至于整块消失
+      return [
+        'div',
+        { class: 'nl-html-block', 'data-source': node.attrs.source, contenteditable: 'false' },
+        ['pre', { class: 'nl-html-src' }, node.attrs.source],
+      ]
+    },
+  })
   // 图片：在默认 image 基础上增加 embed 标记，无损承载 Obsidian 的 ![[图片.png]] 嵌入语法；
   // width 承载 Typora/Obsidian 的拖拽尺寸（![a](a.png =328x) / ![[a.png|328]]），高度随比例自适应
   .update('image', {
@@ -568,8 +591,9 @@ tokenizer.inline.ruler.push('tag', (state, silent) => {
 
 // <a id="…"></a> 交叉引用锚点（html:false 下默认会当转义文本，故自定义行内规则截获）：只认
 // 导入侧序列化的空锚形态 `<a id="X"></a>`（X 为净化后的书签名，不含引号）；其余 <a> 交回默认规则。
+// 排在 html_inline 之前：站点导出那一趟要临时打开 html（认字面 HTML 块），编辑器侧写的空锚仍须归本规则。
 const ANCHOR_RE = /^<a id="([^"]*)"><\/a>/
-tokenizer.inline.ruler.push('anchor', (state, silent) => {
+tokenizer.inline.ruler.before('html_inline', 'anchor', (state, silent) => {
   const src = state.src
   const pos = state.pos
   if (src.charCodeAt(pos) !== 0x3c /* < */) return false
@@ -587,7 +611,7 @@ tokenizer.inline.ruler.push('anchor', (state, silent) => {
 // 故与 anchor 同样自定义行内规则截获。写成 HTML 标签而不是私有语法，是为了让 Typora /
 // Obsidian 打开同一文件时高亮不丢；颜色只收预设名或六位 hex，不合法的当普通文本。
 // 内层内容过一遍完整 inline 规则（加粗 / 链接 / 标签 / 再嵌套高亮都能嵌），
-// 与 markdown-it 的 link 同构。
+// 与 markdown-it 的 link 同构。注册顺序同 anchor：排在 html_inline 之前，站点导出开 html 时也不被抢。
 const HL_OPEN_RE = /^<mark\s+data-color="([^"]*)"\s*>/i
 // 配对闭标签要数嵌套深度：直接 indexOf 会把内层 <mark> 的闭标签当成自己的
 const HL_TAG_RE = /<mark\s+data-color="[^"]*"\s*>|<\/mark\s*>/gi
@@ -605,7 +629,7 @@ function findHlClose(src, from, limit) {
   }
   return -1
 }
-tokenizer.inline.ruler.push('highlight', (state, silent) => {
+tokenizer.inline.ruler.before('html_inline', 'highlight', (state, silent) => {
   const pos = state.pos
   const max = state.posMax
   const src = state.src
@@ -907,47 +931,85 @@ function tryAsTask(item) {
   return item.type.create({ checked }, Fragment.from(itemKids))
 }
 
-// —— 功能项 J：合并表格的两阶段解析（最脆一环，见 spec §8）——
-// 主 tokenizer 是 html:false，裸 <table> 会被当转义文本。故在 markdown 解析前：
-//  ① 预处理器把「独占一行、顶层」的 <table>…</table>（跳过围栏代码块）换成占位段落行；
+// —— 功能项 J/X：HTML 块的两阶段解析（合并表格是其中一种特例，边界见合并表 spec）——
+// 主 tokenizer 是 html:false，字面 HTML 会被当转义文本。故在 markdown 解析前：
+//  ① 预处理器把顶格的 HTML 块（含独占一行的 <table>…</table>）换成占位段落行；
 //  ② 照常走 mdParser 得到含占位段落的 doc；
-//  ③ 用 DOMParser.parseSlice 把原始 HTML 还原为 table 节点，原位替换占位段落。
-// 我们自身序列化的合并表是单行 HTML，故按「整行即一张表」识别；外部多行 HTML 表不在保真范围。
+//  ③ 表格类还原为可编辑 table 节点，其余装进 html_block 节点，原位替换占位段落。
+// 块边界直接问 markdown-it（把共享 tokenizer 的 html 临时打开再解析一遍拿 token.map），
+// 不自己数行：类型 1（<pre>/<script>/…）要到闭标签才结束、类型 6 到空行结束、围栏内不算，
+// 这些规则手写一遍必然和真正那次解析对不齐。
 const TABLE_LINE_RE = /^<table\b[\s\S]*<\/table>$/i
-const PLACEHOLDER_RE = /^\{\{nl-table-(\d+)\}\}$/
+const HTML_BLOCK_RE = /^\{\{nl-html-(\d+)\}\}$/
 
-function extractTableHTML(md) {
+// 只认这些起始标签：CommonMark 类型 6 名单 + 类型 1 的 pre/script/style/textarea + 注释/声明/CDATA。
+// 刻意不收类型 7（任意标签独占一行）：<a id="x"></a> 与 <mark data-color=…> 是自定义行内规则
+// （anchor / highlight）的载体，独占一行时也得继续走行内规则，不能被整块接管。
+const HTML_BLOCK_TAGS = new Set(
+  ('address article aside base basefont blockquote body caption center col colgroup dd details ' +
+    'dialog dir div dl dt fieldset figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 ' +
+    'head header hr html iframe legend li link main menu menuitem nav noframes ol optgroup option p ' +
+    'param search section summary table tbody td tfoot th thead title tr track ul ' +
+    ' pre script style textarea'
+  ).split(' ')
+)
+
+// 块首行 → 标签名（注释 / <!DOCTYPE / <?xml / <![CDATA[ 归一为 '#'，一律收）
+function htmlBlockTag(line) {
+  const m = /^<\s*\/?\s*([a-zA-Z][a-zA-Z0-9-]*)/.exec(line)
+  if (m) return m[1].toLowerCase()
+  if (/^<!--/.test(line) || /^<\?/.test(line) || /^<!\[CDATA\[/.test(line) || /^<![a-zA-Z]/.test(line)) return '#'
+  return null
+}
+
+function scanHtmlBlocks(md) {
   const lines = md.split('\n')
-  const tables = []
+  const prev = tokenizer.options.html
+  tokenizer.options.html = true
+  let tokens
+  try {
+    tokens = tokenizer.parse(md, Object.create(null))
+  } finally {
+    tokenizer.options.html = prev
+  }
+  const found = []
+  for (const tk of tokens) {
+    if (tk.type !== 'html_block' || !tk.map) continue
+    const [l0, l1] = tk.map
+    // 只接管顶格块：列表项 / 引用里缩进的 HTML 块交回原样（占位符要插回原行位置，缩进一丢就散架）
+    if (!lines[l0] || lines[l0][0] !== '<') continue
+    const tag = htmlBlockTag(lines[l0])
+    if (tag == null || (!HTML_BLOCK_TAGS.has(tag) && tag !== '#')) continue
+    found.push({ start: l0, end: l1, source: lines.slice(l0, l1).join('\n') })
+  }
+  return found
+}
+
+function extractHtmlBlocks(md) {
+  const found = scanHtmlBlocks(md)
+  const blocks = []
+  if (!found.length) return { text: md, blocks }
+  const lines = md.split('\n')
+  const at = new Map()
+  for (const f of found) {
+    const single = f.end === f.start + 1
+    blocks.push({ kind: single && TABLE_LINE_RE.test(f.source.trim()) ? 'table' : 'html', source: f.source })
+    at.set(f.start, { end: f.end, idx: blocks.length - 1 })
+  }
   const out = []
-  let inFence = false
-  let fenceChar = ''
-  for (const line of lines) {
-    const t = line.trim()
-    const fm = /^(`{3,}|~{3,})/.exec(t)
-    if (fm) {
-      const ch = fm[1][0]
-      if (!inFence) {
-        inFence = true
-        fenceChar = ch
-      } else if (ch === fenceChar) {
-        inFence = false
-        fenceChar = ''
-      }
-      out.push(line)
-      continue
-    }
-    if (!inFence && TABLE_LINE_RE.test(t)) {
-      const idx = tables.length
-      tables.push(t)
+  for (let i = 0; i < lines.length; i++) {
+    const span = at.get(i)
+    if (span) {
       // 用空行夹住占位，确保它独占成一个段落
-      out.push('', '{{nl-table-' + idx + '}}', '')
+      out.push('', '{{nl-html-' + span.idx + '}}', '')
+      i = span.end - 1
     } else {
-      out.push(line)
+      out.push(lines[i])
     }
   }
-  return { text: out.join('\n'), tables }
+  return { text: out.join('\n'), blocks }
 }
+
 
 // 把列数不齐的畸形表格补成矩形：docx 导入的合并表常出现「表头行 colspan 加总 ≠ 数据行」，
 // 还原出的 ProseMirror 表格非矩形会让 prosemirror-tables 的 TableMap 在选区/点击计算时崩，
@@ -1010,29 +1072,34 @@ function parseTableSlice(html) {
   return changed ? Fragment.from(fixed) : frag
 }
 
-function restoreTables(doc, tables) {
+function restoreHtmlBlocks(doc, blocks) {
   const hits = []
   doc.descendants((node, pos) => {
     if (node.type.name === 'paragraph') {
-      const m = PLACEHOLDER_RE.exec(node.textContent.trim())
-      if (m && tables[Number(m[1])] != null) hits.push({ pos, size: node.nodeSize, idx: Number(m[1]) })
+      const m = HTML_BLOCK_RE.exec(node.textContent.trim())
+      if (m && blocks[Number(m[1])] != null) hits.push({ pos, size: node.nodeSize, idx: Number(m[1]) })
     }
   })
   if (!hits.length) return doc
   const tr = new Transform(doc)
   // 由后往前替换，低位位置不受高位替换影响
   for (const h of hits.sort((a, b) => b.pos - a.pos)) {
-    tr.replaceWith(h.pos, h.pos + h.size, parseTableSlice(tables[h.idx]))
+    const b = blocks[h.idx]
+    const content =
+      b.kind === 'table'
+        ? parseTableSlice(b.source)
+        : schema.nodes.html_block.create({ source: b.source })
+    tr.replaceWith(h.pos, h.pos + h.size, content)
   }
   return tr.doc
 }
 
 /** Markdown 字符串 -> ProseMirror doc */
 export function parseMarkdown(mdText) {
-  const { text, tables } = extractTableHTML(mdText || '')
+  const { text, blocks } = extractHtmlBlocks(mdText || '')
   const doc = mdParser.parse(text)
   const filled = convertTasks(doc) || schema.topNodeType.createAndFill()
-  return tables.length ? restoreTables(filled, tables) : filled
+  return blocks.length ? restoreHtmlBlocks(filled, blocks) : filled
 }
 
 // —— 4. serializer（ProseMirror -> Markdown）——————————————————————————
@@ -1254,6 +1321,11 @@ const serializerNodes = {
     state.write(node.attrs.latex)
     state.ensureNewLine()
     state.write('$$')
+    state.closeBlock(node)
+  },
+  // HTML 块：源码原样写回，不转义、不重排（写它的就是 WordPress / 别的编辑器，改一个字节都是差异）
+  html_block(state, node) {
+    state.write(node.attrs.source)
     state.closeBlock(node)
   },
   // —— 功能项 J：脚注序列化 ——
