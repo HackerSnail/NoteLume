@@ -69,7 +69,7 @@ check('title 取首个 # 标题', () => {
 })
 
 // —— 产物拼装 buildSlidesHtml ——
-const FAKE = { revealJs: '<reveal-js>', revealCss: '<reveal-css>', themeCss: '<theme-css>', notesJs: '<notes-js>', notesHtml: '<script src="notes.js"></script>' }
+const FAKE = { revealJs: '<reveal-js>', revealCss: '<reveal-css>', themeCss: '<theme-css>', notesJs: '<notes-js>' }
 
 check('产物结构：section 数、内联资源、notes aside', () => {
   const html = buildSlidesHtml('## A\n\nx\n\n---\n\n## B\n\n::: notes\nn1', { assets: FAKE })
@@ -79,11 +79,11 @@ check('产物结构：section 数、内联资源、notes aside', () => {
   assert.ok(html.includes('cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'))
 })
 
-check('notes.html 内联去 src 引用并进 blob 改写脚本', () => {
+check('notes 插件内联且注册，初始化不含外部资源引用', () => {
   const html = buildSlidesHtml('## A', { assets: FAKE })
-  const blob = html.slice(html.indexOf('NOTES_HTML'))
-  assert.ok(!blob.includes('<script src=')) // src 引用已换成内联 notesJs
-  assert.ok(blob.includes('URL.createObjectURL'))
+  assert.strictEqual((html.match(/<notes-js>/g) || []).length, 1) // v5 演讲者页面内嵌在插件里，一份即可
+  assert.ok(html.includes('plugins: [RevealNotes]'))
+  assert.ok(!html.includes('NOTES_HTML') && !html.includes('notes.html')) // v5 演讲者视图由插件 document.write，无需 blob 改写
 })
 
 check('无 H1 时不报错，title 退化为入参', () => {
