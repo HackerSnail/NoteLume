@@ -221,6 +221,15 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - 导出渲染：`mountEmojiRenderer` 只改 `renderer.rules.text`，挂在共享 tokenizer（整站 / 幻灯片导出）与 `main.js` 的 `exportMd`（单篇 HTML）上；docx 导出走 PM 文档树保持原文。
 - 词表：markdown-it-emoji 的 full 数据 + shortcuts 别名，约 1900 条。
 
+## 功能开关（2026-10-25）
+
+设置页「功能开关」区块（`src/feature-flags.js`，settings.json 的 `features` 段）：`tocBlock` / `csvTable` / `emoji` / `headingNumbering`。原则：**全部关闭即标准模式**——开关只关显示 / 输出层增强，md 源文件不受影响；坏数据逐键回落默认。开关改动经 `main.js` 的 `refreshFeatureFlags` 以 `nl-features` meta 广播全部编辑器强制重建装饰（emoji / toc / csv 三个插件的 `apply` 都认这个 meta）。
+
+- **[[toc]] 目录块**：单独一行 `[[toc]]`（Obsidian 同款普通 wikilink）。编辑器 `src/toc-block.js` 装饰换目录块（H1–H3，slug 与全量标题同源去重，条目 `<a href="#slug">` 走既有锚点拦截）；导出侧 `site-export.js` 的 `injectToc` 换渲染产物里的 toc 锚，单篇 HTML 导出靠 `exportMd` 的 heading_open 锚点规则给标题发 id。幻灯片里按普通 wikilink（分片渲染取不到全文档标题，刻意不做）。
+- **CSV 表格渲染**：`src/csv-preview.js`，mermaid 同构（光标出块隐源码挂表格 widget、点表进块），`parseCsv` 为 RFC4180 口径纯函数，短行补齐；导出件保留代码块（同 mermaid 先例）。
+- **标题自动编号**：`src/heading-numbering.js` 的 CSS counter，只编 H1/H2（1、1.1），覆盖单篇 HTML / 整站（site.css `article` 前缀）/ 打印（`.nl-pbody`）/ 幻灯片（`.reveal .slides`，counter 跨 section 连续）四个输出点；编辑器与源文件不编。
+- **Emoji 短代码**：见上节，`emoji` 开关关掉即不换脸。
+
 ## 架构设计
 
 ### Rust（src-tauri）职责
