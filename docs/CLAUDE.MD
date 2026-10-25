@@ -230,6 +230,15 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - **标题自动编号**：`src/heading-numbering.js` 的 CSS counter，只编 H1/H2（1、1.1），覆盖单篇 HTML / 整站（site.css `article` 前缀）/ 打印（`.nl-pbody`）/ 幻灯片（`.reveal .slides`，counter 跨 section 连续）四个输出点；编辑器与源文件不编。
 - **Emoji 短代码**：见上节，`emoji` 开关关掉即不换脸。
 
+## Quarkdown 引擎（2026-10-25 起，分期实施）
+
+总体设计 `docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md`，分期计划在 `docs/superpowers/plans/`（qd-engine-phase*.md）。约束：CLAUDE.MD 硬性约束第 3 条已修订——Quarkdown 语法文档不再要求 Typora / Obsidian 兼容，普通文档仍兼容；除 Quarkdown 层外不得再引入其他私有格式。参考实现 `.others/quarkdown/`（Kotlin，只读，不进构建）。
+
+- **管线**：md → Rust 引擎（`src-tauri/src/qd/`：lexer / parser / AST / 求值器）→ 展开后的 Markdown + 诊断 → 前端既有 markdown-it 管线。命令 `qd_eval`（lib.rs 薄壳，注意：crate 根的 tauri command 不能用 `pub fn`，宏重导出会撞名）。
+- **阶段 0 已完成**：解析器（指令行 / 花括号配平 / 段式链式 `::` / 缩进块 / 行内调用——`.` 前是字母数字则不算调用，排除小数与域名）、求值器（作用域栈、`.var` / `.function` / `.if` / `.ifnot` / `.let` / `.foreach` / `.repeat`、区间字面量 `{2..4}`、块变量、隐式首参 `.1`、递归上限 128）、最小内置库（Math 10 + Text 3，名字对齐 Quarkdown stdlib）、错误降级（单点失败 → 诊断 + 原文，不炸文档）。语法以 `.others/quarkdown/docs/*.qd` 为准：无 `.else`（用 `.ifnot` + `.let`），循环是 `.foreach` / `.repeat`。
+- **阶段 1 已完成**：编辑器集成 `src/qd/editor.js`（装饰插件，mermaid/csv 同族交互——光标出区域隐源码挂快照 widget，快照 = evalQd 展开文本本地渲染，诊断灰字条，缓存键 = 区域源码）；区域 = 指令段 + 连续 code_block / 列表（缩进体在 CommonMark 落成这两类，重组按 4 空格还原；段落体 v1 不在区域内，已知限制）；导出注入：单篇 HTML / 幻灯片预展开、整站经 `exportSite` 的 `evalMd` 注入逐篇展开；打印走 DOM 克隆随快照带上。`features.quarkdown` 开关关闭时完全旁路；无 Tauri 环境 evalQd 透传。
+- **待做**：阶段 2 stdlib 补齐（Layout / Text 全量 / Collection / TableComputation / Data / Document）、阶段 3 Slides 全功能（含整库幻灯片）+ Mermaid / Math、阶段 4 包管理器 + Libraries、阶段 5 Bibliography / Localization / Dictionary。
+
 ## 架构设计
 
 ### Rust（src-tauri）职责
