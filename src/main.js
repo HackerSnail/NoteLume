@@ -62,7 +62,7 @@ import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
 import { numberingCss } from './heading-numbering.js'
-import { evalQd, qdDocDir } from './tauri-bridge.js'
+import { evalQd, qdDocDir, qdLibsDir, qdPackageInstall } from './tauri-bridge.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -2874,7 +2874,8 @@ async function exportHTML() {
     let md = splitFrontmatter(full).body
     // Quarkdown 开关开启时先求值展开（源文件不动，只影响导出件）；文档目录供 .read 等文件类函数用
     if (getFeatures(settingsStore).quarkdown) {
-      md = (await evalQd(md, qdDocDir(state.vaultRoot, state.currentFile))).expanded
+      const docDir = qdDocDir(state.vaultRoot, state.currentFile)
+      md = (await evalQd(md, docDir, qdLibsDir(state.vaultRoot, docDir))).expanded
     }
     const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
     const body = injectToc(exportMd.render(md), title)
@@ -2923,7 +2924,8 @@ async function exportSlides() {
     const full = editor.getMarkdown()
     let md = splitFrontmatter(full).body
     if (getFeatures(settingsStore).quarkdown) {
-      md = (await evalQd(md, qdDocDir(state.vaultRoot, state.currentFile))).expanded
+      const docDir = qdDocDir(state.vaultRoot, state.currentFile)
+      md = (await evalQd(md, docDir, qdLibsDir(state.vaultRoot, docDir))).expanded
     }
     const html = buildSlidesHtml(md, { title: state.currentFile, headingNumbering: getFeatures(settingsStore).headingNumbering, assets: slidesAssets })
     const defaultName = state.currentFile.replace(/\.md$/i, '.slides.html')
@@ -3019,7 +3021,8 @@ async function exportVaultSlides() {
       let md = splitFrontmatter(raw).body
       // 每篇按自己的目录过 qd 求值（.read / .include 相对它解析），与整站导出同口径
       if (getFeatures(settingsStore).quarkdown) {
-        md = (await evalQd(md, qdDocDir(state.vaultRoot, d.rel))).expanded
+        const docDir = qdDocDir(state.vaultRoot, d.rel)
+        md = (await evalQd(md, docDir, qdLibsDir(state.vaultRoot, docDir))).expanded
       }
       prepared.push({ title: d.title || d.rel, md })
     }
@@ -3032,6 +3035,23 @@ async function exportVaultSlides() {
     setStatus(t('status.exportedSlides', { abs }))
   } catch (e) {
     await messageDialog(t('msg.exportFailed', { err: (e && e.message) || e }))
+  }
+}
+
+// —— Quarkdown 包：显式安装（include {@scope/name:version} 只读本地缓存，文档求值不触发下载）——
+async function qdInstallPackageDialog() {
+  const ref = await promptDialog({
+    title: t('dlg.qdPkgTitle'),
+    placeholder: t('dlg.qdPkgPh'),
+    defaultValue: '@atoms/',
+  })
+  if (!ref) return
+  try {
+    setStatus(t('status.qdPkgInstalling', { ref }))
+    const path = await qdPackageInstall(ref)
+    setStatus(t('status.qdPkgInstalled', { path }))
+  } catch (e) {
+    await messageDialog(t('msg.qdPkgFailed', { err: (e && e.message) || e }))
   }
 }
 
@@ -3058,7 +3078,9 @@ async function exportSiteFull() {
       setStatus,
       headingNumbering: getFeatures(settingsStore).headingNumbering,
       // evalMd 第二参 = 每篇文档自己的目录（.read 等文件类函数相对它解析）
-      evalMd: getFeatures(settingsStore).quarkdown ? (body, docDir) => evalQd(body, docDir) : null,
+      evalMd: getFeatures(settingsStore).quarkdown
+        ? (body, docDir) => evalQd(body, docDir, qdLibsDir(state.vaultRoot, docDir))
+        : null,
     })
     await messageDialog(t('msg.siteExportDone', {
       ok: r.ok,
@@ -3241,6 +3263,7 @@ function registerAppCommands() {
   app('app.export', null, () => exportHTML())
   app('app.exportSlides', null, () => exportSlides())
   app('app.exportVaultSlides', null, () => exportVaultSlides())
+  app('app.qdInstallPackage', null, () => qdInstallPackageDialog())
   app('app.exportSite', null, () => exportSiteFull())
   app('app.importWord', null, () => importWordViaDialog())
   app('app.exportWord', null, () => exportWordViaDialog())
@@ -3627,10 +3650,11 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
     initialFocus: localStorage.getItem('nl-focus') === '1',
     initialTypewriter: localStorage.getItem('nl-typewriter') === '1',
     getFeatures: () => getFeatures(settingsStore),
-    // 快照求值带上该窗格文档的目录（Data 模块文件类函数相对它解析）
+    // 快照求值带上该窗格文档的目录（Data 模块文件类函数相对它解析）与库目录（include 按名加载）
     evalQd: (md) => {
       const c = paneCtx(paneId)
-      return evalQd(md, qdDocDir(c.vaultRoot, c.rel))
+      const docDir = qdDocDir(c.vaultRoot, c.rel)
+      return evalQd(md, docDir, qdLibsDir(c.vaultRoot, docDir))
     },
     sourceMountEl,
     onSourceTextChange: () => {

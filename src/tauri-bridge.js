@@ -91,10 +91,17 @@ export function writeMdFile(vaultRoot, path, content) {
 
 /** Quarkdown 求值：源 md → { expanded, diagnostics }。无 Tauri（网页预览）时透传原文。
  *  docDir = 文档所在目录（绝对路径）：Data 模块文件类函数（.read / .listfiles…）相对它解析，
- *  不传则文件类函数在引擎里诊断降级 */
-export async function evalQd(md, docDir = null) {
+ *  不传则文件类函数在引擎里诊断降级。
+ *  libsDir = 可加载库目录（库根 Libraries/）：include {名} 按文件名 stem 加载 .qd 库；
+ *  包缓存目录由 Rust 侧从应用配置目录解析，前端不用传 */
+export async function evalQd(md, docDir = null, libsDir = null) {
   if (!window.__TAURI_INTERNALS__) return { expanded: md, diagnostics: [] }
-  return invoke('qd_eval', { md, docDir })
+  return invoke('qd_eval', { md, docDir, libsDir })
+}
+
+/** 显式安装 Quarkdown 包（@scope/name:version，atoms 源），返回缓存入口文件路径 */
+export function qdPackageInstall(reference) {
+  return invoke('qd_package_install', { reference })
 }
 
 /** 文档所在目录（绝对）：vaultRoot + 库内相对路径的目录部分；根下文件的目录就是根本身 */
@@ -104,6 +111,13 @@ export function qdDocDir(vaultRoot, rel) {
   const i = n.lastIndexOf('/')
   const base = String(vaultRoot).replace(/[\\/]+$/, '')
   return i <= 0 ? base : base + '/' + n.slice(0, i)
+}
+
+/** 可加载库目录（绝对）：库根 Libraries/；无库时退文档所在目录下的 Libraries/（临时文档） */
+export function qdLibsDir(vaultRoot, docDir) {
+  const base = vaultRoot || docDir
+  if (!base) return null
+  return String(base).replace(/[\\/]+$/, '') + '/Libraries'
 }
 
 /** 解析 [[wikilink]]：返回 { exists, path } */

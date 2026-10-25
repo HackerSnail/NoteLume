@@ -20,6 +20,16 @@ pub enum Value {
     List(Vec<Value>),
     /// 键值字典（.json 读出的对象；Vec 保持键序）
     Dict(Vec<(String, Value)>),
+    /// .extend 包装的函数扩展：base 是被包装原函数（Lambda / Builtin / 另一层 Extended），
+    /// body 里可用 .super 调原函数；cond 是 where: 条件 lambda，不满足时透明回落 base
+    Extended {
+        params: Vec<String>,
+        body: Vec<Block>,
+        cond: Option<Box<Value>>,
+        base: Box<Value>,
+    },
+    /// .super 指向内置函数的占位（.extend 包装内置函数时用），按内置表原路求值
+    Builtin(String),
 }
 
 /// 数字输出：整数值不带小数点（`.sum {2} {3}` → 5 而非 5.0）
@@ -50,6 +60,8 @@ impl Value {
             }
             Value::List(items) => items.iter().map(|v| v.to_output()).collect::<Vec<_>>().join("\n"),
             Value::Dict(entries) => json_of(entries).to_string(),
+            // 定义类值：无输出
+            Value::Extended { .. } | Value::Builtin(_) => String::new(),
         }
     }
 
@@ -137,7 +149,7 @@ fn json_value(v: &Value) -> String {
         Value::Num(n) => fmt_num(*n),
         Value::Bool(true) => "true".to_string(),
         Value::Bool(false) => "false".to_string(),
-        Value::None | Value::Lambda { .. } => "null".to_string(),
+        Value::None | Value::Lambda { .. } | Value::Extended { .. } | Value::Builtin(_) => "null".to_string(),
         Value::Range(a, b) => {
             if b < a {
                 "[]".to_string()
