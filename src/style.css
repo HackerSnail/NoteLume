@@ -3186,6 +3186,36 @@ html.nl-dragging * {
   font-weight: 650;
 }
 
+/* Quarkdown 指令块（快照态隐藏源码、编辑态描边、诊断灰字条） */
+.nl-qd-source {
+  display: none;
+}
+.nl-qd-editing {
+  outline: 2px solid var(--accent);
+  border-radius: 3px;
+}
+.nl-qd {
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin: 0.4em 0;
+  cursor: pointer;
+}
+.nl-qd-error {
+  border-color: #d33;
+  color: #d33;
+  cursor: default;
+}
+.nl-qd-diags {
+  margin-top: 0.5em;
+  border-top: 1px dashed rgba(127, 127, 127, 0.4);
+  padding-top: 0.4em;
+}
+.nl-qd-diag {
+  font-size: 0.85em;
+  color: #a66;
+}
+
 /* ProseMirror 选中节点/占位 */
 .ProseMirror-selectednode {
   outline: 2px solid var(--accent);

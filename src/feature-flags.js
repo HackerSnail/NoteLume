@@ -11,6 +11,7 @@ export const DEFAULT_FEATURES = {
   csvTable: true, // ```csv 代码块渲染成表格（编辑器显示）
   emoji: true, // emoji 短代码显示层换脸
   headingNumbering: false, // 导出 / 打印时标题自动编号
+  quarkdown: true, // Quarkdown 指令求值（编辑器快照 + 导出展开）
 }
 
 const KEYS = Object.keys(DEFAULT_FEATURES)
