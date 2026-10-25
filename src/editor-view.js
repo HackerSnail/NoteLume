@@ -19,6 +19,7 @@ import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
 import { emojiPlugin } from './emoji-decorations.js'
 import { tocPlugin, setTocTitle } from './toc-block.js'
+import { csvPlugin } from './csv-preview.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
 import { hydrateBlockImages } from './html-block-images.js'
@@ -289,6 +290,7 @@ export function createEditor(opts) {
       highlightPlugin(),
       emojiPlugin(opts.getFeatures),
       tocPlugin(opts.getFeatures),
+      csvPlugin(opts.getFeatures),
       mermaidPlugin(),
       footnotePlugin(),
       findPlugin(),
