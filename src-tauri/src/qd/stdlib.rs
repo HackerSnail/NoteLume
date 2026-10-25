@@ -81,11 +81,18 @@ pub fn builtins() -> HashMap<String, Builtin> {
     register(&mut m, "pow", |_, call| {
         let base = num(call, 0)?;
         let exp = named_or_pos(call, "to", 1)?.as_num().ok_or_else(|| ".pow 指数不是数字".to_string())?;
-        Ok(Value::Num(base.powf(exp)))
+        // Kotlin 侧小数指数截断为整数（exponent.toInt()）
+        Ok(Value::Num(base.powf(exp.trunc())))
     });
     register(&mut m, "truncate", |_, call| {
+        // truncate {n} [decimals:{小数位}]：Kotlin 的 decimals 是 LikelyNamed，位置与具名两用
         let n = num(call, 0)?;
-        let digits = num(call, 1)? as i32;
+        let digits = named_or_pos(call, "decimals", 1)?
+            .as_num()
+            .ok_or_else(|| ".truncate 的小数位不是数字".to_string())? as i32;
+        if digits < 0 {
+            return Err(".truncate 小数位不能为负".to_string());
+        }
         let f = 10f64.powi(digits);
         Ok(Value::Num((n * f).trunc() / f))
     });
@@ -123,22 +130,20 @@ pub fn builtins() -> HashMap<String, Builtin> {
         Ok(Value::Num(n.sqrt()))
     });
     register(&mut m, "logn", |_, call| {
+        // 自然对数（对齐 Kotlin：kotlin.math.ln，单参数；此前误实现成按底对数）
         let n = num(call, 0)?;
-        let base = num(call, 1)?;
-        if n <= 0.0 || base <= 0.0 || base == 1.0 {
+        if n <= 0.0 {
             return Err(".logn 定义域错误".to_string());
         }
-        Ok(Value::Num(n.log(base)))
+        Ok(Value::Num(n.ln()))
     });
     register(&mut m, "sin", |_, call| Ok(Value::Num(num(call, 0)?.sin())));
     register(&mut m, "cos", |_, call| Ok(Value::Num(num(call, 0)?.cos())));
     register(&mut m, "tan", |_, call| Ok(Value::Num(num(call, 0)?.tan())));
     register(&mut m, "round", |_, call| {
-        // round {n} {小数位}：四舍五入到指定小数位（与 truncate 同形）
+        // 四舍五入取整（对齐 Kotlin 单参数口径；此前多出的 decimals 参数移除）
         let n = num(call, 0)?;
-        let digits = num(call, 1)? as i32;
-        let f = 10f64.powi(digits);
-        Ok(Value::Num((n * f).round() / f))
+        Ok(Value::Num(n.round()))
     });
 
     // ============ Strings（阶段 2 批 1，全部函数名对齐 Kotlin 源码）============
@@ -737,6 +742,10 @@ pub fn builtins() -> HashMap<String, Builtin> {
     super::bibliography::register(&mut m);
     super::ecosystem::register(&mut m);
 
+    // ============ Mermaid / 交叉引用（阶段 3）============
+    super::mermaid::register(&mut m);
+    super::reference::register(&mut m);
+
     m
 }
 
@@ -891,8 +900,12 @@ mod tests {
         assert_eq!(out(".abs {-4}"), "4");
         assert_eq!(out(".negate {6}"), "-6");
         assert_eq!(out(".sqrt {9}"), "3");
-        assert_eq!(out(".logn {8} {2}"), "3");
-        assert_eq!(out(".round {3.14159} {2}"), "3.14");
+        // 自然对数（对齐 Kotlin）；round 四舍五入取整
+        assert_eq!(out(".logn {1}"), "0");
+        assert_eq!(out(".round {3.6}"), "4");
+        assert_eq!(out(".round {3.4}"), "3");
+        // 小数指数截断为整数（Kotlin exponent.toInt()）
+        assert_eq!(out(".pow {2} to:{2.9}"), "4");
     }
 
     #[test]

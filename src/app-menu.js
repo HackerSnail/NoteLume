@@ -134,6 +134,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.save',
       'app.export',
       'app.exportSlides',
+      'app.exportVaultSlides',
       'app.exportSite',
       'app.importWord',
       'app.exportWord',

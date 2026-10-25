@@ -8,7 +8,7 @@
 // io（Data 模块的文件访问，阶段 2 批 2）、csv（RFC4180 解析）、mdtable（管道表工具）与
 // document（Document / Layout / TableComputation，阶段 2 批 3）；slides / localization /
 // bibliography / ecosystem（Slides / Localization / Bibliography / Ecosystem / Libraries，
-// 阶段 2 批 4）。
+// 阶段 2 批 4）；mermaid / reference（Mermaid 图表与交叉引用最小集，阶段 3）。
 // 错误模型：单点求值失败进诊断数组、输出原文降级，不炸整个文档。
 
 pub mod ast;
@@ -20,7 +20,9 @@ pub mod eval;
 pub mod io;
 pub mod localization;
 pub mod mdtable;
+pub mod mermaid;
 pub mod parser;
+pub mod reference;
 pub mod slides;
 pub mod stdlib;
 pub mod value;

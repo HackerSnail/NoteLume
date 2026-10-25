@@ -243,8 +243,9 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
     let mut li = i;
     let mut chars: Vec<char> = lines[li].1.chars().collect();
     let mut ci = indent_of(lines[li].1) + name_len;
-    // 调用在首行内的结束列：行尾 / 遇到非参数内容时记录，供调用后余文转行内片段
-    let mut first_end: usize = chars.len();
+    // 调用在首行内的结束列，供调用后余文转行内片段：默认整行被调用吃掉
+    //（调用跨了行或到行尾都没有首行余文）；在首行上遇到非参数内容时记录当时的列
+    let mut first_end = lines[i].1.chars().count();
 
     loop {
         let pre_skip = ci; // 跳空白前位置：后面发现不是参数 / 链时回退，空格留给行内余文
@@ -252,7 +253,6 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
             ci += 1;
         }
         if ci >= chars.len() {
-            first_end = chars.len();
             break;
         }
         // 链式 ::name：开新段
@@ -260,7 +260,9 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
             let j = ci + 2;
             let cname: String = chars[j..].iter().take_while(|c| c.is_alphanumeric() || **c == '_').collect();
             if cname.is_empty() {
-                first_end = pre_skip;
+                if li == i {
+                    first_end = pre_skip;
+                }
                 break;
             }
             ci = j + cname.chars().count();
@@ -278,14 +280,15 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
         } else if chars[ci] == '{' {
             (None, ci)
         } else {
-            first_end = pre_skip; // 非参数内容：调用行剩余部分（含空白）转行内片段
+            if li == i {
+                first_end = pre_skip; // 非参数内容：调用行剩余部分（含空白）转行内片段
+            }
             break;
         };
         let (raw, end_line, end_col) = read_balanced(lines, li, brace_col);
         let arg = Arg { name: arg_name, raw };
         segs.last_mut().unwrap().args.push(arg);
         if end_line != li {
-            first_end = chars.len();
             li = end_line;
             chars = lines[li].1.chars().collect();
         }

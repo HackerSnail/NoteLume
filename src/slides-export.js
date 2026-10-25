@@ -97,29 +97,23 @@ function slidesCss() {
 `
 }
 
-/**
- * 拼装自包含 reveal.js 产物（单个 HTML 字符串，reveal 本体零外部依赖）。
- * @param {string} md 已剥 frontmatter 的正文
- * @param {object} opts { title?: string, headingNumbering?: boolean, assets: { revealJs, revealCss, themeCss, notesJs } }
- *  assets 四项均为字符串：真实值由构建期 vite ?raw 注入（src/slides-assets.js），测试传占位串。
- *  title 回退顺序：入参 → md 首个 H1 → 'Slides'。
- */
-export function buildSlidesHtml(md, opts = {}) {
-  const assets = opts.assets || {}
-  const { title: autoTitle, slides } = splitSlides(md)
-  const title = opts.title || autoTitle || 'Slides'
-
+// 单篇 md → <section> 串（正文渲染 + notes 摘取，单篇与整库两条产物共用）
+function renderDocSections(md) {
+  const { title, slides } = splitSlides(md)
   const sections = slides.map(s => {
     const notes = s.notes
       ? `<aside class="notes">${renderSite(s.notes, {})}</aside>`
       : ''
     return `<section>${renderSite(s.body, {})}${notes}</section>`
   }).join('\n')
+  return { title, sections }
+}
 
+function slidesShell(title, inner, opts = {}) {
+  const assets = opts.assets || {}
   // 演讲者视图：reveal 5 的 notes 插件按 S 时 window.open('about:blank') 后 document.write
   // 内嵌的演讲者页面（marked 也在插件里自带），不请求任何外部资源，单文件开箱即用。
   const initScript = 'Reveal.initialize({ hash: true, plugins: [RevealNotes] });'
-
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head>
 <meta charset="UTF-8">
@@ -131,7 +125,7 @@ export function buildSlidesHtml(md, opts = {}) {
 <style>${slidesCss()}${opts.headingNumbering ? '\n' + numberingCss('.reveal .slides') : ''}</style>
 </head><body>
 <div class="reveal"><div class="slides">
-${sections}
+${inner}
 </div></div>
 <script>${assets.revealJs || ''}</script>
 <script>${assets.notesJs || ''}</script>
@@ -140,4 +134,37 @@ ${initScript}
 </script>
 </body></html>
 `
+}
+
+/**
+ * 拼装自包含 reveal.js 产物（单个 HTML 字符串，reveal 本体零外部依赖）。
+ * @param {string} md 已剥 frontmatter 的正文
+ * @param {object} opts { title?: string, headingNumbering?: boolean, assets: { revealJs, revealCss, themeCss, notesJs } }
+ *  assets 四项均为字符串：真实值由构建期 vite ?raw 注入（src/slides-assets.js），测试传占位串。
+ *  title 回退顺序：入参 → md 首个 H1 → 'Slides'。
+ */
+export function buildSlidesHtml(md, opts = {}) {
+  const { title: autoTitle, sections } = renderDocSections(md)
+  const title = opts.title || autoTitle || 'Slides'
+  return slidesShell(title, sections, opts)
+}
+
+/**
+ * 整库幻灯片：多篇文档合成一份放映件。
+ * @param {Array<{ title: string, md: string }>} docs 文档按库内顺序排列，
+ *  md 为已剥 frontmatter、已过 Quarkdown 求值的正文（调用方处理，本函数不碰 Tauri）。
+ * @param {object} opts { title?: string, headingNumbering?: boolean, assets }
+ * 结构：reveal 嵌套 section——外层 = 文档（章，左右翻页），内层 = 文档内的页（上下翻页）；
+ * 首页出片名与文档清单。整篇切不出内容的文档整章跳过。
+ */
+export function buildVaultSlidesHtml(docs, opts = {}) {
+  const chapters = []
+  for (const d of docs) {
+    const { sections } = renderDocSections(d.md || '')
+    if (sections.trim() === '') continue
+    chapters.push(`<section>\n${sections}\n</section>`)
+  }
+  const toc = docs.map(d => `<li>${escapeHtml(d.title)}</li>`).join('')
+  const cover = `<section><h1>${escapeHtml(opts.title || 'Slides')}</h1><ul class="nl-vault-toc">${toc}</ul></section>`
+  return slidesShell(opts.title || 'Slides', cover + '\n' + chapters.join('\n'), opts)
 }

@@ -33,13 +33,6 @@ pub struct CallNode {
     pub src: String,
 }
 
-impl CallNode {
-    /// 链的末段（块参数与求值结果归属它）
-    pub fn last_seg(&self) -> &CallSeg {
-        self.chain.last().unwrap_or(&self.head)
-    }
-}
-
 /// 行内片段：普通文本或一次行内调用（`Hello, .name!` 的 `.name`）
 #[derive(Debug, Clone, PartialEq)]
 pub enum InlineSeg {

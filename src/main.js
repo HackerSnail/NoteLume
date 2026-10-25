@@ -56,7 +56,7 @@ import {
 import { exportSite, resolveImageRel, collectImages, injectToc } from './site-export.js'
 import { anchorSlug } from './heading-anchor.js'
 import { getFeatures, setFeature } from './feature-flags.js'
-import { buildSlidesHtml } from './slides-export.js'
+import { buildSlidesHtml, buildVaultSlidesHtml } from './slides-export.js'
 import { slidesAssets } from './slides-assets.js'
 import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
@@ -1591,6 +1591,7 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.appearance', 'palette')
   addMenuCmd(menu, 'app.export', 'export')
   addMenuCmd(menu, 'app.exportSlides', 'export')
+  addMenuCmd(menu, 'app.exportVaultSlides', 'export')
   addMenuCmd(menu, 'app.exportSite', 'globe')
   addMenuCmd(menu, 'app.importWord', 'file')
   addMenuCmd(menu, 'app.exportWord', 'export')
@@ -2997,6 +2998,43 @@ async function exportWordViaDialog() {
 }
 
 // —— 批次 C：导出整站为静态 HTML ——
+
+// —— 整库幻灯片（阶段 3）：库内全部 md 按树序合成一份 reveal.js 放映件 ——
+async function exportVaultSlides() {
+  if (!state.vaultRoot) {
+    setStatus(t('status.siteNeedVault'))
+    return
+  }
+  const segs = String(state.vaultRoot).split(/[\\/]+/).filter(Boolean)
+  const vaultName = segs[segs.length - 1] || 'Slides'
+  const abs = await pickSaveAs(vaultName + '.slides.html')
+  if (!abs) return
+  try {
+    setStatus(t('status.slidesVaultBuilding'))
+    const graph = await buildSiteGraph(state.vaultRoot)
+    const docs = ((graph && graph.docs) || [])
+    const prepared = []
+    for (const d of docs) {
+      const raw = await readMdFile(state.vaultRoot, d.rel)
+      let md = splitFrontmatter(raw).body
+      // 每篇按自己的目录过 qd 求值（.read / .include 相对它解析），与整站导出同口径
+      if (getFeatures(settingsStore).quarkdown) {
+        md = (await evalQd(md, qdDocDir(state.vaultRoot, d.rel))).expanded
+      }
+      prepared.push({ title: d.title || d.rel, md })
+    }
+    const html = buildVaultSlidesHtml(prepared, {
+      title: vaultName,
+      headingNumbering: getFeatures(settingsStore).headingNumbering,
+      assets: slidesAssets,
+    })
+    await exportFile(abs, html)
+    setStatus(t('status.exportedSlides', { abs }))
+  } catch (e) {
+    await messageDialog(t('msg.exportFailed', { err: (e && e.message) || e }))
+  }
+}
+
 async function exportSiteFull() {
   if (!state.vaultRoot) {
     setStatus(t('status.siteNeedVault'))
@@ -3202,6 +3240,7 @@ function registerAppCommands() {
   app('app.splitV', null, () => splitFocusedPane('vertical'))
   app('app.export', null, () => exportHTML())
   app('app.exportSlides', null, () => exportSlides())
+  app('app.exportVaultSlides', null, () => exportVaultSlides())
   app('app.exportSite', null, () => exportSiteFull())
   app('app.importWord', null, () => importWordViaDialog())
   app('app.exportWord', null, () => exportWordViaDialog())
@@ -3344,7 +3383,7 @@ let macTitle = ''
 const lastRunAt = new Map()
 
 const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.exportSlides', 'app.print', 'app.closeFile', 'app.renameFile'])
-const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
+const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.exportVaultSlides', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
 // 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
 const MENU_NEEDS_MD = new Set(['app.exportWord', 'app.insertImage'])
 const MENU_CHECKED = {
