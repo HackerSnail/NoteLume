@@ -50,10 +50,11 @@ pub struct QdOutcome {
 }
 
 /// Quarkdown 求值：源 md → 展开后的 md。求值失败点自动降级为原文并进诊断，命令本身不失败。
+/// doc_dir = 文档所在目录（绝对路径）：Data 模块文件类函数相对它解析；None 时 IO 函数诊断降级。
 #[tauri::command]
-fn qd_eval(md: String) -> QdOutcome {
+fn qd_eval(md: String, doc_dir: Option<String>) -> QdOutcome {
     let blocks = qd::parser::parse_document(&md);
-    let (expanded, diags) = qd::eval::eval_document(&blocks, qd::stdlib::builtins());
+    let (expanded, diags) = qd::eval::eval_document(&blocks, qd::stdlib::builtins(), doc_dir.map(std::path::PathBuf::from));
     QdOutcome {
         expanded,
         diagnostics: diags

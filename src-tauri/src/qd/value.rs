@@ -1,7 +1,8 @@
 // value.rs —— 求值器值类型与输出格式
 //
-// 弱类型对齐 Quarkdown：字符串 / 数字 / 布尔 / None / Markdown 内容 / lambda / 区间 / 列表。
-// 输出口径：整数不带小数点、布尔 yes/no、None 空串、lambda 直接输出为空、区间与列表逐元素换行。
+// 弱类型对齐 Quarkdown：字符串 / 数字 / 布尔 / None / Markdown 内容 / lambda / 区间 / 列表 / 字典。
+// 输出口径：整数不带小数点、布尔 yes/no、None 空串、lambda 直接输出为空、区间与列表逐元素换行、
+// 字典输出 JSON 形态（.json 的落点，键值不丢）。
 
 use super::ast::Block;
 
@@ -17,6 +18,8 @@ pub enum Value {
     /// 闭区间字面量 `{2..4}`
     Range(i64, i64),
     List(Vec<Value>),
+    /// 键值字典（.json 读出的对象；Vec 保持键序）
+    Dict(Vec<(String, Value)>),
 }
 
 /// 数字输出：整数值不带小数点（`.sum {2} {3}` → 5 而非 5.0）
@@ -46,6 +49,7 @@ impl Value {
                 items.join("\n")
             }
             Value::List(items) => items.iter().map(|v| v.to_output()).collect::<Vec<_>>().join("\n"),
+            Value::Dict(entries) => json_of(entries).to_string(),
         }
     }
 
@@ -100,7 +104,64 @@ impl Value {
                     })
                     .collect(),
             ),
+            // 字典按键值对迭代：每个元素是二元列表 [键, 值]（.1::first 取键、.1::second 取值）
+            Value::Dict(entries) => Some(
+                entries
+                    .iter()
+                    .map(|(k, v)| Value::List(vec![Value::Str(k.clone()), v.clone()]))
+                    .collect(),
+            ),
             _ => None,
         }
     }
+}
+
+/// JSON 形态序列化（字典与嵌套值共用）：文本加引号转义，数字 / 布尔 / null 原样
+fn json_of(entries: &[(String, Value)]) -> String {
+    let pairs: Vec<String> = entries
+        .iter()
+        .map(|(k, v)| format!("{}: {}", json_str(k), json_value(v)))
+        .collect();
+    format!("{{{}}}", pairs.join(", "))
+}
+
+fn json_value(v: &Value) -> String {
+    match v {
+        Value::Dict(entries) => json_of(entries),
+        Value::List(items) => {
+            let parts: Vec<String> = items.iter().map(json_value).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::Str(s) | Value::Markdown(s) => json_str(s),
+        Value::Num(n) => fmt_num(*n),
+        Value::Bool(true) => "true".to_string(),
+        Value::Bool(false) => "false".to_string(),
+        Value::None | Value::Lambda { .. } => "null".to_string(),
+        Value::Range(a, b) => {
+            if b < a {
+                "[]".to_string()
+            } else {
+                let parts: Vec<String> = (*a..=*b).map(|n| n.to_string()).collect();
+                format!("[{}]", parts.join(", "))
+            }
+        }
+    }
+}
+
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
