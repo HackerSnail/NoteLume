@@ -30,6 +30,10 @@ mod webclip;
 // 文件系统监听：检测外部对库文件的增删改，自动刷新树。
 mod fs_watcher;
 
+// Quarkdown 引擎（JS + Rust 重写）：源 Markdown → 求值展开后的 Markdown + 诊断。
+// 设计与分期见 docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md。
+mod qd;
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
