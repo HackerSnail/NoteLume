@@ -42,6 +42,8 @@ const base = () => [
   C('app.dailyCapture', '今日速记', { accelerator: 'Cmd+Shift+D' }),
   C('app.autosave', '自动保存', { checked: false }),
   C('app.shortcuts', '快捷键设置…'),
+  C('app.clipSettings', '网页剪藏设置…'),
+  C('app.qdToggleEval', 'Quarkdown：开 / 关求值', { checked: true }),
   C('app.search', '聚焦侧栏搜索', { accelerator: 'Cmd+Shift+F' }),
   C('app.insertImage', '插入图片…', { accelerator: 'Cmd+Shift+I' }),
   C('editor.undo', '撤销', { accelerator: 'Cmd+Z' }),
@@ -102,6 +104,17 @@ t('拆分命令落在「窗口」组，跟在两个切页项之后', () => {
   const list = ids(group(specOf(), 'window'))
   const i = list.indexOf('app.prevTab')
   assert.deepEqual(list.slice(i, i + 4), ['app.prevTab', 'sep', 'app.splitH', 'app.splitV'])
+})
+
+t('Quarkdown 求值开关落在应用组「剪藏设置」之后，按开关状态带勾', () => {
+  const spec = specOf()
+  const list = ids(group(spec, 'app'))
+  assert.equal(list[list.indexOf('app.clipSettings') + 1], 'app.qdToggleEval')
+  const it = group(spec, 'app').items.find((i) => i.id === 'app.qdToggleEval')
+  assert.equal(it.type, 'check')
+  assert.equal(it.checked, true)
+  const off = specOf(base().map((c) => (c.id === 'app.qdToggleEval' ? { ...c, checked: false } : c)))
+  assert.equal(group(off, 'app').items.find((i) => i.id === 'app.qdToggleEval').checked, false)
 })
 
 t('accelerator 原样透传；无键命令不带 accelerator', () => {

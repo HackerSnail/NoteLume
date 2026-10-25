@@ -112,6 +112,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.shortcuts',
       'app.appearance',
       'app.clipSettings',
+      'app.qdToggleEval',
       submenu('language', t('menu.language'), 'languages'),
       'sep',
       role('Services'),
