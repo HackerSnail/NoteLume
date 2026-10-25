@@ -254,7 +254,7 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 
 1. 使用 Tauri v2，Rust stable版本
 2. 前端使用原生ES Module Vanilla JS，**不引入Vue/React**，降低项目体积和复杂度
-3. 全部md文件为标准GFM，**文件完全兼容Typora/Obsidian**，不能自定义私有格式
+3. md 文件以标准 GFM 为基底。**使用 Quarkdown 语法的文档（`.function` 函数、变量、条件循环、`.include` 等）不再要求 Typora / Obsidian 兼容**——这类文档离开 NoteLume 后指令部分就是无效文本，这是 2026-10-25 的明确取舍；未使用 Quarkdown 语法的普通文档仍然完全兼容 Typora / Obsidian。除 Quarkdown 层外不得再引入其他私有格式
 4. 代码附带注释，所有代码必须可直接复制运行；按文件拆分输出
 5. 每次输出先给出完整最小可运行demo，再逐步增加功能
 6. 优先保证编辑器流畅性，知识库索引不要阻塞UI（Rust后台扫描）
