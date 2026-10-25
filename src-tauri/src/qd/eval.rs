@@ -730,9 +730,10 @@ fn valid_param_token(w: &str) -> bool {
     !w.is_empty() && w.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
-/// 整篇文档求值入口：返回（展开文本，诊断）。doc_dir = 文档所在目录（Data 模块 IO 相对它解析）。
+/// 整篇文档求值入口（无库 / 包目录的便捷形态，单测用；生产走 eval_document_with）。
 /// 出口做一步引文解析：.cite 在求值期只能落占位符（编号由 .bibliography 的条目顺序定，
 /// 而 cite 常出现在 bibliography 之前），统一在此替换成 [n] 形态。
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn eval_document(
     blocks: &[Block],
     builtins: HashMap<String, Builtin>,

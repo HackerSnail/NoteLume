@@ -91,9 +91,9 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
 }
 
 /// 图 → Markdown 围栏 + 计数 caption 行。caption / ref 任一存在时计入 figure 序号，
-/// ref 记入交叉引用账本（.ref {id} 解析）。
-fn figure_md(ev: &mut Evaluator, fence: String, caption: Option<String>, refr: Option<String>) -> String {
-    let mut out = fence;
+/// ref 记入交叉引用账本（.ref {id} 解析）。（Primitives 的 .figure 复用）
+pub(crate) fn figure_md(ev: &mut Evaluator, body: String, caption: Option<String>, refr: Option<String>) -> String {
+    let mut out = body;
     if caption.is_some() || refr.is_some() {
         ev.figures += 1;
         if let Some(id) = refr {

@@ -55,6 +55,14 @@ fn register_l(map: &mut HashMap<String, Builtin>, name: &str, lambda_args: &'sta
 pub fn builtins() -> HashMap<String, Builtin> {
     let mut m: HashMap<String, Builtin> = HashMap::new();
 
+    // 特殊形式占位：var / function / if / ifnot / let 在 eval 层 LAZY 拦截、foreach / repeat
+    // 在链上特殊处理，永远走不到这里的 no-op——登记只为 functionexists / libfunctions 的
+    // 函数清单口径完整（Kotlin 把它们算作 Flow 模块的函数）。
+    for name in ["var", "function", "if", "ifnot", "let", "foreach", "repeat"] {
+        let f: BuiltinFn = |_, _| Ok(Value::None);
+        m.insert(name.to_string(), Builtin { f, lambda_args: &[] });
+    }
+
     register(&mut m, "sum", |_, call| {
         let a = num(call, 0)?;
         let b = num(call, 1)?;
@@ -745,6 +753,10 @@ pub fn builtins() -> HashMap<String, Builtin> {
     // ============ Mermaid / 交叉引用（阶段 3）============
     super::mermaid::register(&mut m);
     super::reference::register(&mut m);
+
+    // ============ 长尾模块 / Primitives（阶段 5）============
+    super::longtail::register(&mut m);
+    super::primitives::register(&mut m);
 
     m
 }

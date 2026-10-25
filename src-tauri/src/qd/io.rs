@@ -108,6 +108,73 @@ pub fn regex_search(pattern: &str, text: &str) -> Result<bool, String> {
     Ok(false)
 }
 
+/// 正则替换（`match` 函数用）：从左到右逐个匹配，命中区间交给 repl 生成替换文本。
+/// 语义对齐 Kotlin Regex.replace 的常用口径：最左优先、同一位置取首个成功终点（贪心）；
+/// 零宽匹配不吃字符、原地跳过一个字符防死循环。pattern 沿用 listfiles 的迷你正则子集。
+pub fn regex_replace(pattern: &str, text: &str, repl: &mut dyn FnMut(&str) -> String) -> Result<String, String> {
+    if pattern.len() > 512 || text.len() > 64 * 1024 {
+        return Err("pattern 或文本过长".to_string());
+    }
+    if pattern.is_empty() {
+        return Ok(text.to_string());
+    }
+    let chars: Vec<char> = pattern.chars().collect();
+    let (node, rest) = parse_alt(&chars).ok_or_else(|| "pattern 语法错误".to_string())?;
+    if !rest.is_empty() {
+        return Err("pattern 语法错误（括号不配平）".to_string());
+    }
+    let t: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut pos = 0usize;
+    let mut matches = 0usize;
+    while pos <= t.len() {
+        if matches >= 1000 {
+            break; // 匹配数封顶，防构造串卡死
+        }
+        // 最左起点 + 该起点的首个成功终点
+        let mut found: Option<(usize, usize)> = None;
+        for start in pos..=t.len() {
+            let m = Matcher { text: &t };
+            let mut end_pos: Option<usize> = None;
+            if m.match_node(&node, start, 0, &mut |e, _| {
+                if end_pos.is_none() {
+                    end_pos = Some(e);
+                }
+                true
+            }) {
+                if let Some(e) = end_pos {
+                    found = Some((start, e));
+                    break;
+                }
+            }
+        }
+        match found {
+            None => break,
+            Some((s, e)) => {
+                matches += 1;
+                if e == s {
+                    // 零宽匹配：替换文本照出（Java/Kotlin replaceAll 同款），再吃一个字符防原地空转
+                    let matched: String = t[s..e].iter().collect();
+                    out.push_str(&repl(&matched));
+                    if let Some(c) = t.get(s) {
+                        out.push(*c);
+                    }
+                    pos = s + 1;
+                    continue;
+                }
+                out.extend(&t[pos..s]);
+                let matched: String = t[s..e].iter().collect();
+                out.push_str(&repl(&matched));
+                pos = e;
+            }
+        }
+    }
+    if pos < t.len() {
+        out.extend(&t[pos..]);
+    }
+    Ok(out)
+}
+
 #[derive(Debug, Clone)]
 enum Node {
     Empty,
@@ -345,8 +412,18 @@ fn parse_atom(chars: &[char]) -> Option<(Node, &[char])> {
         '$' => Some((Node::EndAnchor, &chars[1..])),
         '.' => Some((Node::AnyChar, &chars[1..])),
         '\\' => {
+            // \d \w \s（及大写取反）：常用字符类；其余转义当字面量
             let c = chars.get(1)?;
-            Some((Node::Char(*c), &chars[2..]))
+            let class = |items: Vec<ClassItem>, neg: bool| Some((Node::Class { neg, items }, &chars[2..]));
+            match c {
+                'd' => class(vec![ClassItem::Range('0', '9')], false),
+                'D' => class(vec![ClassItem::Range('0', '9')], true),
+                'w' => class(vec![ClassItem::Range('a', 'z'), ClassItem::Range('A', 'Z'), ClassItem::Range('0', '9'), ClassItem::Single('_')], false),
+                'W' => class(vec![ClassItem::Range('a', 'z'), ClassItem::Range('A', 'Z'), ClassItem::Range('0', '9'), ClassItem::Single('_')], true),
+                's' => class(vec![ClassItem::Single(' '), ClassItem::Single('\t')], false),
+                'S' => class(vec![ClassItem::Single(' '), ClassItem::Single('\t')], true),
+                _ => Some((Node::Char(*c), &chars[2..])),
+            }
         }
         c => Some((Node::Char(*c), &chars[1..])),
     }
@@ -403,5 +480,17 @@ mod tests {
         assert!(regex_search("(unclosed", "x").is_err());
         assert!(regex_search("a)b", "x").is_err());
         assert!(regex_search("[abc", "x").is_err());
+    }
+
+    #[test]
+    fn 正则替换() {
+        assert_eq!(regex_replace("\\d+", "a1b22c", &mut |s: &str| format!("<{}>", s)).unwrap(), "a<1>b<22>c");
+        assert_eq!(regex_replace("o", "foo", &mut |_| "0".to_string()).unwrap(), "f00");
+        // 零宽匹配不死循环
+        assert_eq!(regex_replace("x*", "ab", &mut |_| "-".to_string()).unwrap(), "-a-b-");
+        // 空 pattern 原样
+        assert_eq!(regex_replace("", "abc", &mut |_| "!".to_string()).unwrap(), "abc");
+        // 语法错误
+        assert!(regex_replace("(unclosed", "x", &mut |_| String::new()).is_err());
     }
 }
