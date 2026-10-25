@@ -61,6 +61,7 @@ import { slidesAssets } from './slides-assets.js'
 import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
+import { numberingCss } from './heading-numbering.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -2871,7 +2872,7 @@ async function exportHTML() {
     const md = splitFrontmatter(full).body
     const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
     const body = injectToc(exportMd.render(md), title)
-    const html = buildExportHtml(title, body)
+    const html = buildExportHtml(title, body, getFeatures(settingsStore).headingNumbering)
     const defaultName = state.currentFile.replace(/\.md$/i, '.html')
     const abs = await pickSaveAs(defaultName)
     if (!abs) return
@@ -2893,7 +2894,8 @@ async function printViaDialog() {
   if (!options) return
   setStatus(t('status.printPaging'))
   try {
-    await printPaged(options, (state.currentFile || '').replace(/\.md$/i, ''))
+    // 编号开关在设置页（不在打印选项窗），随 settings 并进排版选项
+    await printPaged({ ...options, headingNumbering: getFeatures(settingsStore).headingNumbering }, (state.currentFile || '').replace(/\.md$/i, ''))
     setStatus('')
   } catch (e) {
     setStatus(t('status.printPagedFallback'))
@@ -2914,7 +2916,7 @@ async function exportSlides() {
   try {
     const full = editor.getMarkdown()
     const md = splitFrontmatter(full).body
-    const html = buildSlidesHtml(md, { title: state.currentFile, assets: slidesAssets })
+    const html = buildSlidesHtml(md, { title: state.currentFile, headingNumbering: getFeatures(settingsStore).headingNumbering, assets: slidesAssets })
     const defaultName = state.currentFile.replace(/\.md$/i, '.slides.html')
     const abs = await pickSaveAs(defaultName)
     if (!abs) return
@@ -3003,7 +3005,7 @@ async function exportSiteFull() {
       writeFile: (absPath, content) => exportFile(absPath, content),
       copyAssets: (vr, rels, od) => copyVaultAssets(vr, rels, od),
     }
-    const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus })
+    const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus, headingNumbering: getFeatures(settingsStore).headingNumbering })
     await messageDialog(t('msg.siteExportDone', {
       ok: r.ok,
       failed: r.failed ? t('msg.siteSkipped', { n: r.failed }) : '',
@@ -3015,7 +3017,7 @@ async function exportSiteFull() {
   }
 }
 
-function buildExportHtml(title, body) {
+function buildExportHtml(title, body, headingNumbering = false) {
   // 独立 HTML：内嵌 GitHub 风格样式 + KaTeX css 引用；离线可读，可分享
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head>
@@ -3024,6 +3026,7 @@ function buildExportHtml(title, body) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>
   body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.75; color: #24292e; }
+  ${headingNumbering ? numberingCss('') : ''}
   h1, h2, h3, h4, h5, h6 { line-height: 1.3; margin: 1.4em 0 0.6em; font-weight: 650; }
   h1 { font-size: 1.9em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
   h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }

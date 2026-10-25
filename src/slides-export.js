@@ -6,6 +6,7 @@
 
 import { tokenizer } from './editor-schema.js'
 import { renderSite } from './site-export.js'
+import { numberingCss } from './heading-numbering.js'
 
 // 把切片边界行号收集出来。模式判定（spec §三）：
 //  文档里存在顶层连字符水平线（---）→ hr 模式，按它切；否则 → h2 模式，按 ## 切。
@@ -99,7 +100,7 @@ function slidesCss() {
 /**
  * 拼装自包含 reveal.js 产物（单个 HTML 字符串，reveal 本体零外部依赖）。
  * @param {string} md 已剥 frontmatter 的正文
- * @param {object} opts { title?: string, assets: { revealJs, revealCss, themeCss, notesJs } }
+ * @param {object} opts { title?: string, headingNumbering?: boolean, assets: { revealJs, revealCss, themeCss, notesJs } }
  *  assets 四项均为字符串：真实值由构建期 vite ?raw 注入（src/slides-assets.js），测试传占位串。
  *  title 回退顺序：入参 → md 首个 H1 → 'Slides'。
  */
@@ -127,7 +128,7 @@ export function buildSlidesHtml(md, opts = {}) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>${assets.revealCss || ''}</style>
 <style>${assets.themeCss || ''}</style>
-<style>${slidesCss()}</style>
+<style>${slidesCss()}${opts.headingNumbering ? '\n' + numberingCss('.reveal .slides') : ''}</style>
 </head><body>
 <div class="reveal"><div class="slides">
 ${sections}

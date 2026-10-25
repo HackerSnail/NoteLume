@@ -10,6 +10,7 @@ import { parseMarkdown } from '../editor-schema.js'
 import { collectTocEntries } from '../toc-block.js'
 import { injectToc } from '../site-export.js'
 import { normalizeFeatures, getFeatures, setFeature, DEFAULT_FEATURES } from '../feature-flags.js'
+import { numberingCss } from '../heading-numbering.js'
 
 // injectToc 走 DOMParser（与 sanitizeHtml 同口径），离线补一份 jsdom
 const jsdom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' })
@@ -82,6 +83,18 @@ check('injectToc 无 [[toc]] 或无标题时原样返回', () => {
   assert.strictEqual(injectToc(noToc), noToc)
   const noHead = '<p><span class="nl-wiki" data-target="toc">toc</span></p>'
   assert.strictEqual(injectToc(noHead), noHead)
+})
+
+// —— 标题自动编号 CSS（输出层 counter）——
+check('numberingCss 按容器前缀产出 H1/H2 编号规则', () => {
+  const scoped = numberingCss('.nl-pbody')
+  assert.ok(scoped.includes('.nl-pbody { counter-reset: nlh1; }'))
+  assert.ok(scoped.includes('.nl-pbody h1::before { content: counter(nlh1) ". "; }'))
+  assert.ok(scoped.includes('counter(nlh1) "." counter(nlh2)'))
+  assert.ok(!scoped.includes('nlh3')) // 只编 H1/H2
+  const bare = numberingCss('')
+  assert.ok(bare.includes('body { counter-reset: nlh1; }'))
+  assert.ok(bare.includes('h1 { counter-increment: nlh1'))
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)

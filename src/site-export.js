@@ -12,6 +12,7 @@
 
 import katex from 'katex'
 import { tokenizer } from './editor-schema.js'
+import { numberingCss } from './heading-numbering.js'
 import { sanitizeHtml } from './html-sanitize.js'
 import { anchorSlug } from './heading-anchor.js'
 import { t, getLocale } from './i18n.js'
@@ -582,7 +583,7 @@ function buildSearchPage() {
  * @param {(msg:string)=>void} [opts.setStatus]
  * @returns {Promise<{ok:number,failed:number,total:number}>}
  */
-export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }) {
+export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {}, headingNumbering = false }) {
   ensureRules()
   const say = (m) => { try { setStatus(m) } catch { /* ignore */ } }
   say(t('site.building'))
@@ -638,7 +639,7 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {} }
     await io.writeFile(joinOut('index.html'), buildHome({ vaultTitle, docs }))
     await io.writeFile(joinOut('search.html'), buildSearchPage())
     await io.writeFile(joinOut('search-index.json'), JSON.stringify(buildSearchIndex(searchEntries), null, 0))
-    await io.writeFile(joinOut('assets/site.css'), siteCss())
+    await io.writeFile(joinOut('assets/site.css'), siteCss() + (headingNumbering ? '\n' + numberingCss('article') : ''))
   } catch (e) {
     console.warn(t('site.skeletonFailed'), e)
   }
