@@ -71,6 +71,13 @@ pub struct Evaluator {
     pub numbered: Vec<(String, usize)>,
     /// .ref 的 id 按调用顺序记录，出口统一解析
     pub refs: Vec<String>,
+    /// 可加载库目录（Libraries/，阶段 4）：include {名} 按文件名 stem 精确匹配 .qd 文件
+    pub libs_dir: Option<std::path::PathBuf>,
+    /// 包缓存目录（app data/qd-packages）：include {@scope/name:version} 只读本地缓存，
+    /// 安装走 qd_package_install 命令显式进行（打开陌生文档不自动下载执行远端代码）
+    pub packages_dir: Option<std::path::PathBuf>,
+    /// 本次求值里已加载的库名（libraries 查询回显）
+    pub loaded_libs: Vec<String>,
 }
 
 impl Evaluator {
@@ -89,12 +96,31 @@ impl Evaluator {
             num_counters: HashMap::new(),
             numbered: Vec::new(),
             refs: Vec::new(),
+            libs_dir: None,
+            packages_dir: None,
+            loaded_libs: Vec::new(),
         }
     }
 
     /// 某名字当前是否可调用（用户作用域或内置表）——functionexists 用，与 eval_call 的解析同一口径
     pub fn has_function(&self, name: &str) -> bool {
         self.lookup(name).is_some() || self.builtins.contains_key(name)
+    }
+
+    /// 取用户作用域里的值（.extend 查目标函数用；内置表不在作用域里，调用方自行判断）
+    pub fn lookup_value(&self, name: &str) -> Option<Value> {
+        self.lookup(name).cloned()
+    }
+
+    /// 用户作用域定义（.extend 注册包装函数用）
+    pub fn define_value(&mut self, name: &str, value: Value) {
+        self.define(name, value);
+    }
+
+    /// lambda 块参数表解析（.extend 取扩展体参数行用）：首行 `a b?:` 为参数表，无头 = 零参
+    pub fn lambda_params_pub(body: &[Block]) -> (Vec<String>, Vec<Block>) {
+        let (params, rest) = Evaluator::lambda_params(body, false);
+        (params, rest.to_vec())
     }
 
     /// 内置函数名清单（libfunctions 用）
@@ -271,9 +297,46 @@ impl Evaluator {
                 current = Some(self.run_repeat(times, &body)?);
                 continue;
             }
+            // 裸 .super（无实参）：透传当前扩展调用的实参给原函数（Kotlin ExtensionFunction
+            // 的参数沿袭口径——`.super::uppercase` 不重写实参也能拿到原值）。显式实参走普通路径。
+            if seg.name == "super" && seg.args.is_empty() {
+                if let (Some(base), Some(sargs)) = (self.lookup("super").cloned(), self.lookup("super_args").cloned()) {
+                    let items = sargs.as_items().unwrap_or_default();
+                    current = Some(match base {
+                        Value::Builtin(bname) => {
+                            let f = self.builtins.get(&bname).map(|b| b.f).ok_or_else(|| {
+                                self.diag(node.line, format!("内置函数 .{} 不存在", bname));
+                                ()
+                            })?;
+                            let call = BuiltinCall { name: &bname, pos: items, named: Vec::new(), body: node.body.clone() };
+                            f(self, &call).map_err(|e| {
+                                self.diag(node.line, e);
+                            })?
+                        }
+                        other => self.invoke_value(other, &items, node, true)?,
+                    });
+                    continue;
+                }
+            }
             // 目标解析（只读先行）：用户作用域优先；builtin 的 lambda_args 声明
             // 决定哪些实参位按内联 lambda 解析，必须在实参求值前知道。
             let user_target = self.lookup(&seg.name).cloned();
+            // .super 指向内置函数（.extend 包装内置的产物）：按内置表原路求值，
+            // 保留具名实参与 lambda 实参解析（对齐 Kotlin 的 ExtensionFunction 透传）
+            if matches!(user_target, Some(Value::Builtin(ref b)) if self.builtins.contains_key(b)) {
+                if let Some(Value::Builtin(ref bname)) = user_target {
+                    let (f, lambda_args) = match self.builtins.get(bname) {
+                        Some(b) => (b.f, b.lambda_args),
+                        None => unreachable!(),
+                    };
+                    let (pos, named) = self.eval_seg_args(seg, current.take(), lambda_args)?;
+                    let call = BuiltinCall { name: bname, pos, named, body: node.body.clone() };
+                    current = Some(f(self, &call).map_err(|e| {
+                        self.diag(node.line, e);
+                    })?);
+                    continue;
+                }
+            }
             let builtin = if user_target.is_none() {
                 self.builtins.get(&seg.name).map(|b| (b.f, b.lambda_args))
             } else {
@@ -331,8 +394,34 @@ impl Evaluator {
         Ok((pos, named))
     }
 
-    /// 调用一个已解析的值：lambda 调用（绑参 / 变量重绑定），其余值原样返回
+    /// 调用一个已解析的值：lambda 调用（绑参 / 变量重绑定）、扩展函数，其余值原样返回
     fn invoke_value(&mut self, value: Value, args: &[Value], node: &CallNode, is_last: bool) -> Result<Value, ()> {
+        if let Value::Extended { params, body, cond, base } = &value {
+            // 扩展函数调用：作用域里 .super 指向原函数、.super 的裸调用透传本次实参；
+            // where: 条件不满足时透明回落原函数（Kotlin ExtensionFunction 同语义）
+            let args = args.to_vec();
+            self.push_scope();
+            self.define("super", (**base).clone());
+            self.define("super_args", Value::List(args.clone()));
+            let run = match cond {
+                Some(c) => match self.call_lambda(c, &args, node.line)?.as_bool() {
+                    Some(b) => b,
+                    None => {
+                        self.pop_scope();
+                        self.diag(node.line, ".extend 的 where: 条件必须是布尔（yes / no）".to_string());
+                        return Err(());
+                    }
+                },
+                None => true,
+            };
+            if !run {
+                self.pop_scope();
+                return self.invoke_value((**base).clone(), &args, node, true);
+            }
+            let r = self.bind_and_run(params, body, &args, node);
+            self.pop_scope();
+            return r;
+        }
         let (params, body) = match &value {
             Value::Lambda { params, body } => (params.clone(), body.clone()),
             other => {
@@ -649,7 +738,21 @@ pub fn eval_document(
     builtins: HashMap<String, Builtin>,
     doc_dir: Option<std::path::PathBuf>,
 ) -> (String, Vec<Diagnostic>) {
+    eval_document_with(blocks, builtins, doc_dir, None, None)
+}
+
+/// 带库目录的求值入口（阶段 4）：libs_dir = 可加载库目录（Libraries/），
+/// packages_dir = 包缓存目录（app data）。qd_eval 命令传入；测试与旧调用方走 eval_document。
+pub fn eval_document_with(
+    blocks: &[Block],
+    builtins: HashMap<String, Builtin>,
+    doc_dir: Option<std::path::PathBuf>,
+    libs_dir: Option<std::path::PathBuf>,
+    packages_dir: Option<std::path::PathBuf>,
+) -> (String, Vec<Diagnostic>) {
     let mut ev = Evaluator::new(builtins, doc_dir);
+    ev.libs_dir = libs_dir;
+    ev.packages_dir = packages_dir;
     super::localization::install_std(&mut ev);
     let mut out = ev.run_document(blocks);
     super::bibliography::resolve_citations(&mut ev, &mut out);

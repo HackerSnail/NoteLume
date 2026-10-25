@@ -51,10 +51,19 @@ pub struct QdOutcome {
 
 /// Quarkdown 求值：源 md → 展开后的 md。求值失败点自动降级为原文并进诊断，命令本身不失败。
 /// doc_dir = 文档所在目录（绝对路径）：Data 模块文件类函数相对它解析；None 时 IO 函数诊断降级。
+/// libs_dir = 可加载库目录（库根 Libraries/）：include {名} 按文件名 stem 加载 .qd 库。
+/// 包缓存目录由本命令从应用配置目录解析（qd-packages/），前端不用传。
 #[tauri::command]
-fn qd_eval(md: String, doc_dir: Option<String>) -> QdOutcome {
+fn qd_eval(app: tauri::AppHandle, md: String, doc_dir: Option<String>, libs_dir: Option<String>) -> QdOutcome {
+    let packages_dir = qd_packages_dir(&app).ok();
     let blocks = qd::parser::parse_document(&md);
-    let (expanded, diags) = qd::eval::eval_document(&blocks, qd::stdlib::builtins(), doc_dir.map(std::path::PathBuf::from));
+    let (expanded, diags) = qd::eval::eval_document_with(
+        &blocks,
+        qd::stdlib::builtins(),
+        doc_dir.map(std::path::PathBuf::from),
+        libs_dir.map(std::path::PathBuf::from),
+        packages_dir,
+    );
     QdOutcome {
         expanded,
         diagnostics: diags
@@ -62,6 +71,72 @@ fn qd_eval(md: String, doc_dir: Option<String>) -> QdOutcome {
             .map(|d| QdDiagnostic { line: d.line, message: d.message })
             .collect(),
     }
+}
+
+/// 包缓存根：应用配置目录下 qd-packages/（与 settings.json 同级）
+fn qd_packages_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    app.path()
+        .app_config_dir()
+        .map(|d| d.join("qd-packages"))
+        .map_err(|e| format!("定位应用配置目录失败：{e}"))
+}
+
+/// 包引用 `@scope/name:version` 解析（与 qd::ecosystem 的 include 同一规则）
+fn parse_pkg_ref(reference: &str) -> Result<(String, String, String), String> {
+    let body = reference.trim().strip_prefix('@').ok_or("包引用以 @ 开头：@scope/name:version")?;
+    let (scope, rest) = body.split_once('/').ok_or("包引用格式：@scope/name:version")?;
+    let (name, version) = rest.split_once(':').ok_or("包引用缺版本：@scope/name:version")?;
+    let (scope, name, version) = (scope.trim(), name.trim(), version.trim());
+    if scope.is_empty() || name.is_empty() || version.is_empty() {
+        return Err("包引用的 scope / name / version 不能为空".into());
+    }
+    for part in [name, version] {
+        if part.contains("..") || part.contains('\\') || part.contains('/') {
+            return Err(format!("包引用段不合法：{part}"));
+        }
+    }
+    Ok((scope.into(), name.into(), version.into()))
+}
+
+/// 显式安装 Quarkdown 包：从 atoms 源（GitHub 仓库 quarkdown-labs/atoms，与 Kotlin
+/// PackageRepositories 的默认注册一致）拉该精确版本的 atom.toml 与 entrypoint 落进
+/// 本地缓存。include {@scope/name:version} 只读这份缓存——文档求值不触发下载，
+/// 安装只能是用户的显式动作（命令面板「安装 Quarkdown 包…」）。
+#[tauri::command]
+fn qd_package_install(app: tauri::AppHandle, reference: String) -> Result<String, String> {
+    const REGISTRY: &str = "https://raw.githubusercontent.com/quarkdown-labs/atoms/main/";
+    let (scope, name, version) = parse_pkg_ref(&reference)?;
+    if scope != "atoms" {
+        return Err(format!("只支持 atoms 包源，不支持 @{scope}"));
+    }
+    let cache = qd_packages_dir(&app)?.join(&name).join(&version);
+    let base = format!("{REGISTRY}{name}/{version}/");
+    fs::create_dir_all(&cache).map_err(|e| format!("创建包缓存目录失败：{e}"))?;
+    // 清单先落盘，入口文件名从清单读（包结构以 atom.toml 为准，不猜 main.qd）
+    let tmp = cache.join(format!(".download-{}", std::process::id()));
+    let fetch = |url: &str, dest: &std::path::Path| -> Result<(), String> {
+        download_remote(url, dest).map_err(|e| format!("下载失败 {url}：{e}"))
+    };
+    fetch(&format!("{base}atom.toml"), &tmp)?;
+    let manifest = fs::read_to_string(&tmp).map_err(|e| format!("读取 atom.toml 失败：{e}"))?;
+    let _ = fs::remove_file(&tmp);
+    let entry = qd::ecosystem::parse_atom_entrypoint(&manifest)?;
+    if entry.contains("..") || entry.contains('\\') || entry.starts_with('/') {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("包入口不合法：{entry}"));
+    }
+    let entry_path = cache.join(&entry);
+    if let Some(parent) = entry_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建包目录失败：{e}"))?;
+    }
+    if let Err(e) = fetch(&format!("{base}{entry}"), &entry_path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    // 清单留档（include 侧读的就是这份）
+    fs::write(cache.join("atom.toml"), &manifest).map_err(|e| format!("写入 atom.toml 失败：{e}"))?;
+    Ok(entry_path.to_string_lossy().to_string())
 }
 
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
@@ -2619,6 +2694,16 @@ mod tests {
     // 非 Windows 的远程图下载走系统 curl：用 file:// 起一个本地源，验证真把字节落到了目标路径
     #[cfg(not(windows))]
     #[test]
+    fn pkg_ref_parse_rules() {
+        assert_eq!(parse_pkg_ref("@atoms/demo:1.0.0").unwrap(), ("atoms".into(), "demo".into(), "1.0.0".into()));
+        assert!(parse_pkg_ref("atoms/demo:1.0").is_err());
+        assert!(parse_pkg_ref("@/demo:1.0").is_err());
+        assert!(parse_pkg_ref("@atoms/demo").is_err());
+        assert!(parse_pkg_ref("@atoms/../x:1.0").is_err());
+        assert!(parse_pkg_ref("@atoms/demo:1.0/x").is_err());
+    }
+
+    #[test]
     fn download_remote_reads_through_system_curl() {
         let dir = std::env::temp_dir().join(format!("notelume-dl-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -3759,6 +3844,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // P0
             qd_eval,
+            qd_package_install,
             scan_vault,
             read_md_file,
             write_md_file,
