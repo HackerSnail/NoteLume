@@ -13,7 +13,7 @@ Quarkdown = Turing-complete Markdown 方言：`.name {arg} name:{arg}` 函数调
 - 调用：`.name {positional} name:{named}`；块参数 = 调用后缩进（一级 4 空格 / Tab）的后续行
 - 定义：`.function {name}` + 缩进 lambda 体，lambda 首行 `param1 param2?:`（`?` 后缀 = 可选参数，缺省 `None`）
 - 链式：`.value::function {arg}`（`.` 之后的 `::` 前调用结果为第一参数）
-- 条件：`.if {cond}` 块 + 同级 `.else`；循环：`.loop {n} body`、`.foreach {collection} body`
+- 条件：`.if {cond}` 块 + `.ifnot` 反义（这一版 Quarkdown 没有 `.else`，取反流程用 `.let` 绑定条件后双分支）；循环：`.foreach {iterable} body`（lambda 首参或隐式 `.1`）、`.repeat {times}`；区间字面量 `{2..4}` 闭区间，Markdown 列表也是 iterable
 - 注释：`<!-- -->` 是标准 HTML 注释；Quarkdown 无行注释（对齐源码行为）
 
 ## 二、架构与分工
@@ -42,7 +42,7 @@ md 源文件（GFM 基底 + Quarkdown 指令）
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| 0 | Rust 骨架：lexer / parser / AST / 求值器 + 变量、`.function` 定义调用、`.if/.else`、`.loop/.foreach` + 最小内置库（Math 算术、Text 基础如 uppercase/lowercase） | `cargo test` 全量单测：语法 / 求值 / 错误降级各一组用例；`qd_eval` 命令连通 |
+| 0 | Rust 骨架：lexer / parser / AST / 求值器 + 变量、`.function` 定义调用、`.if` / `.ifnot` / `.let`、`.foreach` / `.repeat` + 最小内置库（Math 算术、Text 基础如 uppercase/lowercase） | `cargo test` 全量单测：语法 / 求值 / 错误降级各一组用例；`qd_eval` 命令连通 |
 | 1 | 编辑器集成（指令块装饰 + 快照 + 诊断标注）+ 导出集成（四个输出点渲染前展开）+ `features.quarkdown` 开关 | 真机：写 `.function {greet}` 调用出结果；开关关闭全部旁路 |
 | 2 | stdlib 第一批：Layout / Text 全量 / Collection / TableComputation / Data(CSV/JSON) / Document | 逐模块 Rust 单测 + 真机样例 |
 | 3 | Slides 全功能（整库幻灯片并入此处）+ Mermaid / Math / Cross-references | 整库编译一套幻灯片 |
