@@ -1617,6 +1617,7 @@ function openMoreMenu(anchorEl) {
   menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
   menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
   addMenuCmd(menu, 'app.clipSettings', 'clipboard')
+  addMenuCmd(menu, 'app.qdToggleEval', 'terminal')
   // 语言：子菜单列出全部语言，当前语言打勾
   menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
   addMenuCmd(menu, 'app.about', 'info')
@@ -3438,6 +3439,7 @@ const MENU_CHECKED = {
   'app.toggleInspector': () => !inspectorHidden(),
   'app.autosave': () => state.autosave.enabled,
   'app.sourceMode': () => !!(editor && editor.isSourceMode()),
+  'app.qdToggleEval': () => getFeatures(settingsStore).quarkdown,
 }
 // 语言命令的勾：当前语言那一项打勾（注册表 title 按当前语言生成，勾用于「更多」菜单与 mac 菜单）
 for (const l of LOCALES) {
