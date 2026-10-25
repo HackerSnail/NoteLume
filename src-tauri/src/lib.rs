@@ -34,6 +34,35 @@ mod fs_watcher;
 // 设计与分期见 docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md。
 mod qd;
 
+/// qd_eval 的返回：展开文本 + 诊断（camelCase 对前端）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QdDiagnostic {
+    pub line: u32,
+    pub message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QdOutcome {
+    pub expanded: String,
+    pub diagnostics: Vec<QdDiagnostic>,
+}
+
+/// Quarkdown 求值：源 md → 展开后的 md。求值失败点自动降级为原文并进诊断，命令本身不失败。
+#[tauri::command]
+fn qd_eval(md: String) -> QdOutcome {
+    let blocks = qd::parser::parse_document(&md);
+    let (expanded, diags) = qd::eval::eval_document(&blocks, qd::stdlib::builtins());
+    QdOutcome {
+        expanded,
+        diagnostics: diags
+            .into_iter()
+            .map(|d| QdDiagnostic { line: d.line, message: d.message })
+            .collect(),
+    }
+}
+
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
 // 本文件仅保留 `#[tauri::command]` 壳与引擎分派。类型仍以 crate 根的名字对前端可见。
 pub use git_builtin::{
@@ -3728,6 +3757,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             // P0
+            qd_eval,
             scan_vault,
             read_md_file,
             write_md_file,

@@ -12,3 +12,41 @@ pub mod eval;
 pub mod parser;
 pub mod stdlib;
 pub mod value;
+
+#[cfg(test)]
+mod e2e_tests {
+    /// 端到端：parse → eval 全链路（与 qd_eval 命令同一函数组合）
+    fn qd_eval(md: &str) -> (String, Vec<(u32, String)>) {
+        let blocks = super::parser::parse_document(md);
+        let (expanded, diags) = super::eval::eval_document(&blocks, super::stdlib::builtins());
+        (expanded, diags.into_iter().map(|d| (d.line, d.message)).collect())
+    }
+
+    #[test]
+    fn 组合样例_变量函数条件循环() {
+        let src = [
+            ".var {name} {NoteLume}",
+            ".function {greet}",
+            "    to:",
+            "    Hello, .to, welcome to .name!",
+            "",
+            ".greet {world}",
+            ".foreach {1..2}",
+            "    .1::uppercase",
+        ]
+        .join("\n");
+        let (out, diags) = qd_eval(&src);
+        assert_eq!(out, "Hello, world, welcome to NoteLume!\n1\n2");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn 组合样例_未知函数降级并出诊断() {
+        let src = "正文保持\n\n.nope {x}\n\n尾部照常";
+        let (out, diags) = qd_eval(src);
+        assert!(out.contains(".nope {x}"));
+        assert!(out.contains("正文保持"));
+        assert!(out.contains("尾部照常"));
+        assert_eq!(diags.len(), 1);
+    }
+}
