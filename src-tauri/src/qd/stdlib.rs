@@ -15,36 +15,43 @@ use std::collections::HashMap;
 
 use super::ast::Block;
 use super::csv::{cell_to_md, parse_csv};
-use super::eval::{BuiltinCall, BuiltinFn, Evaluator};
+use super::document;
+use super::eval::{Builtin, BuiltinCall, BuiltinFn};
 use super::io::{regex_search, QdIo};
 use super::value::Value;
 
 /// 位置实参（越界报缺参）
-fn pos<'a>(call: &'a BuiltinCall, index: usize) -> Result<&'a Value, String> {
+pub(crate) fn pos<'a>(call: &'a BuiltinCall, index: usize) -> Result<&'a Value, String> {
     call.pos.get(index).ok_or_else(|| format!(".{} 缺少第 {} 个实参", call.name, index + 1))
 }
 
-fn num<'a>(call: &'a BuiltinCall, index: usize) -> Result<f64, String> {
+pub(crate) fn num<'a>(call: &'a BuiltinCall, index: usize) -> Result<f64, String> {
     pos(call, index)?
         .as_num()
         .ok_or_else(|| format!(".{} 实参不是数字: {}", call.name, call.pos[index].to_output()))
 }
 
 /// 具名实参，取不到回落到位置 index（Quarkdown 的 by: / to: 两用口径）
-fn named_or_pos<'a>(call: &'a BuiltinCall, name: &str, index: usize) -> Result<&'a Value, String> {
+pub(crate) fn named_or_pos<'a>(call: &'a BuiltinCall, name: &str, index: usize) -> Result<&'a Value, String> {
     if let Some((_, v)) = call.named.iter().find(|(n, _)| n == name) {
         return Ok(v);
     }
     pos(call, index)
 }
 
-fn register(map: &mut HashMap<String, BuiltinFn>, name: &str, f: BuiltinFn) {
-    map.insert(name.to_string(), f);
+fn register(map: &mut HashMap<String, Builtin>, name: &str, f: BuiltinFn) {
+    register_l(map, name, &[], f)
 }
 
-/// 阶段 0 内置函数表
-pub fn builtins() -> HashMap<String, BuiltinFn> {
-    let mut m: HashMap<String, BuiltinFn> = HashMap::new();
+/// 带 lambda 实参声明的注册：lambda_args 条目为具名参数名或 "pos:N"（见 Builtin 注释）
+fn register_l(map: &mut HashMap<String, Builtin>, name: &str, lambda_args: &'static [&'static str], f: BuiltinFn) {
+    map.insert(name.to_string(), Builtin { f, lambda_args });
+}
+
+/// 内置函数总表：阶段 0/2 批 1/2 的 Math / Strings / Logical / Collection / Data /
+/// Dictionary.get / filetree 在本文件，Document / Layout / TableComputation 在 document.rs。
+pub fn builtins() -> HashMap<String, Builtin> {
+    let mut m: HashMap<String, Builtin> = HashMap::new();
 
     register(&mut m, "sum", |_, call| {
         let a = num(call, 0)?;
@@ -366,6 +373,37 @@ pub fn builtins() -> HashMap<String, BuiltinFn> {
             .collect();
         Ok(Value::List(pairs))
     });
+    register_l(&mut m, "findfirst", &["pos:1", "condition"], |ev, call| {
+        // findfirst {条件 lambda}：首个满足条件的元素；全不满足时无输出（Kotlin NOT_FOUND → 空）
+        let items = items_arg(call, 0)?;
+        let cond = pos(call, 1)?;
+        for item in items {
+            let hit = ev.call_lambda(cond, &[item.clone()], 0).map_err(|()| ".findfirst 条件求值失败".to_string())?;
+            match hit.as_bool() {
+                Some(true) => return Ok(item),
+                Some(false) => {}
+                None => return Err(".findfirst 条件必须返回布尔（yes / no）".to_string()),
+            }
+        }
+        Ok(Value::None)
+    });
+    register(&mut m, "groupvalues", |_, call| {
+        // groupvalues：按元素相等分组（组间保持首次出现顺序），产出组的集合
+        let items = items_arg(call, 0)?;
+        let mut order: Vec<String> = Vec::new();
+        let mut groups: Vec<Vec<Value>> = Vec::new();
+        for v in items {
+            let key = v.to_output();
+            match order.iter().position(|k| k == &key) {
+                Some(i) => groups[i].push(v),
+                None => {
+                    order.push(key);
+                    groups.push(vec![v]);
+                }
+            }
+        }
+        Ok(Value::List(groups.into_iter().map(Value::List).collect()))
+    });
 
     // ============ Data（阶段 2 批 2，名字对齐 Data.kt 的 @Name 注解）============
     // 布尔类具名参数统一收 yes / no（Quarkdown 布尔字面量口径）
@@ -637,6 +675,9 @@ pub fn builtins() -> HashMap<String, BuiltinFn> {
         render(&forest, 0, &mut out);
         Ok(Value::Markdown(out.join("\n")))
     });
+
+    // ============ Document / Layout / TableComputation（阶段 2 批 3，见 document.rs）============
+    document::register(&mut m);
 
     m
 }
