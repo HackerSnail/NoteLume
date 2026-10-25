@@ -62,6 +62,7 @@ import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
 import { numberingCss } from './heading-numbering.js'
+import { evalQd } from './tauri-bridge.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -2869,7 +2870,11 @@ async function exportHTML() {
   try {
     const full = editor.getMarkdown()
     // 导出不含 frontmatter：渲染与取标题都只看正文（frontmatter 非正文）
-    const md = splitFrontmatter(full).body
+    let md = splitFrontmatter(full).body
+    // Quarkdown 开关开启时先求值展开（源文件不动，只影响导出件）
+    if (getFeatures(settingsStore).quarkdown) {
+      md = (await evalQd(md)).expanded
+    }
     const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
     const body = injectToc(exportMd.render(md), title)
     const html = buildExportHtml(title, body, getFeatures(settingsStore).headingNumbering)
@@ -2915,7 +2920,10 @@ async function exportSlides() {
   }
   try {
     const full = editor.getMarkdown()
-    const md = splitFrontmatter(full).body
+    let md = splitFrontmatter(full).body
+    if (getFeatures(settingsStore).quarkdown) {
+      md = (await evalQd(md)).expanded
+    }
     const html = buildSlidesHtml(md, { title: state.currentFile, headingNumbering: getFeatures(settingsStore).headingNumbering, assets: slidesAssets })
     const defaultName = state.currentFile.replace(/\.md$/i, '.slides.html')
     const abs = await pickSaveAs(defaultName)
@@ -3005,7 +3013,7 @@ async function exportSiteFull() {
       writeFile: (absPath, content) => exportFile(absPath, content),
       copyAssets: (vr, rels, od) => copyVaultAssets(vr, rels, od),
     }
-    const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus, headingNumbering: getFeatures(settingsStore).headingNumbering })
+    const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus, headingNumbering: getFeatures(settingsStore).headingNumbering, evalMd: getFeatures(settingsStore).quarkdown ? evalQd : null })
     await messageDialog(t('msg.siteExportDone', {
       ok: r.ok,
       failed: r.failed ? t('msg.siteSkipped', { n: r.failed }) : '',
@@ -3572,6 +3580,7 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
     initialFocus: localStorage.getItem('nl-focus') === '1',
     initialTypewriter: localStorage.getItem('nl-typewriter') === '1',
     getFeatures: () => getFeatures(settingsStore),
+    evalQd,
     sourceMountEl,
     onSourceTextChange: () => {
       if (paneId !== panes.focused) return

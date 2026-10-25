@@ -89,6 +89,12 @@ export function writeMdFile(vaultRoot, path, content) {
   return invoke('write_md_file', { vaultRoot, path, content })
 }
 
+/** Quarkdown 求值：源 md → { expanded, diagnostics }。无 Tauri（网页预览）时透传原文 */
+export async function evalQd(md) {
+  if (!window.__TAURI_INTERNALS__) return { expanded: md, diagnostics: [] }
+  return invoke('qd_eval', { md })
+}
+
 /** 解析 [[wikilink]]：返回 { exists, path } */
 export function resolveWikiLink(vaultRoot, refRel, name) {
   return invoke('resolve_wiki_link', { vaultRoot, refRel, name })

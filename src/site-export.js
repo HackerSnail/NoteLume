@@ -583,7 +583,7 @@ function buildSearchPage() {
  * @param {(msg:string)=>void} [opts.setStatus]
  * @returns {Promise<{ok:number,failed:number,total:number}>}
  */
-export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {}, headingNumbering = false }) {
+export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {}, headingNumbering = false, evalMd = null }) {
   ensureRules()
   const say = (m) => { try { setStatus(m) } catch { /* ignore */ } }
   say(t('site.building'))
@@ -613,7 +613,11 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {}, 
     say(t('site.exporting', { done: done + 1, total: docs.length, rel: d.rel }))
     try {
       const raw = await io.readMd(vaultRoot, d.rel)
-      const body = stripFrontmatter(raw)
+      let body = stripFrontmatter(raw)
+      // Quarkdown 开关开启时先求值展开（evalMd 由调用方注入，模块保持无 Tauri 依赖）
+      if (evalMd) {
+        body = (await evalMd(body)).expanded
+      }
       const ctx = { __site: true, selfRel: d.rel, fromDir: dirname(d.rel), wikiMap, imageSet, imgByBase, assets }
       const bodyHtml = renderWithHtml(body, ctx)
       searchEntries.push({ rel: d.rel, title: d.title, text: htmlToText(bodyHtml) })

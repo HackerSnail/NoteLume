@@ -432,6 +432,7 @@ export function createAppearanceSettings(deps) {
     { key: 'csvTable', labelKey: 'feature.csvTable' },
     { key: 'emoji', labelKey: 'feature.emoji' },
     { key: 'headingNumbering', labelKey: 'feature.headingNumbering' },
+    { key: 'quarkdown', labelKey: 'feature.quarkdown' },
   ]
   function renderFeatures() {
     if (!getFeatures) return
