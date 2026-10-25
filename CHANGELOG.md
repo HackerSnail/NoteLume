@@ -9,6 +9,8 @@
 
 ### Added
 
+* **Quarkdown 引擎阶段 0：Rust 求值骨架落地，GFM 约束修订**：确定引入 Quarkdown 语法层（`.function` 函数、变量、条件、循环等，对齐 `.others/quarkdown` 参考实现），总体设计见 `docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md`（JS + Rust 重写，Rust 管引擎与 stdlib，前端只做渲染集成；分五阶段）。约束修订：CLAUDE.MD 硬性约束第 3 条改为「使用 Quarkdown 语法的文档不再要求 Typora / Obsidian 兼容，普通文档仍完全兼容」。本阶段交付 `src-tauri/src/qd/`：解析器（指令行 / 花括号配平参数 / 段式链式 `::` / 缩进块 / 行内调用）、求值器（作用域栈、变量、`.function` 定义调用、`.if` / `.ifnot` / `.let`、`.foreach` / `.repeat`、区间字面量 `{2..4}`、块变量、隐式首参 `.1`、递归深度上限 128）、最小内置库（Math 10 个 + Text 3 个，函数名与 Quarkdown stdlib 对齐）、`qd_eval` Tauri 命令（源 md → 展开后 md + 诊断）。错误模型：单点求值失败进诊断数组、调用原文降级输出，不炸整个文档。引擎尚未接前端任何调用方（阶段 1 做编辑器集成与导出注入）。实测：`cargo test --lib` 204 条全过（qd 新增 40 条：解析 12、求值 13、循环 7、内置库 7、端到端 2，覆盖语法 / 求值 / 错误降级三类），`cargo build` 无新增警告。
+
 * **功能开关区（设置页）：目录块 / CSV 表格 / Emoji / 标题编号，全部关闭即标准模式**：外观设置底部新增「功能开关」区块（`src/feature-flags.js`，存 settings.json 的 `features` 段，坏数据逐键回落默认），四个开关——`[[toc]]` 目录块、CSV 表格渲染、Emoji 短代码（回补）、标题自动编号。设计原则：全部关闭 = 标准模式，关掉的只是显示 / 输出层增强，md 源文件不受任何开关影响；改动即时广播所有窗格编辑器重扫装饰（`main.js` 的 `refreshFeatureFlags`，经 `nl-features` meta 强制重建）。`headingNumbering` 默认关（它改动所有导出件的呈现，属显式选择），其余默认开。
 
 * **[[toc]] 目录块：单独一行 `[[toc]]` 换成可点目录，导出件同步出目录**：Obsidian 目录插件同款语法（本质是普通 wikilink，target 为 toc，标准 GFM）。编辑器里 `src/toc-block.js` 的装饰插件把该段换成目录块（H1–H3 缩进分层，条目 `<a href="#slug">` 走既有锚点拦截跳转，slug 去重与全量标题同源，深层 H4+ 参与去重但不进目录）；导出侧 `src/site-export.js` 的 `injectToc` 在渲染产物里把 toc 锚换成真目录（条目 id 与 heading 渲染规则同源），单篇 HTML 导出（`exportMd` 新增 heading_open 锚点规则）与整站导出都生效。文档无标题时按普通链接显示；幻灯片导出里按普通 wikilink（分片渲染取不到全文档标题，刻意不做）。
