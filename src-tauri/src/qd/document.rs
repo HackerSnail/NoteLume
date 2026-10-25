@@ -34,8 +34,8 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
     // ============ Document：文档元数据（modifyOrEcho 模式的无值侧 → 无输出）============
     // Kotlin 有值写入元数据、无值回显当前值；文本引擎不持元数据，两侧都无输出。
     // footer / pagemargin 的内容属页边距区域（分页后处理复制到每页），不进主文档流。
-    const DOC_NOOPS: [&str; 23] = [
-        "doctype", "docname", "docdescription", "docauthor", "docauthors", "dockeywords", "doclang", "theme",
+    const DOC_NOOPS: [&str; 22] = [
+        "doctype", "docname", "docdescription", "docauthor", "docauthors", "dockeywords", "theme",
         "numbering", "nonumbering", "font", "paragraphstyle", "captionposition", "texmacro", "pageformat",
         "autopagebreak", "noautopagebreak", "formatpagenumber", "resetpagenumber", "pagemargin", "footer",
         "marker", "lastheading",
@@ -247,7 +247,7 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
 }
 
 /// body 求值 → 文本（空 body → 空串）
-fn body_md(ev: &mut Evaluator, call: &BuiltinCall) -> Result<String, String> {
+pub(crate) fn body_md(ev: &mut Evaluator, call: &BuiltinCall) -> Result<String, String> {
     match &call.body {
         Some(b) if !b.is_empty() => match ev.eval_blocks(b) {
             Ok(v) => Ok(v.to_output()),
