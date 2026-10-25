@@ -128,7 +128,7 @@ impl Evaluator {
 
     fn eval_call_inner(&mut self, node: &CallNode) -> Result<Value, ()> {
         // 特殊形式只能在首段且不能带链（它们需要惰性 body，链式语义未定义）
-        const SPECIAL: [&str; 5] = ["function", "var", "if", "ifnot", "let"];
+        const SPECIAL: [&str; 7] = ["function", "var", "if", "ifnot", "let", "foreach", "repeat"];
         if SPECIAL.contains(&node.head.name.as_str()) {
             if !node.chain.is_empty() {
                 self.diag(node.line, format!(".{} 不能出现在链式调用中间", node.head.name));
@@ -139,6 +139,8 @@ impl Evaluator {
                 "var" => self.eval_var(node),
                 "if" => self.eval_if(node, false),
                 "ifnot" => self.eval_if(node, true),
+                "foreach" => self.eval_foreach(node),
+                "repeat" => self.eval_repeat(node),
                 _ => self.eval_let(node),
             };
         }
@@ -293,10 +295,94 @@ impl Evaluator {
         };
         let value = match node.head.args.get(1) {
             Some(a) => self.eval_raw(&a.raw, node.line)?,
-            None => Value::None,
+            None => match node.body {
+                // 块变量：`.var {name}` + 缩进块，值是块内容的求值结果
+                Some(ref body) => {
+                    self.push_scope();
+                    let r = self.eval_blocks(body);
+                    self.pop_scope();
+                    r?
+                }
+                None => Value::None,
+            },
         };
         self.define(&name, value.clone());
         Ok(Value::None) // .var 是定义，不产生输出
+    }
+
+    /// .foreach {iterable} + 迭代 lambda：逐项绑定首参（或隐式 `.1`）求值 body，结果按行拼接
+    fn eval_foreach(&mut self, node: &CallNode) -> Result<Value, ()> {
+        let items = match node.head.args.first() {
+            Some(a) => {
+                let v = self.eval_raw(&a.raw, node.line)?;
+                match v.as_items() {
+                    Some(it) => it,
+                    None => {
+                        self.diag(node.line, ".foreach 实参不可迭代".to_string());
+                        return Err(());
+                    }
+                }
+            }
+            None => {
+                self.diag(node.line, ".foreach 缺少可迭代实参".to_string());
+                return Err(());
+            }
+        };
+        let body = node.body.clone().unwrap_or_default();
+        let (params, rest) = Evaluator::lambda_params(&body, true);
+        if params.is_empty() {
+            self.diag(node.line, ".foreach 缺少迭代参数".to_string());
+            return Err(());
+        }
+        let mut outs: Vec<String> = Vec::new();
+        for item in items {
+            self.push_scope();
+            self.define(&params[0], item);
+            let r: Result<String, ()> = match self.eval_blocks(rest) {
+                Ok(v) => Ok(v.to_output()),
+                Err(()) => Ok(String::new()), // 单项失败不炸整个循环（诊断已记录）
+            };
+            self.pop_scope();
+            if let Ok(o) = r {
+                outs.push(o);
+            }
+        }
+        Ok(Value::Markdown(outs.join("\n")))
+    }
+
+    /// .repeat {times} + body：重复求值 n 次，按行拼接
+    fn eval_repeat(&mut self, node: &CallNode) -> Result<Value, ()> {
+        let times = match node.head.args.first() {
+            Some(a) => {
+                let v = self.eval_raw(&a.raw, node.line)?;
+                match v.as_num() {
+                    Some(n) => n,
+                    None => {
+                        self.diag(node.line, ".repeat 实参必须是数字".to_string());
+                        return Err(());
+                    }
+                }
+            }
+            None => {
+                self.diag(node.line, ".repeat 缺少次数".to_string());
+                return Err(());
+            }
+        };
+        let times = times.max(0.0) as usize;
+        let body = node.body.clone().unwrap_or_default();
+        let mut outs: Vec<String> = Vec::new();
+        for _ in 0..times {
+            self.push_scope();
+            let r: Result<String, ()> = match self.eval_blocks(&body) {
+                Ok(v) => Ok(v.to_output()),
+                Err(()) => Ok(String::new()),
+            };
+            self.pop_scope();
+            if let Ok(o) = r {
+                outs.push(o);
+            }
+        }
+        Ok(Value::Markdown(outs.join("\n")))
     }
 
     /// .if / .ifnot：条件成立（ifnot 为不成立）时求值 body，否则输出空
@@ -448,6 +534,36 @@ mod tests {
     #[test]
     fn 行内调用嵌入句子() {
         assert_eq!(out(".var {name} {NoteLume}\nWelcome to .name, enjoy!"), "Welcome to NoteLume, enjoy!");
+    }
+
+    #[test]
+    fn 区间字面量输出() {
+        assert_eq!(out(".var {r} {2..4}\n.r"), "2\n3\n4");
+    }
+
+    #[test]
+    fn foreach_显式参数() {
+        assert_eq!(out(".foreach {2..4}\n    n:\n    The number is .n"), "The number is 2\nThe number is 3\nThe number is 4");
+    }
+
+    #[test]
+    fn foreach_隐式首参() {
+        assert_eq!(out(".foreach {1..3}\n    .1"), "1\n2\n3");
+    }
+
+    #[test]
+    fn foreach_列表变量() {
+        assert_eq!(out(".var {letters}\n    - A\n    - B\n\n.foreach {.letters}\n    l:\n    letter .l"), "letter A\nletter B");
+    }
+
+    #[test]
+    fn repeat_重复求值() {
+        assert_eq!(out(".repeat {3}\n    x"), "x\nx\nx");
+    }
+
+    #[test]
+    fn foreach_嵌套条件() {
+        assert_eq!(out(".foreach {1..2}\n    .if {yes}\n        item .1"), "item 1\nitem 2");
     }
 
     #[test]
