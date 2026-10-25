@@ -3279,6 +3279,13 @@ function registerAppCommands() {
   app('app.exportSlides', null, () => exportSlides())
   app('app.exportVaultSlides', null, () => exportVaultSlides())
   app('app.qdInstallPackage', null, () => qdInstallPackageDialog())
+  // Quarkdown 求值开关：与设置页「功能开关」同一 setFeature 通道，改完广播全部编辑器重扫装饰
+  app('app.qdToggleEval', null, () => {
+    const next = !getFeatures(settingsStore).quarkdown
+    setFeature(settingsStore, 'quarkdown', next)
+    refreshFeatureFlags()
+    setStatus(t(next ? 'status.qdEvalOn' : 'status.qdEvalOff'))
+  })
   app('app.exportSite', null, () => exportSiteFull())
   app('app.importWord', null, () => importWordViaDialog())
   app('app.exportWord', null, () => exportWordViaDialog())
