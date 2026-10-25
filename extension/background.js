@@ -1,12 +1,12 @@
 // background.js —— NoteLume 剪藏扩展的 service worker。
 //
-// 五个入口：工具栏图标（mode='auto'，页面上有选区就剪选区、没有才剪整页——图标是
-// 唯一的显眼入口，用户选了文字点图标，要的就是那段文字）；右键菜单「剪藏选中内容」
-// （mode='selection'，只剪选区）；右键菜单「剪藏整页」（mode='page'，显式要整页，
-// 有选区也剪整页）；右键菜单「截取选区图片」与快捷键 Alt+Shift+S（mode='shot'，
-// 把选区那块画面截下来存成图）；右键菜单「框选区域截图」与快捷键 Alt+Shift+D
-// （mode='shot-box'，页面上拖一个矩形，截那一块——浏览器的选区只能圈文字，
-// 圈不住图表与插图）。
+// 五个入口：工具栏图标（mode='page'，恒定剪整页——图标是「剪这一页」的心理模型，
+// 页面上残留的一段选区（读文时随手划的、双击代码行留下的）不该让整页缩成几个字）；
+// 右键菜单「剪藏选中内容」（mode='selection'，只剪选区，选中的文字就在鼠标下面，
+// 意图明确）；右键菜单「剪藏整页」（mode='page'，选中文字时也在，明确要整页）；
+// 右键菜单「截取选区图片」与快捷键 Alt+Shift+S（mode='shot'，把选区那块画面截下来
+// 存成图）；右键菜单「框选区域截图」与快捷键 Alt+Shift+D（mode='shot-box'，页面上
+// 拖一个矩形，截那一块——浏览器的选区只能圈文字，圈不住图表与插图）。
 // 提取在页面里跑（executeScript 注入 vendor + content/extract.js）；图片由本后台
 // fetch 成 data URI（host_permissions 覆盖任意源，不受页面 CORS 限制），再 POST 到
 // NoteLume 主进程起的本地 HTTP 服务（只绑 127.0.0.1；来源闸门是 Rust 侧的 Origin /
@@ -194,7 +194,7 @@ function errMessage(e) {
   return String((e && e.message) || e)
 }
 
-// mode：'auto'（工具栏图标）/ 'selection'（右键剪藏选中内容）/ 'page'（右键剪藏整页）
+// mode：'page'（工具栏图标与右键「剪藏整页」）/ 'selection'（右键剪藏选中内容）
 async function clipActiveTab(mode, selectionText) {
   const tab = await activeTab()
   if (!tab) return
@@ -219,9 +219,9 @@ async function clipActiveTab(mode, selectionText) {
         extracted && extracted.reason ? '页面提取失败：' + extracted.reason : '页面提取失败'
       )
     }
-    // 图标路径认选区：页面上有选区就按选区剪（extract.js 反正两份都算了）；
-    // 右键的「剪藏整页」是显式要整页，有选区也剪整页
-    const wantSelection = mode === 'selection' || (mode === 'auto' && !!extracted.selectionMarkdown)
+    // 只有右键「剪藏选中内容」剪选区。工具栏图标与「剪藏整页」恒定整页——页面上
+    // 残留的选区不该把整页缩成几个字（读文时随手划一段、双击代码行都会留下选区）
+    const wantSelection = mode === 'selection'
     if (wantSelection && !extracted.selectionMarkdown) {
       throw new Error('没有选中内容：先在页面上选中要剪藏的文字')
     }
@@ -242,7 +242,7 @@ async function clipActiveTab(mode, selectionText) {
   }
 }
 
-chrome.action.onClicked.addListener(() => clipActiveTab('auto'))
+chrome.action.onClicked.addListener(() => clipActiveTab('page'))
 
 // 裁剪框：选区矩形（CSS 像素）∩ 视口，再按图片尺寸换算成图上的像素坐标。
 // 选区有一截在视口外时只能截到看得见的那部分，clipped 标出来给通知用。
@@ -506,7 +506,9 @@ function installMenus() {
     chrome.contextMenus.create({
       id: 'nl-clip-page',
       title: '剪藏整页到 NoteLume',
-      contexts: ['page'],
+      // 选中文字时右键也要能选「整页」：contexts 只有 page 时，选区上的右键菜单
+      // 只出 selection 那几项
+      contexts: ['page', 'selection'],
     })
   })
 }

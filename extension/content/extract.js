@@ -67,6 +67,7 @@
 
   // 尾部签名块：博客平台常在正文末尾挂一段签名页脚（本文作者 / 本文链接 / 版权声明 /
   // posted @ 阅读(…) 评论(…) 收藏 举报 / © …），不是正文，留着就是剪藏里一坨页脚垃圾。
+  // Butterfly 那类主题的「文章作者：/ 文章链接：」不算——用户要留着。
   // 从结尾往前扫：跳过空行，命中签名行就把切口上移，签名块上方常挂的图（入群二维码
   // 之类）一并切掉，碰到正文行就停。只认整行以签名开头的，正文里提到这些词不受影响；
   // 切口落在内容前 60% 之内才动手，避免误伤以这类词开头的短文。
@@ -150,7 +151,6 @@
   try {
     const doc = document.cloneNode(true)
     const imageUrls = []
-    absolutizeImages(doc, imageUrls)
 
     // 正文提取。两个提取器都会就地改文档（规范化属性、解 noscript 图、抽取时删噪声
     // 节点），各拿一份深拷贝，降级链不拿上一个收拾过的残页。
@@ -175,7 +175,17 @@
       article = { html: doc.body.innerHTML, meta: null }
     }
 
-    const markdown = article ? stripFooterSignatures(toMarkdown(article.html).trim()) : ''
+    // 图片只收正文里的：在整页克隆上先收一遍会把页头头像、侧栏装饰算进来，本地化
+    // 开着时前 30 张名额被它们占掉，正文里的图反而排不进去。提取结果是一段 HTML
+    // 字符串，装回临时容器里再绝对化，正文之外的元素一个不碰
+    let articleHtml = ''
+    if (article) {
+      const box = document.createElement('div')
+      box.innerHTML = article.html
+      absolutizeImages(box, imageUrls)
+      articleHtml = box.innerHTML
+    }
+    const markdown = articleHtml ? stripFooterSignatures(toMarkdown(articleHtml).trim()) : ''
 
     // 选中片段：单独一份（src 同样绝对化）。isolated world 的 getSelection 读不到
     // iframe 里的选区与输入框里的选区，这两种情况用 background 经 opts 送来的

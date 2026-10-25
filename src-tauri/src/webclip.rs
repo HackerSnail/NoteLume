@@ -367,6 +367,44 @@ pub fn clip_vars(payload: &ClipPayload, cfg: &ClipConfig) -> HashMap<String, Str
     m
 }
 
+/// 整行只剩一个值为空的 {{token}} 时把这一行去掉（连同模板里它与上文之间的空行）。
+/// 内置模板的摘要行是 `> {{description}}`：页面没给 description 时（PJAX 站点换页后
+/// `<head>` 还留着上一页的元信息，首页恰好没有 description）渲染出来是一个空引用块，
+/// 编辑器里就是一个带光标的空行，看着像正文丢了。只认「行首允许 > / - / * / + 加空白」
+/// 这种纯变量行，frontmatter 的 `author: {{author}}` 与正文行不受影响；未知 token 也不动。
+fn drop_empty_token_lines(tpl: &str, vars: &HashMap<String, String>) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for line in tpl.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\n', '\r']);
+        let trimmed = body.trim();
+        let rest = if let Some(r) = trimmed.strip_prefix('>') {
+            r.trim()
+        } else if let Some(r) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+            .or_else(|| trimmed.strip_prefix("+ "))
+        {
+            r.trim()
+        } else {
+            trimmed
+        };
+        let token = rest
+            .strip_prefix("{{")
+            .and_then(|r| r.strip_suffix("}}"))
+            .map(str::trim)
+            .filter(|k| !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        let empty = matches!(token, Some(k) if vars.get(k).map(|v| v.trim().is_empty()).unwrap_or(false));
+        if empty {
+            if out.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+                out.pop();
+            }
+            continue;
+        }
+        out.push(line);
+    }
+    out.concat()
+}
+
 /// {{token}} 替换：token 两侧允许空格，只认字母数字下划线；未知 / 非法 token 原样保留
 ///（与 template.js 的 applyTemplate 同语义，避免误伤 Obsidian Templater 的 {{...}}）。
 pub fn render_template(tpl: &str, vars: &HashMap<String, String>) -> String {
@@ -848,7 +886,7 @@ pub fn write_clip(
         }
         vars.insert("content".into(), body);
     }
-    let mut content = render_template(&template, &vars);
+    let mut content = render_template(&drop_empty_token_lines(&template, &vars), &vars);
     // 用户的模板里没有 {{content}} 时把图补到文末，别让截下来的画面丢了
     if let Some(rel) = shot_rel.as_ref() {
         if !content.contains(rel.as_str()) {
@@ -1380,6 +1418,41 @@ mod tests {
         assert_eq!(render_template("{{title}}-{{unknown}}", &vars), "foo-{{unknown}}");
         assert_eq!(render_template("{{}} {{ti tle}}", &vars), "{{}} {{ti tle}}");
         assert_eq!(render_template("{{title", &vars), "{{title");
+    }
+
+    #[test]
+    fn drop_empty_token_lines_skips_empty_quote_but_keeps_frontmatter() {
+        let mut vars = HashMap::new();
+        vars.insert("title".to_string(), "T".to_string());
+        vars.insert("description".to_string(), "".to_string());
+        vars.insert("author".to_string(), "".to_string());
+        let tpl = "# {{title}}\n\n> {{description}}\n\n{{content}}\n";
+        // 空摘要行连同上方的空行一起消失，不留空引用块也不留连续空行
+        assert_eq!(drop_empty_token_lines(tpl, &vars), "# {{title}}\n\n{{content}}\n");
+        // 有值照旧
+        let mut filled = vars.clone();
+        filled.insert("description".to_string(), "摘要".to_string());
+        assert_eq!(drop_empty_token_lines(tpl, &filled), tpl);
+        // frontmatter 的「键: {{author}}」不是纯变量行，空值也保留
+        let fm = "---\nauthor: {{author}}\n---\n";
+        assert_eq!(drop_empty_token_lines(fm, &vars), fm);
+        // 未知 token 原样留着，等 render_template 按未知处理
+        assert_eq!(drop_empty_token_lines("> {{unknown}}\n", &vars), "> {{unknown}}\n");
+    }
+
+    #[test]
+    fn write_clip_omits_empty_summary_quote() {
+        let dir = std::env::temp_dir().join("notelume-clip-empty-summary-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let root = fs::canonicalize(&dir).unwrap();
+        // PJAX 站点换页后 <head> 还是首页的：首页没有 description，剪藏的摘要就是空的
+        let p = payload("记录生活学习", "本文最后更新于 780 天前。\n");
+        let out = write_clip(&root, &p, &ClipConfig::default(), None).unwrap();
+        let text = fs::read_to_string(root.join(&out.rel)).unwrap();
+        assert!(!text.lines().any(|l| l.trim() == ">"), "不留空引用块：{text}");
+        assert!(text.contains("# 记录生活学习\n\n本文最后更新于"), "标题与正文之间没有空块：{text}");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
