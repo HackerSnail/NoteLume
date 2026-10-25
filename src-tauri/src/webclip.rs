@@ -956,6 +956,7 @@ pub fn start(app: &tauri::AppHandle, state: &ClipServerState, mut cfg: ClipConfi
         }
     }
     let listener = listener.ok_or_else(|| crate::ui_msg!("clip.portBusy", "port" => cfg.port))?;
+    cfg.bound_port = bound;
     listener
         .set_nonblocking(true)
         .map_err(|e| format!("设置剪藏监听失败：{e}"))?;
@@ -973,7 +974,6 @@ pub fn start(app: &tauri::AppHandle, state: &ClipServerState, mut cfg: ClipConfi
         let _ = app_for_emit.emit(event, payload);
     });
     let handle = thread::spawn(move || serve_loop(listener, index, cfg_for_thread, sd, emit));
-    cfg.bound_port = bound;
     let mut g = state.0.lock().map_err(|e| e.to_string())?;
     *g = Some(ClipServer { cfg, shutdown, handle: Some(handle) });
     Ok(())
@@ -1027,10 +1027,12 @@ pub fn apply(
 fn serve_loop(
     listener: TcpListener,
     index: Arc<Mutex<crate::VaultIndex>>,
-    cfg: ClipConfig,
+    mut cfg: ClipConfig,
     shutdown: Arc<AtomicBool>,
     emit: EmitFn,
 ) {
+    // 端口以实际监听地址为准：起服务时端口可能顺延，/health 报出去的必须和扩展实际连的一致
+    cfg.bound_port = listener.local_addr().ok().map(|a| a.port());
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, _)) => {
@@ -2063,6 +2065,25 @@ mod tests {
             }
             String::from_utf8_lossy(&resp).to_string()
         };
+
+        // GET /health 报出实际绑定端口（扩展「测试连接」会把它显示出来）
+        let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let req =
+            format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n", port);
+        s.write_all(req.as_bytes()).unwrap();
+        let mut resp = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            match s.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => resp.extend_from_slice(&buf[..n]),
+                Err(_) => break,
+            }
+        }
+        let resp = String::from_utf8_lossy(&resp);
+        assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+        assert!(resp.contains(&format!("\"port\":{}", port)), "{resp}");
 
         let body =
             serde_json::json!({"title": "http 测试", "url": "https://e.com/a", "markdown": "正文"}).to_string();
