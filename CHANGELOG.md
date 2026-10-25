@@ -9,7 +9,7 @@
 
 ### Added
 
-* **命令面板加「Quarkdown：开 / 关求值」切换命令**：设置页「功能开关」里的 Quarkdown 开关在命令面板有了直达入口（`app.qdToggleEval`，无默认快捷键）——同一 `setFeature` 通道落 settings.json 并经 `refreshFeatureFlags` 广播全部窗格编辑器重扫装饰，状态栏回显开 / 关。词条五语言。实测：前端 41 个测试文件全过。
+* **命令面板加「Quarkdown：开 / 关求值」切换命令**：设置页「功能开关」里的 Quarkdown 开关有了两处直达入口（`app.qdToggleEval`，无默认快捷键）——命令面板，以及 Windows / Linux 工具条「更多」菜单（挂在「网页剪藏设置」之后，勾选态读当前开关）；同一 `setFeature` 通道落 settings.json 并经 `refreshFeatureFlags` 广播全部窗格编辑器重扫装饰，状态栏回显开 / 关。词条五语言。实测：前端 41 个测试文件全过（app-menu 29 条含菜单规格回归）。
 
 * **文件树右键「在资源管理器中显示」**：文件 / 文件夹 / 空白区（库根）三处右键菜单各加一项，调系统文件管理器定位到该条目——Windows 走 `explorer /select` 选中该项（raw_arg 绕开引号转义，带空格路径可命中；explorer 退出码经常回 1，进程起得来即算成功）、macOS `open -R` 反选、Linux 无通用反选就 `xdg-open` 打开所在目录。新命令 `reveal_in_folder`（Rust，路径经既有 abs_in_vault 校验、不存在时按五语言报「路径不存在」），词条 `menu.revealInFolder` / `msg.revealFailed` 五语言。实测：`cargo test --lib` 305 条全过，前端 41 个测试文件全过；真机三平台的资源管理器行为属验收项。
 
