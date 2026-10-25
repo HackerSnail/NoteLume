@@ -53,11 +53,12 @@ impl Value {
         }
     }
 
-    /// 布尔判定：Bool 原样；Str 只认 yes / no（与布尔字面量同源）；其余不算真值
+    /// 布尔判定：Bool 原样；Str / Markdown 只认 yes / no（与布尔字面量同源；
+    /// Markdown 是 lambda 体的标准产出，条件 lambda（tablefilter 等）靠这条落型）；其余不算真值
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),
-            Value::Str(s) => match s.as_str() {
+            Value::Str(s) | Value::Markdown(s) => match s.as_str() {
                 "yes" => Some(true),
                 "no" => Some(false),
                 _ => None,

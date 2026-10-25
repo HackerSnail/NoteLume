@@ -5,13 +5,16 @@
 // markdown-it 管线。语法锚点以 .others/quarkdown/docs/*.qd 与 quarkdown-core 源码为准。
 //
 // 模块：ast（语法树）→ parser（指令行解析）→ eval（求值）→ stdlib（内置函数）；
-// io（Data 模块的文件访问，阶段 2 批 2）、csv（RFC4180 解析）。
+// io（Data 模块的文件访问，阶段 2 批 2）、csv（RFC4180 解析）、mdtable（管道表工具）与
+// document（Document / Layout / TableComputation，阶段 2 批 3）。
 // 错误模型：单点求值失败进诊断数组、输出原文降级，不炸整个文档。
 
 pub mod ast;
 pub mod csv;
+pub mod document;
 pub mod eval;
 pub mod io;
+pub mod mdtable;
 pub mod parser;
 pub mod stdlib;
 pub mod value;

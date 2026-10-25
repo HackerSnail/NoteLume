@@ -22,6 +22,21 @@ pub struct Diagnostic {
 
 pub type BuiltinFn = fn(&mut Evaluator, &BuiltinCall) -> Result<Value, String>;
 
+/// 内置函数注册项。lambda_args 声明哪些实参位是内联 lambda（`{x: .x::f}` 形态）：
+/// 条目是具名参数名（如 "filter"）或 "pos:N"（第 N 个位置实参，0 起始、含链式注入的首参）。
+/// 声明由被调函数决定（Kotlin 按参数类型标注解析，同思路）——普通文本实参不受
+/// "Note: xxx" 这类形似参数头的内容影响。
+pub struct Builtin {
+    pub f: BuiltinFn,
+    pub lambda_args: &'static [&'static str],
+}
+
+impl Clone for Builtin {
+    fn clone(&self) -> Self {
+        Builtin { f: self.f, lambda_args: self.lambda_args }
+    }
+}
+
 /// 内置函数的实参视图：eval 层已全部求值——链式注入的首参排在 pos 最前，
 /// 具名实参（`by:{2}`）单列。builtin 不接触原始 raw。
 /// body 是调用的块参数（`.filetree` + 缩进列表用）；常规函数忽略它。
@@ -35,7 +50,7 @@ pub struct BuiltinCall<'a> {
 pub struct Evaluator {
     /// 作用域栈：栈顶是当前作用域
     scopes: Vec<HashMap<String, Value>>,
-    builtins: HashMap<String, BuiltinFn>,
+    builtins: HashMap<String, Builtin>,
     pub diagnostics: Vec<Diagnostic>,
     depth: usize,
     /// 文档所在目录（qd_eval 传入）：Data 模块文件类函数相对它解析；None = 无落盘文档，IO 函数诊断降级
@@ -43,7 +58,7 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
-    pub fn new(builtins: HashMap<String, BuiltinFn>, doc_dir: Option<std::path::PathBuf>) -> Self {
+    pub fn new(builtins: HashMap<String, Builtin>, doc_dir: Option<std::path::PathBuf>) -> Self {
         Evaluator { scopes: vec![HashMap::new()], builtins, diagnostics: Vec::new(), depth: 0, doc_dir }
     }
 
@@ -164,21 +179,9 @@ impl Evaluator {
         }
         for (idx, seg) in segs.iter().enumerate() {
             let is_last = idx == segs.len() - 1;
-            // 实参求值：链式注入的前一结果排在位置实参最前，具名单列
-            let mut pos: Vec<Value> = Vec::new();
-            let mut named: Vec<(String, Value)> = Vec::new();
-            if let Some(prev) = current.take() {
-                pos.push(prev);
-            }
-            for a in seg.args.iter() {
-                let v = self.eval_raw(&a.raw, node.line)?;
-                match &a.name {
-                    Some(n) => named.push((n.clone(), v)),
-                    None => pos.push(v),
-                }
-            }
             // 链上的 foreach / repeat：注入值即实参（`.range {1} {3}::foreach` 惯用形态）
             if seg.name == "foreach" {
+                let (mut pos, _) = self.eval_seg_args(seg, node, current.take(), &[])?;
                 if pos.is_empty() {
                     self.diag(node.line, ".foreach 缺少可迭代实参".to_string());
                     return Err(());
@@ -196,6 +199,7 @@ impl Evaluator {
                 continue;
             }
             if seg.name == "repeat" {
+                let (mut pos, _) = self.eval_seg_args(seg, node, current.take(), &[])?;
                 if pos.is_empty() {
                     self.diag(node.line, ".repeat 缺少次数".to_string());
                     return Err(());
@@ -212,28 +216,65 @@ impl Evaluator {
                 current = Some(self.run_repeat(times, &body)?);
                 continue;
             }
-            // 用户作用域：lambda（函数 / 变量）
-            let target = self.lookup(&seg.name).cloned();
-            let value = match target {
-                Some(v) => v,
-                None => match self.builtins.get(&seg.name) {
-                    Some(f) => {
-                        let f = *f;
-                        let call = BuiltinCall { name: &seg.name, pos, named, body: node.body.clone() };
-                        current = Some(f(self, &call).map_err(|e| {
-                            self.diag(node.line, e);
-                        })?);
-                        continue;
-                    }
-                    None => {
-                        self.diag(node.line, format!("未知函数 .{}", seg.name));
-                        return Err(());
-                    }
-                },
+            // 目标解析（只读先行）：用户作用域优先；builtin 的 lambda_args 声明
+            // 决定哪些实参位按内联 lambda 解析，必须在实参求值前知道。
+            let user_target = self.lookup(&seg.name).cloned();
+            let builtin = if user_target.is_none() {
+                self.builtins.get(&seg.name).map(|b| (b.f, b.lambda_args))
+            } else {
+                None
             };
-            current = Some(self.invoke_value(value, &pos, node, is_last)?);
+            match (user_target, builtin) {
+                (Some(v), _) => {
+                    let (pos, _) = self.eval_seg_args(seg, node, current.take(), &[])?;
+                    current = Some(self.invoke_value(v, &pos, node, is_last)?);
+                }
+                (None, Some((f, lambda_args))) => {
+                    let (pos, named) = self.eval_seg_args(seg, node, current.take(), lambda_args)?;
+                    let call = BuiltinCall { name: &seg.name, pos, named, body: node.body.clone() };
+                    current = Some(f(self, &call).map_err(|e| {
+                        self.diag(node.line, e);
+                    })?);
+                }
+                (None, None) => {
+                    self.diag(node.line, format!("未知函数 .{}", seg.name));
+                    return Err(());
+                }
+            }
         }
         Ok(current.unwrap_or(Value::None))
+    }
+
+    /// 实参求值：链式注入的前值排在位置实参最前，具名单列。
+    /// lambda_args 命中的实参位不按文本求值，而是解析成内联 lambda（Value::Lambda）。
+    fn eval_seg_args(
+        &mut self,
+        seg: &CallSeg,
+        node: &CallNode,
+        prev: Option<Value>,
+        lambda_args: &'static [&'static str],
+    ) -> Result<(Vec<Value>, Vec<(String, Value)>), ()> {
+        let mut pos: Vec<Value> = Vec::new();
+        let mut named: Vec<(String, Value)> = Vec::new();
+        if let Some(prev) = prev {
+            pos.push(prev);
+        }
+        for a in seg.args.iter() {
+            let is_lambda = match &a.name {
+                Some(n) => lambda_args.iter().any(|s| s == n),
+                None => lambda_args.iter().any(|s| *s == format!("pos:{}", pos.len())),
+            };
+            let v = if is_lambda {
+                parse_lambda_raw(&a.raw)
+            } else {
+                self.eval_raw(&a.raw, node.line)?
+            };
+            match &a.name {
+                Some(n) => named.push((n.clone(), v)),
+                None => pos.push(v),
+            }
+        }
+        Ok((pos, named))
     }
 
     /// 调用一个已解析的值：lambda 调用（绑参 / 变量重绑定），其余值原样返回
@@ -256,6 +297,26 @@ impl Evaluator {
         }
         self.push_scope();
         let r = self.bind_and_run(&params, &body, args, node);
+        self.pop_scope();
+        r
+    }
+
+    /// 调用 lambda 值（builtin 拿到的 lambda 实参）：绑参求值 body；非 lambda 原样返回。
+    /// 诊断落在传入的 line 上（哑节点只为了进 bind_and_run 的报错通道）。
+    pub fn call_lambda(&mut self, value: &Value, args: &[Value], line: usize) -> Result<Value, ()> {
+        let (params, body) = match value {
+            Value::Lambda { params, body } => (params.clone(), body.clone()),
+            other => return Ok(other.clone()),
+        };
+        let node = CallNode {
+            head: CallSeg { name: String::new(), args: Vec::new() },
+            chain: Vec::new(),
+            body: None,
+            line,
+            src: String::new(),
+        };
+        self.push_scope();
+        let r = self.bind_and_run(&params, &body, args, &node);
         self.pop_scope();
         r
     }
@@ -284,7 +345,7 @@ impl Evaluator {
     }
 
     /// 求值一组块（函数体 / 块参数），输出按行拼接；内层调用失败降级原文继续
-    fn eval_blocks(&mut self, blocks: &[Block]) -> Result<Value, ()> {
+    pub fn eval_blocks(&mut self, blocks: &[Block]) -> Result<Value, ()> {
         let parts: Vec<String> = blocks
             .iter()
             .map(|b| match b {
@@ -507,10 +568,47 @@ pub fn infer_literal_like(trimmed: &str) -> Value {
     Value::Str(trimmed.to_string())
 }
 
+/// 内联 lambda 实参解析（`{x: .x::isgreater {5}}` / `{.1::average::round}`）。
+/// 参数头与块形态同规则（token 序列 + 冒号；token 只含字母数字下划线）：
+/// 行内形态头在同行（`x: body`），块形态头独占一行（行尾冒号，body 在后续行）；
+/// 无参数头 = 隐式首参 `.1`。只在 builtin 声明的 lambda 实参位调用——
+/// 普通文本实参不进来，"Note: xxx" 这类形似参数头的内容不受影响。
+pub fn parse_lambda_raw(raw: &str) -> Value {
+    let trimmed = raw.trim();
+    let mut params: Vec<String> = Vec::new();
+    let mut body = trimmed;
+    let first_end = trimmed.find('\n').unwrap_or(trimmed.len());
+    let first = &trimmed[..first_end];
+    if let Some(head) = first.strip_suffix(':') {
+        // 块形态：参数头独占一行
+        let tokens: Vec<&str> = head.split_whitespace().collect();
+        if !tokens.is_empty() && tokens.iter().all(|w| valid_param_token(w)) {
+            params = tokens.iter().map(|w| w.to_string()).collect();
+            body = trimmed[first_end..].trim_start();
+        }
+    } else if let Some(colon) = first.find(':') {
+        // 行内形态：头在冒号前，body 是冒号后的余文（含后续行）
+        let tokens: Vec<&str> = first[..colon].split_whitespace().collect();
+        if !tokens.is_empty() && tokens.iter().all(|w| valid_param_token(w)) {
+            params = tokens.iter().map(|w| w.to_string()).collect();
+            body = trimmed[colon + 1..].trim_start();
+        }
+    }
+    if params.is_empty() {
+        params.push("1".to_string());
+    }
+    let blocks = parse_document(body);
+    Value::Lambda { params, body: blocks }
+}
+
+fn valid_param_token(w: &str) -> bool {
+    !w.is_empty() && w.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
 /// 整篇文档求值入口：返回（展开文本，诊断）。doc_dir = 文档所在目录（Data 模块 IO 相对它解析）。
 pub fn eval_document(
     blocks: &[Block],
-    builtins: HashMap<String, BuiltinFn>,
+    builtins: HashMap<String, Builtin>,
     doc_dir: Option<std::path::PathBuf>,
 ) -> (String, Vec<Diagnostic>) {
     let mut ev = Evaluator::new(builtins, doc_dir);

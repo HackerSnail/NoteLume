@@ -100,7 +100,7 @@ pub fn regex_search(pattern: &str, text: &str) -> Result<bool, String> {
     }
     let text_chars: Vec<char> = text.chars().collect();
     for start in 0..=text_chars.len() {
-        let mut m = Matcher { text: &text_chars };
+        let m = Matcher { text: &text_chars };
         if m.match_node(&node, start, 0, &mut |_, _| true) {
             return Ok(true);
         }
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn 语法错误返回Err() {
+    fn 语法错误返回错误() {
         assert!(regex_search("(unclosed", "x").is_err());
         assert!(regex_search("a)b", "x").is_err());
         assert!(regex_search("[abc", "x").is_err());

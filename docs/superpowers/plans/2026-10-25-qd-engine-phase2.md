@@ -6,7 +6,7 @@
 
 - **批 1（本计划）**：Strings 全量（string / concatenate / uppercase / lowercase / capitalize / isempty / isnotempty / startswith；plaintext 需真实 Markdown 剥离实现，延后）、Logical 全量（islower / isgreater / equals / not / and / or）、Math 补充（rem / abs / negate / sqrt / logn / sin / cos / tan / round）、Collection 17 个（getat / first / second / third / last / size / sumall / average / distinct / sorted / reversed / groupvalues / prepended / appended / findfirst / joinstring / withindices）
 - **批 2**：Data / FileTree（需给引擎加 IO provider，涉及 qd_eval 命令签名扩展）
-- **批 3**：Document / Layout / TableComputation（产出 HTML / 结构节点的模块，要定「引擎输出 Markdown 还是 HTML 片段」的口径）
+- **批 3**：Document / Layout / TableComputation（产出 HTML / 结构节点的模块，要定「引擎输出 Markdown 还是 HTML 片段」的口径）。**口径已定（2026-10-25 实施时）**：全部输出 Markdown——HTML 路线要同时改编辑器快照（html:false 刻意安全口径）与三个导出管线并各接净化，不值；box / collapse 等降级引用块，分页专属机制 no-op，toc 落 `[[toc]]`。附：lambda 实参机制（Builtin.lambda_args）随本批落地，findfirst / groupvalues 一并补齐；计划原文所列 sortby 在 Kotlin stdlib 中不存在（仅 listfiles 的同名具名参数）。
 - **批 4**：Slides / Bibliography / Localization / Dictionary / 包管理器
 
 **Global Constraints**
