@@ -42,9 +42,12 @@
 * 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 力导向图谱、全库搜索、版本快照一键回滚
 * 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；不联网也绝不上传，删除进系统回收站
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
+* ⚡ **Quarkdown 引擎（五阶段全量落地）**：`.var` / `.function` / `.if` / `.foreach` 这套 Turing-complete 语法直接写进 md，快照式预览不碰源文件；约 190 个内置函数——正则替换、表格计算、CSV/JSON 读取、Mermaid 与 xychart 图表、交叉引用、BibTeX 参考文献、多语言本地化、`Libraries/` 库目录、atoms 包安装、`.extend` 函数扩展。不用 Quarkdown 语法的文档仍是纯 GFM，Typora / Obsidian 照常打开
+* 🎬 **导出一族**：单篇 / 整库幻灯片（自包含 reveal.js HTML，整库按文档分章）、整站静态站、打印排版（Paged.js 预分页：目录页、页码与页眉、H1 分页、封面）、Word .docx
 * 🔄 **Git 内置**：状态 / 历史 / 单文件 diff / 提交 / 推送 / 合并冲突解决全部内建（`git2` 引擎，没装 git 也能 fetch/pull）
 * 🌐 **网页剪藏**：浏览器扩展（`extension/`，MV3）把网页正文 POST 给本机服务，Rust 按模板落盘、图片可选本地化进 `assets/`，并自动在文末关联库内相关笔记；只绑 127.0.0.1，只收扩展来源的请求
-* 📦 **轻**：macOS DMG 约 6 MB；整库导出静态站、插件系统（`.notelume-plugins/`）同样内建
+* 🧩 **功能开关与五语言**：`[[toc]]` 目录块、CSV 表格渲染、emoji 短代码、标题自动编号都是设置里的开关项，全关即标准模式；界面内置简体中文 / 繁體中文 / English / Français / Deutsch
+* 📦 **轻**：macOS DMG 约 6 MB；插件系统（`.notelume-plugins/`）内建
 
 ### 快速开始
 
@@ -56,7 +59,7 @@
 | macOS   | `NoteLume_x.y.z_aarch64.dmg`    | 拖入 Applications   |
 | Linux   | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x` 后运行 |
 
-**使用**：打开后 `Ctrl+Shift+O` 选一个存着 `.md` 的文件夹作为知识库，开写；只想改单个文件就 `Ctrl+O`。全部键位可在命令面板（`Ctrl+Shift+P`）和快捷键设置里查看、重绑。
+**使用**：打开后 `Ctrl+Shift+O` 选一个存着 `.md` 的文件夹作为知识库，开写；只想改单个文件就 `Ctrl+O`。全部键位可在命令面板（`Ctrl+Shift+P`）和快捷键设置里查看、重绑；界面语言在工具条「更多 → 界面语言」切换。
 
 **从源码构建**：需要 Rust 1.80+ 与 Node 18+。
 
@@ -143,7 +146,7 @@ mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置�
 
 | 层       | 选型                                                                |
 | -------- | ------------------------------------------------------------------- |
-| 桌面外壳 | Tauri v2 + Rust（文件 I/O、索引、docx 解析、Git 全在 Rust 侧）      |
+| 桌面外壳 | Tauri v2 + Rust（文件 I/O、索引、docx 解析、Git、Quarkdown 引擎全在 Rust 侧）      |
 | 编辑器   | ProseMirror（WYSIWYG）+ CodeMirror 6（源码模式），无 Vue/React 框架 |
 | 前端构建 | Vite                                                                |
 | 存储     | 本地文件夹 + 标准 GFM `.md`，无数据库、无私有格式                 |
@@ -177,9 +180,12 @@ Tired of cloud notes that spin forever, but unwilling to give up speed for struc
 * 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, Canvas-based knowledge graph, vault-wide search, snapshot history with one-click rollback
 * 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; nothing ever leaves your machine; deletions go to the system trash
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
+* ⚡ **Quarkdown engine (all five phases shipped)**: Turing-complete `.var` / `.function` / `.if` / `.foreach` macros live right in your Markdown, snapshot-previewed without touching the source; about 190 builtins — regex replace, table computation, CSV/JSON readers, Mermaid & xychart diagrams, cross-references, BibTeX bibliographies, localization tables, a `Libraries/` folder, atoms package installs, and `.extend` function wrapping. Documents without Quarkdown syntax stay pure GFM that Typora and Obsidian open as-is
+* 🎬 **Export family**: single-document and whole-vault slide decks (self-contained reveal.js HTML, one chapter per document), static-site export, paged print & PDF (Paged.js: TOC page, page numbers & running heads, H1 page breaks, cover page), and Word .docx
 * 🔄 **Git built in**: status / history / per-file diff / commit / push / merge-conflict resolution, powered by embedded `git2` — works even without a system Git installed
 * 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, can localize images under `assets/` (off by default), and appends links to related notes — loopback-only, extension-origin gated
-* 📦 **Featherweight**: the macOS DMG is about 6 MB; full-vault static-site export and a plugin system (`.notelume-plugins/`) come standard
+* 🧩 **Feature flags & five languages**: `[[toc]]` blocks, CSV table rendering, emoji shortcodes, and heading numbering are all toggles — everything off means standard mode; the UI ships in 简体中文 / 繁體中文 / English / Français / Deutsch
+* 📦 **Featherweight**: the macOS DMG is about 6 MB; a plugin system (`.notelume-plugins/`) comes standard
 
 ### Quick Start
 
@@ -191,7 +197,7 @@ Tired of cloud notes that spin forever, but unwilling to give up speed for struc
 | macOS    | `NoteLume_x.y.z_aarch64.dmg`    | Drag to Applications   |
 | Linux    | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x`, then run |
 
-**Use**: press `Ctrl+Shift+O` and point NoteLume at a folder of `.md` files to open it as a vault, or `Ctrl+O` for a single file. Every shortcut is discoverable in the command palette (`Ctrl+Shift+P`) and fully remappable.
+**Use**: press `Ctrl+Shift+O` and point NoteLume at a folder of `.md` files to open it as a vault, or `Ctrl+O` for a single file. Every shortcut is discoverable in the command palette (`Ctrl+Shift+P`) and fully remappable; the UI language switches under More → Interface language.
 
 **Build from source**: requires Rust 1.80+ and Node 18+.
 
@@ -278,7 +284,7 @@ On macOS, `Ctrl` means `⌘`. Everything below follows Typora / Obsidian convent
 
 | Layer   | Choice                                                                            |
 | ------- | --------------------------------------------------------------------------------- |
-| Shell   | Tauri v2 + Rust (file I/O, indexing, docx parsing, Git all live on the Rust side) |
+| Shell   | Tauri v2 + Rust (file I/O, indexing, docx parsing, Git, and the Quarkdown engine all live on the Rust side) |
 | Editor  | ProseMirror (WYSIWYG) + CodeMirror 6 (source mode), no UI framework               |
 | Bundler | Vite                                                                              |
 | Storage | Plain folders of GFM `.md` — no database, no proprietary format                |
