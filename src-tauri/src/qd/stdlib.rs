@@ -6,6 +6,8 @@
 //  阶段 2 批 1：Strings 全量 / Logical 全量 / Math 补充 / Collection 17 个
 //  阶段 2 批 2：Data（read / pathtoroot / listfiles / filename / json / csv）+
 //          Dictionary.get（.json 的取值入口）+ filetree（MiscElements）
+//  阶段 2 批 4：Dictionary.dictionary（本文件）；Slides / Localization / Bibliography /
+//          Ecosystem（include）/ Libraries 查询在各自模块文件
 // 实参约定：eval 层把链式注入的首参排在位置实参最前、全部求值后传入（BuiltinCall），
 // builtin 不再接触原始 raw——类型转换错误统一在这里报、由 eval 层降级为原文 + 诊断。
 // 文件类函数经 QdIo（Evaluator.doc_dir）访问文件系统：只认相对文档目录的路径，
@@ -585,7 +587,9 @@ pub fn builtins() -> HashMap<String, Builtin> {
         Ok(Value::Markdown(out.trim_end().to_string()))
     });
 
-    // ============ Dictionary.get（阶段 2 批 2：.json 的取值入口；Dictionary 全量在批 4）============
+    // ============ Dictionary（批 2 的 .json 取值入口 + 批 4 的显式字典构造）============
+    // Kotlin 的 Dictionary 模块全量就是 dictionary / get 两个函数——字典的其余操作
+    // 靠「字典 → [键, 值] 对集合」适配复用 Collection 函数，本引擎 as_items 已支持。
     register(&mut m, "get", |_, call| {
         let dict = pos(call, 0)?;
         let key = pos(call, 1)?.as_str().ok_or_else(|| ".get 键名必须是文本".to_string())?;
@@ -594,9 +598,57 @@ pub fn builtins() -> HashMap<String, Builtin> {
                 .iter()
                 .find(|(k, _)| k == &key)
                 .map(|(_, v)| v.clone())
-                .unwrap_or(Value::None)),
-            _ => Err(".get 实参不是字典（用 .json 读一个）".to_string()),
+                // 缺键回落 orelse（Kotlin 默认 NOT_FOUND → 空串，本引擎 None 输出同为空串）
+                .unwrap_or_else(|| {
+                    call.named
+                        .iter()
+                        .find(|(n, _)| n == "orelse")
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or(Value::None)
+                })),
+            _ => Err(".get 实参不是字典（用 .json 读一个，或 .dictionary 构造）".to_string()),
         }
+    });
+    register(&mut m, "dictionary", |ev, call| {
+        let body = match &call.body {
+            Some(b) if !b.is_empty() => b,
+            _ => return Err(".dictionary 需要 Markdown 列表作为块参数".to_string()),
+        };
+        let mut lines: Vec<String> = Vec::new();
+        for b in body {
+            match b {
+                Block::Text(t) => lines.extend(t.split('\n').map(|s| s.to_string())),
+                Block::Inline(segs) => lines.push(ev.eval_inline(segs)),
+                Block::Call(c) => match ev.eval_call(c) {
+                    Ok(v) => lines.push(v.to_output()),
+                    Err(()) => lines.push(c.src.clone()),
+                },
+            }
+        }
+        let mut entries: Vec<(usize, String)> = Vec::new();
+        for l in &lines {
+            let t = l.trim_end();
+            if let Some(rest) = t.trim_start().strip_prefix("- ") {
+                let text = rest.trim();
+                if !text.is_empty() {
+                    entries.push((t.len() - t.trim_start().len(), text.to_string()));
+                }
+            }
+        }
+        if entries.is_empty() {
+            return Err(".dictionary 块参数里没有 Markdown 列表".to_string());
+        }
+        // 缩进层级按出现过的缩进值定级（2 / 4 空格风格都吃），相对首项归零
+        let mut levels: Vec<usize> = entries.iter().map(|(i, _)| *i).collect();
+        levels.sort_unstable();
+        levels.dedup();
+        let items: Vec<(usize, String)> = entries
+            .into_iter()
+            .map(|(i, t)| (levels.iter().position(|&l| l == i).unwrap_or(0), t))
+            .collect();
+        let mut idx = 0;
+        let dict = build_dict(&items, &mut idx, 0);
+        Ok(Value::Dict(dict))
     });
 
     // ============ FileTree（MiscElements.kt，阶段 2 批 2）============
@@ -679,7 +731,50 @@ pub fn builtins() -> HashMap<String, Builtin> {
     // ============ Document / Layout / TableComputation（阶段 2 批 3，见 document.rs）============
     document::register(&mut m);
 
+    // ============ Slides / Localization / Bibliography / Ecosystem / Libraries（阶段 2 批 4）============
+    super::slides::register(&mut m);
+    super::localization::register(&mut m);
+    super::bibliography::register(&mut m);
+    super::ecosystem::register(&mut m);
+
     m
+}
+
+/// 字典列表递归构建：`- key: value` 行内值按字面量推断（数字 / yes|no 落型），
+/// `- key` 无行内值时：有子级落嵌套字典（Kotlin 的嵌套列表 → 嵌套字典），无子级落空字典。
+fn build_dict(items: &[(usize, String)], idx: &mut usize, depth: usize) -> Vec<(String, Value)> {
+    let mut dict: Vec<(String, Value)> = Vec::new();
+    while *idx < items.len() {
+        let (d, text) = &items[*idx];
+        if *d < depth {
+            break;
+        }
+        if *d > depth {
+            // 跳层防御：不认识的更深层级跳过，不挂死循环
+            *idx += 1;
+            continue;
+        }
+        *idx += 1;
+        let (key, inline) = match text.split_once(':') {
+            Some((k, v)) => (k.trim().to_string(), v.trim().to_string()),
+            None => (text.clone(), String::new()),
+        };
+        if key.is_empty() {
+            continue;
+        }
+        let children = if *idx < items.len() && items[*idx].0 > depth {
+            Some(build_dict(items, idx, depth + 1))
+        } else {
+            None
+        };
+        let value = match children {
+            Some(c) => Value::Dict(c),
+            None if inline.is_empty() => Value::Dict(Vec::new()),
+            None => super::eval::infer_literal_like(&inline),
+        };
+        dict.push((key, value));
+    }
+    dict
 }
 
 /// serde_json 值 → 求值器值：对象 → 字典（保持键序）、数组 → 列表、标量按类型
@@ -838,6 +933,33 @@ mod tests {
         // sumall 元素非数字 → 降级原文
         assert_eq!(n >= 1, true);
         let _ = text;
+    }
+
+    // —— 阶段 2 批 4：Dictionary 构造与 orelse ——
+
+    #[test]
+    fn dictionary_构造与取值() {
+        let src = ".var {d}\n    .dictionary\n        - name: qd\n        - count: 3\n        - ok: yes\n\n.d::get {name} .d::get {count} .d::get {ok}";
+        assert_eq!(out(src), "qd 3 yes");
+        // 嵌套列表 → 嵌套字典；无值条目 → 空字典；块变量存字典保住类型
+        let src2 = ".var {d2}\n    .dictionary\n        - outer\n          - inner: 1\n        - empty\n\n.d2::get {outer}::get {inner}";
+        assert_eq!(out(src2), "1");
+        // 字典按 [键, 值] 对参与集合运算
+        assert_eq!(out(".var {d2}\n    .dictionary\n        - a: 1\n        - b: 2\n\n.size {.d2}"), "2");
+    }
+
+    #[test]
+    fn dictionary_缺块参数降级() {
+        let (text, n) = run(".dictionary {x}");
+        assert!(text.contains(".dictionary"));
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn get_缺键回落orelse() {
+        let src = ".var {d}\n    .dictionary\n        - a: 1\n\n.d::get {zzz} orelse:{none-found}";
+        assert_eq!(out(src), "none-found");
+        assert_eq!(out(".var {d3}\n    .dictionary\n        - a: 1\n\n.d3::get {zzz}"), "");
     }
 
     // —— 阶段 2 批 2：Data / Dictionary.get / filetree ——

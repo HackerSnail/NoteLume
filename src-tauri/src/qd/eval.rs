@@ -55,11 +55,47 @@ pub struct Evaluator {
     depth: usize,
     /// 文档所在目录（qd_eval 传入）：Data 模块文件类函数相对它解析；None = 无落盘文档，IO 函数诊断降级
     pub doc_dir: Option<std::path::PathBuf>,
+    /// 当前语言（doclang 设置；.localize 查表用它），默认 en
+    pub locale: String,
+    /// 本地化表：表名 → [(语言 tag, [(键, 值)])]。localization 模块注册，std 内置表启动即有
+    pub loc_tables: HashMap<String, Vec<(String, Vec<(String, String)>)>>,
+    /// 参考文献库：每次 .bibliography 调用追加一份（key 保序）
+    pub bibs: Vec<Vec<(String, Vec<(String, String)>)>>,
+    /// .cite 的实参按键出现顺序记录，文档求值完后统一解析编号（编号取决于 .bibliography 的条目顺序）
+    pub cites: Vec<Vec<String>>,
 }
 
 impl Evaluator {
     pub fn new(builtins: HashMap<String, Builtin>, doc_dir: Option<std::path::PathBuf>) -> Self {
-        Evaluator { scopes: vec![HashMap::new()], builtins, diagnostics: Vec::new(), depth: 0, doc_dir }
+        Evaluator {
+            scopes: vec![HashMap::new()],
+            builtins,
+            diagnostics: Vec::new(),
+            depth: 0,
+            doc_dir,
+            locale: "en".to_string(),
+            loc_tables: HashMap::new(),
+            bibs: Vec::new(),
+            cites: Vec::new(),
+        }
+    }
+
+    /// 某名字当前是否可调用（用户作用域或内置表）——functionexists 用，与 eval_call 的解析同一口径
+    pub fn has_function(&self, name: &str) -> bool {
+        self.lookup(name).is_some() || self.builtins.contains_key(name)
+    }
+
+    /// 内置函数名清单（libfunctions 用）
+    pub fn builtin_names(&self) -> Vec<String> {
+        self.builtins.keys().cloned().collect()
+    }
+
+    /// 隔离求值：声明（var / function）落在临时作用域，求值完丢弃（include 的 scope / subdocument 档）
+    pub fn eval_isolated(&mut self, blocks: &[Block]) -> Result<Value, ()> {
+        self.push_scope();
+        let r = self.eval_blocks(blocks);
+        self.pop_scope();
+        r
     }
 
     fn push_scope(&mut self) {
@@ -122,8 +158,15 @@ impl Evaluator {
     fn eval_raw(&mut self, raw: &str, line: usize) -> Result<Value, ()> {
         let trimmed = raw.trim();
         if trimmed.starts_with('.') {
-            // 实参本身是调用：当子文档解析求值
+            // 实参本身是调用：当子文档解析求值。
+            // 恰好一个调用时直接取它的返回值——文本往返会把 Dict / List / Range 丢成字符串
+            //（.size {.d} 拿到的是 JSON 文本），结构类型过不了一手。
             let blocks = parse_document(trimmed);
+            if blocks.len() == 1 {
+                if let Block::Call(c) = &blocks[0] {
+                    return self.eval_call(c);
+                }
+            }
             let mut parts: Vec<String> = Vec::new();
             for b in &blocks {
                 match b {
@@ -410,7 +453,15 @@ impl Evaluator {
         let value = match node.head.args.get(1) {
             Some(a) => self.eval_raw(&a.raw, node.line)?,
             None => match node.body {
-                // 块变量：`.var {name}` + 缩进块，值是块内容的求值结果
+                // 块变量：`.var {name}` + 缩进块，值是块内容的求值结果。
+                // 块体恰好是一个调用时直接取它的返回值，保住类型（.dictionary 的 Dict、
+                // .json 的集合等要能整只存进变量再参与链式调用）；多块内容仍走文本拼接。
+                Some(ref body) if body.len() == 1 && matches!(body[0], Block::Call(_)) => {
+                    match &body[0] {
+                        Block::Call(c) => self.eval_call(c)?,
+                        _ => unreachable!(),
+                    }
+                }
                 Some(ref body) => {
                     self.push_scope();
                     let r = self.eval_blocks(body);
@@ -606,13 +657,17 @@ fn valid_param_token(w: &str) -> bool {
 }
 
 /// 整篇文档求值入口：返回（展开文本，诊断）。doc_dir = 文档所在目录（Data 模块 IO 相对它解析）。
+/// 出口做一步引文解析：.cite 在求值期只能落占位符（编号由 .bibliography 的条目顺序定，
+/// 而 cite 常出现在 bibliography 之前），统一在此替换成 [n] 形态。
 pub fn eval_document(
     blocks: &[Block],
     builtins: HashMap<String, Builtin>,
     doc_dir: Option<std::path::PathBuf>,
 ) -> (String, Vec<Diagnostic>) {
     let mut ev = Evaluator::new(builtins, doc_dir);
-    let out = ev.run_document(blocks);
+    super::localization::install_std(&mut ev);
+    let mut out = ev.run_document(blocks);
+    super::bibliography::resolve_citations(&mut ev, &mut out);
     (out, ev.diagnostics)
 }
 

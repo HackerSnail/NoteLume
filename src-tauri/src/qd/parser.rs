@@ -119,7 +119,7 @@ pub fn parse_blocks(lines: &[(usize, &str)], start_indent: usize) -> Vec<Block> 
 /// 名字；参数与链与行首调用同规则，但只在行内配平（跨行的当普通文本）。无调用返回 None。
 fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
     let chars: Vec<char> = line.chars().collect();
-    let mut segs: Vec<InlineSeg> = Vec::new();
+    let mut inline_segs: Vec<InlineSeg> = Vec::new();
     let mut text_start = 0usize;
     let mut ci = 0usize;
     let mut found = false;
@@ -140,8 +140,9 @@ fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
             continue;
         }
         let mut cur = ci + 1 + name.chars().count();
-        let mut seg_args: Vec<Arg> = Vec::new();
-        let mut chain: Vec<CallSeg> = Vec::new();
+        // 段序列：头段 + 链段；参数跟在哪个段名后面就归哪个段（行首调用 parse_call 同规则，
+        // 此前全部绑到头段，`.x::sum {1}` 的 {1} 会被静默丢掉）
+        let mut segs: Vec<CallSeg> = vec![CallSeg { name: name.clone(), args: Vec::new() }];
         let mut ok = true;
         loop {
             let pre_skip = cur; // 跳空白前位置：本迭代没吃到参数 / 链时回退，空格还给文本
@@ -161,7 +162,7 @@ fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
                     break;
                 }
                 j += cname.chars().count();
-                chain.push(CallSeg { name: cname, args: Vec::new() });
+                segs.push(CallSeg { name: cname, args: Vec::new() });
                 cur = j;
                 continue;
             }
@@ -200,7 +201,7 @@ fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
                 break;
             }
             let raw: String = chars[brace_col + 1..k].iter().collect();
-            seg_args.push(Arg { name: arg_name, raw });
+            segs.last_mut().unwrap().args.push(Arg { name: arg_name, raw });
             cur = k + 1;
         }
         if !ok {
@@ -209,12 +210,14 @@ fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
         }
         // 切出调用前文本，记录调用
         if ci > text_start {
-            segs.push(InlineSeg::Str(chars[text_start..ci].iter().collect()));
+            inline_segs.push(InlineSeg::Str(chars[text_start..ci].iter().collect()));
         }
         let src: String = chars[ci..cur].iter().collect();
-        segs.push(InlineSeg::Call(CallNode {
-            head: CallSeg { name, args: seg_args },
-            chain,
+        let mut call_segs = segs;
+        let head = call_segs.remove(0);
+        inline_segs.push(InlineSeg::Call(CallNode {
+            head,
+            chain: call_segs,
             body: None,
             line: line_no,
             src: src.clone(),
@@ -227,9 +230,9 @@ fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
         return None;
     }
     if text_start < chars.len() {
-        segs.push(InlineSeg::Str(chars[text_start..].iter().collect()));
+        inline_segs.push(InlineSeg::Str(chars[text_start..].iter().collect()));
     }
-    Some(segs)
+    Some(inline_segs)
 }
 
 /// 解析一个调用（lines[i] 为调用行）。返回节点、从 i 起消费的总行数、调用在首行内的结束列。
