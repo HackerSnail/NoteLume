@@ -19,7 +19,9 @@ function isLiteralCode(node) {
   return node.parent && node.parent.type && node.parent.type.name === 'code_block'
 }
 
-function buildEmojiDecos(doc) {
+function buildEmojiDecos(doc, getFeatures) {
+  const flags = getFeatures ? getFeatures() : null
+  if (flags && flags.emoji === false) return DecorationSet.empty
   const decos = []
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text || isLiteralCode(node)) return
@@ -40,12 +42,12 @@ function buildEmojiDecos(doc) {
   return DecorationSet.create(doc, decos)
 }
 
-export function emojiPlugin() {
+export function emojiPlugin(getFeatures) {
   return new Plugin({
     key: emojiKey,
     state: {
-      init: (_, state) => buildEmojiDecos(state.doc),
-      apply: (tr, old) => (tr.docChanged ? buildEmojiDecos(tr.doc) : old),
+      init: (_, state) => buildEmojiDecos(state.doc, getFeatures),
+      apply: (tr, old) => (tr.docChanged || tr.getMeta('nl-features') ? buildEmojiDecos(tr.doc, getFeatures) : old),
     },
     props: {
       decorations: (state) => emojiKey.getState(state),

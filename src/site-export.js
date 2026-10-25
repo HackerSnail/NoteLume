@@ -393,7 +393,48 @@ export function renderSite(md, ctx = {}) {
   ensureRules()
   const env = { __site: true, selfRel: '', fromDir: '', wikiMap: new Map(), imageSet: new Set(), imgByBase: new Map(), assets: new Set(), ...ctx }
   if (!(env.wikiMap instanceof Map)) env.wikiMap = new Map()
-  return renderWithHtml(md, env)
+  return injectToc(renderWithHtml(md, env))
+}
+
+// ============ [[toc]] 目录块（导出件） ============
+
+// 拿 DOMParser：调用方（编辑器 / 测试）已备好 jsdom 或浏览器原生
+function parseDom(html) {
+  return new DOMParser().parseFromString(html, 'text/html')
+}
+
+/**
+ * 把渲染产物里的 [[toc]] 残锚换成真目录。导出件里始终渲染，不受编辑器显示开关影响
+ * （读者侧确定性优先）。条目取产物里的 h1–h3（heading id 已由渲染规则发出，天然同源）；
+ * 没有标题或没写 [[toc]] 则原样返回。走 DOM 往返，与 sanitizeHtml 同一套净化口径。
+ */
+export function injectToc(html, title = '目录') {
+  // 门卫：渲染产物里 [[toc]] 已是 .nl-wiki 锚（data-target 或纯文本 toc），不再有字面量
+  if (!(/data-target="toc"/i.test(html) || /class="nl-wiki[^"]*"[^>]*>\s*toc\s*</i.test(html))) return html
+  const isFullDoc = /<html[\s>]/i.test(html)
+  const dom = parseDom(html)
+  const anchor = dom.querySelector('.nl-wiki[data-target="toc"]') || [...dom.querySelectorAll('.nl-wiki')].find((el) => el.textContent.trim().toLowerCase() === 'toc')
+  if (!anchor) return html
+  const heads = Array.from(dom.querySelectorAll('h1[id], h2[id], h3[id]'))
+  if (!heads.length) return html // 没标题：保留原样（toc 按普通链接显示）
+  const box = dom.createElement('div')
+  box.className = 'nl-toc'
+  const cap = dom.createElement('div')
+  cap.className = 'nl-toc-title'
+  cap.textContent = title
+  box.appendChild(cap)
+  const nav = dom.createElement('nav')
+  for (const h of heads) {
+    const a = dom.createElement('a')
+    a.href = '#' + h.id
+    if (h.tagName !== 'H1') a.className = 'lv' + h.tagName.slice(1)
+    a.textContent = h.textContent
+    nav.appendChild(a)
+  }
+  box.appendChild(nav)
+  anchor.replaceWith(box)
+  // 整文档（单篇 HTML 导出）保 <html> 结构；片段（renderSite 单页）只回正文
+  return isFullDoc ? dom.documentElement.outerHTML : dom.body.innerHTML
 }
 
 // ============ 页面外壳 / CSS / 首页 / 搜索页 ============

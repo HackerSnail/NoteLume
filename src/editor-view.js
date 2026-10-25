@@ -18,6 +18,7 @@ import * as yaml from 'js-yaml'
 import { saveImageFromFile, readImageDataUri } from './tauri-bridge.js'
 import { highlightPlugin } from './hl-decorations.js'
 import { emojiPlugin } from './emoji-decorations.js'
+import { tocPlugin, setTocTitle } from './toc-block.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
 import { hydrateBlockImages } from './html-block-images.js'
@@ -286,7 +287,8 @@ export function createEditor(opts) {
       inputRulesPlugin,
       pasteImagesPlugin,
       highlightPlugin(),
-      emojiPlugin(),
+      emojiPlugin(opts.getFeatures),
+      tocPlugin(opts.getFeatures),
       mermaidPlugin(),
       footnotePlugin(),
       findPlugin(),
@@ -333,6 +335,8 @@ export function createEditor(opts) {
 
   // 代码块右上角语言标签：点击弹可搜索语言列表（Typora 式，语言存围栏 info string 不入正文）
   attachCodeLangPicker(view)
+  // 目录块标题文案随语言走（切语言后新开编辑器 / 重渲时取新词）
+  setTocTitle(t('feature.tocTitle'))
 
   // 跳转到文档内某 pos：大纲与 #锚点 链接共用。目标被折在某节里时先展开，否则跳过去看不见。
   function jumpToPos(pos) {
