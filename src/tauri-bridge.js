@@ -89,10 +89,21 @@ export function writeMdFile(vaultRoot, path, content) {
   return invoke('write_md_file', { vaultRoot, path, content })
 }
 
-/** Quarkdown 求值：源 md → { expanded, diagnostics }。无 Tauri（网页预览）时透传原文 */
-export async function evalQd(md) {
+/** Quarkdown 求值：源 md → { expanded, diagnostics }。无 Tauri（网页预览）时透传原文。
+ *  docDir = 文档所在目录（绝对路径）：Data 模块文件类函数（.read / .listfiles…）相对它解析，
+ *  不传则文件类函数在引擎里诊断降级 */
+export async function evalQd(md, docDir = null) {
   if (!window.__TAURI_INTERNALS__) return { expanded: md, diagnostics: [] }
-  return invoke('qd_eval', { md })
+  return invoke('qd_eval', { md, docDir })
+}
+
+/** 文档所在目录（绝对）：vaultRoot + 库内相对路径的目录部分；根下文件的目录就是根本身 */
+export function qdDocDir(vaultRoot, rel) {
+  if (!vaultRoot || !rel) return null
+  const n = String(rel).replace(/\\/g, '/')
+  const i = n.lastIndexOf('/')
+  const base = String(vaultRoot).replace(/[\\/]+$/, '')
+  return i <= 0 ? base : base + '/' + n.slice(0, i)
 }
 
 /** 解析 [[wikilink]]：返回 { exists, path } */

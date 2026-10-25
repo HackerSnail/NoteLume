@@ -24,10 +24,12 @@ pub type BuiltinFn = fn(&mut Evaluator, &BuiltinCall) -> Result<Value, String>;
 
 /// 内置函数的实参视图：eval 层已全部求值——链式注入的首参排在 pos 最前，
 /// 具名实参（`by:{2}`）单列。builtin 不接触原始 raw。
+/// body 是调用的块参数（`.filetree` + 缩进列表用）；常规函数忽略它。
 pub struct BuiltinCall<'a> {
     pub name: &'a str,
     pub pos: Vec<Value>,
     pub named: Vec<(String, Value)>,
+    pub body: Option<Vec<Block>>,
 }
 
 pub struct Evaluator {
@@ -36,11 +38,13 @@ pub struct Evaluator {
     builtins: HashMap<String, BuiltinFn>,
     pub diagnostics: Vec<Diagnostic>,
     depth: usize,
+    /// 文档所在目录（qd_eval 传入）：Data 模块文件类函数相对它解析；None = 无落盘文档，IO 函数诊断降级
+    pub doc_dir: Option<std::path::PathBuf>,
 }
 
 impl Evaluator {
-    pub fn new(builtins: HashMap<String, BuiltinFn>) -> Self {
-        Evaluator { scopes: vec![HashMap::new()], builtins, diagnostics: Vec::new(), depth: 0 }
+    pub fn new(builtins: HashMap<String, BuiltinFn>, doc_dir: Option<std::path::PathBuf>) -> Self {
+        Evaluator { scopes: vec![HashMap::new()], builtins, diagnostics: Vec::new(), depth: 0, doc_dir }
     }
 
     fn push_scope(&mut self) {
@@ -85,7 +89,7 @@ impl Evaluator {
     }
 
     /// 行内片段求值：文本原样、调用结果拼接（不 trim——嵌入句中）；失败降级调用原文
-    fn eval_inline(&mut self, segs: &[InlineSeg]) -> String {
+    pub fn eval_inline(&mut self, segs: &[InlineSeg]) -> String {
         let mut out = String::new();
         for seg in segs {
             match seg {
@@ -123,7 +127,7 @@ impl Evaluator {
     }
 
     /// 调用链求值：head 先行，链上每段以前一结果作为第一个位置参数
-    fn eval_call(&mut self, node: &CallNode) -> Result<Value, ()> {
+    pub fn eval_call(&mut self, node: &CallNode) -> Result<Value, ()> {
         if self.depth >= MAX_DEPTH {
             self.diag(node.line, format!("递归过深（超过 {} 层）", MAX_DEPTH));
             return Err(());
@@ -215,7 +219,7 @@ impl Evaluator {
                 None => match self.builtins.get(&seg.name) {
                     Some(f) => {
                         let f = *f;
-                        let call = BuiltinCall { name: &seg.name, pos, named };
+                        let call = BuiltinCall { name: &seg.name, pos, named, body: node.body.clone() };
                         current = Some(f(self, &call).map_err(|e| {
                             self.diag(node.line, e);
                         })?);
@@ -503,9 +507,13 @@ pub fn infer_literal_like(trimmed: &str) -> Value {
     Value::Str(trimmed.to_string())
 }
 
-/// 整篇文档求值入口：返回（展开文本，诊断）
-pub fn eval_document(blocks: &[Block], builtins: HashMap<String, BuiltinFn>) -> (String, Vec<Diagnostic>) {
-    let mut ev = Evaluator::new(builtins);
+/// 整篇文档求值入口：返回（展开文本，诊断）。doc_dir = 文档所在目录（Data 模块 IO 相对它解析）。
+pub fn eval_document(
+    blocks: &[Block],
+    builtins: HashMap<String, BuiltinFn>,
+    doc_dir: Option<std::path::PathBuf>,
+) -> (String, Vec<Diagnostic>) {
+    let mut ev = Evaluator::new(builtins, doc_dir);
     let out = ev.run_document(blocks);
     (out, ev.diagnostics)
 }
@@ -518,7 +526,7 @@ mod tests {
 
     fn run(src: &str) -> (String, Vec<Diagnostic>) {
         let blocks = parse_document(src);
-        eval_document(&blocks, HashMap::new())
+        eval_document(&blocks, HashMap::new(), None)
     }
 
     fn out(src: &str) -> String {

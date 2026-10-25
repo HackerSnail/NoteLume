@@ -614,9 +614,12 @@ export async function exportSite({ vaultRoot, outDir, io, setStatus = () => {}, 
     try {
       const raw = await io.readMd(vaultRoot, d.rel)
       let body = stripFrontmatter(raw)
-      // Quarkdown 开关开启时先求值展开（evalMd 由调用方注入，模块保持无 Tauri 依赖）
+      // Quarkdown 开关开启时先求值展开（evalMd 由调用方注入，模块保持无 Tauri 依赖）。
+      // 第二参 = 该篇文档自己的目录，供 .read / .listfiles 等文件类函数解析相对路径。
       if (evalMd) {
-        body = (await evalMd(body)).expanded
+        const from = dirname(d.rel)
+        const docDir = from ? String(vaultRoot).replace(/[\\/]+$/, '') + '/' + from : String(vaultRoot).replace(/[\\/]+$/, '')
+        body = (await evalMd(body, docDir)).expanded
       }
       const ctx = { __site: true, selfRel: d.rel, fromDir: dirname(d.rel), wikiMap, imageSet, imgByBase, assets }
       const bodyHtml = renderWithHtml(body, ctx)

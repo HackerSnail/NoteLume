@@ -1,15 +1,22 @@
-// stdlib.rs —— 最小内置库（阶段 0）：Math / Text / range
+// stdlib.rs —— 内置库
 //
-// 函数名与 Quarkdown stdlib 逐一对齐（.others/quarkdown 的 Math / Text 模块）：
-//  sum / subtract / multiply(具名 by:) / divide / pow(具名 to:) / truncate / pi / iseven / isodd / range
-//  uppercase / lowercase / uppercasefirst
+// 函数名与 Quarkdown stdlib 逐一对齐（.others/quarkdown 的 Kotlin 源码）：
+//  阶段 0：Math / Text 基础（sum / subtract / multiply / divide / pow / truncate / pi /
+//          iseven / isodd / range / uppercase / lowercase / uppercasefirst）
+//  阶段 2 批 1：Strings 全量 / Logical 全量 / Math 补充 / Collection 17 个
+//  阶段 2 批 2：Data（read / pathtoroot / listfiles / filename / json / csv）+
+//          Dictionary.get（.json 的取值入口）+ filetree（MiscElements）
 // 实参约定：eval 层把链式注入的首参排在位置实参最前、全部求值后传入（BuiltinCall），
 // builtin 不再接触原始 raw——类型转换错误统一在这里报、由 eval 层降级为原文 + 诊断。
-// 纯计算，不碰文件系统与网络——文件类（Data / FileTree）在后续阶段。
+// 文件类函数经 QdIo（Evaluator.doc_dir）访问文件系统：只认相对文档目录的路径，
+// 绝对路径与越界一律诊断降级（口径见 io.rs）。
 
 use std::collections::HashMap;
 
+use super::ast::Block;
+use super::csv::{cell_to_md, parse_csv};
 use super::eval::{BuiltinCall, BuiltinFn, Evaluator};
+use super::io::{regex_search, QdIo};
 use super::value::Value;
 
 /// 位置实参（越界报缺参）
@@ -360,7 +367,290 @@ pub fn builtins() -> HashMap<String, BuiltinFn> {
         Ok(Value::List(pairs))
     });
 
+    // ============ Data（阶段 2 批 2，名字对齐 Data.kt 的 @Name 注解）============
+    // 布尔类具名参数统一收 yes / no（Quarkdown 布尔字面量口径）
+    fn named_bool(call: &BuiltinCall, name: &str, default: bool) -> Result<bool, String> {
+        match call.named.iter().find(|(n, _)| n == name) {
+            Some((_, v)) => v
+                .as_bool()
+                .ok_or_else(|| format!(".{} 的 {}: 必须是 yes / no", call.name, name)),
+            None => Ok(default),
+        }
+    }
+    fn named_str(call: &BuiltinCall, name: &str) -> Result<Option<String>, String> {
+        match call.named.iter().find(|(n, _)| n == name) {
+            Some((_, v)) => v
+                .as_str()
+                .map(Some)
+                .ok_or_else(|| format!(".{} 的 {}: 必须是文本", call.name, name)),
+            None => Ok(None),
+        }
+    }
+
+    register(&mut m, "read", |ev, call| {
+        // read {path} [lines:{2..4}]：读整个文件为文本；给了行区间按 1 起始闭区间切片（越界报错）
+        let path = pos(call, 0)?.as_str().ok_or_else(|| ".read 路径必须是文本".to_string())?;
+        let io = QdIo::new(ev.doc_dir.clone());
+        let text = io.read_text(&path)?;
+        let lines = call
+            .named
+            .iter()
+            .find(|(n, _)| n == "lines")
+            .map(|(_, v)| v.clone())
+            .or_else(|| call.pos.get(1).cloned());
+        match lines {
+            None | Some(Value::None) => Ok(Value::Str(text)),
+            Some(Value::Range(a, b)) => {
+                if a < 1 {
+                    return Err(".read 行号从 1 开始".to_string());
+                }
+                let all: Vec<&str> = text.split('\n').collect();
+                if b as usize > all.len() {
+                    return Err(format!(".read 行区间 {}..{} 越界（共 {} 行）", a, b, all.len()));
+                }
+                let slice = all[(a - 1) as usize..b as usize]
+                    .iter()
+                    .map(|l| l.trim_end_matches('\r'))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Ok(Value::Str(slice))
+            }
+            Some(_) => Err(".read 的 lines: 必须是区间（如 {2..4}）".to_string()),
+        }
+    });
+    register(&mut m, "pathtoroot", |_, call| {
+        // pathtoroot [granularity:{project|subdocument}]：文档到编译根的相对路径。
+        // NoteLume 的编译根就是文档所在目录，恒为 "."；granularity 收下不区分（对齐调用形态）。
+        let _ = call;
+        Ok(Value::Str(".".to_string()))
+    });
+    register(&mut m, "listfiles", |ev, call| {
+        // listfiles {path} [directories:{yes}] [recursive:{no}] [pattern:{"\\.md$"}]
+        //           [fullpath:{yes}] [sortby:{none|name|lastmodified}] [order:{ascending|descending}]
+        let path = pos(call, 0)?.as_str().ok_or_else(|| ".listfiles 路径必须是文本".to_string())?;
+        let directories = named_bool(call, "directories", true)?;
+        let recursive = named_bool(call, "recursive", false)?;
+        let fullpath = named_bool(call, "fullpath", true)?;
+        let pattern = named_str(call, "pattern")?;
+        let sortby = named_str(call, "sortby")?.map(|s| s.to_lowercase()).unwrap_or_else(|| "none".to_string());
+        let order = named_str(call, "order")?.map(|s| s.to_lowercase()).unwrap_or_else(|| "ascending".to_string());
+        if !matches!(sortby.as_str(), "none" | "name" | "lastmodified") {
+            return Err(".listfiles sortby 只认 none / name / lastmodified".to_string());
+        }
+        if !matches!(order.as_str(), "ascending" | "descending") {
+            return Err(".listfiles order 只认 ascending / descending".to_string());
+        }
+        let io = QdIo::new(ev.doc_dir.clone());
+        let mut paths = io.list(&path, recursive)?;
+        if !directories {
+            paths.retain(|p| !p.is_dir());
+        }
+        if let Some(pat) = &pattern {
+            let mut kept = Vec::new();
+            for p in paths {
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                match regex_search(pat, &name) {
+                    Ok(true) => kept.push(p),
+                    Ok(false) => {}
+                    Err(e) => return Err(format!(".listfiles pattern 错误: {}", e)),
+                }
+            }
+            paths = kept;
+        }
+        match sortby.as_str() {
+            "name" => paths.sort_by_key(|p| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()),
+            "lastmodified" => paths.sort_by_key(|p| io.modified_millis(p).unwrap_or(0)),
+            _ => {}
+        }
+        if order == "descending" {
+            paths.reverse();
+        }
+        let base = io.resolve(".")?;
+        let strs: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                if fullpath {
+                    // 工作目录相对路径，/ 分隔（文档内引用友好，不出平台绝对路径）
+                    p.strip_prefix(&base).unwrap_or(p).to_string_lossy().replace('\\', "/")
+                } else {
+                    p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+                }
+            })
+            .collect();
+        Ok(Value::List(strs.into_iter().map(Value::Str).collect()))
+    });
+    register(&mut m, "filename", |ev, call| {
+        // filename {path} [extension:{yes}]：文件名（可去扩展名）；文件必须存在（Kotlin 同）
+        let path = pos(call, 0)?.as_str().ok_or_else(|| ".filename 路径必须是文本".to_string())?;
+        let ext = call
+            .named
+            .iter()
+            .find(|(n, _)| n == "extension")
+            .map(|(_, v)| v.as_bool().ok_or_else(|| ".filename 的 extension: 必须是 yes / no".to_string()))
+            .transpose()?
+            .unwrap_or_else(|| call.pos.get(1).and_then(|v| v.as_bool()).unwrap_or(true));
+        let io = QdIo::new(ev.doc_dir.clone());
+        let p = io.resolve(&path)?;
+        let name = if ext {
+            p.file_name()
+        } else {
+            p.file_stem()
+        }
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| ".filename 取不到文件名".to_string())?;
+        Ok(Value::Str(name))
+    });
+    register(&mut m, "json", |ev, call| {
+        // json {path}：读 JSON 文件为字典（对象）；数组 → 列表；标量按类型
+        let path = pos(call, 0)?.as_str().ok_or_else(|| ".json 路径必须是文本".to_string())?;
+        let io = QdIo::new(ev.doc_dir.clone());
+        let text = io.read_text(&path)?;
+        let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!(".json 解析失败: {}", e))?;
+        Ok(json_to_value(&v))
+    });
+    register(&mut m, "csv", |ev, call| {
+        // csv {path} [mode:{plain}] [caption:{}]：CSV 文件 → Markdown 管道表格（首行是表头）。
+        // Quarkdown 产出 Table AST 节点，本引擎输出文本，Markdown 表格是最近的等价形态；
+        // mode 的 markdown（单元格按行内语法重解析）与 ref 交叉引用暂不支持。
+        let path = pos(call, 0)?.as_str().ok_or_else(|| ".csv 路径必须是文本".to_string())?;
+        if let Some(mode) = named_str(call, "mode")? {
+            if mode.to_lowercase() != "plain" {
+                return Err(".csv 只支持 mode plain（markdown 模式暂不支持）".to_string());
+            }
+        }
+        let caption = named_str(call, "caption")?;
+        let io = QdIo::new(ev.doc_dir.clone());
+        let text = io.read_text(&path)?;
+        let rows = parse_csv(&text);
+        if rows.is_empty() {
+            return Err(".csv 文件为空".to_string());
+        }
+        let cols = rows[0].len();
+        let mut out = String::new();
+        for (i, row) in rows.iter().enumerate() {
+            if i == 1 {
+                out.push('|');
+                for _ in 0..cols {
+                    out.push_str(" --- |");
+                }
+                out.push('\n');
+            }
+            out.push('|');
+            for c in 0..cols {
+                out.push_str(&format!(" {} |", cell_to_md(row.get(c).map(String::as_str).unwrap_or(""))));
+            }
+            out.push('\n');
+        }
+        if let Some(cap) = caption {
+            out.push_str(&format!("\n*{}*", cap));
+        }
+        Ok(Value::Markdown(out.trim_end().to_string()))
+    });
+
+    // ============ Dictionary.get（阶段 2 批 2：.json 的取值入口；Dictionary 全量在批 4）============
+    register(&mut m, "get", |_, call| {
+        let dict = pos(call, 0)?;
+        let key = pos(call, 1)?.as_str().ok_or_else(|| ".get 键名必须是文本".to_string())?;
+        match dict {
+            Value::Dict(entries) => Ok(entries
+                .iter()
+                .find(|(k, _)| k == &key)
+                .map(|(_, v)| v.clone())
+                .unwrap_or(Value::None)),
+            _ => Err(".get 实参不是字典（用 .json 读一个）".to_string()),
+        }
+    });
+
+    // ============ FileTree（MiscElements.kt，阶段 2 批 2）============
+    // .filetree + Markdown 列表块参数 → 规范化的文件树列表：目录补尾斜杠、... / … 归一成 …、
+    // 粗体（高亮）保留。Quarkdown 渲染成 file-tree HTML，本引擎输出 Markdown 列表
+    // （与其 GFM 渲染器回退形态一致）。body 里的行内调用照常求值。
+    register(&mut m, "filetree", |ev, call| {
+        let body = match &call.body {
+            Some(b) if !b.is_empty() => b,
+            _ => return Err(".filetree 需要 Markdown 列表作为块参数".to_string()),
+        };
+        let mut lines: Vec<String> = Vec::new();
+        for b in body {
+            match b {
+                Block::Text(t) => lines.extend(t.split('\n').map(|s| s.to_string())),
+                Block::Inline(segs) => lines.push(ev.eval_inline(segs)),
+                Block::Call(c) => match ev.eval_call(c) {
+                    Ok(v) => lines.push(v.to_output()),
+                    Err(()) => lines.push(c.src.clone()),
+                },
+            }
+        }
+        struct FtItem {
+            text: String,
+            children: Vec<FtItem>,
+        }
+        // 收集列表项（缩进, 文本）；散行忽略（Kotlin 只取 body 里的列表）
+        let mut entries: Vec<(usize, String)> = Vec::new();
+        for l in &lines {
+            let t = l.trim_end();
+            if let Some(rest) = t.trim_start().strip_prefix("- ") {
+                let text = rest.trim();
+                if !text.is_empty() {
+                    entries.push((t.len() - t.trim_start().len(), text.to_string()));
+                }
+            }
+        }
+        if entries.is_empty() {
+            return Err(".filetree 块参数里没有 Markdown 列表".to_string());
+        }
+        // 相对首项缩进建树：每两级空格一层
+        let base = entries[0].0;
+        let mut forest: Vec<FtItem> = Vec::new();
+        let mut stack: Vec<(usize, FtItem)> = Vec::new();
+        for (raw, text) in entries {
+            let depth = raw.saturating_sub(base) / 2;
+            while stack.last().map_or(false, |(d, _)| *d >= depth) {
+                let (_, done) = stack.pop().unwrap();
+                match stack.last_mut() {
+                    Some((_, parent)) => parent.children.push(done),
+                    None => forest.push(done),
+                }
+            }
+            stack.push((depth, FtItem { text, children: Vec::new() }));
+        }
+        while let Some((_, done)) = stack.pop() {
+            match stack.last_mut() {
+                Some((_, parent)) => parent.children.push(done),
+                None => forest.push(done),
+            }
+        }
+        fn render(items: &[FtItem], level: usize, out: &mut Vec<String>) {
+            for it in items {
+                let indent = "  ".repeat(level);
+                if it.text == "..." || it.text == "…" {
+                    out.push(format!("{}- …", indent));
+                } else if it.children.is_empty() {
+                    out.push(format!("{}- {}", indent, it.text));
+                } else {
+                    out.push(format!("{}- {}/", indent, it.text.trim_end_matches('/')));
+                    render(&it.children, level + 1, out);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        render(&forest, 0, &mut out);
+        Ok(Value::Markdown(out.join("\n")))
+    });
+
     m
+}
+
+/// serde_json 值 → 求值器值：对象 → 字典（保持键序）、数组 → 列表、标量按类型
+fn json_to_value(v: &serde_json::Value) -> Value {
+    match v {
+        serde_json::Value::Null => Value::None,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => Value::Num(n.as_f64().unwrap_or(0.0)),
+        serde_json::Value::String(s) => Value::Str(s.clone()),
+        serde_json::Value::Array(items) => Value::List(items.iter().map(json_to_value).collect()),
+        serde_json::Value::Object(map) => Value::Dict(map.iter().map(|(k, v)| (k.clone(), json_to_value(v))).collect()),
+    }
 }
 
 #[cfg(test)]
@@ -371,13 +661,18 @@ mod tests {
 
     fn out(src: &str) -> String {
         let blocks = parse_document(src);
-        eval_document(&blocks, builtins()).0
+        eval_document(&blocks, builtins(), None).0
     }
 
     fn run(src: &str) -> (String, usize) {
         let blocks = parse_document(src);
-        let (text, diags) = eval_document(&blocks, builtins());
+        let (text, diags) = eval_document(&blocks, builtins(), None);
         (text, diags.len())
+    }
+
+    fn out_in(src: &str, doc_dir: Option<std::path::PathBuf>) -> String {
+        let blocks = parse_document(src);
+        eval_document(&blocks, builtins(), doc_dir).0
     }
 
     #[test]
@@ -502,6 +797,124 @@ mod tests {
         // sumall 元素非数字 → 降级原文
         assert_eq!(n >= 1, true);
         let _ = text;
+    }
+
+    // —— 阶段 2 批 2：Data / Dictionary.get / filetree ——
+
+    /// 临时文档目录：notes.txt / data.csv / cfg.json / sub/inner.md
+    /// 测试并发跑，目录按序号隔离（共享目录会互相 remove_dir_all）
+    fn temp_docs() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static SEQ: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "nl-qd-test-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("notes.txt"), "alpha\nbeta\ngamma\n").unwrap();
+        std::fs::write(dir.join("data.csv"), "name,score\nalice,90\nbob,85\n").unwrap();
+        std::fs::write(dir.join("cfg.json"), r#"{"name":"qd","n":3,"ok":true,"tags":["a","b"],"sub":{"x":1}}"#).unwrap();
+        std::fs::write(dir.join("sub").join("inner.md"), "# inner\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn read_全文与行区间() {
+        let dir = temp_docs();
+        assert_eq!(out_in(".read {notes.txt}", Some(dir.clone())), "alpha\nbeta\ngamma");
+        assert_eq!(out_in(".read {notes.txt} lines:{2..3}", Some(dir.clone())), "beta\ngamma");
+        // 行区间越界 → 降级原文 + 诊断
+        let (text, n) = {
+            let blocks = parse_document(".read {notes.txt} lines:{2..9}");
+            let (t, d) = eval_document(&blocks, builtins(), Some(dir.clone()));
+            (t, d.len())
+        };
+        assert!(text.contains(".read"));
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn read_无工作目录与越界路径降级() {
+        // 没有 doc_dir（画布 / 未落盘）：IO 函数整体诊断降级
+        let (text, n) = run(".read {notes.txt}");
+        assert!(text.contains(".read"));
+        assert_eq!(n, 1);
+        // .. 越出工作目录拒绝
+        let (text, n) = out_in_return(".read {../outside.txt}", Some(temp_docs()));
+        assert!(text.contains(".read"));
+        assert_eq!(n, 1);
+    }
+
+    fn out_in_return(src: &str, doc_dir: Option<std::path::PathBuf>) -> (String, usize) {
+        let blocks = parse_document(src);
+        let (t, d) = eval_document(&blocks, builtins(), doc_dir);
+        (t, d.len())
+    }
+
+    #[test]
+    fn listfiles_过滤与排序() {
+        let dir = temp_docs();
+        // 递归 + 正则（子集）+ 按名排序，只收 .md
+        assert_eq!(
+            out_in(".listfiles {.} pattern:{\\.md$} recursive:{yes} sortby:{name}", Some(dir.clone())),
+            "sub/inner.md"
+        );
+        // 只要文件名
+        assert_eq!(
+            out_in(".listfiles {.} pattern:{\\.csv$} fullpath:{no}", Some(dir.clone())),
+            "data.csv"
+        );
+        // pattern 语法错误 → 诊断降级
+        let (text, n) = out_in_return(".listfiles {.} pattern:{(unclosed}", Some(dir));
+        assert!(text.contains(".listfiles"));
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn filename_带与不带扩展名() {
+        let dir = temp_docs();
+        assert_eq!(out_in(".filename {notes.txt}", Some(dir.clone())), "notes.txt");
+        assert_eq!(out_in(".filename {notes.txt} extension:{no}", Some(dir)), "notes");
+    }
+
+    #[test]
+    fn json_读字典并取键() {
+        let dir = temp_docs();
+        assert_eq!(out_in(".json {cfg.json}::get {name}", Some(dir.clone())), "qd");
+        assert_eq!(out_in(".json {cfg.json}::get {n}", Some(dir.clone())), "3");
+        assert_eq!(out_in(".json {cfg.json}::get {ok}", Some(dir.clone())), "yes");
+        assert_eq!(out_in(".json {cfg.json}::get {missing}", Some(dir)), "");
+    }
+
+    #[test]
+    fn csv_落成markdown表格() {
+        let dir = temp_docs();
+        assert_eq!(
+            out_in(".csv {data.csv}", Some(dir.clone())),
+            "| name | score |\n| --- | --- |\n| alice | 90 |\n| bob | 85 |"
+        );
+        // caption 落在表格后的斜体行
+        assert!(out_in(".csv {data.csv} caption:{成绩表}", Some(dir)).contains("\n*成绩表*"));
+    }
+
+    #[test]
+    fn filetree_规范化列表() {
+        let src = ".filetree\n    - src/\n      - main.ts\n    - README.md\n    - **docs.md**\n    - ...";
+        assert_eq!(
+            out(src),
+            "- src/\n  - main.ts\n- README.md\n- **docs.md**\n- …"
+        );
+        // 目录补尾斜杠
+        let src2 = ".filetree\n    - src\n      - main.ts";
+        assert_eq!(out(src2), "- src/\n  - main.ts");
+    }
+
+    #[test]
+    fn filetree_缺块参数降级() {
+        let (text, n) = run(".filetree {x}");
+        assert!(text.contains(".filetree"));
+        assert_eq!(n, 1);
     }
 }
 

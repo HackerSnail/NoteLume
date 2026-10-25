@@ -4,11 +4,14 @@
 // 引擎只负责「源 Markdown → 求值展开后的 Markdown + 诊断」，HTML 渲染仍走前端
 // markdown-it 管线。语法锚点以 .others/quarkdown/docs/*.qd 与 quarkdown-core 源码为准。
 //
-// 模块：ast（语法树）→ parser（指令行解析）→ eval（求值）→ stdlib（内置函数）。
+// 模块：ast（语法树）→ parser（指令行解析）→ eval（求值）→ stdlib（内置函数）；
+// io（Data 模块的文件访问，阶段 2 批 2）、csv（RFC4180 解析）。
 // 错误模型：单点求值失败进诊断数组、输出原文降级，不炸整个文档。
 
 pub mod ast;
+pub mod csv;
 pub mod eval;
+pub mod io;
 pub mod parser;
 pub mod stdlib;
 pub mod value;
@@ -18,7 +21,7 @@ mod e2e_tests {
     /// 端到端：parse → eval 全链路（与 qd_eval 命令同一函数组合）
     fn qd_eval(md: &str) -> (String, Vec<(u32, String)>) {
         let blocks = super::parser::parse_document(md);
-        let (expanded, diags) = super::eval::eval_document(&blocks, super::stdlib::builtins());
+        let (expanded, diags) = super::eval::eval_document(&blocks, super::stdlib::builtins(), None);
         (expanded, diags.into_iter().map(|d| (d.line, d.message)).collect())
     }
 

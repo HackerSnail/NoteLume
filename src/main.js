@@ -62,7 +62,7 @@ import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
 import { numberingCss } from './heading-numbering.js'
-import { evalQd } from './tauri-bridge.js'
+import { evalQd, qdDocDir } from './tauri-bridge.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -2871,9 +2871,9 @@ async function exportHTML() {
     const full = editor.getMarkdown()
     // 导出不含 frontmatter：渲染与取标题都只看正文（frontmatter 非正文）
     let md = splitFrontmatter(full).body
-    // Quarkdown 开关开启时先求值展开（源文件不动，只影响导出件）
+    // Quarkdown 开关开启时先求值展开（源文件不动，只影响导出件）；文档目录供 .read 等文件类函数用
     if (getFeatures(settingsStore).quarkdown) {
-      md = (await evalQd(md)).expanded
+      md = (await evalQd(md, qdDocDir(state.vaultRoot, state.currentFile))).expanded
     }
     const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
     const body = injectToc(exportMd.render(md), title)
@@ -2922,7 +2922,7 @@ async function exportSlides() {
     const full = editor.getMarkdown()
     let md = splitFrontmatter(full).body
     if (getFeatures(settingsStore).quarkdown) {
-      md = (await evalQd(md)).expanded
+      md = (await evalQd(md, qdDocDir(state.vaultRoot, state.currentFile))).expanded
     }
     const html = buildSlidesHtml(md, { title: state.currentFile, headingNumbering: getFeatures(settingsStore).headingNumbering, assets: slidesAssets })
     const defaultName = state.currentFile.replace(/\.md$/i, '.slides.html')
@@ -3013,7 +3013,15 @@ async function exportSiteFull() {
       writeFile: (absPath, content) => exportFile(absPath, content),
       copyAssets: (vr, rels, od) => copyVaultAssets(vr, rels, od),
     }
-    const r = await exportSite({ vaultRoot: state.vaultRoot, outDir, io, setStatus, headingNumbering: getFeatures(settingsStore).headingNumbering, evalMd: getFeatures(settingsStore).quarkdown ? evalQd : null })
+    const r = await exportSite({
+      vaultRoot: state.vaultRoot,
+      outDir,
+      io,
+      setStatus,
+      headingNumbering: getFeatures(settingsStore).headingNumbering,
+      // evalMd 第二参 = 每篇文档自己的目录（.read 等文件类函数相对它解析）
+      evalMd: getFeatures(settingsStore).quarkdown ? (body, docDir) => evalQd(body, docDir) : null,
+    })
     await messageDialog(t('msg.siteExportDone', {
       ok: r.ok,
       failed: r.failed ? t('msg.siteSkipped', { n: r.failed }) : '',
@@ -3580,7 +3588,11 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
     initialFocus: localStorage.getItem('nl-focus') === '1',
     initialTypewriter: localStorage.getItem('nl-typewriter') === '1',
     getFeatures: () => getFeatures(settingsStore),
-    evalQd,
+    // 快照求值带上该窗格文档的目录（Data 模块文件类函数相对它解析）
+    evalQd: (md) => {
+      const c = paneCtx(paneId)
+      return evalQd(md, qdDocDir(c.vaultRoot, c.rel))
+    },
     sourceMountEl,
     onSourceTextChange: () => {
       if (paneId !== panes.focused) return
