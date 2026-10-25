@@ -172,7 +172,7 @@ function toHex6(v) {
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAppearanceSettings(deps) {
-  const { getAppearance, apply, flush, setStatus } = deps
+  const { getAppearance, apply, flush, setStatus, getFeatures, setFeature } = deps
   let overlay = null
   let bodyEl = null
   let offLocale = null
@@ -425,6 +425,41 @@ export function createAppearanceSettings(deps) {
     hint('ap.splitHint')
   }
 
+  // 功能开关（feature-flags）：全部关闭即标准模式，关掉的只是显示 / 输出层增强，源文件不变。
+  // 改动经 setFeature 落 settings.json 并广播各编辑器重扫装饰。
+  const FEATURE_ROWS = [
+    { key: 'tocBlock', labelKey: 'feature.tocBlock' },
+    { key: 'csvTable', labelKey: 'feature.csvTable' },
+    { key: 'emoji', labelKey: 'feature.emoji' },
+    { key: 'headingNumbering', labelKey: 'feature.headingNumbering' },
+  ]
+  function renderFeatures() {
+    if (!getFeatures) return
+    const flags = getFeatures()
+    for (const { key, labelKey } of FEATURE_ROWS) {
+      const row = document.createElement('div')
+      row.className = 'nl-ap-row'
+      const label = document.createElement('span')
+      label.className = 'nl-ap-label'
+      label.textContent = t(labelKey)
+      row.appendChild(label)
+      const chk = document.createElement('input')
+      chk.type = 'checkbox'
+      chk.checked = !!flags[key]
+      row.appendChild(chk)
+      const val = document.createElement('span')
+      val.className = 'nl-ap-val'
+      const syncVal = () => { val.textContent = t(chk.checked ? 'common.on' : 'common.off') }
+      syncVal()
+      chk.addEventListener('change', () => {
+        setFeature && setFeature(key, chk.checked)
+        syncVal()
+      })
+      bodyEl.appendChild(row)
+    }
+    hint('ap.featuresHint')
+  }
+
   function render() {
     bodyEl.innerHTML = ''
     section('ap.theme')
@@ -450,6 +485,8 @@ export function createAppearanceSettings(deps) {
     hint('ap.wrapHint')
     section('ap.split')
     renderSplit()
+    section('ap.features')
+    renderFeatures()
   }
 
   function buildDom() {

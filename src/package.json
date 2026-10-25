@@ -22,6 +22,7 @@
     "test:slides-export": "node tests/slides-export.test.mjs",
     "test:print-toc": "node tests/print-toc.test.mjs",
     "test:emoji": "node tests/emoji.test.mjs",
+    "test:toc": "node tests/toc.test.mjs",
     "test:heading-anchor": "node tests/heading-anchor.test.mjs",
     "test:anchor-link": "node tests/anchor-link.test.mjs",
     "test:find-in-doc": "node tests/find-in-doc.test.mjs",

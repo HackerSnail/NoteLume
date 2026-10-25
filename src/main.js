@@ -53,7 +53,9 @@ import {
   startVaultWatcher,
   stopVaultWatcher,
 } from './tauri-bridge.js'
-import { exportSite, resolveImageRel, collectImages } from './site-export.js'
+import { exportSite, resolveImageRel, collectImages, injectToc } from './site-export.js'
+import { anchorSlug } from './heading-anchor.js'
+import { getFeatures, setFeature } from './feature-flags.js'
 import { buildSlidesHtml } from './slides-export.js'
 import { slidesAssets } from './slides-assets.js'
 import { printPaged } from './print-paged.js'
@@ -113,6 +115,24 @@ import { tempDir, join } from '@tauri-apps/api/path'
 // 脚本 / 事件属性 / 危险协议一律走编辑器与站点同一份白名单
 const exportMd = MarkdownIt('commonmark', { html: true }).enable(['table', 'strikethrough'])
 mountEmojiRenderer(exportMd) // emoji 短代码：导出件里的 :name: 出 emoji，md 源文件不变
+// 标题锚点：[[toc]] 目录条目的跳转落点（与编辑器 / 站点导出同一套 slug，env 每次渲染新建天然 dedup）
+exportMd.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
+  const inline = tokens[idx + 1]
+  let plain = ''
+  if (inline && Array.isArray(inline.children)) {
+    for (const ch of inline.children) {
+      if (ch.type === 'text' || ch.type === 'code_inline') plain += ch.content
+    }
+  }
+  const base = anchorSlug(plain)
+  if (base) {
+    env.__anchor = env.__anchor || Object.create(null)
+    const cnt = env.__anchor[base] || 0
+    env.__anchor[base] = cnt + 1
+    tokens[idx].attrSet('id', cnt === 0 ? base : `${base}-${cnt}`)
+  }
+  return self.renderToken(tokens, idx, options)
+}
 exportMd.renderer.rules.html_block = (tokens, idx) => sanitizeHtml(tokens[idx].content)
 // 行内字面 HTML 保持转义文本：markdown-it 把 <b>x</b> 拆成三个 token，逐个净化会拆散标签配对
 exportMd.renderer.rules.html_inline = (tokens, idx, options, env, self) => self.rules.text(tokens, idx, options, env, self)
@@ -2849,8 +2869,8 @@ async function exportHTML() {
     const full = editor.getMarkdown()
     // 导出不含 frontmatter：渲染与取标题都只看正文（frontmatter 非正文）
     const md = splitFrontmatter(full).body
-    const body = exportMd.render(md)
     const title = (md.match(/^#\s+(.+)$/m) || [, state.currentFile])[1]
+    const body = injectToc(exportMd.render(md), title)
     const html = buildExportHtml(title, body)
     const defaultName = state.currentFile.replace(/\.md$/i, '.html')
     const abs = await pickSaveAs(defaultName)
@@ -3513,6 +3533,14 @@ function bindShortcuts() {
 
 // —— 分栏窗格管理（P5 §6.1）——
 // 每个窗格 = 一个编辑器实例 + 查找栏 + 高亮工具栏 + 自己的根 / 文档上下文。
+// 功能开关改动后让各窗格编辑器重扫装饰（emoji / 目录块按 meta 强制重建，不等下次文档变更）
+function refreshFeatureFlags() {
+  for (const inst of panes.editors.values()) {
+    const v = inst.view
+    if (v) v.dispatch(v.state.tr.setMeta('nl-features', {}))
+  }
+}
+
 // 模块级 editor / findBar / hlBar 始终指向焦点窗格的实例（切焦点时重绑），
 // 大量既有调用点因此不用改；els.editor / els.sourceMount / els.canvasMount 同理。
 
@@ -3540,6 +3568,7 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
     },
     initialFocus: localStorage.getItem('nl-focus') === '1',
     initialTypewriter: localStorage.getItem('nl-typewriter') === '1',
+    getFeatures: () => getFeatures(settingsStore),
     sourceMountEl,
     onSourceTextChange: () => {
       if (paneId !== panes.focused) return
@@ -4281,6 +4310,11 @@ async function boot() {
     apply: applyAppearanceChange,
     flush: () => settingsStore.flush(),
     setStatus,
+    getFeatures: () => getFeatures(settingsStore),
+    setFeature: (key, val) => {
+      setFeature(settingsStore, key, val)
+      refreshFeatureFlags()
+    },
   })
   // 「网页剪藏」：设置写 settings.json 的 clip 段，「保存」时经 clip_server_apply
   // 让 Rust 侧停旧起新本地 HTTP 服务；面板关着时服务照常运行
