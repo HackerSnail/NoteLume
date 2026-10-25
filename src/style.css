@@ -3158,6 +3158,34 @@ html.nl-dragging * {
   color: var(--accent);
 }
 
+/* ```csv 表格渲染（编辑器装饰；源码态与出码态的显隐由 .nl-csv-* 控制，见 csv-preview.js） */
+.nl-csv-source {
+  display: none;
+}
+.nl-csv-editing {
+  outline: 2px solid var(--accent);
+  border-radius: 3px;
+}
+.nl-csv {
+  overflow-x: auto;
+  margin: 0.4em 0;
+  cursor: pointer;
+}
+.nl-csv-table {
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.nl-csv-table th,
+.nl-csv-table td {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  padding: 4px 10px;
+  text-align: left;
+}
+.nl-csv-table th {
+  background: var(--hover);
+  font-weight: 650;
+}
+
 /* ProseMirror 选中节点/占位 */
 .ProseMirror-selectednode {
   outline: 2px solid var(--accent);
