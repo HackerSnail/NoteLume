@@ -20,7 +20,15 @@ pub struct Diagnostic {
     pub message: String,
 }
 
-pub type BuiltinFn = fn(&mut Evaluator, &CallSeg) -> Result<Value, String>;
+pub type BuiltinFn = fn(&mut Evaluator, &BuiltinCall) -> Result<Value, String>;
+
+/// 内置函数的实参视图：eval 层已全部求值——链式注入的首参排在 pos 最前，
+/// 具名实参（`by:{2}`）单列。builtin 不接触原始 raw。
+pub struct BuiltinCall<'a> {
+    pub name: &'a str,
+    pub pos: Vec<Value>,
+    pub named: Vec<(String, Value)>,
+}
 
 pub struct Evaluator {
     /// 作用域栈：栈顶是当前作用域
@@ -127,9 +135,11 @@ impl Evaluator {
     }
 
     fn eval_call_inner(&mut self, node: &CallNode) -> Result<Value, ()> {
-        // 特殊形式只能在首段且不能带链（它们需要惰性 body，链式语义未定义）
-        const SPECIAL: [&str; 7] = ["function", "var", "if", "ifnot", "let", "foreach", "repeat"];
-        if SPECIAL.contains(&node.head.name.as_str()) {
+        // 特殊形式：function / var / if / ifnot / let 只能在首段且不能带链（需要惰性 body）；
+        // foreach / repeat 例外——`.range {1} {3}::foreach` 是 Quarkdown 的惯用形态，
+        // 链上注入的可迭代 / 次数作为它们的实参。
+        const LAZY: [&str; 5] = ["function", "var", "if", "ifnot", "let"];
+        if LAZY.contains(&node.head.name.as_str()) {
             if !node.chain.is_empty() {
                 self.diag(node.line, format!(".{} 不能出现在链式调用中间", node.head.name));
                 return Err(());
@@ -139,8 +149,6 @@ impl Evaluator {
                 "var" => self.eval_var(node),
                 "if" => self.eval_if(node, false),
                 "ifnot" => self.eval_if(node, true),
-                "foreach" => self.eval_foreach(node),
-                "repeat" => self.eval_repeat(node),
                 _ => self.eval_let(node),
             };
         }
@@ -151,13 +159,54 @@ impl Evaluator {
             segs.push(seg);
         }
         for (idx, seg) in segs.iter().enumerate() {
-            // 前一结果作为第一个位置参数
-            let mut args: Vec<Value> = Vec::new();
+            let is_last = idx == segs.len() - 1;
+            // 实参求值：链式注入的前一结果排在位置实参最前，具名单列
+            let mut pos: Vec<Value> = Vec::new();
+            let mut named: Vec<(String, Value)> = Vec::new();
             if let Some(prev) = current.take() {
-                args.push(prev);
+                pos.push(prev);
             }
             for a in seg.args.iter() {
-                args.push(self.eval_raw(&a.raw, node.line)?);
+                let v = self.eval_raw(&a.raw, node.line)?;
+                match &a.name {
+                    Some(n) => named.push((n.clone(), v)),
+                    None => pos.push(v),
+                }
+            }
+            // 链上的 foreach / repeat：注入值即实参（`.range {1} {3}::foreach` 惯用形态）
+            if seg.name == "foreach" {
+                if pos.is_empty() {
+                    self.diag(node.line, ".foreach 缺少可迭代实参".to_string());
+                    return Err(());
+                }
+                let v = pos.remove(0);
+                let items = match v.as_items() {
+                    Some(it) => it,
+                    None => {
+                        self.diag(node.line, ".foreach 实参不可迭代".to_string());
+                        return Err(());
+                    }
+                };
+                let body = node.body.clone().unwrap_or_default();
+                current = Some(self.run_foreach(items, &body)?);
+                continue;
+            }
+            if seg.name == "repeat" {
+                if pos.is_empty() {
+                    self.diag(node.line, ".repeat 缺少次数".to_string());
+                    return Err(());
+                }
+                let v = pos.remove(0);
+                let times = match v.as_num() {
+                    Some(n) => n,
+                    None => {
+                        self.diag(node.line, ".repeat 实参必须是数字".to_string());
+                        return Err(());
+                    }
+                };
+                let body = node.body.clone().unwrap_or_default();
+                current = Some(self.run_repeat(times, &body)?);
+                continue;
             }
             // 用户作用域：lambda（函数 / 变量）
             let target = self.lookup(&seg.name).cloned();
@@ -166,7 +215,8 @@ impl Evaluator {
                 None => match self.builtins.get(&seg.name) {
                     Some(f) => {
                         let f = *f;
-                        current = Some(f(self, seg).map_err(|e| {
+                        let call = BuiltinCall { name: &seg.name, pos, named };
+                        current = Some(f(self, &call).map_err(|e| {
                             self.diag(node.line, e);
                         })?);
                         continue;
@@ -177,8 +227,7 @@ impl Evaluator {
                     }
                 },
             };
-            let is_last = idx == segs.len() - 1;
-            current = Some(self.invoke_value(value, &args, node, is_last)?);
+            current = Some(self.invoke_value(value, &pos, node, is_last)?);
         }
         Ok(current.unwrap_or(Value::None))
     }
@@ -329,9 +378,14 @@ impl Evaluator {
             }
         };
         let body = node.body.clone().unwrap_or_default();
-        let (params, rest) = Evaluator::lambda_params(&body, true);
+        self.run_foreach(items, &body)
+    }
+
+    /// foreach 的执行核心（首段与链上两种入口共用）
+    fn run_foreach(&mut self, items: Vec<Value>, body: &[Block]) -> Result<Value, ()> {
+        let (params, rest) = Evaluator::lambda_params(body, true);
         if params.is_empty() {
-            self.diag(node.line, ".foreach 缺少迭代参数".to_string());
+            self.diagnostics.push(Diagnostic { line: 0, message: ".foreach 缺少迭代参数".to_string() });
             return Err(());
         }
         let mut outs: Vec<String> = Vec::new();
@@ -368,12 +422,15 @@ impl Evaluator {
                 return Err(());
             }
         };
-        let times = times.max(0.0) as usize;
         let body = node.body.clone().unwrap_or_default();
+        self.run_repeat(times, &body)
+    }
+
+    fn run_repeat(&mut self, times: f64, body: &[Block]) -> Result<Value, ()> {
         let mut outs: Vec<String> = Vec::new();
-        for _ in 0..times {
+        for _ in 0..times.max(0.0) as usize {
             self.push_scope();
-            let r: Result<String, ()> = match self.eval_blocks(&body) {
+            let r: Result<String, ()> = match self.eval_blocks(body) {
                 Ok(v) => Ok(v.to_output()),
                 Err(()) => Ok(String::new()),
             };
