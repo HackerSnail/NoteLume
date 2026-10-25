@@ -145,6 +145,11 @@ export function renameItem(vaultRoot, from, to) {
   return invoke('rename_item', { vaultRoot, from, to })
 }
 
+/** 在系统文件管理器中显示库内文件 / 文件夹（Windows 选中项，macOS Finder 反选，Linux 打开所在目录） */
+export function revealInFolder(vaultRoot, rel) {
+  return invoke('reveal_in_folder', { vaultRoot, rel })
+}
+
 const IMG_EXT_SET = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'])
 
 /** 判断一个库内路径是否图片附件（与 Rust scan_dir 的 IMG_EXTS 白名单一致）：点击时走图片查看器 */

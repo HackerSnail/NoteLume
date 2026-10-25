@@ -21,6 +21,7 @@ import {
   isImportableFileName,
   isImagePath,
   importVaultFileFrom,
+  revealInFolder,
   confirmDialog,
   messageDialog,
   rebuildIndex,
@@ -1408,6 +1409,7 @@ function showTreeMenu(clientX, clientY, node) {
   menu.className = 'cv-menu tree-menu'
   if (node.type === 'file') {
     menu.appendChild(makeMenuItem(t('menu.open'), () => openFile(node.path)))
+    menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath(node.path)))
     menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, false)))
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.trash'), () => deleteVaultFile(node.path, node.name), true))
@@ -1416,8 +1418,19 @@ function showTreeMenu(clientX, clientY, node) {
     menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn(node.path)))
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, true)))
+    menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath(node.path)))
   }
   placeMenu(menu, clientX, clientY)
+}
+
+// 在系统文件管理器里显示库内条目（失败弹窗：路径不存在 / 平台命令不可用）
+async function revealVaultPath(rel) {
+  if (!state.vaultRoot) return
+  try {
+    await revealInFolder(state.vaultRoot, rel)
+  } catch (e) {
+    await messageDialog(t('msg.revealFailed', { err: errText(e) }))
+  }
 }
 
 // —— 文件树空白区右键：在库根新建 ——
@@ -1427,6 +1440,8 @@ function showTreeBgMenu(clientX, clientY) {
   menu.className = 'cv-menu tree-menu'
   menu.appendChild(makeMenuItem(t('menu.newFileEllipsis'), () => newFileIn('')))
   menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn('')))
+  menu.appendChild(menuSep())
+  menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath('')))
   placeMenu(menu, clientX, clientY)
 }
 

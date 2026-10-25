@@ -181,6 +181,13 @@ const TABLE: &[Entry] = &[
         "Échec de lecture : {err}",
         "Lesen fehlgeschlagen: {err}",
     ]},
+    Entry { key: "revealNotFound", texts: [
+        "路径不存在：{path}",
+        "路徑不存在：{path}",
+        "Path not found: {path}",
+        "Chemin introuvable : {path}",
+        "Pfad nicht gefunden: {path}",
+    ]},
     Entry { key: "readFileFailed", texts: [
         "读取文件失败 {path}：{err}",
         "讀取文件失敗 {path}：{err}",
