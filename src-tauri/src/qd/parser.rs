@@ -85,8 +85,22 @@ pub fn parse_blocks(lines: &[(usize, &str)], start_indent: usize) -> Vec<Block> 
         let trimmed = raw.trim_start();
         if ind >= start_indent {
             if let Some((name, name_len)) = call_name_at(trimmed) {
-                let (node, consumed) = parse_call(lines, i, ind, name, name_len);
-                out.push(Block::Call(node));
+                let (node, consumed, first_end) = parse_call(lines, i, ind, name, name_len);
+                // 首行余文（如 `.1::first .1::second` 里的第二个调用）与调用同属一行：
+                // 合成一个 Inline 块（求值时同一段文本内拼接，不插换行）
+                let first_raw = lines[i].1;
+                let fchars: Vec<char> = first_raw.chars().collect();
+                if first_end < fchars.len() {
+                    let rest: String = fchars[first_end..].iter().collect();
+                    let mut segs = vec![InlineSeg::Call(node)];
+                    match scan_inline(&rest, line_no) {
+                        Some(more) => segs.extend(more),
+                        None => segs.push(InlineSeg::Str(rest)),
+                    }
+                    out.push(Block::Inline(segs));
+                } else {
+                    out.push(Block::Call(node));
+                }
                 i += consumed;
                 continue;
             }
@@ -218,20 +232,24 @@ fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
     Some(segs)
 }
 
-/// 解析一个调用（lines[i] 为调用行）。返回节点与从 i 起消费的总行数（含跨行参数与块参数）。
+/// 解析一个调用（lines[i] 为调用行）。返回节点、从 i 起消费的总行数、调用在首行内的结束列。
 /// 段序列：名字 + 参数，`::name` 开新段并接它自己的参数——`.pow {2} to:{3}::multiply {.pi}`
 /// 里 `{.pi}` 属于 multiply 段。块参数绑到最后一段。
-fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: String, name_len: usize) -> (CallNode, usize) {
+fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: String, name_len: usize) -> (CallNode, usize, usize) {
     let mut segs = vec![CallSeg { name, args: Vec::new() }];
     let mut li = i;
     let mut chars: Vec<char> = lines[li].1.chars().collect();
     let mut ci = indent_of(lines[li].1) + name_len;
+    // 调用在首行内的结束列：行尾 / 遇到非参数内容时记录，供调用后余文转行内片段
+    let mut first_end: usize = chars.len();
 
     loop {
+        let pre_skip = ci; // 跳空白前位置：后面发现不是参数 / 链时回退，空格留给行内余文
         while ci < chars.len() && (chars[ci] == ' ' || chars[ci] == '\t') {
             ci += 1;
         }
         if ci >= chars.len() {
+            first_end = chars.len();
             break;
         }
         // 链式 ::name：开新段
@@ -239,6 +257,7 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
             let j = ci + 2;
             let cname: String = chars[j..].iter().take_while(|c| c.is_alphanumeric() || **c == '_').collect();
             if cname.is_empty() {
+                first_end = pre_skip;
                 break;
             }
             ci = j + cname.chars().count();
@@ -256,12 +275,14 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
         } else if chars[ci] == '{' {
             (None, ci)
         } else {
-            break; // 非参数内容：调用行剩余部分忽略
+            first_end = pre_skip; // 非参数内容：调用行剩余部分（含空白）转行内片段
+            break;
         };
         let (raw, end_line, end_col) = read_balanced(lines, li, brace_col);
         let arg = Arg { name: arg_name, raw };
         segs.last_mut().unwrap().args.push(arg);
         if end_line != li {
+            first_end = chars.len();
             li = end_line;
             chars = lines[li].1.chars().collect();
         }
@@ -309,6 +330,7 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
             src,
         },
         consumed,
+        first_end,
     )
 }
 
@@ -341,7 +363,11 @@ fn read_balanced(lines: &[(usize, &str)], mut li: usize, mut ci: usize) -> (Stri
             raw.push('\n');
         }
     }
-    (raw, li.saturating_sub(1), ci)
+    // 未闭合吞到文档尾：结束于最后一行行尾（结束列=末行长度），不能回 0——
+    // 否则调用行会被误判有余文、整行降级重出
+    let last = lines.len().saturating_sub(1);
+    let col = lines.last().map_or(0, |(_, l)| l.chars().count());
+    (raw, last, col)
 }
 
 /// 解析整篇文档
