@@ -899,6 +899,46 @@ fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
     Err(ui_msg!("downloadImgFailed", "code" => if err.is_empty() { format!("curl {}", out.status) } else { err }))
 }
 
+/// 在系统文件管理器中显示库内文件 / 文件夹（文件树右键）。Windows 用 explorer /select 选中
+/// 该项（退出码经常回 1，只要进程起得来即算成功）；macOS 用 open -R 反选；Linux 没有
+/// 通用反选，xdg-open 打开所在目录。
+#[tauri::command]
+fn reveal_in_folder(vault_root: String, rel: String) -> Result<(), String> {
+    let abs = abs_in_vault(&vault_root, &rel)?;
+    if !abs.exists() {
+        return Err(ui_msg!("revealNotFound", "path" => abs.to_string_lossy()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&abs)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let dir = if abs.is_dir() {
+            abs.clone()
+        } else {
+            abs.parent().map(|p| p.to_path_buf()).unwrap_or(abs)
+        };
+        std::process::Command::new("xdg-open").arg(&dir).spawn().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // raw_arg 绕开 Command 的引号转义：/select 后面的路径要带原样引号才能命中带空格的项
+        std::process::Command::new("explorer")
+            .raw_arg(format!("/select,\"{}\"", abs.to_string_lossy()))
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
 /// 把 data: URL 的图片字节写到任意路径（图片右键「另存为」；路径来自前端保存对话框）。
 #[tauri::command]
 fn save_image_from_data_uri(path: String, data_uri: String) -> Result<(), String> {
@@ -3845,6 +3885,7 @@ pub fn run() {
             // P0
             qd_eval,
             qd_package_install,
+            reveal_in_folder,
             scan_vault,
             read_md_file,
             write_md_file,
