@@ -6,6 +6,7 @@
 
 import { anchorSlug } from './heading-anchor.js'
 import { getLocale, t } from './i18n.js'
+import { numberingCss } from './heading-numbering.js'
 
 // ============ 选项存取（localStorage，UI 偏好不进 settings.json） ============
 
@@ -74,7 +75,7 @@ function escapeCss(s) {
 
 /**
  * 按勾选拼打印 CSS（Paged.js Previewer 只处理传给它的 styles，页面样式表不参与分页）。
- * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean }} options
+ * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean, headingNumbering?: boolean }} options
  * @param {string} title 页眉标题（转义后进 @top-center）
  */
 export function printStyles(options, title) {
@@ -124,6 +125,10 @@ export function printStyles(options, title) {
     // 首个 H1 例外：封面 / 目录之后直接空出首页没有意义
     chunks.push('.nl-pbody h1 { break-before: page; } .nl-pbody h1:first-child { break-before: auto; }')
   }
+  if (o.headingNumbering) {
+    // 开关在设置页（features.headingNumbering），main.js 并进 options 传入
+    chunks.push(numberingCss('.nl-pbody'))
+  }
   return chunks.join('\n')
 }
 
@@ -131,7 +136,7 @@ export function printStyles(options, title) {
 
 /**
  * 打印排版主链路（Ctrl+P 确认选项后调用）。
- * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean }} options
+ * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean, headingNumbering?: boolean }} options
  * @param {string} title 页眉 / 封面标题（main.js 传当前文件名主干）
  *  焦点窗格取不到内容时直接 window.print()（空态兜底）；预分页抛错向上抛，
  *  `#print-root` 与 body 标记在 finally 里摘除——打印完与抛错两条路都不留残骸。
