@@ -29,6 +29,8 @@ pub struct CallNode {
     pub body: Option<Vec<Block>>,
     /// 调用行行号（1 起始），供诊断定位
     pub line: usize,
+    /// 调用的原始源文本（消费的全部行，原样）——求值失败时按它降级输出
+    pub src: String,
 }
 
 impl CallNode {
@@ -38,9 +40,18 @@ impl CallNode {
     }
 }
 
+/// 行内片段：普通文本或一次行内调用（`Hello, .name!` 的 `.name`）
+#[derive(Debug, Clone, PartialEq)]
+pub enum InlineSeg {
+    Str(String),
+    Call(CallNode),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
-    /// 原样 Markdown 行（不 trim，保留缩进与空行）
+    /// 原样 Markdown 行（不 trim，保留缩进与空行；无行内调用时走这条快路）
     Text(String),
+    /// 含行内调用的行：片段按序求值拼接
+    Inline(Vec<InlineSeg>),
     Call(CallNode),
 }

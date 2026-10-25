@@ -8,4 +8,6 @@
 // 错误模型：单点求值失败进诊断数组、输出原文降级，不炸整个文档。
 
 pub mod ast;
+pub mod eval;
 pub mod parser;
+pub mod value;
