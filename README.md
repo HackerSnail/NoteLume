@@ -39,7 +39,7 @@
 ### 功能亮点
 
 * ✍️ **所写即所得**：Markdown 与富文本双向无损往返；KaTeX 公式、Mermaid 图表、callout 卡片、合并单元格表格、块级裸 HTML、脚注、代码块子语言高亮，全都在渲染态直接编辑
-* 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 力导向图谱、全库搜索、版本快照一键回滚
+* 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 力导向图谱、全库搜索、版本快照一键回滚；文件树右键直接在系统文件管理器里显示
 * 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；不联网也绝不上传，删除进系统回收站
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
 * ⚡ **Quarkdown 引擎（五阶段全量落地）**：`.var` / `.function` / `.if` / `.foreach` 这套 Turing-complete 语法直接写进 md，快照式预览不碰源文件；约 190 个内置函数——正则替换、表格计算、CSV/JSON 读取、Mermaid 与 xychart 图表、交叉引用、BibTeX 参考文献、多语言本地化、`Libraries/` 库目录、atoms 包安装、`.extend` 函数扩展。不用 Quarkdown 语法的文档仍是纯 GFM，Typora / Obsidian 照常打开
@@ -177,7 +177,7 @@ Tired of cloud notes that spin forever, but unwilling to give up speed for struc
 ### Highlights
 
 * ✍️ **True WYSIWYG**: lossless Markdown round-trip; edit KaTeX math, Mermaid diagrams, callouts, merged-cell tables, literal HTML blocks, footnotes, and syntax-highlighted code blocks right in the rendered view
-* 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, Canvas-based knowledge graph, vault-wide search, snapshot history with one-click rollback
+* 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, Canvas-based knowledge graph, vault-wide search, snapshot history with one-click rollback; right-click any tree entry to reveal it in your system file manager
 * 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; nothing ever leaves your machine; deletions go to the system trash
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
 * ⚡ **Quarkdown engine (all five phases shipped)**: Turing-complete `.var` / `.function` / `.if` / `.foreach` macros live right in your Markdown, snapshot-previewed without touching the source; about 190 builtins — regex replace, table computation, CSV/JSON readers, Mermaid & xychart diagrams, cross-references, BibTeX bibliographies, localization tables, a `Libraries/` folder, atoms package installs, and `.extend` function wrapping. Documents without Quarkdown syntax stay pure GFM that Typora and Obsidian open as-is
