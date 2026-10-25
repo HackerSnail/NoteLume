@@ -13,7 +13,7 @@
 // 注意：调用在任何缩进层都识别（≥ 文档层即可）——引擎按缩进层级结构化输入，
 // 缩进 4 空格的代码块里行首形如指令的行会被识别为调用，这与 Quarkdown 行为一致。
 
-use super::ast::{Arg, Block, CallNode, CallSeg};
+use super::ast::{Arg, Block, CallNode, CallSeg, InlineSeg};
 
 /// Tab 视作的空格数（与 Quarkdown 一致按 4 计）
 const TAB_WIDTH: usize = 4;
@@ -75,7 +75,7 @@ pub fn parse_blocks(lines: &[(usize, &str)], start_indent: usize) -> Vec<Block> 
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
-        let (_line_no, raw) = lines[i];
+        let (line_no, raw) = lines[i];
         if is_blank(raw) {
             out.push(Block::Text(String::new()));
             i += 1;
@@ -91,10 +91,131 @@ pub fn parse_blocks(lines: &[(usize, &str)], start_indent: usize) -> Vec<Block> 
                 continue;
             }
         }
-        out.push(Block::Text(raw.to_string()));
+        match scan_inline(raw, line_no) {
+            Some(segs) => out.push(Block::Inline(segs)),
+            None => out.push(Block::Text(raw.to_string())),
+        }
         i += 1;
     }
     out
+}
+
+/// 行内调用扫描：在普通文本行里找 `.name {arg} name:{arg}::chain` 形态的调用。
+/// 判定：`.` 的前一个字符不能是字母数字（排除小数 3.14、文件名 img.png），`.` 后须紧跟
+/// 名字；参数与链与行首调用同规则，但只在行内配平（跨行的当普通文本）。无调用返回 None。
+fn scan_inline(line: &str, line_no: usize) -> Option<Vec<InlineSeg>> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut segs: Vec<InlineSeg> = Vec::new();
+    let mut text_start = 0usize;
+    let mut ci = 0usize;
+    let mut found = false;
+    while ci < chars.len() {
+        if chars[ci] != '.' {
+            ci += 1;
+            continue;
+        }
+        // 前一字符是字母数字 → 属于词内部（小数 / 域名），不是调用
+        if ci > 0 && (chars[ci - 1].is_alphanumeric() || chars[ci - 1] == '_') {
+            ci += 1;
+            continue;
+        }
+        let name: String = chars[ci + 1..].iter().take_while(|c| c.is_alphanumeric() || **c == '_').collect();
+        let first = name.chars().next();
+        if first.map_or(true, |c| !c.is_alphanumeric()) {
+            ci += 1;
+            continue;
+        }
+        let mut cur = ci + 1 + name.chars().count();
+        let mut seg_args: Vec<Arg> = Vec::new();
+        let mut chain: Vec<CallSeg> = Vec::new();
+        let mut ok = true;
+        loop {
+            let pre_skip = cur; // 跳空白前位置：本迭代没吃到参数 / 链时回退，空格还给文本
+            while cur < chars.len() && (chars[cur] == ' ' || chars[cur] == '\t') {
+                cur += 1;
+            }
+            if cur >= chars.len() {
+                cur = pre_skip;
+                break;
+            }
+            if chars[cur] == ':' && chars.get(cur + 1) == Some(&':') {
+                let mut j = cur + 2;
+                let cname: String = chars[j..].iter().take_while(|c| c.is_alphanumeric() || **c == '_').collect();
+                if cname.is_empty() {
+                    ok = false;
+                    cur = pre_skip;
+                    break;
+                }
+                j += cname.chars().count();
+                chain.push(CallSeg { name: cname, args: Vec::new() });
+                cur = j;
+                continue;
+            }
+            // 具名 / 位置参数（本行内配平）
+            let mut j = cur;
+            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+                j += 1;
+            }
+            let named = j > cur && chars.get(j) == Some(&':') && chars.get(j + 1) == Some(&'{');
+            let (arg_name, brace_col) = if named {
+                (Some(chars[cur..j].iter().collect::<String>()), j + 1)
+            } else if chars.get(cur) == Some(&'{') {
+                (None, cur)
+            } else {
+                cur = pre_skip; // 没有更多参数：空白还给文本，调用本身成立
+                break;
+            };
+            // 本行内配平读花括号
+            let mut depth = 0usize;
+            let mut k = brace_col;
+            let mut closed = false;
+            while k < chars.len() {
+                if chars[k] == '{' {
+                    depth += 1;
+                } else if chars[k] == '}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        closed = true;
+                        break;
+                    }
+                }
+                k += 1;
+            }
+            if !closed {
+                ok = false; // 跨行 / 未闭合：行内不认，当普通文本
+                break;
+            }
+            let raw: String = chars[brace_col + 1..k].iter().collect();
+            seg_args.push(Arg { name: arg_name, raw });
+            cur = k + 1;
+        }
+        if !ok {
+            ci += 1;
+            continue;
+        }
+        // 切出调用前文本，记录调用
+        if ci > text_start {
+            segs.push(InlineSeg::Str(chars[text_start..ci].iter().collect()));
+        }
+        let src: String = chars[ci..cur].iter().collect();
+        segs.push(InlineSeg::Call(CallNode {
+            head: CallSeg { name, args: seg_args },
+            chain,
+            body: None,
+            line: line_no,
+            src: src.clone(),
+        }));
+        found = true;
+        ci = cur;
+        text_start = cur;
+    }
+    if !found {
+        return None;
+    }
+    if text_start < chars.len() {
+        segs.push(InlineSeg::Str(chars[text_start..].iter().collect()));
+    }
+    Some(segs)
 }
 
 /// 解析一个调用（lines[i] 为调用行）。返回节点与从 i 起消费的总行数（含跨行参数与块参数）。
@@ -176,6 +297,7 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
     };
 
     let consumed = j - i;
+    let src = lines[i..j].iter().map(|(_, l)| *l).collect::<Vec<_>>().join("\n");
     let mut it = segs.into_iter();
     let head = it.next().unwrap();
     (
@@ -184,6 +306,7 @@ fn parse_call(lines: &[(usize, &str)], i: usize, call_indent: usize, name: Strin
             chain: it.collect(),
             body,
             line: lines[i].0,
+            src,
         },
         consumed,
     )
@@ -322,10 +445,20 @@ mod tests {
     }
 
     #[test]
-    fn 行首数字与句中点号不是调用() {
+    fn 行内调用拆片段_小数不是调用() {
         let blocks = parse("3.14\nsee .x at home");
+        // 3.14：点前是数字 → 整行 Text
         assert_eq!(text_of(&blocks[0]), "3.14");
-        assert_eq!(text_of(&blocks[1]), "see .x at home");
+        // see .x at home：.x 前是空格 → 行内调用（未知函数由求值层降级，文本输出不变）
+        match &blocks[1] {
+            Block::Inline(segs) => {
+                assert_eq!(segs.len(), 3);
+                assert_eq!(segs[0], InlineSeg::Str("see ".to_string()));
+                assert!(matches!(&segs[1], InlineSeg::Call(c) if c.head.name == "x"));
+                assert_eq!(segs[2], InlineSeg::Str(" at home".to_string()));
+            }
+            other => panic!("应为 Inline，实际 {:?}", other),
+        }
     }
 
     #[test]
