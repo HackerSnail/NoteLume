@@ -63,6 +63,14 @@ pub struct Evaluator {
     pub bibs: Vec<Vec<(String, Vec<(String, String)>)>>,
     /// .cite 的实参按键出现顺序记录，文档求值完后统一解析编号（编号取决于 .bibliography 的条目顺序）
     pub cites: Vec<Vec<String>>,
+    /// 图（mermaid / xychart）编号计数
+    pub figures: usize,
+    /// .numbered 的计数分组：key → 当前序号
+    pub num_counters: HashMap<String, usize>,
+    /// 交叉引用账本：ref id → 编号（.numbered / 图登记，.ref 解析）
+    pub numbered: Vec<(String, usize)>,
+    /// .ref 的 id 按调用顺序记录，出口统一解析
+    pub refs: Vec<String>,
 }
 
 impl Evaluator {
@@ -77,6 +85,10 @@ impl Evaluator {
             loc_tables: HashMap::new(),
             bibs: Vec::new(),
             cites: Vec::new(),
+            figures: 0,
+            num_counters: HashMap::new(),
+            numbered: Vec::new(),
+            refs: Vec::new(),
         }
     }
 
@@ -155,7 +167,7 @@ impl Evaluator {
     }
 
     /// 实参求值：raw 里可能是指令（`.n`、跨行块），可能是字面量（数字 / yes|no / 区间 / 文本）
-    fn eval_raw(&mut self, raw: &str, line: usize) -> Result<Value, ()> {
+    fn eval_raw(&mut self, raw: &str) -> Result<Value, ()> {
         let trimmed = raw.trim();
         if trimmed.starts_with('.') {
             // 实参本身是调用：当子文档解析求值。
@@ -224,7 +236,7 @@ impl Evaluator {
             let is_last = idx == segs.len() - 1;
             // 链上的 foreach / repeat：注入值即实参（`.range {1} {3}::foreach` 惯用形态）
             if seg.name == "foreach" {
-                let (mut pos, _) = self.eval_seg_args(seg, node, current.take(), &[])?;
+                let (mut pos, _) = self.eval_seg_args(seg, current.take(), &[])?;
                 if pos.is_empty() {
                     self.diag(node.line, ".foreach 缺少可迭代实参".to_string());
                     return Err(());
@@ -242,7 +254,7 @@ impl Evaluator {
                 continue;
             }
             if seg.name == "repeat" {
-                let (mut pos, _) = self.eval_seg_args(seg, node, current.take(), &[])?;
+                let (mut pos, _) = self.eval_seg_args(seg, current.take(), &[])?;
                 if pos.is_empty() {
                     self.diag(node.line, ".repeat 缺少次数".to_string());
                     return Err(());
@@ -269,11 +281,11 @@ impl Evaluator {
             };
             match (user_target, builtin) {
                 (Some(v), _) => {
-                    let (pos, _) = self.eval_seg_args(seg, node, current.take(), &[])?;
+                    let (pos, _) = self.eval_seg_args(seg, current.take(), &[])?;
                     current = Some(self.invoke_value(v, &pos, node, is_last)?);
                 }
                 (None, Some((f, lambda_args))) => {
-                    let (pos, named) = self.eval_seg_args(seg, node, current.take(), lambda_args)?;
+                    let (pos, named) = self.eval_seg_args(seg, current.take(), lambda_args)?;
                     let call = BuiltinCall { name: &seg.name, pos, named, body: node.body.clone() };
                     current = Some(f(self, &call).map_err(|e| {
                         self.diag(node.line, e);
@@ -293,7 +305,6 @@ impl Evaluator {
     fn eval_seg_args(
         &mut self,
         seg: &CallSeg,
-        node: &CallNode,
         prev: Option<Value>,
         lambda_args: &'static [&'static str],
     ) -> Result<(Vec<Value>, Vec<(String, Value)>), ()> {
@@ -310,7 +321,7 @@ impl Evaluator {
             let v = if is_lambda {
                 parse_lambda_raw(&a.raw)
             } else {
-                self.eval_raw(&a.raw, node.line)?
+                self.eval_raw(&a.raw)?
             };
             match &a.name {
                 Some(n) => named.push((n.clone(), v)),
@@ -360,6 +371,23 @@ impl Evaluator {
         };
         self.push_scope();
         let r = self.bind_and_run(&params, &body, args, &node);
+        self.pop_scope();
+        r
+    }
+
+    /// 调用块参数 lambda（builtin 的 body 是 lambda 体，首行参数表、无头隐式 .1）：
+    /// .numbered 一类把编号喂给 body 的函数用。
+    pub fn call_block(&mut self, body: &[Block], args: &[Value], line: usize) -> Result<Value, ()> {
+        let (params, rest) = Evaluator::lambda_params(body, true);
+        let node = CallNode {
+            head: CallSeg { name: String::new(), args: Vec::new() },
+            chain: Vec::new(),
+            body: None,
+            line,
+            src: String::new(),
+        };
+        self.push_scope();
+        let r = self.bind_and_run(&params, rest, args, &node);
         self.pop_scope();
         r
     }
@@ -451,7 +479,7 @@ impl Evaluator {
             }
         };
         let value = match node.head.args.get(1) {
-            Some(a) => self.eval_raw(&a.raw, node.line)?,
+            Some(a) => self.eval_raw(&a.raw)?,
             None => match node.body {
                 // 块变量：`.var {name}` + 缩进块，值是块内容的求值结果。
                 // 块体恰好是一个调用时直接取它的返回值，保住类型（.dictionary 的 Dict、
@@ -473,28 +501,6 @@ impl Evaluator {
         };
         self.define(&name, value.clone());
         Ok(Value::None) // .var 是定义，不产生输出
-    }
-
-    /// .foreach {iterable} + 迭代 lambda：逐项绑定首参（或隐式 `.1`）求值 body，结果按行拼接
-    fn eval_foreach(&mut self, node: &CallNode) -> Result<Value, ()> {
-        let items = match node.head.args.first() {
-            Some(a) => {
-                let v = self.eval_raw(&a.raw, node.line)?;
-                match v.as_items() {
-                    Some(it) => it,
-                    None => {
-                        self.diag(node.line, ".foreach 实参不可迭代".to_string());
-                        return Err(());
-                    }
-                }
-            }
-            None => {
-                self.diag(node.line, ".foreach 缺少可迭代实参".to_string());
-                return Err(());
-            }
-        };
-        let body = node.body.clone().unwrap_or_default();
-        self.run_foreach(items, &body)
     }
 
     /// foreach 的执行核心（首段与链上两种入口共用）
@@ -521,27 +527,6 @@ impl Evaluator {
     }
 
     /// .repeat {times} + body：重复求值 n 次，按行拼接
-    fn eval_repeat(&mut self, node: &CallNode) -> Result<Value, ()> {
-        let times = match node.head.args.first() {
-            Some(a) => {
-                let v = self.eval_raw(&a.raw, node.line)?;
-                match v.as_num() {
-                    Some(n) => n,
-                    None => {
-                        self.diag(node.line, ".repeat 实参必须是数字".to_string());
-                        return Err(());
-                    }
-                }
-            }
-            None => {
-                self.diag(node.line, ".repeat 缺少次数".to_string());
-                return Err(());
-            }
-        };
-        let body = node.body.clone().unwrap_or_default();
-        self.run_repeat(times, &body)
-    }
-
     fn run_repeat(&mut self, times: f64, body: &[Block]) -> Result<Value, ()> {
         let mut outs: Vec<String> = Vec::new();
         for _ in 0..times.max(0.0) as usize {
@@ -561,7 +546,7 @@ impl Evaluator {
     /// .if / .ifnot：条件成立（ifnot 为不成立）时求值 body，否则输出空
     fn eval_if(&mut self, node: &CallNode, negate: bool) -> Result<Value, ()> {
         let cond = match node.head.args.first() {
-            Some(a) => self.eval_raw(&a.raw, node.line)?,
+            Some(a) => self.eval_raw(&a.raw)?,
             None => {
                 self.diag(node.line, ".if 缺少条件".to_string());
                 return Err(());
@@ -587,7 +572,7 @@ impl Evaluator {
 
     fn eval_let(&mut self, node: &CallNode) -> Result<Value, ()> {
         let value = match node.head.args.first() {
-            Some(a) => self.eval_raw(&a.raw, node.line)?,
+            Some(a) => self.eval_raw(&a.raw)?,
             None => Value::None,
         };
         let body = node.body.clone().unwrap_or_default();
@@ -668,6 +653,7 @@ pub fn eval_document(
     super::localization::install_std(&mut ev);
     let mut out = ev.run_document(blocks);
     super::bibliography::resolve_citations(&mut ev, &mut out);
+    super::reference::resolve_refs(&mut ev, &mut out);
     (out, ev.diagnostics)
 }
 

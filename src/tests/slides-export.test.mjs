@@ -6,7 +6,7 @@
 
 import assert from 'node:assert'
 import { JSDOM } from 'jsdom'
-import { splitSlides, buildSlidesHtml } from '../slides-export.js'
+import { splitSlides, buildSlidesHtml, buildVaultSlidesHtml } from '../slides-export.js'
 
 // buildSlidesHtml 里 renderSite → sanitizeHtml 用 DOMParser，离线断言补一份 jsdom
 const jsdom = new JSDOM('<!doctype html><html><body></body></html>')
@@ -89,6 +89,35 @@ check('notes 插件内联且注册，初始化不含外部资源引用', () => {
 check('无 H1 时不报错，title 退化为入参', () => {
   const html = buildSlidesHtml('## A', { title: 'my.note.html', assets: FAKE })
   assert.ok(html.includes('<title>my.note.html</title>'))
+})
+
+// —— 整库幻灯片 buildVaultSlidesHtml ——
+check('整库：章为外层 section（嵌套），首页出片名与文档清单', () => {
+  const html = buildVaultSlidesHtml(
+    [
+      { title: '第一章', md: '# 第一章\n\n页A\n\n---\n\n页B' },
+      { title: '第二章', md: '## 一\n\nx' },
+    ],
+    { title: '我的库', assets: FAKE },
+  )
+  assert.ok(html.includes('<title>我的库</title>'))
+  assert.ok(html.includes('nl-vault-toc'))
+  assert.ok(html.includes('<li>第一章</li>') && html.includes('<li>第二章</li>'))
+  // 嵌套 section：封面 1 + 外层章 2 + 内层页（2+1）
+  assert.strictEqual((html.match(/<section>/g) || []).length, 6)
+  assert.ok(html.includes('<reveal-js>') && html.includes('<theme-css>'))
+})
+
+check('整库：切不出内容的文档整章跳过，notes 照常摘取', () => {
+  const html = buildVaultSlidesHtml(
+    [
+      { title: '空文档', md: '' },
+      { title: '有备注', md: '## A\n\n::: notes\nn1' },
+    ],
+    { assets: FAKE },
+  )
+  assert.ok(!html.includes('空文档') || !/<section>\s*<\/section>/.test(html))
+  assert.ok(/<aside class="notes"><p>n1<\/p>\s*<\/aside>/.test(html))
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)
