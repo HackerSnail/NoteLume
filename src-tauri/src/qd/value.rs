@@ -81,7 +81,7 @@ impl Value {
         }
     }
 
-    /// 可迭代取值：Range / List 展开；Markdown 列表文本逐行（- 项）拆字符串
+    /// 可迭代取值：Range / List 展开；Str / Markdown 文本逐行（- 项）拆字符串
     pub fn as_items(&self) -> Option<Vec<Value>> {
         match self {
             Value::Range(a, b) => {
@@ -92,7 +92,7 @@ impl Value {
                 }
             }
             Value::List(items) => Some(items.clone()),
-            Value::Str(s) => Some(
+            Value::Str(s) | Value::Markdown(s) => Some(
                 s.lines()
                     .filter_map(|l| {
                         let t = l.trim();
