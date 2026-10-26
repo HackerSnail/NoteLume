@@ -23,6 +23,7 @@ import { csvPlugin } from './csv-preview.js'
 import { qdPlugin } from './qd/editor.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
+import { cleanPastedHtml } from './paste-clean.js'
 import { hydrateBlockImages } from './html-block-images.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
@@ -309,6 +310,11 @@ export function createEditor(opts) {
 
   const view = new EditorView(opts.mountEl, {
     state,
+    // 富文本粘贴先摘结构垃圾（复制按钮、行号装订线、空段落串联）再进 schema 解析；
+    // 纯文本粘贴不走这条，Ctrl+Shift+V 在 main.js 另有通路
+    transformPastedHTML(html) {
+      return cleanPastedHtml(html)
+    },
     nodeViews: {
       math_inline: mathInlineView,
       math_block: mathBlockView,

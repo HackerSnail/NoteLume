@@ -1,8 +1,8 @@
 <h1 align="center">NoteLume · 文溯</h1>
 
 <p align="center">
-  把 <strong>Typora 的所写即所得</strong>和 <strong>精简版 Obsidian 的知识库能力</strong>装进 Tauri 壳的本地 Markdown 笔记工具。<br>
-  你的笔记就是一堆标准 <code>.md</code> 文件躺在自己的文件夹里：秒开、离线、零格式锁定。
+  为「嫌 <strong>Typora</strong> 没组织、嫌 <strong>Obsidian</strong> 太重」的人做的本地 Markdown 编辑器。<br>
+  约 6 MB 的单体安装包，编辑手感第一；你的笔记就是一堆标准 <code>.md</code> 文件躺在自己的文件夹里：秒开、离线、零格式锁定。
 </p>
 
 <p align="center">
@@ -30,20 +30,19 @@
 
 ### 简介
 
-受够了云笔记的转圈加载，又舍不得本地记事本的速度？NoteLume（中文名「文溯」）就是为这个矛盾来的：
+Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian 有组织，但双栏源码、插件、图谱一层套一层，重。NoteLume（中文名「文溯」）走的是两头都没占的那条路：像 Typora 一样单文档 WYSIWYG 直接写，像 Obsidian 一样把本地文件夹当知识库——`[[双链]]`、标签、反链、全文搜索、Git 同步都是内置的，不背插件生态和全量图谱的重量。
 
-它把 **Typora 的一体化 WYSIWYG 编辑体验**和 **精简版 Obsidian 的知识库能力**装进了一个 Tauri 壳里——你的笔记就是一堆标准 `.md` 文件躺在自己的文件夹里，双击即开、断网可用，但 `[[双链]]`、标签、反链、全文搜索、知识图谱、Git 同步一个不少。没有任何私有格式，哪天换工具了，文件还是你的。
-
-**适合谁用**：极简主义者、隐私敏感者、开发者与文字工作者——所有「想要本地文件的确定性，又想要现代笔记软件顺手能力」的人。
+**适合谁用**：想要 Typora 的手感、又需要文件一多时找得回来的人。要插件生态、重型图谱、或 Obsidian 默认双栏源码的，请直接用 Obsidian，这里没有。
 
 ### 功能亮点
 
 * ✍️ **所写即所得**：Markdown 与富文本双向无损往返；KaTeX 公式、Mermaid 图表、callout 卡片、合并单元格表格、块级裸 HTML、脚注、代码块子语言高亮，全都在渲染态直接编辑
+* ✂️ **粘贴自动清理**：从 AI 对话框、飞书、公众号复制的内容直接粘——代码块头部的「复制」按钮、行号装订线、空段落串联在进编辑器前就摘掉，不用粘完再手修第二次
 * 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 力导向图谱、全库搜索、版本快照一键回滚；文件树右键直接在系统文件管理器里显示
-* 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；不联网也绝不上传，删除进系统回收站
+* 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；整库可一键导出为标准 Markdown 副本（callout、`![[嵌入]]`、`[[双链]]` 写出时降级），任何编辑器能开；不联网也绝不上传，删除进系统回收站
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
 * ⚡ **Quarkdown 引擎（五阶段全量落地）**：`.var` / `.function` / `.if` / `.foreach` 这套 Turing-complete 语法直接写进 md，快照式预览不碰源文件；约 190 个内置函数——正则替换、表格计算、CSV/JSON 读取、Mermaid 与 xychart 图表、交叉引用、BibTeX 参考文献、多语言本地化、`Libraries/` 库目录、atoms 包安装、`.extend` 函数扩展。不用 Quarkdown 语法的文档仍是纯 GFM，Typora / Obsidian 照常打开
-* 🎬 **导出一族**：单篇 / 整库幻灯片（自包含 reveal.js HTML，整库按文档分章）、整站静态站、打印排版（Paged.js 预分页：目录页、页码与页眉、H1 分页、封面）、Word .docx
+* 🎬 **导出一族**：单篇 / 整库幻灯片（自包含 reveal.js HTML，整库按文档分章）、整站静态站、打印排版（Paged.js 预分页：目录页、页码与页眉、H1 分页、封面）、Word .docx、标准 Markdown 副本（Obsidian 私有语法降级）
 * 🔄 **Git 内置**：状态 / 历史 / 单文件 diff / 提交 / 推送 / 合并冲突解决全部内建（`git2` 引擎，没装 git 也能 fetch/pull）
 * 🌐 **网页剪藏**：浏览器扩展（`extension/`，MV3）把网页正文 POST 给本机服务，Rust 按模板落盘、图片可选本地化进 `assets/`，并自动在文末关联库内相关笔记；只绑 127.0.0.1，只收扩展来源的请求
 * 🧩 **功能开关与五语言**：`[[toc]]` 目录块、CSV 表格渲染、emoji 短代码、标题自动编号都是设置里的开关项，全关即标准模式；界面内置简体中文 / 繁體中文 / English / Français / Deutsch
@@ -170,18 +169,19 @@ Issue 和 PR 都欢迎，也欢迎任何形式的功能建议。
 
 ### Overview
 
-Tired of cloud notes that spin forever, but unwilling to give up speed for structure? NoteLume (Chinese name: 文溯, *Wènsù*) resolves that trade-off: it packs the **all-in-one WYSIWYG editing of Typora** and a **lean subset of Obsidian's vault features** into a tiny Tauri app. Your notes stay plain `.md` files in a folder you own — instant to open, fully offline, yet with `[[wikilinks]]`, tags, backlinks, full-text search, a knowledge graph, and built-in Git sync. Zero proprietary formats: if you ever leave, your files don't.
+Typora edits beautifully, but one file is one file — past a handful of notes there is no organization. Obsidian organizes, but split panes, source mode, plugins and the graph stack up into something heavy. NoteLume (Chinese name: 文溯, *Wènsù*) takes the road neither occupies: single-document WYSIWYG like Typora, a local folder as a vault like Obsidian — `[[wikilinks]]`, tags, backlinks, full-text search and Git sync are built in, without the weight of a plugin ecosystem or a full-scale graph.
 
-**Who it's for**: minimalists, privacy advocates, developers and writers — anyone who wants the certainty of local files with the ergonomics of a modern note-taking app.
+**Who it's for**: people who want Typora's feel and still need to find things when the file count grows. If you want a plugin ecosystem, a heavyweight graph, or Obsidian's default split-pane source mode, use Obsidian — you won't find those here.
 
 ### Highlights
 
 * ✍️ **True WYSIWYG**: lossless Markdown round-trip; edit KaTeX math, Mermaid diagrams, callouts, merged-cell tables, literal HTML blocks, footnotes, and syntax-highlighted code blocks right in the rendered view
+* ✂️ **Paste auto-clean**: content copied from AI chat apps, Feishu, or WeChat pastes clean — copy buttons, line-number gutters, and chains of empty paragraphs are stripped before the editor sees them, no second-pass fixing
 * 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, Canvas-based knowledge graph, vault-wide search, snapshot history with one-click rollback; right-click any tree entry to reveal it in your system file manager
-* 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; nothing ever leaves your machine; deletions go to the system trash
+* 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; export the whole vault as a plain-Markdown copy with Obsidian-specific syntax (callouts, `![[embeds]]`, `[[wikilinks]]`) downgraded on the way out, readable in any editor; nothing ever leaves your machine; deletions go to the system trash
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
 * ⚡ **Quarkdown engine (all five phases shipped)**: Turing-complete `.var` / `.function` / `.if` / `.foreach` macros live right in your Markdown, snapshot-previewed without touching the source; about 190 builtins — regex replace, table computation, CSV/JSON readers, Mermaid & xychart diagrams, cross-references, BibTeX bibliographies, localization tables, a `Libraries/` folder, atoms package installs, and `.extend` function wrapping. Documents without Quarkdown syntax stay pure GFM that Typora and Obsidian open as-is
-* 🎬 **Export family**: single-document and whole-vault slide decks (self-contained reveal.js HTML, one chapter per document), static-site export, paged print & PDF (Paged.js: TOC page, page numbers & running heads, H1 page breaks, cover page), and Word .docx
+* 🎬 **Export family**: single-document and whole-vault slide decks (self-contained reveal.js HTML, one chapter per document), static-site export, paged print & PDF (Paged.js: TOC page, page numbers & running heads, H1 page breaks, cover page), Word .docx, and a plain-Markdown vault copy with Obsidian-specific syntax downgraded
 * 🔄 **Git built in**: status / history / per-file diff / commit / push / merge-conflict resolution, powered by embedded `git2` — works even without a system Git installed
 * 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, can localize images under `assets/` (off by default), and appends links to related notes — loopback-only, extension-origin gated
 * 🧩 **Feature flags & five languages**: `[[toc]]` blocks, CSV table rendering, emoji shortcodes, and heading numbering are all toggles — everything off means standard mode; the UI ships in 简体中文 / 繁體中文 / English / Français / Deutsch

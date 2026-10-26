@@ -55,6 +55,7 @@ import {
   stopVaultWatcher,
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages, injectToc } from './site-export.js'
+import { exportPlainMd } from './plain-export.js'
 import { anchorSlug } from './heading-anchor.js'
 import { getFeatures, setFeature } from './feature-flags.js'
 import { buildSlidesHtml, buildVaultSlidesHtml } from './slides-export.js'
@@ -1649,6 +1650,7 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.exportSlides', 'export')
   addMenuCmd(menu, 'app.exportVaultSlides', 'export')
   addMenuCmd(menu, 'app.exportSite', 'globe')
+  addMenuCmd(menu, 'app.exportPlain', 'export')
   addMenuCmd(menu, 'app.importWord', 'file')
   addMenuCmd(menu, 'app.exportWord', 'export')
   addMenuCmd(menu, 'app.print', 'printer')
@@ -3308,6 +3310,31 @@ async function exportSiteFull() {
   }
 }
 
+// 整库导出标准 GFM 副本：Obsidian 私有语法在写出时降级，产物任何编辑器都能开
+async function exportPlainMdFull() {
+  if (!state.vaultRoot) {
+    setStatus(t('status.siteNeedVault'))
+    return
+  }
+  const outDir = await pickFolder()
+  if (!outDir) return
+  setStatus(t('plain.building'))
+  try {
+    const io = {
+      buildGraph: (vr) => buildSiteGraph(vr),
+      scanTree: (vr) => scanVault(vr),
+      readMd: (vr, rel) => readMdFile(vr, rel),
+      writeFile: (absPath, content) => exportFile(absPath, content),
+      copyAssets: (vr, rels, od) => copyVaultAssets(vr, rels, od),
+    }
+    const r = await exportPlainMd({ vaultRoot: state.vaultRoot, outDir, io, setStatus })
+    await messageDialog(t('msg.plainExportDone', { ok: r.ok, dir: outDir }), 'info')
+  } catch (e) {
+    await messageDialog(t('msg.plainExportFailedDlg', { err: (e && e.message) || e }))
+    setStatus(t('status.siteExportFailed'))
+  }
+}
+
 function buildExportHtml(title, body, headingNumbering = false) {
   // 独立 HTML：内嵌 GitHub 风格样式 + KaTeX css 引用；离线可读，可分享
   return `<!DOCTYPE html>
@@ -3487,6 +3514,7 @@ function registerAppCommands() {
     setStatus(t(next ? 'status.qdEvalOn' : 'status.qdEvalOff'))
   })
   app('app.exportSite', null, () => exportSiteFull())
+  app('app.exportPlain', null, () => exportPlainMdFull())
   app('app.importWord', null, () => importWordViaDialog())
   app('app.exportWord', null, () => exportWordViaDialog())
   app('app.newCanvas', null, () => newCanvas())
@@ -3628,7 +3656,7 @@ let macTitle = ''
 const lastRunAt = new Map()
 
 const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.exportSlides', 'app.print', 'app.closeFile', 'app.renameFile'])
-const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.exportVaultSlides', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
+const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.exportPlain', 'app.exportVaultSlides', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
 // 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
 const MENU_NEEDS_MD = new Set(['app.exportWord', 'app.insertImage'])
 const MENU_CHECKED = {

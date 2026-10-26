@@ -1,16 +1,12 @@
-# 项目：Markdown 知识库编辑器（定位介于 Typora & Obsidian 之间）
+# 项目：Markdown 知识库编辑器（定位：轻 + 纯 md + 编辑手感）
 
 ## 项目定位
 
-介于 Typora 和 Obsidian 中间形态：
-✅ 主编辑体验 = Typora：**单文档一体化WYSIWYG Markdown，所见即所得，点击渲染内容直接编辑**，不是左右分屏源码预览。排版干净、阅读感强。
-✅ 知识库能力 = 精简版 Obsidian：本地文件夹作为知识库仓库，文件之间双向链接、内部跳转、标签、文档大纲、搜索；**不强制全量渲染庞大知识图谱（图谱作为可选附加功能）**。
+2026-10-26 定位收紧：砍掉「Obsidian 重度用户」这条受众，主打**轻 + 纯 md + 编辑手感**，目标用户是嫌 Typora 没组织、嫌 Obsidian 重的人。不再用「介于 Typora 和 Obsidian 之间」这种两头站的表述；插件生态与重型图谱是 Obsidian 的地盘，不拼也不当卖点。
 
-区别对比：
-
-- Typora：只专注单MD文件编辑，没有知识库、双向链接、库内搜索、标签、文档关系管理。
-- Obsidian：以知识库为核心，默认是分栏+源码模式，WYSIWYG是插件，很重，图谱为核心卖点。
-- 本项目：**WYSIWYG为第一编辑体验，知识库是内置基础能力，轻量化，优先编辑体验，图谱可选**。
+- 编辑体验 = Typora：**单文档一体化WYSIWYG Markdown，所见即所得，点击渲染内容直接编辑**，不是左右分屏源码预览。排版干净、阅读感强。粘贴清理（AI 对话框 / 飞书 / 公众号来源的脏内容）算编辑手感的一部分，见「粘贴清理」一节。
+- 知识库能力 = 内置基础能力：本地文件夹作为知识库仓库，文件之间双向链接、内部跳转、标签、文档大纲、搜索；**不强制全量渲染庞大知识图谱（图谱作为可选附加功能）**。
+- 数据 = 纯 .md + 原生文件夹。「零锁定」用动作兑现（标准 GFM 导出，见对应章节），不靠宣称。
 
 ## 技术栈
 
@@ -222,6 +218,16 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - 编辑器显示：`src/emoji-decorations.js` 的装饰插件（emoji widget + 原文 `font-size:0` 隐藏，与 hl-decorations 同族），行内代码与代码块里不换脸。
 - 导出渲染：`mountEmojiRenderer` 只改 `renderer.rules.text`，挂在共享 tokenizer（整站 / 幻灯片导出）与 `main.js` 的 `exportMd`（单篇 HTML）上；docx 导出走 PM 文档树保持原文。
 - 词表：markdown-it-emoji 的 full 数据 + shortcuts 别名，约 1900 条。
+
+## 粘贴清理（2026-10-26）
+
+富文本粘贴进编辑器前先过 `src/paste-clean.js` 的 `cleanPastedHtml`（`editor-view.js` 挂 `transformPastedHTML`；纯文本粘贴与 Ctrl+Shift+V 不走这条）。ProseMirror 拿到 text/html 后按 schema 解析，schema 管不住的只有结构垃圾：AI 对话框代码块头部的「复制 / Copy」按钮文字（button 不进 schema，按钮文字会被当正文留下）、行号装订线 span、代码块工具条、空段落串联、长串 `<br>`。清理三步：垃圾节点整棵摘（JUNK_TAGS + class 词元判定 + aria-label / data-testid 认「复制 / copy」）→ 空壳逐轮收缩（p / div / span / 空标题 / 空 li / 空链接，文本为空且子节点只剩 br；表格单元格不摘——空 td 是合法内容）→ 连续 3 个以上 `<br>` 收成 1 个（两个还可能是刻意的段落间隔）。class 按词元（classList 逐 token）匹配而不是属性子串，「copyright」不因含 copy 误杀；pre / code 本体永不按 class 摘——Prism 把 line-numbers 挂在 pre 上。实测 `node tests/paste-clean.test.mjs` 10 条全过。
+
+## 标准 GFM 导出（2026-10-26）
+
+新命令 `app.exportPlain`（Windows / Linux「更多」菜单、命令面板，须开库，按 `MENU_NEEDS_VAULT` 置灰）：把库内全部 md 复制到选定文件夹，Obsidian 私有语法在写出时降级，产物任何编辑器能开——「零锁定」用动作兑现。实现在 `src/plain-export.js`，io 注入与 `exportSite` 同模式（buildGraph / scanTree / readMd / writeFile / copyAssets）。
+
+降级规则：callout 首行落 `> **标题**`（无标题用类型名，`-` / `+` 折叠标记丢弃，正文行保持引用块）；`![[图片]]` 落标准 `![alt](相对路径)`，数字别名是 Obsidian 的宽度语法、GFM 无对应形态，丢弃；`![[笔记]]` 落普通链接；`[[目标|别名]]` 落 `[别名](相对路径.md)`；未创建的链接只留别名文字，不产坏链；`[[目标#锚]]` href 丢锚（Obsidian 锚是标题原文、GFM 锚是 slug，直译必坏），锚保留在链接文字里。wikilink 解析复用 `build_site_graph` 的 wiki 表（与编辑器跳转、站点导出同一 Rust 实现），表里没有的 target 按 rel（含省略 .md 写法）/ basename 兜底再解一次；围栏代码块与行内代码里的 wiki 语法一律不动。链接地址经 encodeURI 并显式转 `(` `)`（GFM 链接目标不允许裸括号）。目录结构与原库一致，引用到的图片经 copyVaultAssets 镜像到同相对位置，frontmatter 原样保留。转换主体 `convertPlainMd` 是纯字符串函数；`node tests/plain-export.test.mjs` 12 条全过。词条 `cmd.app.exportPlain` / `plain.*` / `msg.plainExport*` 五语言。
 
 ## 功能开关（2026-10-25）
 
