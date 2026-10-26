@@ -9,6 +9,8 @@
 
 ### Added
 
+* **所见即所得编辑器加视觉行号装订线**：源码模式（CodeMirror）一直有行号，WYSIWYG 此前没有——整段长文折行后看不到读到第几行。新增 `src/wysiwyg-gutter.js`：`.editor` 左侧一条装订线（`.nl-ln-gutter`），与源码模式同口径——按**折行后的视觉行**连续编号（标题 / 段落 / 表格行都算行，跨块累计），常开、无开关。行位来自 DOM Range 的 `getClientRects` 按 top 合并（同视觉行内的行内片段与基线微差并入，折行分离；合并逻辑是纯函数 `mergeLineTops`，jsdom 可测）；装订线只渲染视口上下各 30 行（虚拟化），滚动 / 改宽 / 字号变化经 scroll 监听与 ResizeObserver 增量重绘，文档变更走 rAF 去抖全量重算——5 万字单段实测流畅。折叠节隐藏的行不编号、不断号；源码模式 `.editor` 整体隐藏，装订线跟着消失；打印 / 导出样式里装订线不上纸（屏内行位与分页版式对不上）。纯前端，刷新即生效。实测：`node tests/wysiwyg-gutter.test.mjs` 8 passed（折行计数、同片段合并、基线微差、乱序、跨行高矩形、空输入、大间距、混排字号）；Playwright 驱动真实 WebView2 打开 18001 字文档——行号从 1 起连续、随滚动换窗口（滚 3000px 后窗口从 1–26 变 94–127）、样式与内容对齐；前端测试文件全量通过，`npm run build` 无错。
+
 * **命令面板加「Quarkdown：开 / 关求值」切换命令**：设置页「功能开关」里的 Quarkdown 开关有了两处直达入口（`app.qdToggleEval`，无默认快捷键）——命令面板，以及 Windows / Linux 工具条「更多」菜单（挂在「网页剪藏设置」之后，勾选态读当前开关）；同一 `setFeature` 通道落 settings.json 并经 `refreshFeatureFlags` 广播全部窗格编辑器重扫装饰，状态栏回显开 / 关。词条五语言。实测：前端 41 个测试文件全过（app-menu 29 条含菜单规格回归）。
 
 * **文件树右键「在资源管理器中显示」**：文件 / 文件夹 / 空白区（库根）三处右键菜单各加一项，调系统文件管理器定位到该条目——Windows 走 `explorer /select` 选中该项（raw_arg 绕开引号转义，带空格路径可命中；explorer 退出码经常回 1，进程起得来即算成功）、macOS `open -R` 反选、Linux 无通用反选就 `xdg-open` 打开所在目录。新命令 `reveal_in_folder`（Rust，路径经既有 abs_in_vault 校验、不存在时按五语言报「路径不存在」），词条 `menu.revealInFolder` / `msg.revealFailed` 五语言。实测：`cargo test --lib` 305 条全过，前端 41 个测试文件全过；真机三平台的资源管理器行为属验收项。

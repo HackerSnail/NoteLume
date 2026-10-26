@@ -33,6 +33,7 @@ import { attachCodeLangPicker } from './code-lang-picker.js'
 import { createSlashMenuPlugin, SLASH_ITEMS } from './slash-menu.js'
 import { BLOCK_COMMANDS, activeBlockKey, headingStep, insertTable, nlBackspace, nlEnter, nlHardBreak } from './block-commands.js'
 import { createModesPlugin } from './editor-modes.js'
+import { createLineNumbersPlugin } from './wysiwyg-gutter.js'
 import { createFoldPlugin, foldSectionCommand, unfoldCovering } from './fold-plugin.js'
 import { footnotePlugin, insertFootnote, deleteFootnote } from './footnotes.js'
 import { normalizeBinding } from './keymap.js'
@@ -298,6 +299,7 @@ export function createEditor(opts) {
       findPlugin(),
       modes.plugin,
       fold.plugin,
+      createLineNumbersPlugin(),
       ...tablePlugins(),
       // 块间隙光标：表格 / 代码块 / 公式在文末时给它下方一个可点可打字的位置，
       // 不改文档所以不判脏；放在表格插件之后，让列宽拖拽先取得鼠标事件

@@ -1825,6 +1825,28 @@ html.nl-dragging * {
     max-width: 1200px;
   }
 }
+/* 所见即所得行号装订线（wysiwyg-gutter.js）：与源码模式同口径，视觉行、常开。
+   数字画在 .editor 左侧原有的 30px 内边距里，开行号后把内容再让出 16px */
+.editor.nl-has-gutter {
+  position: relative;
+  padding-left: 46px;
+}
+.nl-ln-gutter {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  pointer-events: none;
+  user-select: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.nl-ln-num {
+  position: absolute;
+  right: 8px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
 .editor .ProseMirror {
   outline: none;
   min-height: 100%;
@@ -4750,6 +4772,13 @@ html.nl-dragging * {
   .editor {
     max-width: none;
     padding: 0;
+  }
+  /* 纸上分页版式与屏内行位对不上，装订线不上纸 */
+  .editor.nl-has-gutter {
+    padding-left: 0;
+  }
+  .nl-ln-gutter {
+    display: none;
   }
   /* 视图层记号：折叠三角与计数、语言角标、列宽手柄与选中格、查找高亮底色 */
   .nl-fold-toggle,
