@@ -1012,6 +1012,14 @@ function renderSingleFileTree(name) {
   li.dataset.kind = 'file' // 与 renderNode 一致：拖拽绑定按 kind 认文件项
   li.title = name
   li.addEventListener('click', () => openFile(name))
+  // 单文件树此前没有任何右键处理：节点上弹 WebView2 原生菜单，空白区整个没菜单。
+  // 行为对齐 renderNode 的文件行（菜单各项吃 rel 路径，单文件模式下 state.vaultRoot
+  // 就是该文件所在目录，重命名 / 回收站 / 资源管理器都成立）
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    showTreeMenu(e.clientX, e.clientY, { path: name, name, type: 'file' })
+  })
   const ul = document.createElement('ul')
   ul.className = 'tree-root'
   ul.appendChild(li)
@@ -1465,10 +1473,16 @@ function showTreeBgMenu(clientX, clientY) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
-  menu.appendChild(makeMenuItem(t('menu.newFileEllipsis'), () => newFileIn('')))
-  menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn('')))
-  menu.appendChild(menuSep())
-  menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath('')))
+  if (state.singleFile || !state.vaultRoot) {
+    // 单文件模式 / 尚未打开库：没有「库根」可新建，给打开入口
+    menu.appendChild(makeMenuItem(t('cmd.app.openFile'), () => openSingleFile()))
+    menu.appendChild(makeMenuItem(t('cmd.app.openFolder'), () => openFolder()))
+  } else {
+    menu.appendChild(makeMenuItem(t('menu.newFileEllipsis'), () => newFileIn('')))
+    menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn('')))
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath('')))
+  }
   placeMenu(menu, clientX, clientY)
 }
 
@@ -1802,6 +1816,13 @@ function installGlobalContextMenu() {
     if (hit.closest('#filetree')) return // 文件树：节点与空白区都已有自绘菜单
     e.preventDefault()
     closeTreeMenu()
+    if (hit.closest('#sidebar')) {
+      // 侧栏空白（树行之外的区域）：与树空白区同一张菜单——库模式给新建，单文件 / 无库给
+      // 打开入口；搜索框等可编辑目标仍是编辑菜单
+      if (editable) openEditContextMenu(e, hit)
+      else showTreeBgMenu(e.clientX, e.clientY)
+      return
+    }
     if (inStrip && !editable) openTabContextMenu(e, pane)
     else if (editable) openEditContextMenu(e, hit)
   }, true)
@@ -4669,6 +4690,7 @@ async function boot() {
   await handleLaunchArgs()
   bindShortcuts()
   installGlobalContextMenu()
+  bindTreeBgMenu() // 开机即绑：一个文档都没开时右键树区也不漏原生菜单
   setupCloseGuard()
   setupMacMenu()
   setupTrayMenu()
