@@ -10,6 +10,7 @@ import { createTable, insertTable } from './block-commands.js'
 import { showTableSizePicker } from './table-picker.js'
 import { setIcon } from './icons.js'
 import { t } from './i18n.js'
+import { QD_SNIPPETS } from './qd/snippets.js'
 
 const N = schema.nodes
 const para = () => N.paragraph.create()
@@ -38,6 +39,9 @@ export const SLASH_ITEMS = [
   { id: 'callout', icon: 'lightbulb', labelKey: 'cmd.block.callout', kwKey: 'slash.kw.callout', build: () => N.callout.create({ type: 'note', title: 'NOTE' }, para()) },
   { id: 'math', icon: 'math', labelKey: 'cmd.block.math', kwKey: 'slash.kw.math', build: () => N.math_block.create({ latex: '' }) },
   { id: 'mermaid', icon: 'diagram', labelKey: 'cmd.block.mermaid', kwKey: 'slash.kw.mermaid', build: () => N.code_block.create({ params: 'mermaid' }) },
+  // Quarkdown 入门片段（qd/snippets.js）：可发现性入口——/ 菜单里偶然点出来，
+  // 指令落段落、块参数落 code_block，与 qd 求值区域的结构同构，插入即出快照
+  ...QD_SNIPPETS.map((s) => ({ id: 'qd-' + s.id, icon: s.icon, labelKey: s.labelKey, kwKey: s.kwKey, build: () => s.nodes() })),
 ]
 
 export function slashLabel(item) {
