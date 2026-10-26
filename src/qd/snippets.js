@@ -9,7 +9,7 @@
 // 序列化按既有规则还原 4 空格缩进，源文件不受影响。
 // 片段文案走词条（qd.snip.* / slash.qd.*），五语言跟随界面切换。
 
-import { Fragment } from 'prosemirror-model'
+import { Fragment, Slice } from 'prosemirror-model'
 import { schema } from '../editor-schema.js'
 import { t } from '../i18n.js'
 
@@ -37,7 +37,7 @@ export const QD_SNIPPETS = [
   },
   {
     id: 'ifnot',
-    icon: 'question',
+    icon: 'info',
     labelKey: 'slash.qd.ifnot',
     kwKey: 'slash.kw.qd.ifnot',
     nodes: () => [para('.ifnot {done}'), code(t('qd.snip.ifnotBody'))],
@@ -51,13 +51,15 @@ export const QD_SNIPPETS = [
   },
 ]
 
-/** 把片段插到当前选区（右键菜单入口；斜杠菜单走自己的块替换路径，不经这里） */
+/** 把片段插到当前选区（右键菜单入口；斜杠菜单走自己的块替换路径，不经这里）。
+ *  replaceSelection 的参数必须是 Slice——传 Fragment 的话 openStart / openEnd 是 undefined，
+ *  ReplaceStep 里 NaN != NaN 恒成立，恒抛 "Inconsistent open depths"，插入永远失败。 */
 export function insertSnippet(view, snip) {
   view.focus()
   const tr = view.state.tr
   const sel = view.state.selection
   if (!sel.empty) tr.delete(sel.from, sel.to)
-  tr.replaceSelection(Fragment.fromArray(snip.nodes()))
+  tr.replaceSelection(new Slice(Fragment.fromArray(snip.nodes()), 0, 0))
   view.dispatch(tr.scrollIntoView())
   notifyQdUsed()
 }

@@ -237,6 +237,7 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - **编辑器右键菜单**：块插入组之后加「Quarkdown…」子菜单（`openQdInsertMenu`，同一份 QD_SNIPPETS），插到当前选区（`insertSnippet`，选区非空先删）。
 - **内置模板**：工具条「模板」菜单加三个开箱即跑的模板——周报（.var + .foreach）、变量化文档头（.var 全文档引用）、编号与交叉引用（.numbering + 标题 {#id} + .mermaid caption/ref + .ref）。选了弹命名框（默认名带当日日期，规避 `create_md_file` 同名覆盖），落到库根新文件并打开；模板正文走 `tpl.qd.*` 词条，不写进库内 `Templates/`。
 - **README** 新增「进阶：用 Quarkdown 让笔记可编程」一节（中英），动图演示位留了注释（`img/qd-demo.gif`，录好后取消注释）。
+- **回归修复（2026-10-26）**：右键菜单点片段「点了没反应」——`insertSnippet` 给 `replaceSelection` 传的是 `Fragment` 而非 `Slice`，`openStart / openEnd` 为 undefined，`ReplaceStep` 里 `$from.depth - undefined` 得 NaN、`NaN != NaN` 恒成立，恒抛 `ReplaceError("Inconsistent open depths")`，事务中止插入永远失败（斜杠菜单的块替换路径用 `replaceWith` 不受影响，所以只有右键入口坏）。改为与 `insertPlainText` 同款的 `new Slice(Fragment.fromArray(…), 0, 0)`。回归测试 `tests/qd-snippets.test.mjs`（mock view 驱动插入：结构合法性、foreach 的段落+code_block 结构、空文档 / 非空选区插入）；真机（WebView2 远程调试 + Playwright）复验插入与状态栏提示均生效。教训：Chromium 里只验到「子菜单弹出」不够，要点到插入为止。
 
 刻意不做：插入片段时不做「是否开启 Quarkdown」的确认弹窗——开关默认开；关掉的用户是有意关的，插进的指令以普通文本呈现也自洽。
 
