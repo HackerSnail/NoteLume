@@ -59,4 +59,19 @@ export function insertSnippet(view, snip) {
   if (!sel.empty) tr.delete(sel.from, sel.to)
   tr.replaceSelection(Fragment.fromArray(snip.nodes()))
   view.dispatch(tr.scrollIntoView())
+  notifyQdUsed()
+}
+
+// —— 「不再 GFM」提示 ——
+// 含 Quarkdown 指令的文档离开 NoteLume 后指令部分就是普通文本（硬性约束 3 的取舍），
+// 每次插入片段都要把这个代价说一次。提示动作由 main.js 注册（状态栏 / 弹窗均可），
+// 本模块只负责在恰当时机触发，不依赖对话框实现。
+let qdNotice = null
+export function setQdNotice(fn) {
+  qdNotice = fn
+}
+export function notifyQdUsed() {
+  if (qdNotice) {
+    try { qdNotice() } catch { /* 提示失败不影响插入 */ }
+  }
 }

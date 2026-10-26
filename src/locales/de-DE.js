@@ -989,6 +989,9 @@ export default {
   'tpl.qd.vars.body': '.var {project} {Projekt}\n.var {version} {v1.0.0}\n.var {author} {Autor}\n\n# .project\n\nVersion .version · Autor .author\n\n> Einmal .var ändern und das ganze Dokument folgt; Schnappschüsse berühren nie die Quelldatei.',
   'tpl.qd.xref.name': 'Nummerierung & Querverweise (Quarkdown)',
   'tpl.qd.xref.body': '.numbering\n    - headings: 1.1\n    - figures: (1)\n\n# Kapitel 1\n\n## Hintergrund {#intro}\n\nSiehe .ref {intro}.\n\n.mermaid caption:{Flussbeispiel} ref:{flow}\n    graph LR\n        A --> B\n\n> .ref {flow} liefert die Abbildungsnummer, .ref {intro} die Abschnittsnummer; die Nummerierung betrifft nur Schnappschüsse und Exporte.',
+  'status.qdSnippetHint': 'Quarkdown-Direktive eingefügt: Dokumente mit Direktiven sind kein Standard-GFM mehr — Typora / Obsidian zeigen sie als reinen Text',
+  'msg.qdGfmTitle': 'Quarkdown-Vorlage erstellen',
+  'msg.qdGfmWarn': 'Das erzeugte Dokument enthält Quarkdown-Direktiven und ist kein Standard-GFM mehr: Typora / Obsidian zeigen sie als reinen Text, und ein Standard-Markdown-Export übernimmt sie wortwörtlich. Fortfahren?',
 
   // —— Web-Clipping (clip-settings.js / main.js nl:clip-saved) ——
   'cmd.app.clipSettings': 'Web-Clipping-Einstellungen',

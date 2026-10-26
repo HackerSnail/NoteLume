@@ -989,6 +989,9 @@ export default {
   'tpl.qd.vars.body': '.var {project} {Projet}\n.var {version} {v1.0.0}\n.var {author} {Auteur}\n\n# .project\n\nVersion .version · Auteur .author\n\n> Changez une .var et tout le document suit ; l’aperçu instantané ne touche jamais la source.',
   'tpl.qd.xref.name': 'Numérotation et références croisées (Quarkdown)',
   'tpl.qd.xref.body': '.numbering\n    - headings: 1.1\n    - figures: (1)\n\n# Chapitre 1\n\n## Contexte {#intro}\n\nVoir .ref {intro}.\n\n.mermaid caption:{Exemple de flux} ref:{flow}\n    graph LR\n        A --> B\n\n> .ref {flow} donne le numéro de figure, .ref {intro} celui de la section ; la numérotation ne touche que les aperçus et les exports.',
+  'status.qdSnippetHint': 'Directive Quarkdown insérée : un document avec directives n’est plus du GFM standard — Typora / Obsidian les affichent en texte brut',
+  'msg.qdGfmTitle': 'Créer un modèle Quarkdown',
+  'msg.qdGfmWarn': 'Le document généré contient des directives Quarkdown et n’est plus du GFM standard : Typora / Obsidian les affichent en texte brut, et un export Markdown standard les conserve telles quelles. Continuer ?',
 
   // —— Capture web (clip-settings.js / main.js nl:clip-saved) ——
   'cmd.app.clipSettings': 'Réglages de capture web',
