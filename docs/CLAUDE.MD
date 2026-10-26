@@ -240,6 +240,8 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 
 刻意不做：插入片段时不做「是否开启 Quarkdown」的确认弹窗——开关默认开；关掉的用户是有意关的，插进的指令以普通文本呈现也自洽。
 
+「不再 GFM」提示（2026-10-26 补）：用了指令的文档离开 NoteLume 后指令部分就是普通文本（硬性约束 3 的取舍），代价要说在明处。片段插入（斜杠菜单 / 右键）后经 `setQdNotice` 钩子触发状态栏轻提示（`status.qdSnippetHint`）——片段是轻动作不打断；内置模板创建前走确认框（`msg.qdGfmWarn` / `msg.qdGfmTitle`）——创建是重动作；README 进阶章节写明同样的话。
+
 ## 功能开关（2026-10-25）
 
 设置页「功能开关」区块（`src/feature-flags.js`，settings.json 的 `features` 段）：`tocBlock` / `csvTable` / `emoji` / `headingNumbering`。原则：**全部关闭即标准模式**——开关只关显示 / 输出层增强，md 源文件不受影响；坏数据逐键回落默认。开关改动经 `main.js` 的 `refreshFeatureFlags` 以 `nl-features` meta 广播全部编辑器强制重建装饰（emoji / toc / csv 三个插件的 `apply` 都认这个 meta）。

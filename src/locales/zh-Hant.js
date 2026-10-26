@@ -990,6 +990,9 @@ export default {
   'tpl.qd.vars.body': '.var {project} {專案名}\n.var {version} {v1.0.0}\n.var {author} {作者}\n\n# .project\n\n版本 .version · 作者 .author\n\n> 改一次 .var，全文件跟著變；快照預覽不碰原始檔。',
   'tpl.qd.xref.name': '編號與交叉引用（Quarkdown）',
   'tpl.qd.xref.body': '.numbering\n    - headings: 1.1\n    - figures: (1)\n\n# 第一章\n\n## 背景 {#intro}\n\n見 .ref {intro}。\n\n.mermaid caption:{流程範例} ref:{flow}\n    graph LR\n        A --> B\n\n> .ref {flow} 出圖號，.ref {intro} 出小節號；編號只進快照與匯出，原始檔不受影響。',
+  'status.qdSnippetHint': '已插入 Quarkdown 指令：含指令的文件不再是標準 GFM，Typora / Obsidian 開啟時指令部分顯示為純文字',
+  'msg.qdGfmTitle': '建立 Quarkdown 範本',
+  'msg.qdGfmWarn': '範本產生的文件包含 Quarkdown 指令，不再是標準 GFM：Typora / Obsidian 開啟時指令部分顯示為普通文字，匯出標準 Markdown 副本時指令也原樣保留。繼續建立？',
 
   // —— 網頁剪藏（clip-settings.js / main.js 的 nl:clip-saved） ——
   'cmd.app.clipSettings': '網頁剪藏設定',

@@ -991,6 +991,9 @@ export default {
   'tpl.qd.vars.body': '.var {project} {项目名}\n.var {version} {v1.0.0}\n.var {author} {作者}\n\n# .project\n\n版本 .version · 作者 .author\n\n> 改一次 .var，全文档跟着变；快照预览不碰源文件。',
   'tpl.qd.xref.name': '编号与交叉引用（Quarkdown）',
   'tpl.qd.xref.body': '.numbering\n    - headings: 1.1\n    - figures: (1)\n\n# 第一章\n\n## 背景 {#intro}\n\n见 .ref {intro}。\n\n.mermaid caption:{流程示例} ref:{flow}\n    graph LR\n        A --> B\n\n> .ref {flow} 出图号，.ref {intro} 出小节号；编号只进快照与导出，源文件不受影响。',
+  'status.qdSnippetHint': '已插入 Quarkdown 指令：含指令的文档不再是标准 GFM，Typora / Obsidian 打开时指令部分显示为纯文本',
+  'msg.qdGfmTitle': '创建 Quarkdown 模板',
+  'msg.qdGfmWarn': '模板生成的文档包含 Quarkdown 指令，不再是标准 GFM：Typora / Obsidian 打开时指令部分显示为普通文本，导出标准 Markdown 副本时指令也原样保留。继续创建？',
 
   // —— 网页剪藏（clip-settings.js / main.js 的 nl:clip-saved） ——
   'cmd.app.clipSettings': '网页剪藏设置',

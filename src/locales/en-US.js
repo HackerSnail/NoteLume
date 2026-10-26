@@ -991,6 +991,9 @@ export default {
   'tpl.qd.vars.body': '.var {project} {Project}\n.var {version} {v1.0.0}\n.var {author} {Author}\n\n# .project\n\nVersion .version · Author .author\n\n> Change a .var once and the whole document follows; snapshots never touch the source.',
   'tpl.qd.xref.name': 'Numbering & cross-references (Quarkdown)',
   'tpl.qd.xref.body': '.numbering\n    - headings: 1.1\n    - figures: (1)\n\n# Chapter 1\n\n## Background {#intro}\n\nSee .ref {intro}.\n\n.mermaid caption:{Flow sample} ref:{flow}\n    graph LR\n        A --> B\n\n> .ref {flow} yields the figure number, .ref {intro} the section number; numbering only affects snapshots and exports.',
+  'status.qdSnippetHint': 'Quarkdown directive inserted: documents with directives are no longer standard GFM — Typora / Obsidian show them as plain text',
+  'msg.qdGfmTitle': 'Create Quarkdown template',
+  'msg.qdGfmWarn': 'The generated document contains Quarkdown directives and is no longer standard GFM: Typora / Obsidian render directives as plain text, and a plain-Markdown export keeps them verbatim. Continue?',
 
   // —— Web clipping (clip-settings.js / main.js nl:clip-saved) ——
   'cmd.app.clipSettings': 'Web clipping settings',

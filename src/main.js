@@ -56,7 +56,7 @@ import {
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages, injectToc } from './site-export.js'
 import { exportPlainMd } from './plain-export.js'
-import { QD_SNIPPETS, insertSnippet } from './qd/snippets.js'
+import { QD_SNIPPETS, insertSnippet, setQdNotice } from './qd/snippets.js'
 import { anchorSlug } from './heading-anchor.js'
 import { getFeatures, setFeature } from './feature-flags.js'
 import { buildSlidesHtml, buildVaultSlidesHtml } from './slides-export.js'
@@ -1593,6 +1593,9 @@ async function newFromTemplate(tplRel) {
 }
 
 // —— Quarkdown 可发现性入口 ——
+// 片段插入后的「不再 GFM」提示：状态栏轻提示（片段是轻动作，不打断）；
+// 内置模板走确认框（创建是重动作，进新文档前把代价说清）
+setQdNotice(() => setStatus(t('status.qdSnippetHint')))
 // 右键「Quarkdown」子菜单：片段即插即出快照（features.quarkdown 默认开，无需设置）
 function openQdInsertMenu(x, y, inst) {
   closeTreeMenu()
@@ -1615,6 +1618,8 @@ const QD_TEMPLATES = [
 
 async function newQdTemplate(tpl) {
   if (!state.vaultRoot) { await messageDialog(t('msg.openVaultFirst')); return }
+  // 模板生成的文档带 Quarkdown 指令，创建前把「不再 GFM」的代价确认一次
+  if (!(await confirmDialog(t('msg.qdGfmWarn'), t('msg.qdGfmTitle')))) return
   const d = new Date()
   const stamp = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
   const name = await promptDialog({ title: t('dlg.qdTplTitle'), defaultValue: `${t(tpl.nameKey)} ${stamp}`, placeholder: t('dlg.tplFilePh') })

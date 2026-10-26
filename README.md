@@ -72,6 +72,8 @@ npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 
 这是 NoteLume 区别于 Typora / Obsidian 的一张王牌：md 里可以直接写 `.var` / `.foreach` / `.if` 这类指令，编辑器出求值结果——快照式预览，光标移出指令区即渲染，源文件一个字节不动；导出 HTML / 幻灯片 / 整站 / PDF 时同样展开。
 
+注意：**用了 Quarkdown 指令的文档不再是标准 GFM**——Typora / Obsidian 打开时指令部分显示为普通文本（不含指令的文档不受影响，仍是纯 GFM）。
+
 ```markdown
 .var {author} {你的名字}
 .var {week} {第 42 周}
@@ -244,6 +246,8 @@ npm run build    # release bundles, output under src-tauri/target/release/bundle
 ### Advanced: Programmable Notes with Quarkdown
 
 This is NoteLume's ace against Typora and Obsidian: Markdown documents can carry `.var` / `.foreach` / `.if` directives, and the editor shows the evaluated result — snapshot-style preview, rendered as soon as the cursor leaves the directive, without touching the source file. HTML / slides / site / PDF exports expand it too.
+
+Note: **documents carrying Quarkdown directives are no longer standard GFM** — Typora / Obsidian render the directives as plain text (documents without directives are unaffected).
 
 ```markdown
 .var {author} {Your name}

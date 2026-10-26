@@ -10,7 +10,7 @@ import { createTable, insertTable } from './block-commands.js'
 import { showTableSizePicker } from './table-picker.js'
 import { setIcon } from './icons.js'
 import { t } from './i18n.js'
-import { QD_SNIPPETS } from './qd/snippets.js'
+import { QD_SNIPPETS, notifyQdUsed } from './qd/snippets.js'
 
 const N = schema.nodes
 const para = () => N.paragraph.create()
@@ -115,6 +115,8 @@ export function createSlashMenuPlugin() {
     try { tr.setSelection(Selection.near(tr.doc.resolve(spec.blockStart), 1)) } catch (_) {}
     view.dispatch(tr.scrollIntoView())
     view.focus()
+    // Quarkdown 片段：插完触发「不再 GFM」提示（动作由 main.js 注册，状态栏轻提示）
+    if (item.id && item.id.startsWith('qd-')) notifyQdUsed()
   }
 
   function removeMenu() {
