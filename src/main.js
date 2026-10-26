@@ -56,6 +56,7 @@ import {
 } from './tauri-bridge.js'
 import { exportSite, resolveImageRel, collectImages, injectToc } from './site-export.js'
 import { exportPlainMd } from './plain-export.js'
+import { QD_SNIPPETS, insertSnippet } from './qd/snippets.js'
 import { anchorSlug } from './heading-anchor.js'
 import { getFeatures, setFeature } from './feature-flags.js'
 import { buildSlidesHtml, buildVaultSlidesHtml } from './slides-export.js'
@@ -1591,6 +1592,41 @@ async function newFromTemplate(tplRel) {
   }
 }
 
+// —— Quarkdown 可发现性入口 ——
+// 右键「Quarkdown」子菜单：片段即插即出快照（features.quarkdown 默认开，无需设置）
+function openQdInsertMenu(x, y, inst) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  for (const s of QD_SNIPPETS) {
+    menu.appendChild(makeMenuItem(t(s.labelKey), () => insertSnippet(inst.view, s), false, false, s.icon))
+  }
+  placeMenu(menu, x, y)
+}
+
+// 内置 Quarkdown 模板：装好就能跑的可编程示例，不写进库内 Templates/，
+// 选了现起一个新文件（默认名带日期；同名覆盖由 Rust 侧 write_md_file 决定，
+// 默认名带日期已把撞名概率压到可忽略）
+const QD_TEMPLATES = [
+  { nameKey: 'tpl.qd.weekly.name', bodyKey: 'tpl.qd.weekly.body' },
+  { nameKey: 'tpl.qd.vars.name', bodyKey: 'tpl.qd.vars.body' },
+  { nameKey: 'tpl.qd.xref.name', bodyKey: 'tpl.qd.xref.body' },
+]
+
+async function newQdTemplate(tpl) {
+  if (!state.vaultRoot) { await messageDialog(t('msg.openVaultFirst')); return }
+  const d = new Date()
+  const stamp = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
+  const name = await promptDialog({ title: t('dlg.qdTplTitle'), defaultValue: `${t(tpl.nameKey)} ${stamp}`, placeholder: t('dlg.tplFilePh') })
+  if (!name) return
+  try {
+    const rel = await createMdFile(state.vaultRoot, /\.md$/i.test(name) ? name : name + '.md', t(tpl.bodyKey))
+    renderTree(await scanVault(state.vaultRoot))
+    await openFile(rel)
+    setStatus(t('msg.newTplOk', { rel }))
+  } catch (e) { await messageDialog(t('msg.newTplFailed', { err: errText(e) })) }
+}
+
 // 新建一个空白模板（带示例变量），存于模板目录
 async function newBlankTemplate() {
   if (!state.vaultRoot) { await messageDialog(t('msg.openVaultFirst')); return }
@@ -1619,6 +1655,12 @@ function openTemplateMenu(anchorEl) {
       menu.appendChild(makeMenuItem(t('menu.noTemplatesInDir', { dir: TEMPLATE_DIR() }), () => {}))
     } else {
       tpls.forEach((p) => menu.appendChild(makeMenuItem(baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p), false, false, 'file')))
+    }
+    // 内置 Quarkdown 模板：装好就能跑的可编程示例（周报 / 变量化文档头 / 编号与交叉引用），
+    // 不写进库内 Templates/，选了现起一个新文件（默认名带日期，重名由用户改名规避覆盖）
+    menu.appendChild(menuSep())
+    for (const tpl of QD_TEMPLATES) {
+      menu.appendChild(makeMenuItem(t(tpl.nameKey), () => newQdTemplate(tpl), false, false, 'terminal'))
     }
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.dailyCaptureEntry'), () => toggleDailyCapture(), false, false, 'calendar'))
@@ -1788,6 +1830,7 @@ function attachEditorContextMenu(paneId, inst) {
     menu.appendChild(cmd('editor.block.quote', 'cmd.block.quote'))
     menu.appendChild(cmd('editor.block.hr', 'cmd.block.hr'))
     menu.appendChild(cmd('editor.block.callout', 'cmd.block.callout'))
+    menu.appendChild(makeMenuItem(t('ctx.qd'), () => openQdInsertMenu(e.clientX, e.clientY, inst), false, false, 'terminal'))
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), () => {
       selectAll(view.state, view.dispatch)

@@ -68,6 +68,40 @@ npm run dev      # 开发模式（首次约 5–10 分钟编译 Rust 依赖）
 npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 ```
 
+### 进阶：用 Quarkdown 让笔记可编程
+
+这是 NoteLume 区别于 Typora / Obsidian 的一张王牌：md 里可以直接写 `.var` / `.foreach` / `.if` 这类指令，编辑器出求值结果——快照式预览，光标移出指令区即渲染，源文件一个字节不动；导出 HTML / 幻灯片 / 整站 / PDF 时同样展开。
+
+```markdown
+.var {author} {你的名字}
+.var {week} {第 42 周}
+
+# 周报 · .week
+
+作者：.author
+
+.foreach {1..3}
+    - 条目 .1：一句话说清做了什么
+```
+
+编号与交叉引用也能编排：
+
+```markdown
+.numbering
+    - headings: 1.1
+    - figures: (1)
+
+## 背景 {#intro}
+
+见 .ref {intro}。
+```
+
+约 200 个内置函数：正则替换、CSV / JSON 读取、表格计算、BibTeX 参考文献、多语言本地化、emoji 短代码、`.extend` 自定义扩展。**不用学语法也能上手**：斜杠菜单（`/`）里搜 Quarkdown 有即插即出的片段；工具条「模板」菜单带三个开箱即跑的内置模板（周报、变量化文档头、编号与交叉引用）。完整函数清单见 [`docs/FEATURES.md`](docs/FEATURES.md)。
+
+<!-- 动图演示：录好后放到 img/qd-demo.gif，取消下一行注释
+![Quarkdown 演示](img/qd-demo.gif)
+-->
+
 ### 网页剪藏
 
 把浏览器里的网页正文存进知识库：按模板落盘成标准 md，图片进 `assets/`，文末自动关联库内相关笔记。
@@ -206,6 +240,40 @@ cd src && npm install && cd ..
 npm run dev      # dev mode (first Rust build takes ~5–10 min)
 npm run build    # release bundles, output under src-tauri/target/release/bundle/
 ```
+
+### Advanced: Programmable Notes with Quarkdown
+
+This is NoteLume's ace against Typora and Obsidian: Markdown documents can carry `.var` / `.foreach` / `.if` directives, and the editor shows the evaluated result — snapshot-style preview, rendered as soon as the cursor leaves the directive, without touching the source file. HTML / slides / site / PDF exports expand it too.
+
+```markdown
+.var {author} {Your name}
+.var {week} {Week 42}
+
+# Weekly · .week
+
+Author: .author
+
+.foreach {1..3}
+    - Item .1: one line on what was done
+```
+
+Numbering and cross-references compose as well:
+
+```markdown
+.numbering
+    - headings: 1.1
+    - figures: (1)
+
+## Background {#intro}
+
+See .ref {intro}.
+```
+
+About 200 builtins: regex replace, CSV / JSON readers, table computation, BibTeX, localization, emoji shortcodes, `.extend` wrapping. **No syntax learning required to start**: the slash menu (`/`) has ready-to-insert snippets (search Quarkdown), and the toolbar Templates menu ships three runnable built-in templates (weekly report, variable document header, numbering & cross-references). The full function list is in [`docs/FEATURES.md`](docs/FEATURES.md).
+
+<!-- Demo GIF: once recorded, place it at img/qd-demo.gif and uncomment the next lines
+![Quarkdown demo](img/qd-demo.gif)
+-->
 
 ### Web Clipping
 

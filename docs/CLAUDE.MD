@@ -229,6 +229,17 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 
 降级规则：callout 首行落 `> **标题**`（无标题用类型名，`-` / `+` 折叠标记丢弃，正文行保持引用块）；`![[图片]]` 落标准 `![alt](相对路径)`，数字别名是 Obsidian 的宽度语法、GFM 无对应形态，丢弃；`![[笔记]]` 落普通链接；`[[目标|别名]]` 落 `[别名](相对路径.md)`；未创建的链接只留别名文字，不产坏链；`[[目标#锚]]` href 丢锚（Obsidian 锚是标题原文、GFM 锚是 slug，直译必坏），锚保留在链接文字里。wikilink 解析复用 `build_site_graph` 的 wiki 表（与编辑器跳转、站点导出同一 Rust 实现），表里没有的 target 按 rel（含省略 .md 写法）/ basename 兜底再解一次；围栏代码块与行内代码里的 wiki 语法一律不动。链接地址经 encodeURI 并显式转 `(` `)`（GFM 链接目标不允许裸括号）。目录结构与原库一致，引用到的图片经 copyVaultAssets 镜像到同相对位置，frontmatter 原样保留。转换主体 `convertPlainMd` 是纯字符串函数；`node tests/plain-export.test.mjs` 12 条全过。词条 `cmd.app.exportPlain` / `plain.*` / `msg.plainExport*` 五语言。
 
+## Quarkdown 可发现性（2026-10-26）
+
+功能默认开（`features.quarkdown: true`），但藏在设置与文档里的功能约等于没做，可发现性单独做了一层（新模块 `src/qd/snippets.js`）：
+
+- **斜杠菜单**：`/` 菜单末尾追加四个 Quarkdown 入门片段——变量（`.var`）、循环（`.foreach {1..3}` + 块体）、条件（`.ifnot` + 块体）、行内文本变换（`.text … case:{uppercase}`）。片段以 PM 节点插入：指令行落段落、块参数体落 code_block，与 `qd/editor.js` 收集求值区域的结构（指令段 + 连续 code_block / 列表）同构，插入即出快照，序列化按既有规则还原 4 空格缩进。片段文案走 `slash.qd.*` / `qd.snip.*` 词条，五语言。
+- **编辑器右键菜单**：块插入组之后加「Quarkdown…」子菜单（`openQdInsertMenu`，同一份 QD_SNIPPETS），插到当前选区（`insertSnippet`，选区非空先删）。
+- **内置模板**：工具条「模板」菜单加三个开箱即跑的模板——周报（.var + .foreach）、变量化文档头（.var 全文档引用）、编号与交叉引用（.numbering + 标题 {#id} + .mermaid caption/ref + .ref）。选了弹命名框（默认名带当日日期，规避 `create_md_file` 同名覆盖），落到库根新文件并打开；模板正文走 `tpl.qd.*` 词条，不写进库内 `Templates/`。
+- **README** 新增「进阶：用 Quarkdown 让笔记可编程」一节（中英），动图演示位留了注释（`img/qd-demo.gif`，录好后取消注释）。
+
+刻意不做：插入片段时不做「是否开启 Quarkdown」的确认弹窗——开关默认开；关掉的用户是有意关的，插进的指令以普通文本呈现也自洽。
+
 ## 功能开关（2026-10-25）
 
 设置页「功能开关」区块（`src/feature-flags.js`，settings.json 的 `features` 段）：`tocBlock` / `csvTable` / `emoji` / `headingNumbering`。原则：**全部关闭即标准模式**——开关只关显示 / 输出层增强，md 源文件不受影响；坏数据逐键回落默认。开关改动经 `main.js` 的 `refreshFeatureFlags` 以 `nl-features` meta 广播全部编辑器强制重建装饰（emoji / toc / csv 三个插件的 `apply` 都认这个 meta）。
