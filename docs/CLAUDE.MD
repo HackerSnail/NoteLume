@@ -136,7 +136,7 @@
 - 应用命令（文件、标签页、视图、粘贴为纯文本）走 document 级 keydown 分发器；F2 这类无修饰键与 Ctrl+Tab 这类带修饰的 Tab 均已放行（keymap.js 的 `isFKey` 与 Tab 例外）。
 - 表格出表另有就地入口：右键菜单「表后另起一段」，与末格 Enter 同一个 `exitTableBelow`。表格 / 代码块 / 公式在文档末尾时下方有一个可点可打字的间隙落点（gapcursor），落点只是选区、不改文档，因此不判脏也不落盘。
 - 块类型菜单两个入口：mac 是原生「段落」菜单（`app-menu.js` 的 paragraph 组），Windows / Linux 是工具条「段落」按钮下拉（`main.js` 的 `openParagraphMenu`，按钮在 `.btn-group` 里，mac 该组整体隐藏）。两边同源：条目顺序与「当前块类型」单选勾都读 `menuCommands()`，执行走命令注册表。两平台的「表格」项与斜杠菜单的「表格」都先弹 Word 式 N×M 选择器（`src/table-picker.js`），Esc / 点外面关掉即不插；Tab 在选择器里是右移一格（右边界换行、末格落定），底部提示是明确的「N 行 × M 列」。
-- 右键菜单全部自绘（2026-10-26 起，WebView2 原生菜单不再出现）：编辑器窗格（文本格式 + 块插入，`attachEditorContextMenu`）、表格行列操作（`table-editing.js`）、图片（另存 / 复制）、文件树（文件 / 文件夹 / 空白区，文件夹含删除）、画布各自的监听照旧；标签条、查找栏、源码模式、输入框与其余空白区域由 `main.js` 的 `installGlobalContextMenu` 在 document capture 阶段兜底——输入框与源码 CodeMirror 弹剪切 / 复制 / 粘贴 / 全选编辑菜单（粘贴走 navigator.clipboard，输入框用 `setRangeText`、CM 用 `insertText`），标签条弹关闭 / 关闭其他 / 固定 / 复制路径 / 在资源管理器中显示，其余区域压掉原生、不出菜单。已有自绘菜单的区域在 capture 阶段一律放行（它们在冒泡阶段 preventDefault）。所有自绘菜单共用 `.cv-menu` 样式与 `placeMenu`（定位翻转 + 点外面 / Esc / 滚轮 / resize 关闭）。
+- 右键菜单全部自绘（2026-10-26 起，WebView2 原生菜单不再出现）：编辑器窗格（文本格式 + 块插入，`attachEditorContextMenu`）、表格行列操作（`table-editing.js`）、图片（另存 / 复制）、文件树（文件 / 文件夹 / 空白区，文件夹含删除；单文件树 `renderSingleFileTree` 的行与侧栏空白同样有菜单——空白区在单文件 / 未开库时给「打开单个文件 / 打开知识库文件夹」）、画布各自的监听照旧；标签条、查找栏、源码模式、输入框与其余空白区域由 `main.js` 的 `installGlobalContextMenu` 在 document capture 阶段兜底——输入框与源码 CodeMirror 弹剪切 / 复制 / 粘贴 / 全选编辑菜单（粘贴走 navigator.clipboard，输入框用 `setRangeText`、CM 用 `insertText`），标签条弹关闭 / 关闭其他 / 固定 / 复制路径 / 在资源管理器中显示，其余区域压掉原生、不出菜单。已有自绘菜单的区域在 capture 阶段一律放行（它们在冒泡阶段 preventDefault）。所有自绘菜单共用 `.cv-menu` 样式与 `placeMenu`（定位翻转 + 点外面 / Esc / 滚轮 / resize 关闭）。
 
 ## 标签页设计（2026-10-19 起：完整分栏模式，标签归窗格）
 
