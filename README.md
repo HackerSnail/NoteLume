@@ -197,7 +197,7 @@ Issue 和 PR 都欢迎，也欢迎任何形式的功能建议。
 
 ### 致谢
 
-* [Quarkdown](https://github.com/iamgio/quarkdown) by iamgio —— 内置 Quarkdown 引擎的语法与函数库以其为参考实现（`.others/quarkdown` 为只读副本，不参与构建）。Quarkdown 采用 GPL-3.0 许可证；以 Quarkdown 语法编写的文档沿用其语义。
+* [Quarkdown](https://github.com/iamgio/quarkdown) by iamgio —— 内置 Quarkdown 引擎的语法与函数库以其为参考实现。Quarkdown 采用 GPL-3.0 许可证；以 Quarkdown 语法编写的文档沿用其语义。
 
 ### 许可证
 
@@ -376,7 +376,7 @@ Issues and PRs of every kind are welcome.
 
 ### Acknowledgements
 
-* [Quarkdown](https://github.com/iamgio/quarkdown) by iamgio —— the built-in Quarkdown engine's syntax and function library are modeled on its reference implementation (`.others/quarkdown` is a read-only copy, not part of the build). Quarkdown is licensed under GPL-3.0; documents written in Quarkdown syntax follow its semantics.
+* [Quarkdown](https://github.com/iamgio/quarkdown) by iamgio —— the built-in Quarkdown engine's syntax and function library are modeled on its reference implementation. Quarkdown is licensed under GPL-3.0; documents written in Quarkdown syntax follow its semantics.
 
 ### License
 
