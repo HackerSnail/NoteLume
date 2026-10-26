@@ -96,12 +96,14 @@ pub(crate) fn figure_md(ev: &mut Evaluator, body: String, caption: Option<String
     let mut out = body;
     if caption.is_some() || refr.is_some() {
         ev.figures += 1;
+        // 图号按 .numbering 的 figures 格式串渲染（无登记则十进制），与 .ref 账本同源
+        let num = super::postprocess::format_counter(ev, "figures", ev.figures);
         if let Some(id) = refr {
-            ev.numbered.push((id, ev.figures));
+            ev.numbered.push((id, num.clone()));
         }
         if let Some(c) = caption {
             let label = localize_or(ev, "std", "figure", "Figure");
-            out.push_str(&format!("\n\n*{} {}. {}*", label, ev.figures, c));
+            out.push_str(&format!("\n\n*{} {}. {}*", label, num, c));
         }
     }
     out

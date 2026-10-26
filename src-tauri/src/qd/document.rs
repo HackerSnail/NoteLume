@@ -34,15 +34,54 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
     // ============ Document：文档元数据（modifyOrEcho 模式的无值侧 → 无输出）============
     // Kotlin 有值写入元数据、无值回显当前值；文本引擎不持元数据，两侧都无输出。
     // footer / pagemargin 的内容属页边距区域（分页后处理复制到每页），不进主文档流。
-    const DOC_NOOPS: [&str; 22] = [
+    const DOC_NOOPS: [&str; 20] = [
         "doctype", "docname", "docdescription", "docauthor", "docauthors", "dockeywords", "theme",
-        "numbering", "nonumbering", "font", "paragraphstyle", "captionposition", "texmacro", "pageformat",
+        "font", "paragraphstyle", "captionposition", "texmacro", "pageformat",
         "autopagebreak", "noautopagebreak", "formatpagenumber", "resetpagenumber", "pagemargin", "footer",
         "marker", "lastheading",
     ];
     for name in DOC_NOOPS {
         add(m, name, |_, _| Ok(Value::None));
     }
+    // 编号格式串（docs/numbering.qd）：字典参数 headings / figures / tables / 自定义 key →
+    // 模板（1.1.1 / 1.A.a / (1)），postprocess 的标题趟与各计数点消费。
+    // 默认与现有配置合并（只更新指定条目）；merge:{no} 先清空，未指定条目全部关闭
+    add(m, "numbering", |ev, call| {
+        let entries: Vec<(String, Value)> = match call.pos.first() {
+            Some(Value::Dict(d)) => d.clone(),
+            Some(_) => return Err(".numbering 的参数必须是字典".to_string()),
+            None => {
+                let body = match &call.body {
+                    Some(b) if !b.is_empty() => b,
+                    _ => return Err(".numbering 需要字典参数（如 - headings: 1.1）".to_string()),
+                };
+                super::stdlib::dict_from_body(ev, body).map_err(|e| format!(".numbering {}", e))?
+            }
+        };
+        let merge = match call.named.iter().find(|(n, _)| n == "merge") {
+            Some((_, v)) => v
+                .as_bool()
+                .ok_or_else(|| ".numbering 的 merge: 必须是 yes / no".to_string())?,
+            None => true,
+        };
+        if !merge {
+            ev.numbering.clear();
+        }
+        for (k, v) in entries {
+            if let Some(s) = v.as_str() {
+                let s = s.trim();
+                if !s.is_empty() {
+                    ev.numbering.insert(k.trim().to_lowercase(), s.to_string());
+                }
+            }
+        }
+        Ok(Value::None)
+    });
+    add(m, "nonumbering", |ev, _| {
+        ev.numbering_off = true;
+        ev.numbering.clear();
+        Ok(Value::None)
+    });
     // 页码占位：Quarkdown HTML 里也是 "-" 占位、由运行时分页脚本填充
     add(m, "currentpage", |_, _| Ok(Value::Str("-".to_string())));
     add(m, "totalpages", |_, _| Ok(Value::Str("-".to_string())));
@@ -52,8 +91,8 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
 
     // ============ Layout：容器 ============
     // 纯布局容器（样式 / 浮动 / 网格在 Markdown 里无处安放）：body 求值后平铺输出
-    const LAYOUT_PASSTHROUGH: [&str; 10] =
-        ["container", "align", "center", "float", "row", "column", "grid", "landscape", "fullspan", "clip"];
+    const LAYOUT_PASSTHROUGH: [&str; 11] =
+        ["container", "align", "center", "float", "row", "column", "grid", "landscape", "fullspan", "clip", "navigationcontainer"];
     for name in LAYOUT_PASSTHROUGH {
         add(m, name, |ev, call| {
             let body = body_md(ev, call)?;

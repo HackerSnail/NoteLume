@@ -8,7 +8,9 @@
 // io（Data 模块的文件访问，阶段 2 批 2）、csv（RFC4180 解析）、mdtable（管道表工具）与
 // document（Document / Layout / TableComputation，阶段 2 批 3）；slides / localization /
 // bibliography / ecosystem（Slides / Localization / Bibliography / Ecosystem / Libraries，
-// 阶段 2 批 4）；mermaid / reference（Mermaid 图表与交叉引用最小集，阶段 3）。
+// 阶段 2 批 4）；mermaid / reference（Mermaid 图表与交叉引用最小集，阶段 3）；
+// emoji / emoji_data（Emoji 全量词表）与 postprocess（.numbering 编号、标题 {#id}、
+// 装饰标题、表格题注、紧凑脚注、$$$ 公式块等出口后处理，阶段 6）。
 // 错误模型：单点求值失败进诊断数组、输出原文降级，不炸整个文档。
 
 pub mod ast;
@@ -16,6 +18,8 @@ pub mod bibliography;
 pub mod csv;
 pub mod document;
 pub mod ecosystem;
+pub mod emoji;
+pub mod emoji_data;
 pub mod eval;
 pub mod io;
 pub mod localization;
@@ -23,6 +27,7 @@ pub mod longtail;
 pub mod mdtable;
 pub mod mermaid;
 pub mod parser;
+pub mod postprocess;
 pub mod primitives;
 pub mod reference;
 pub mod slides;
