@@ -1024,26 +1024,46 @@ function imageFiles(dt) {
 }
 
 async function insertImageFiles(view, pos, files, opts) {
+  const notify = typeof opts.onNotify === 'function' ? opts.onNotify : null
   const ctx = opts.getVault()
   if (!ctx.vaultRoot || !ctx.mdRel) {
-    // 未打开知识库/文档时，退化为直接插入原始对象 URL（不落库）
-    files.forEach((f) => {
+    // 未打开知识库/文档时，退化为直接插入原始对象 URL（不落库）；全部图片并入一个
+    // 事务，Ctrl+Z 一步撤完（QA GU-027：逐张 dispatch 撤销要按次数按，观感即「撤不掉」）
+    const tr = view.state.tr
+    let at = Math.min(pos, view.state.doc.content.size)
+    for (const f of files) {
       const url = URL.createObjectURL(f)
-      view.dispatch(
-        view.state.tr.insert(pos, schema.nodes.image.create({ src: url, alt: '', title: null }))
-      )
-    })
+      const node = schema.nodes.image.create({ src: url, alt: '', title: null })
+      tr.insert(at, node)
+      at += node.nodeSize
+    }
+    view.dispatch(tr.scrollIntoView())
+    if (notify) notify(t('status.imgInserted', { n: files.length }))
     return
   }
+  const nodes = []
+  let failed = 0
   for (const f of files) {
     try {
       const rel = await saveImageFromFile(ctx.vaultRoot, ctx.mdRel, f)
-      const node = schema.nodes.image.create({ src: rel, alt: '', title: null })
-      const at = Math.min(pos, view.state.doc.content.size)
-      view.dispatch(view.state.tr.insert(at, node).scrollIntoView())
+      nodes.push(schema.nodes.image.create({ src: rel, alt: '', title: null }))
     } catch (err) {
+      failed++
       console.error(t('msg.imgSaveFailed'), err)
     }
+  }
+  if (nodes.length) {
+    const tr = view.state.tr
+    let at = Math.min(pos, view.state.doc.content.size)
+    for (const node of nodes) {
+      tr.insert(at, node)
+      at += node.nodeSize
+    }
+    view.dispatch(tr.scrollIntoView())
+  }
+  if (notify) {
+    if (failed) notify(t('status.imgInsertFailed', { n: failed }))
+    else if (nodes.length) notify(t('status.imgInserted', { n: nodes.length }))
   }
 }
 
@@ -1136,7 +1156,8 @@ function emitMeta(view, opts) {
   const tags = []
   const seen = new Set()
   view.state.doc.forEach((node, pos) => {
-    if (node.type.name === 'heading') {
+    // 空标题（只有记号、没有文字）不进大纲：列出来是一行不可跳转的空项
+    if (node.type.name === 'heading' && node.textContent.trim()) {
       outline.push({ level: node.attrs.level, text: node.textContent, pos })
     }
     // 大纲穿透：WordPress / 导出器写的正文里标题是字面 HTML，节点是无内容原子块，descendants 走不进去

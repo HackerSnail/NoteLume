@@ -83,6 +83,15 @@ check('Ctrl+Tab 可录可解析，裸 Tab 仍忽略', () => {
   assert.strictEqual(toAccelerator('Ctrl-Tab'), 'Control+Tab')
 })
 
+check('事件反解的 Mod-tab 能过 resolveBinding（Ctrl+Tab 切标签的链路才通）', () => {
+  // 回归：validBase 曾只认大写 'Tab'，eventToBinding 产出的小写 'tab' 在
+  // resolveBinding 里被误判非法返回 null，分发器查不到命令，Ctrl+Tab 静默失灵
+  assert.strictEqual(resolveBinding('Mod-tab', false), 'Ctrl-tab')
+  assert.strictEqual(resolveBinding('Mod-Shift-tab', false), 'Ctrl-Shift-tab')
+  assert.strictEqual(resolveBinding(eventToBinding({ ctrlKey: true, shiftKey: false, altKey: false, metaKey: false, key: 'Tab' }, false), false), 'Ctrl-tab')
+  assert.deepStrictEqual(parseBinding('ctrl-tab', false), { ctrl: true, meta: false, alt: false, shift: false, base: 'tab' })
+})
+
 // —— eventMatches ——
 check('eventMatches 大小写与修饰严格匹配', () => {
   assert.ok(eventMatches({ ctrlKey: true, key: 'B', shiftKey: false, altKey: false, metaKey: false }, 'Mod-b', false))

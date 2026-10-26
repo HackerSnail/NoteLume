@@ -595,13 +595,10 @@ function bindColResizers() {
     })
   }
 }
-// 无标题可列时「大纲」入口置灰（栏内 tab 与栏外图标同进退，不渲染空态文案）；正停在大纲上则回落到文件
-function syncOutlineTab(hasHeadings) {
-  for (const list of [sideTabs, sideCorner]) {
-    const btn = list.find((b) => b.getAttribute('data-tab') === 'outline')
-    if (btn) btn.disabled = !hasHeadings
-  }
-  if (!hasHeadings && currentSideTab() === 'outline') setSideTab('files')
+// 大纲入口不再置灰：没有可列标题时面板里给一行空态文案（QA GU-010：置灰 + 无提示，
+// 用户不知道是坏了还是没内容）
+function syncOutlineTab() {
+  // 保留函数与调用点：栏内 tab 与栏外图标曾经在这里整体置灰，现在只是空态
 }
 
 // —— 大纲：层级树（大标题常显、其下子级整节可收，含多级后代）——
@@ -627,6 +624,14 @@ function renderOutline() {
   ol.innerHTML = ''
   ol.appendChild(renderOutlineToolbar(setMode))
   const hidden = hiddenRows(rows, outlineCollapsed)
+  if (!outlineItems.length) {
+    const empty = document.createElement('div')
+    empty.className = 'outline-empty'
+    empty.textContent = t('outline.empty')
+    ol.appendChild(empty)
+    syncOutlineTab()
+    return
+  }
   outlineItems.forEach((item, i) => {
     if (hidden.has(i)) return
     const row = document.createElement('div')
@@ -1359,11 +1364,17 @@ function renderNode(node) {
 
 // —— 文件树右键菜单（复用画布 .cv-menu 样式）——
 let treeMenuEl = null
+let treeMenuCleanup = null
 function closeTreeMenu() {
+  if (treeMenuCleanup) {
+    treeMenuCleanup()
+    treeMenuCleanup = null
+  }
   if (treeMenuEl && treeMenuEl.parentNode) treeMenuEl.parentNode.removeChild(treeMenuEl)
   treeMenuEl = null
 }
 function placeMenu(menu, clientX, clientY) {
+  closeTreeMenu() // 单例：开新的先关旧的
   document.body.appendChild(menu)
   const mw = menu.offsetWidth
   const mh = menu.offsetHeight
@@ -1374,6 +1385,20 @@ function placeMenu(menu, clientX, clientY) {
   menu.style.left = x + 'px'
   menu.style.top = y + 'px'
   treeMenuEl = menu
+  // 原生菜单有的关闭行为这里补齐：点外面、Esc、滚轮、改窗口大小
+  const onDocDown = (e) => { if (treeMenuEl === menu && !menu.contains(e.target)) closeTreeMenu() }
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTreeMenu() } }
+  const onDismiss = () => closeTreeMenu()
+  document.addEventListener('mousedown', onDocDown, true)
+  window.addEventListener('keydown', onKey, true)
+  window.addEventListener('wheel', onDismiss, true)
+  window.addEventListener('resize', onDismiss)
+  treeMenuCleanup = () => {
+    document.removeEventListener('mousedown', onDocDown, true)
+    window.removeEventListener('keydown', onKey, true)
+    window.removeEventListener('wheel', onDismiss, true)
+    window.removeEventListener('resize', onDismiss)
+  }
 }
 function makeMenuItem(label, fn, danger, checked, icon, disabled) {
   const b = document.createElement('button')
@@ -1419,6 +1444,8 @@ function showTreeMenu(clientX, clientY, node) {
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, true)))
     menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath(node.path)))
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem(t('menu.trash'), () => deleteVaultFile(node.path, node.name), true))
   }
   placeMenu(menu, clientX, clientY)
 }
@@ -1665,10 +1692,10 @@ function openParagraphMenu(anchorEl) {
 
 // —— 编辑器通用右键菜单（窗格内：剪切 / 复制 / 粘贴 + 行内格式 + 插入块）——
 // 挂在窗格（.nl-pane）而不是 view.dom：编辑器上下留白、文档下方的空白也归编辑部，
-// 那些位置右键照样出这个菜单，不再冒 WebView2 的原生菜单（返回 / 刷新 / 检查那一套）。
-// 表格范围不接——表格菜单挂在 view.dom 上、事件先到它那儿且已 preventDefault，
-// 这里见 defaultPrevented 就让路，不会出两个菜单。标签条 / 查找栏 / 源码模式 /
-// 画布 / 输入框不接，保留原生（那边要的是输入框的复制粘贴）。
+// 那些位置右键照样出这个菜单。表格范围不接——表格菜单挂在 view.dom 上、事件先到它
+// 那儿且已 preventDefault，这里见 defaultPrevented 就让路。标签条 / 查找栏 / 源码模式 /
+// 输入框不在这接：它们由 installGlobalContextMenu 的 document capture 兜底接管
+// （输入框出编辑菜单、标签条出标签菜单），不会再冒 WebView2 原生菜单。
 function attachEditorContextMenu(paneId, inst) {
   const pane = inst.view.dom.closest('.nl-pane')
   if (!pane) return
@@ -1752,6 +1779,153 @@ function attachEditorContextMenu(paneId, inst) {
     }))
     placeMenu(menu, e.clientX, e.clientY)
   })
+}
+
+// —— 全局右键兜底：应用内不再弹 WebView2 原生菜单（返回/刷新/检查那一套）——
+// 已有自绘菜单的区域（编辑器正文 / 表格 / 图片 / 文件树 / 画布）在冒泡阶段自己
+// preventDefault，capture 阶段不能抢：命中它们的区域直接放行。其余区域分两类：
+// 可编辑目标（输入框 / 源码 CodeMirror）弹自绘编辑菜单；标签条弹标签菜单；
+// 剩下的（工具条 / 状态栏 / 侧栏空白等）压掉原生菜单、不出菜单。
+function installGlobalContextMenu() {
+  document.addEventListener('contextmenu', (e) => {
+    if (e.defaultPrevented) return
+    const hit = e.target
+    if (!(hit instanceof Element)) return
+    if (hit.closest('#canvas-mount')) return // 画布的 svg 监听自己 preventDefault
+    const pane = hit.closest('.nl-pane')
+    const inStrip = !!(pane && hit.closest('.nl-pane-strip'))
+    // .ProseMirror 也是 contenteditable，但正文有窗格监听的自绘菜单（剪切/复制 + 块格式），
+    // 不能被下面的纯输入框编辑菜单抢走
+    const editable = !!hit.closest('input, textarea, select, [contenteditable="true"], .cm-content')
+      && !hit.closest('.ProseMirror')
+    if (pane && !inStrip && !editable) return // 编辑器 / 表格 / 图片：窗格监听在冒泡阶段接手
+    if (hit.closest('#filetree')) return // 文件树：节点与空白区都已有自绘菜单
+    e.preventDefault()
+    closeTreeMenu()
+    if (inStrip && !editable) openTabContextMenu(e, pane)
+    else if (editable) openEditContextMenu(e, hit)
+  }, true)
+}
+
+// 可编辑目标（input / textarea / CodeMirror 源码）的自绘编辑菜单。
+// 不用 document.execCommand('paste')（WebView2 里拿不到系统剪贴板读权限），
+// 统一走 navigator.clipboard 读 + 就地写回；写回对 CM 用 insertText（CM6 经
+// beforeinput 接住），对输入框用 setRangeText 并补发 input 事件。
+function openEditContextMenu(e, target) {
+  const editable = target.closest('input, textarea, [contenteditable="true"], .cm-content')
+  if (!editable) return
+  const isBox = editable instanceof HTMLInputElement || editable instanceof HTMLTextAreaElement
+  const isCM = !!(editable.closest && editable.closest('.cm-editor'))
+  let boxSel = null // [start, end]
+  if (isBox) {
+    try { boxSel = [editable.selectionStart, editable.selectionEnd] } catch (_) {}
+  }
+  const ceSel = !isBox && (() => {
+    const s = window.getSelection()
+    return !!(s && !s.isCollapsed && s.anchorNode && editable.contains(s.anchorNode))
+  })()
+  const hasSel = isBox ? !!(boxSel && boxSel[0] != null && boxSel[0] !== boxSel[1]) : ceSel
+  const selectedText = () => (isBox
+    ? editable.value.slice(boxSel[0], boxSel[1])
+    : String(window.getSelection() || ''))
+  const writeClip = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true } catch (_) { return false }
+  }
+  const insertText = (text) => {
+    if (isBox) {
+      const s = boxSel && boxSel[0] != null ? boxSel[0] : editable.value.length
+      const end = boxSel && boxSel[1] != null ? boxSel[1] : s
+      editable.setRangeText(text, s, end, 'end')
+      editable.dispatchEvent(new Event('input', { bubbles: true }))
+    } else {
+      document.execCommand('insertText', false, text)
+    }
+  }
+  const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
+  const withKey = (label, key) => (key ? label + '  ' + key : label)
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  if (!isCM) {
+    menu.appendChild(makeMenuItem(withKey(t('ctx.undo'), modKey('Z')), () => {
+      editable.focus()
+      document.execCommand('undo')
+    }))
+  }
+  menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), async () => {
+    if (!hasSel) return
+    if (await writeClip(selectedText())) {
+      editable.focus()
+      if (isBox) {
+        editable.setRangeText('', boxSel[0], boxSel[1], 'start')
+        editable.dispatchEvent(new Event('input', { bubbles: true }))
+      } else {
+        document.execCommand('delete')
+      }
+    }
+  }, false, false, null, !hasSel))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), async () => {
+    if (hasSel) await writeClip(selectedText())
+  }, false, false, null, !hasSel))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), async () => {
+    let text = null
+    try { text = await navigator.clipboard.readText() } catch (_) {}
+    if (!text) return
+    editable.focus()
+    insertText(text)
+  }))
+  menu.appendChild(menuSep())
+  menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), () => {
+    editable.focus()
+    if (isBox) editable.select()
+    else document.execCommand('selectAll')
+  }))
+  placeMenu(menu, e.clientX, e.clientY)
+}
+
+// 标签条右键：关闭 / 关闭其他 / 固定预览标签 / 复制路径 / 在资源管理器中显示。
+// 条子不在焦点窗格时先切焦点——closeTab 全链路只认焦点窗格
+function openTabContextMenu(e, pane) {
+  const paneId = pane.dataset.paneId
+  const strip = panes.strips.get(paneId)
+  if (!strip) return
+  const tabs = strip.tabs
+  const tabEl = e.target.closest('.tab[data-id]')
+  const tab = tabEl ? tabs.get(tabEl.dataset.id) : tabs.active()
+  if (!tab) return
+  closeTreeMenu()
+  const list = tabs.list()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  menu.appendChild(makeMenuItem(t('menu.tabClose'), async () => {
+    if (paneId !== panes.focused) await focusPaneUi(paneId)
+    closeTab(tab.id)
+  }))
+  menu.appendChild(makeMenuItem(t('menu.tabCloseOthers'), async () => {
+    if (paneId !== panes.focused) await focusPaneUi(paneId)
+    for (const it of tabs.list()) {
+      if (it.id !== tab.id && tabs.get(it.id)) await closeTab(it.id)
+    }
+  }, false, false, null, list.length <= 1))
+  if (tab.preview) menu.appendChild(makeMenuItem(t('menu.tabPin'), () => tabs.pin(tab.id)))
+  menu.appendChild(menuSep())
+  menu.appendChild(makeMenuItem(t('menu.copyPath'), async () => {
+    const sep = /[\\/]$/.test(tab.root) ? '' : '/'
+    const full = tab.root ? tab.root + sep + tab.rel : tab.rel
+    try {
+      await navigator.clipboard.writeText(full)
+      setStatus(t('status.pathCopied', { path: full }))
+    } catch (err) {
+      setStatus(t('status.clipFail', { err: errText(err) }))
+    }
+  }))
+  menu.appendChild(makeMenuItem(t('menu.revealInFolder'), async () => {
+    if (tab.root) {
+      try { await revealInFolder(tab.root, tab.rel) } catch (err) {
+        await messageDialog(t('msg.revealFailed', { err: errText(err) }))
+      }
+    } else revealVaultPath(tab.rel)
+  }, false, false, null, !tab.root))
+  placeMenu(menu, e.clientX, e.clientY)
 }
 
 // 图片右键的自绘菜单：另存为 / 复制图像 / 复制图像链接（远程图）。字节统一走 data: URL——
@@ -1965,7 +2139,9 @@ async function deleteVaultFile(rel, name) {
     await deleteFile(state.vaultRoot, rel)
     // 索引同步：从索引移除这条文档（canvas 不在索引内，为空操作）
     try { await removeIndexDoc(rel) } catch (_) {}
-    if (state.currentFile === rel) {
+    // 删的是当前打开文档（或其所在目录）时：清空编辑区，回到无文档态
+    const hitCurrent = !!state.currentFile && (state.currentFile === rel || state.currentFile.startsWith(rel + '/'))
+    if (hitCurrent) {
       // 删的是当前打开文档：清空编辑区，回到无文档态
       state.dirty = false
       state.currentFile = null
@@ -2033,7 +2209,9 @@ async function newScratchFile() {
   try {
     const root = await ensureScratchDir()
     const rel = t('doc.untitled') + '-' + stamp + '.md'
-    await writeMdFile(root, rel, '# ' + t('doc.untitled') + '\n\n')
+    // 正文留空：文件名已带「未命名」，再预置一行 H1 会让用户打的第一行落进标题、
+    // 被列进大纲（QA GU-010「正文首行误列」），与「新文档从正文开始」的直觉相反
+    await writeMdFile(root, rel, '')
     await openDocInPane(panes.focused, { root, rel, scratch: true })
     setStatus(t('status.createdScratch'))
     editor.focus()
@@ -3666,6 +3844,7 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
       onMetaChange(meta)
     },
     onDirty: (d) => markPaneDirty(paneId, d),
+    onNotify: (msg) => setStatus(msg),
     suggestDocs: () => state.docNames,
     suggestTags: () => state.tagNames,
     onFrontmatterChange: () => {
@@ -4489,6 +4668,7 @@ async function boot() {
   }).catch(() => {})
   await handleLaunchArgs()
   bindShortcuts()
+  installGlobalContextMenu()
   setupCloseGuard()
   setupMacMenu()
   setupTrayMenu()

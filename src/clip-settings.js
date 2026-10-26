@@ -78,6 +78,8 @@ export function createClipSettings(deps) {
   let bodyEl = null
   let offLocale = null
   let draft = null // 打开时拷一份；「保存」才apply + 重启服务，关闭不提交
+  let extHintEl = null // 底部扩展地址行：端口随草稿 / 运行态变，不重开面板也要能刷新
+  let statusEl = null // 保存结果在面板内可见（此前只进 console，界面无任何提示）
 
   function section(titleKey) {
     const head = document.createElement('div')
@@ -148,7 +150,10 @@ export function createClipSettings(deps) {
     section('clip.sectionServer')
     checkRow('clip.enable', draft.enabled, (v) => { draft.enabled = v })
     hint('clip.enableHint')
-    numRow('clip.port', draft.port, (v) => { draft.port = v })
+    numRow('clip.port', draft.port, (v) => {
+      draft.port = v
+      if (extHintEl) extHintEl.textContent = t('clip.extHint', { url: clipServerUrl(draft.port) })
+    })
     hint('clip.portHint')
   }
 
@@ -213,6 +218,7 @@ export function createClipSettings(deps) {
     p.className = 'nl-ap-hint'
     p.textContent = t('clip.extHint', { url: clipServerUrl(draft.port) })
     bodyEl.appendChild(p)
+    extHintEl = p
   }
 
   function buildDom() {
@@ -244,10 +250,19 @@ export function createClipSettings(deps) {
     bodyEl.className = 'nl-ap-body'
 
     box.append(head, bodyEl)
+    statusEl = document.createElement('div')
+    statusEl.className = 'nl-panel-status'
+    box.appendChild(statusEl)
     overlay.appendChild(box)
     overlay.addEventListener('pointerdown', (e) => {
       if (e.target === overlay) close()
     })
+  }
+
+  function showStatus(msg, isErr) {
+    if (!statusEl) return
+    statusEl.textContent = msg
+    statusEl.classList.toggle('err', !!isErr)
   }
 
   async function save() {
@@ -256,11 +271,14 @@ export function createClipSettings(deps) {
     if (flush) await flush()
     try {
       const st = await clipServerApply(next)
+      if (st && st.port) draft.port = st.port // 端口被占顺延后，扩展地址行回显实际绑定值
+      showStatus(st && st.running ? t('clip.statusRunning', { port: st.port }) : t('clip.statusStopped'))
+      render()
       setStatus(st && st.running ? t('clip.statusRunning', { port: st.port }) : t('clip.statusStopped'))
     } catch (e) {
-      setStatus(t('clip.applyFailed', { err: (e && e.message) || e }))
+      showStatus(t('clip.applyFailed', { err: (e && e.message) || e }), true)
     }
-    close()
+    // 不自动关面板：保存结果就写在面板底部，用户看完自己关（portHint 承诺「以保存后提示为准」）
   }
 
   function onEsc(e) {

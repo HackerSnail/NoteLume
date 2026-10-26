@@ -65,6 +65,32 @@
 
 ### Fixed
 
+* **Ctrl+Tab 切不了标签页，命令面板里同一命令却好使**：键位链路断在 `src/keymap.js` 的 `validBase`——它只认大写 `'Tab'`，注册串 `'Ctrl-Tab'` 经 split 归一是大写、事件反解（`eventToBinding`）产出的却是小写 `'tab'`，每次按键在 `resolveBinding` 一层就被判非法返回 null，分发器查不到命令，事件链静默中断。同为 Ctrl 系的 Ctrl+F / Ctrl+W 都能过，因为字母键没有这层大小写分歧。`validBase` 对 Tab 改为不分大小写，`tests/keymap.test.mjs` 补一条事件反解回归（`eventToBinding` → `resolveBinding` 全链断言）。实测：`node tests/keymap.test.mjs` 24 passed，全量 41 个前端测试文件通过。
+
+* **查找替换的三处坑**（QA GU-012 / GU-013）：① Esc 关查找栏后打字会覆盖正文——`reveal()` 用范围选区选中命中词，`closeBar()` 只清装饰不收选区，命中词仍处于选中态，接着打字直接把它替换掉；现在关栏时把选区收成光标再还焦点。② 计数与命中读的是控制器自存的一份，外部撤销后不重算，「还原后计数仍 0/0」——`step` / `reveal` / `doReplaceOne` / `doReplaceAll` / 计数全部改读插件 state（映射平移后的命中），撤销后计数与跳转即刻对上。③ 替换框留空点「全部替换」会无确认删掉全部命中，且替换后焦点留在替换框，Ctrl+Z 撤的是输入框内容不是文档——空替换先弹确认（`find.confirmDeleteAll`，五语言），替换全后焦点回编辑器。
+
+* **表格选择器末格按 Tab 穿透给编辑器、不建行不退出还丢焦点**（QA GU-019）：`onKeyDown` 没有 Tab 分支，按键落到编辑器 keymap。补上：Tab 右移一格、到右边界换行，最后一格（8×10）再按直接落定；Shift+Tab 左移。顺带把底部尺寸提示从 `{rows} × {cols}` 改成「{rows} 行 × {cols} 列」（五语言），选择器默认「2 × 2」与插入结果「10 列 × 8 行」两种读法不再打架。`tests/table-picker.test.mjs` 补 Tab 全程用例。
+
+* **斜杠菜单无匹配时整个消失、Esc 后 `/xxx` 残留在文档里**（QA GU-018）：`detect()` 过滤后为空就返回 null，浮层不渲染，打错的过滤词悬在正文里没人管；Esc 只摘菜单不清文本。现在无匹配照常弹层、显示「没有匹配的块（Esc 取消并清掉「/」）」空态行（`.nl-slash-empty`，不可点），Esc 收菜单的同时把块里的 `/query` 清成空段落（仅在块内容仍匹配 `/词` 形态时动手）。
+
+* **保存失败弹窗前缀重复、不含文件名**（QA GU-007/008）：Rust `write_md_file` 的错误已是「保存失败：{err}」，前端弹窗又套一层 `msg.saveFailedDlg`（同样以「保存失败：」开头），弹出来是「保存失败：保存失败：拒绝访问。 (os error 5)」。前端词条改为 `{err}`（五语言），Rust 词表改为带相对路径的「保存失败：{path}：{err}」，`ui_lang.rs` 测试同步。
+
+* **图片插入零反馈，多张图 Ctrl+Z 撤不干净**（QA GU-027）：`insertImageFiles` 逐张 `dispatch`，多张图要按 N 次撤销；失败只进 console。改为全部图片并入一个事务（一张 Ctrl+Z 撤完，多张按顺序落位），完成报「已插入 n 张图片」、失败报「n 张图片写入失败」（`status.imgInserted` / `status.imgInsertFailed`，五语言，经 createEditor 新增的 `onNotify` 回调走状态栏）。
+
+* **剪藏设置面板两处**（QA GU-024）：端口被占顺延后，底部「扩展里把服务器地址填为 …」那行仍显示旧端口；「保存后提示」承诺的提示不存在——`clip_server_apply` 的结果只进了 `setStatus`（console）。地址行改为跟着草稿端口与保存后的实际绑定端口刷新（`clipServerApply` 返回的 `st.port` 回写草稿），保存结果写在面板底部状态行，不再自动关面板。同批给快捷键设置面板加了同款状态行：冲突「已被「{names}」占用」与保存 / 重置结果在面板内可见，不再是零提示（QA GU-025）。
+
+* **无标题文档的大纲入口整体置灰、无任何提示**（QA GU-010）：`syncOutlineTab` 把「大纲」tab 连同栏外图标一起 disabled。改为不置灰，面板里给一行「没有标题」空态（`outline.empty`，五语言）。
+
+* **文件夹没有删除入口**（QA GU-006）：Rust `delete_file` 显式拒删目录，界面上文件夹右键也没有删除项。放开目录（`trash` crate 全平台支持目录进回收站），文件夹右键补「移入回收站」；删的目录包含当前打开文档时同样清空编辑区回无文档态。`delete_file_rejects_escape_dir_and_missing` 相应调整（越界与不存在两条拒绝保留，成功路径仍交手动验证）。
+
+* **应用内右键还弹 WebView2 原生菜单**：编辑器窗格、文件树、画布已有自绘菜单，但标签条、查找栏、源码模式、输入框、工具条、状态栏这些区域没拦，右键出来的还是「返回 / 刷新 / 检查」那一套。`main.js` 新增 `installGlobalContextMenu`（document capture 阶段兜底）：已有自绘菜单的区域放行不抢（表格 / 图片 / 文件树 / 画布在冒泡阶段自己 preventDefault）；输入框与源码 CodeMirror 弹自绘编辑菜单（撤消 / 剪切 / 复制 / 粘贴 / 全选，剪贴板走 navigator.clipboard，粘贴写回对输入框用 `setRangeText`、对 CM 用 `insertText`）；标签条弹新加的标签右键菜单（关闭 / 关闭其他标签页 / 固定预览标签 / 复制文件路径 / 在资源管理器中显示，条子不在焦点窗格时先切焦点）；其余区域压掉原生菜单、不出菜单。顺带把自绘菜单的关闭行为补齐：点外面、Esc、滚轮、改窗口大小都关（原先只有点菜单项才收）。新增词条 `menu.tabClose` / `menu.tabCloseOthers` / `menu.tabPin` / `menu.copyPath` / `ctx.undo` / `status.pathCopied` 五语言。含 Rust（saveFailed / delete_file），须重启 `tauri dev` 重编生效；其余刷新即生效。实测：`cargo test --lib` 305 passed，前端 41 个测试文件全过（keymap 24 条含 Ctrl+Tab 回归、table-picker 8 条含 Tab 全程），`npm run build` 无错。未实测：真机 WebView2 里逐区域右键的目视核对、目录进回收站的实际删除（手动验收项）。
+
+* **新建临时文档预置一行「未命名」标题，用户打的第一行落进 H1 被列进大纲**（QA GU-010）：`newScratchFile` 的模板是 `# 未命名\n\n`，文件名虽带「未命名」，正文首行却进了 H1——大纲把它列成 1 条，看起来就是「正文首行误列」。模板改为空正文，新文档从正文开始打；顺带 `emitMeta` 跳过无文字的空标题（行内只有记号的 `# ` 列出来是一行不可跳转的空项）。纯前端，刷新即生效。实测：前端测试文件全量通过，`npm run build` 无错。
+
+* **图片插入不校验内容，改名的非图片文件照样入库**（QA GU-027 的 fake.png）：`copy_image_asset` 只看扩展名（`IMG_EXTS`），`fake.png` 里装什么都收进 `assets/`，正文链接一篇，编辑区就多一张裂图。写盘前加魔数嗅探 `looks_like_image`（PNG / JPEG / GIF / WebP / BMP / ICO 魔数与 SVG 文本形态，SVG 需 `<svg` 开头或 `<?xml` 声明后真含 `<svg`），不是图片按新词条 `imgNotImage`（五语言）报「不是有效的图片文件：{name}」，不落任何副本；只挡「根本不是图片」的文件，截断的真图仍放行（读取端自有降级）。`insertImageFiles` 的失败计数（上一条的「n 张图片写入失败」）随之能落到这类文件上。含 Rust，须重编生效。实测：`cargo test --lib` 307 passed（新增 `looks_like_image_accepts_known_magics_and_rejects_garbage` 七种魔数 / BOM+前导空白的 SVG / `<?xml-stylesheet` 非文档 / 纯文本与随机字节与空文件，与 `copy_image_asset_rejects_non_image_content` 假图拒收不落副本、真魔数照常入库两条）。
+
+* **「超长文本节点内输入被静默丢弃」未复现，挂起待观察**（QA GU-016）：用 Playwright 驱动真实 WebView2（CDP 连 `tauri dev` 实例、打开 QA 库的 paste-source.md）跑了七条输入路径——点击长段中部、程序设选区、粘贴后原位键入、Ctrl+Home/End 加方向键移入、CDP `insertText`、真实鼠标点击后键入、CDP `imeSetComposition` 模拟中文组合输入——每次输入都进了文档模型并序列化落盘；纯 5 万字、含 BEL / U+FFFD / VT 及其混合共 7 种内容变体在无头 Chromium 的编辑器夹具里同样全过。QA 报告里的现象（连粘贴都丢、CPU 空闲、点短行即恢复）无法在当前代码上复现，不排除是当时会话的瞬时状态或早期构建的问题。未改动输入链路代码——在无法复现的情况下动 ProseMirror 输入路径风险大于收益；若再出现，复现探针的思路（连接 CDP 后逐层核对 activeElement / 原生选区 / DOM 与模型的差异）可以直接定位断在哪一层。
+
 * **`/health` 的端口恒为 null，扩展「测试连接」成功后显示「端口 null」**：扩展选项页把 `/health` 里的 `port` 直接拼进提示（`extension/options.js:45`），成功时本该显示「连接正常 · 端口 3210」；但服务线程拿到的是 `start()` 在 `cfg.bound_port = bound` 之前克隆的配置（`src-tauri/src/webclip.rs:941`），副本里这个字段永远是 `None`，于是成功提示成了「连接正常 · 端口 null」——等端口被占、服务顺延到 3211 时，也就没法判断实际绑在哪。修法两层：`start()` 先落 `bound_port` 再克隆给线程，`serve_loop` 开头再用 `listener.local_addr()` 确认一次，端口以实际监听地址为准。含 Rust，须重编生效。实测：`cargo test --lib` 166 passed，`http_layer_serves_clip_over_socket` 补一条 `GET /health` 断言响应体里的 `"port"` 等于监听端口（该用例走默认配置、不预先塞 `bound_port`，正是原缺陷的形态）；重编、补签、换装后 `curl /health` 返回 `"port":3210`。另：用户报的「连不上」当次是应用没在运行、3210 无监听；应用起来后同一扩展来源（`Origin: chrome-extension://…`）的 `GET /health` 返回 200、预检 204 带全套 CORS 头，这一段链路本身没有问题。
 
 * **剪藏图片落盘保留 URL 的百分号编码，应用里显示「读取失败：找不到图片」**：剪藏把页面图片存进 `assets/` 时，文件名直接取 URL 末段；中文图名在 URL 里是 `%E7%A0%81…` 形态，于是磁盘上落了 `%E7%A0%81%E9%81%93…png` 这样的名字。读图链路（`read_image_data_uri` → `resolve_media_abs`，`src-tauri/src/lib.rs:593`）按 URL 语义先把 `src` 解码一次再找文件，解码成 `码道登录页.png` 自然找不到——正文里的图与文件树里点开的图都报「读取失败：找不到图片」，界面上看就是「没有图」。修法在命名源头：`image_name`（`src-tauri/src/webclip.rs:545`）先对 URL 末段做 `percent_decode`（该函数改为 `pub(crate)`）再净化落盘，md 里写出的也是解码后的相对路径。含 Rust，须重编生效。实测：`cargo test --lib` 166 passed，新增 `write_clip_decodes_percent_encoded_image_names`（编码 URL 落盘为 `码道登录页.png`、正文写 `./assets/码道登录页.png`、磁盘不留编码名、`read_image_data_uri` 能按这条链接取到 data URI）；打包版重编、补签、换装后投一条带编码图片 URL 的 `/clip`，返回 `imagesSaved: 1`，磁盘与正文均为解码后的名字。未实测：界面里图片的最终渲染（打包版 WKWebView 内容读不到，只核到文件与读取函数这一层）；已落盘的旧剪藏不回改，旧编码名附件要重新剪藏或手工改名。

@@ -139,11 +139,16 @@ export default {
   'menu.revealInFolder': 'Reveal in File Manager',
   'menu.newFileEllipsis': 'New File…',
   'menu.newFolderEllipsis': 'New Folder…',
+  'menu.tabClose': 'Close Tab',
+  'menu.tabCloseOthers': 'Close Other Tabs',
+  'menu.tabPin': 'Pin Tab',
+  'menu.copyPath': 'Copy File Path',
   'menu.noRecent': '(no recent files)',
   'ctx.cut': 'Cut',
   'ctx.copy': 'Copy',
   'ctx.paste': 'Paste',
   'ctx.selectAll': 'Select All',
+  'ctx.undo': 'Undo',
   'ctx.imgSave': 'Save image as…',
   'ctx.imgCopy': 'Copy image',
   'ctx.imgCopyLink': 'Copy image link',
@@ -325,6 +330,7 @@ export default {
 
   // —— Slash menu ——
   'slash.head': 'Insert Block',
+  'slash.noMatch': 'No matching blocks (Esc cancels and clears the “/”)',
 
   // —— Dialogs (call sites in main.js) ——
   'dlg.unsavedTitle': 'Unsaved Changes',
@@ -379,6 +385,7 @@ export default {
   'common.expand': 'Expand',
   'common.collapse': 'Collapse',
   'outline.emptyTitle': '(empty heading)',
+  'outline.empty': 'No headings',
   'ui.noDocOpen': '(no document open)',
   'doc.untitled': 'untitled',
   'doc.untitledMd': 'untitled.md',
@@ -423,7 +430,7 @@ export default {
   'status.oneTab': 'Only one tab open',
   'status.saveCanceled': 'Save canceled (file is still in the temp dir)',
   'status.savedTo': 'Saved to: {abs}',
-  'msg.saveFailedDlg': 'Save failed: {err}',
+  'msg.saveFailedDlg': '{err}',
   'status.opened': 'Opened: {rel}',
   'status.canvasOpened': 'Opened canvas: {path}',
   'msg.canvasOpenFailed': 'Failed to open canvas: {err}',
@@ -452,7 +459,7 @@ export default {
   'msg.qdPkgFailed': 'Failed to install Quarkdown package: {err}',
   'status.noDocToExport': 'No document to export',
   'status.canvasNoHtml': 'Canvas does not support HTML export',
-'status.canvasNoSlides': 'Canvas does not support presentation export',
+  'status.canvasNoSlides': 'Canvas does not support presentation export',
   'status.exportedWord': 'Exported Word: {abs}',
   'msg.exportWordDone': 'Export done (with notes):\n{warnings}',
   'status.canvasNoWord': 'Canvas does not support Word export',
@@ -490,8 +497,11 @@ export default {
   'status.noTab': 'No open tabs',
   'status.imgOnlyMd': 'Inserting images only works in Markdown documents',
   'status.clipFail': 'Failed to read clipboard: {err}',
+  'status.pathCopied': 'Path copied: {path}',
   'status.clipEmpty': 'Clipboard has no text',
   'status.imgSaved': 'Image saved: {name}',
+  'status.imgInserted': '{n} image(s) inserted',
+  'status.imgInsertFailed': 'Failed to save {n} image(s)',
   'status.imgCopied': 'Image copied to clipboard',
   'status.imgLinkCopied': 'Image link copied',
   'status.imgFail': 'Image action failed: {msg}',
@@ -792,7 +802,7 @@ export default {
   'table.mergeCells': 'Merge Cells',
   'table.splitCells': 'Split Cell',
   'table.tableDelete': 'Delete Table',
-  'table.sizeHint': '{rows} × {cols}',
+  'table.sizeHint': '{rows} rows × {cols} cols',
 
   // —— Find bar (find-in-doc.js) ——
   'find.placeholder': 'Find in this document…',
@@ -807,6 +817,7 @@ export default {
   'find.replaceOneTip': 'Replace current match (Enter)',
   'find.replaceAll': 'Replace All',
   'find.replaceAllTip': 'Replace all matches',
+  'find.confirmDeleteAll': 'The replace field is empty; all {n} matches will be deleted. Continue?',
 
   // —— Document properties panel (frontmatter-panel.js) ——
   'fm.needDoc': 'Open a Markdown document to edit its properties',

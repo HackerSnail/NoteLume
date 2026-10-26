@@ -203,11 +203,11 @@ const TABLE: &[Entry] = &[
         "Verzeichnis {path} konnte nicht gelesen werden: {err}",
     ]},
     Entry { key: "saveFailed", texts: [
-        "保存失败：{err}",
-        "儲存失敗：{err}",
-        "Save failed: {err}",
-        "Échec d’enregistrement : {err}",
-        "Speichern fehlgeschlagen: {err}",
+        "保存失败：{path}：{err}",
+        "儲存失敗：{path}：{err}",
+        "Save failed: {path}: {err}",
+        "Échec d’enregistrement : {path} : {err}",
+        "Speichern fehlgeschlagen: {path}: {err}",
     ]},
     Entry { key: "writeFailed", texts: [
         "写入失败 {path}：{err}",
@@ -350,6 +350,13 @@ const TABLE: &[Entry] = &[
         "Failed to read the image: {err}",
         "Échec de lecture de l’image : {err}",
         "Bild konnte nicht gelesen werden: {err}",
+    ]},
+    Entry { key: "imgNotImage", texts: [
+        "不是有效的图片文件：{path}",
+        "不是有效的圖片檔案：{path}",
+        "Not a valid image file: {path}",
+        "Fichier image non valide : {path}",
+        "Keine gültige Bilddatei: {path}",
     ]},
     Entry { key: "copyImgFailed", texts: [
         "复制图片失败：{err}",
@@ -1067,7 +1074,7 @@ mod tests {
         set_lang("de-DE");
         assert_eq!(msg("gitNothingToCommit", &[]), "Keine Änderungen zum Committen");
         set_lang("zh-Hant");
-        assert_eq!(msg("saveFailed", &[("err", "boom".to_string())]), "儲存失敗：boom");
+        assert_eq!(msg("saveFailed", &[("path", "daily/x.md".to_string()), ("err", "boom".to_string())]), "儲存失敗：daily/x.md：boom");
     }
 
     #[test]

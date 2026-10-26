@@ -138,11 +138,16 @@ export default {
   'menu.revealInFolder': 'Im Dateimanager anzeigen',
   'menu.newFileEllipsis': 'Neue Datei…',
   'menu.newFolderEllipsis': 'Neuer Ordner…',
+  'menu.tabClose': 'Tab schließen',
+  'menu.tabCloseOthers': 'Andere Tabs schließen',
+  'menu.tabPin': 'Tab anheften',
+  'menu.copyPath': 'Dateipfad kopieren',
   'menu.noRecent': '(keine zuletzt verwendeten Dateien)',
   'ctx.cut': 'Ausschneiden',
   'ctx.copy': 'Kopieren',
   'ctx.paste': 'Einfügen',
   'ctx.selectAll': 'Alles auswählen',
+  'ctx.undo': 'Rückgängig',
   'ctx.imgSave': 'Bild speichern unter…',
   'ctx.imgCopy': 'Bild kopieren',
   'ctx.imgCopyLink': 'Bildlink kopieren',
@@ -324,6 +329,7 @@ export default {
 
   // —— Slash-Menü ——
   'slash.head': 'Block einfügen',
+  'slash.noMatch': 'Keine passenden Blöcke (Esc bricht ab und löscht „/“)',
 
   // —— Dialoge (Aufrufstellen in main.js) ——
   'dlg.unsavedTitle': 'Nicht gespeicherte Änderungen',
@@ -378,6 +384,7 @@ export default {
   'common.expand': 'Ausklappen',
   'common.collapse': 'Einklappen',
   'outline.emptyTitle': '(leere Überschrift)',
+  'outline.empty': 'Keine Überschriften',
   'ui.noDocOpen': '(kein Dokument geöffnet)',
   'doc.untitled': 'unbenannt',
   'doc.untitledMd': 'unbenannt.md',
@@ -422,7 +429,7 @@ export default {
   'status.oneTab': 'Nur ein Tab offen',
   'status.saveCanceled': 'Speichern abgebrochen (Datei bleibt im Temp-Ordner)',
   'status.savedTo': 'Gespeichert unter: {abs}',
-  'msg.saveFailedDlg': 'Speichern fehlgeschlagen: {err}',
+  'msg.saveFailedDlg': '{err}',
   'status.opened': 'Geöffnet: {rel}',
   'status.canvasOpened': 'Leinwand geöffnet: {path}',
   'msg.canvasOpenFailed': 'Leinwand konnte nicht geöffnet werden: {err}',
@@ -451,7 +458,7 @@ export default {
   'msg.qdPkgFailed': 'Installation des Quarkdown-Pakets fehlgeschlagen: {err}',
   'status.noDocToExport': 'Kein Dokument zum Export',
   'status.canvasNoHtml': 'Leinwand unterstützt keinen HTML-Export',
-'status.canvasNoSlides': 'Leinwand unterstützt keinen Präsentationsexport',
+  'status.canvasNoSlides': 'Leinwand unterstützt keinen Präsentationsexport',
   'status.exportedWord': 'Word exportiert: {abs}',
   'msg.exportWordDone': 'Export fertig (mit Hinweisen):\n{warnings}',
   'status.canvasNoWord': 'Leinwand unterstützt keinen Word-Export',
@@ -489,8 +496,11 @@ export default {
   'status.noTab': 'Kein Tab geöffnet',
   'status.imgOnlyMd': 'Bilder einfügen geht nur in Markdown-Dokumenten',
   'status.clipFail': 'Zwischenablage nicht lesbar: {err}',
+  'status.pathCopied': 'Pfad kopiert: {path}',
   'status.clipEmpty': 'Die Zwischenablage enthält keinen Text',
   'status.imgSaved': 'Bild gespeichert: {name}',
+  'status.imgInserted': '{n} Bild(er) eingefügt',
+  'status.imgInsertFailed': '{n} Bild(er) konnten nicht gespeichert werden',
   'status.imgCopied': 'Bild in die Zwischenablage kopiert',
   'status.imgLinkCopied': 'Bildlink kopiert',
   'status.imgFail': 'Bildaktion fehlgeschlagen: {msg}',
@@ -790,7 +800,7 @@ export default {
   'table.mergeCells': 'Zellen verbinden',
   'table.splitCells': 'Zelle teilen',
   'table.tableDelete': 'Ganze Tabelle löschen',
-  'table.sizeHint': '{rows} × {cols}',
+  'table.sizeHint': '{rows} Zeilen × {cols} Spalten',
 
   // —— Suchleiste (find-in-doc.js) ——
   'find.placeholder': 'In diesem Dokument suchen…',
@@ -805,6 +815,7 @@ export default {
   'find.replaceOneTip': 'Aktuellen Treffer ersetzen (Eingabe)',
   'find.replaceAll': 'Alle ersetzen',
   'find.replaceAllTip': 'Alle Treffer ersetzen',
+  'find.confirmDeleteAll': 'Das Ersetzen-Feld ist leer, alle {n} Treffer werden gelöscht. Fortfahren?',
 
   // —— Panel für Dokumenteigenschaften (frontmatter-panel.js) ——
   'fm.needDoc': 'Ein Markdown-Dokument öffnen, um seine Eigenschaften zu bearbeiten',

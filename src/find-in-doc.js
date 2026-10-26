@@ -11,6 +11,7 @@ import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { setIcon } from './icons.js'
 import { t } from './i18n.js'
+import { confirmDialog } from './tauri-bridge.js'
 
 export const findKey = new PluginKey('nl-find')
 
@@ -186,7 +187,7 @@ export function createFindBar({ view, paneEl }) {
     replaceInput.setAttribute('aria-label', t('find.replaceAria'))
 
     const replaceOneBtn = mk(t('find.replaceOne'), t('find.replaceOneTip'), () => { doReplaceOne(); replaceInput.focus() }, 'nl-find-replace-btn')
-    const replaceAllBtn = mk(t('find.replaceAll'), t('find.replaceAllTip'), () => { doReplaceAll(); replaceInput.focus() }, 'nl-find-replace-btn')
+    const replaceAllBtn = mk(t('find.replaceAll'), t('find.replaceAllTip'), () => { doReplaceAll() }, 'nl-find-replace-btn')
 
     row2.append(replaceInput, replaceOneBtn, replaceAllBtn)
     bar.append(row1, row2)
@@ -230,15 +231,17 @@ export function createFindBar({ view, paneEl }) {
   }
 
   function updateCount() {
-    const total = lastMatches.length
-    const cur = total ? Math.min(lastMatches.length, Math.max(0, activeIndex()) + 1) : 0
+    const st = findState()
+    const total = st.matches.length
+    const cur = total ? Math.min(total, Math.max(0, st.activeIndex) + 1) : 0
     countEl.textContent = total ? `${cur}/${total}` : '0/0'
   }
 
-  // 从插件当前 state 读 activeIndex（控制器不额外持有，避免与插件态分叉）
-  function activeIndex() {
+  // 计数与命中一律以插件 state 为准：文档被外部改动（撤销 / 手改）后 mapped 命中
+  // 已平移，控制器若另存一份就会出现「还原后计数仍是 0/0」这类不同步
+  function findState() {
     const st = findKey.getState(view.state)
-    return st ? st.activeIndex : -1
+    return st || { query: '', matches: [], activeIndex: -1, caseSensitive }
   }
 
   function runFind(resetIndex) {
@@ -246,16 +249,17 @@ export function createFindBar({ view, paneEl }) {
     lastMatches = findMatches(view.state.doc, query, caseSensitive)
     let idx
     if (!lastMatches.length) idx = -1
-    else idx = resetIndex ? 0 : Math.min(Math.max(activeIndex(), 0), lastMatches.length - 1)
+    else idx = resetIndex ? 0 : Math.min(Math.max(findState().activeIndex, 0), lastMatches.length - 1)
     setState({ query, matches: lastMatches, activeIndex: idx, caseSensitive })
     updateCount()
     if (idx >= 0) reveal(idx)
   }
 
   function step(dir) {
-    if (!lastMatches.length) return
-    const n = lastMatches.length
-    const idx = (((activeIndex() + dir) % n) + n) % n // 回绕
+    const st = findState()
+    const n = st.matches.length
+    if (!n) return
+    const idx = (((st.activeIndex + dir) % n) + n) % n // 回绕
     setState({ activeIndex: idx })
     updateCount()
     reveal(idx)
@@ -263,7 +267,7 @@ export function createFindBar({ view, paneEl }) {
 
   // 滚动到第 idx 个命中并选中（选区让 PM 原生把它滚入视野）；不动 DOM 焦点（由调用方决定焦点落哪）
   function reveal(idx) {
-    const m = lastMatches[idx]
+    const m = findState().matches[idx]
     if (!m) return
     const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to))
     view.dispatch(tr.scrollIntoView())
@@ -271,19 +275,30 @@ export function createFindBar({ view, paneEl }) {
 
   // 替换当前高亮项，随后重算命中（被替换项消失后 activeIndex 自然落到下一个）
   function doReplaceOne() {
-    const idx = activeIndex()
-    if (idx < 0 || !lastMatches[idx]) return
-    const tr = buildReplaceTr(view.state, [lastMatches[idx]], replaceInput.value)
+    const st = findState()
+    if (st.activeIndex < 0 || !st.matches[st.activeIndex]) return
+    const tr = buildReplaceTr(view.state, [st.matches[st.activeIndex]], replaceInput.value)
     if (tr) view.dispatch(tr)
     runFind(false)
   }
 
   // 全部替换：一个事务改完全部命中（一步撤销即可全撤回）
-  function doReplaceAll() {
-    if (!lastMatches.length) return
-    const tr = buildReplaceTr(view.state, lastMatches, replaceInput.value)
+  async function doReplaceAll() {
+    const st = findState()
+    if (!st.matches.length) return
+    // 替换框留空 = 删除全部命中，属破坏性操作，先确认（确认框不可用则视为放弃，不静默删文）
+    if (replaceInput.value === '') {
+      try {
+        const ok = await confirmDialog(t('find.confirmDeleteAll', { n: st.matches.length }), t('find.replaceAll'))
+        if (!ok) return
+      } catch (_) {
+        return
+      }
+    }
+    const tr = buildReplaceTr(view.state, st.matches, replaceInput.value)
     if (tr) view.dispatch(tr)
     runFind(true)
+    view.focus() // 焦点留在替换框时 Ctrl+Z 撤的是输入框内容，撤不到刚做的替换
   }
 
   // focus：'find'（Ctrl+F）或 'replace'（Ctrl+H）；决定打开后光标落在哪个输入框
@@ -312,6 +327,13 @@ export function createFindBar({ view, paneEl }) {
     paneEl.removeEventListener('scroll', pin)
     lastMatches = []
     setState({ query: '', matches: [], activeIndex: -1 })
+    // reveal() 留下的是范围选区：不收掉的话 Esc 关栏后命中词仍是选中态，接着打字
+    // 会把正文覆盖掉（QA GU-012）。收成光标再还焦点
+    const sel = view.state.selection
+    if (sel && !sel.empty) {
+      const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, sel.from))
+      view.dispatch(tr)
+    }
     view.focus()
   }
 

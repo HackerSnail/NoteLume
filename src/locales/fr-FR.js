@@ -138,11 +138,16 @@ export default {
   'menu.revealInFolder': 'Afficher dans le gestionnaire de fichiers',
   'menu.newFileEllipsis': 'Nouveau fichier…',
   'menu.newFolderEllipsis': 'Nouveau dossier…',
+  'menu.tabClose': 'Fermer l’onglet',
+  'menu.tabCloseOthers': 'Fermer les autres onglets',
+  'menu.tabPin': 'Épingler l’onglet',
+  'menu.copyPath': 'Copier le chemin du fichier',
   'menu.noRecent': '(aucun fichier récent)',
   'ctx.cut': 'Couper',
   'ctx.copy': 'Copier',
   'ctx.paste': 'Coller',
   'ctx.selectAll': 'Tout sélectionner',
+  'ctx.undo': 'Annuler',
   'ctx.imgSave': 'Enregistrer l’image sous…',
   'ctx.imgCopy': 'Copier l’image',
   'ctx.imgCopyLink': 'Copier le lien de l’image',
@@ -324,6 +329,7 @@ export default {
 
   // —— Menu slash ——
   'slash.head': 'Insérer un bloc',
+  'slash.noMatch': 'Aucun bloc correspondant (Échap annule et efface le « / »)',
 
   // —— Boîtes de dialogue (points d’appel dans main.js) ——
   'dlg.unsavedTitle': 'Modifications non enregistrées',
@@ -378,6 +384,7 @@ export default {
   'common.expand': 'Déplier',
   'common.collapse': 'Replier',
   'outline.emptyTitle': '(titre vide)',
+  'outline.empty': 'Aucun titre',
   'ui.noDocOpen': '(aucun document ouvert)',
   'doc.untitled': 'sans titre',
   'doc.untitledMd': 'sans-titre.md',
@@ -422,7 +429,7 @@ export default {
   'status.oneTab': 'Un seul onglet ouvert',
   'status.saveCanceled': 'Enregistrement annulé (le fichier reste dans le dossier temporaire)',
   'status.savedTo': 'Enregistré sous : {abs}',
-  'msg.saveFailedDlg': 'Enregistrement impossible : {err}',
+  'msg.saveFailedDlg': '{err}',
   'status.opened': 'Ouvert : {rel}',
   'status.canvasOpened': 'Canevas ouvert : {path}',
   'msg.canvasOpenFailed': 'Ouverture du canevas impossible : {err}',
@@ -451,7 +458,7 @@ export default {
   'msg.qdPkgFailed': 'Échec de l’installation du paquet Quarkdown : {err}',
   'status.noDocToExport': 'Aucun document à exporter',
   'status.canvasNoHtml': 'Le canevas ne prend pas en charge l’export HTML',
-'status.canvasNoSlides': 'Le canevas ne prend pas en charge l’export en présentation',
+  'status.canvasNoSlides': 'Le canevas ne prend pas en charge l’export en présentation',
   'status.exportedWord': 'Word exporté : {abs}',
   'msg.exportWordDone': 'Export terminé (avec avertissements) :\n{warnings}',
   'status.canvasNoWord': 'Le canevas ne prend pas en charge l’export Word',
@@ -489,8 +496,11 @@ export default {
   'status.noTab': 'Aucun onglet ouvert',
   'status.imgOnlyMd': 'L’insertion d’images ne concerne que les documents Markdown',
   'status.clipFail': 'Lecture du presse-papiers impossible : {err}',
+  'status.pathCopied': 'Chemin copié : {path}',
   'status.clipEmpty': 'Le presse-papiers ne contient pas de texte',
   'status.imgSaved': 'Image enregistrée : {name}',
+  'status.imgInserted': '{n} image(s) insérée(s)',
+  'status.imgInsertFailed': 'Échec d’enregistrement de {n} image(s)',
   'status.imgCopied': 'Image copiée dans le presse-papiers',
   'status.imgLinkCopied': 'Lien de l’image copié',
   'status.imgFail': 'Échec de l’opération sur l’image : {msg}',
@@ -790,7 +800,7 @@ export default {
   'table.mergeCells': 'Fusionner les cellules',
   'table.splitCells': 'Scinder la cellule',
   'table.tableDelete': 'Supprimer le tableau',
-  'table.sizeHint': '{rows} × {cols}',
+  'table.sizeHint': '{rows} lignes × {cols} colonnes',
 
   // —— Barre de recherche (find-in-doc.js) ——
   'find.placeholder': 'Rechercher dans ce document…',
@@ -805,6 +815,7 @@ export default {
   'find.replaceOneTip': 'Remplacer l’occurrence actuelle (Entrée)',
   'find.replaceAll': 'Tout remplacer',
   'find.replaceAllTip': 'Remplacer toutes les occurrences',
+  'find.confirmDeleteAll': 'Le champ de remplacement est vide : les {n} occurrences seront supprimées. Continuer ?',
 
   // —— Panneau des propriétés du document (frontmatter-panel.js) ——
   'fm.needDoc': 'Ouvrez un document Markdown pour modifier ses propriétés',
