@@ -33,7 +33,21 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
             return Err(".heading 的 depth 必须是 1–6".to_string());
         }
         let content = body_md(ev, call)?;
-        Ok(Value::Markdown(format!("{} {}", "#".repeat(depth), content)))
+        let refr = call
+            .named
+            .iter()
+            .find(|(n, _)| n == "ref")
+            .map(|(_, v)| v.as_str().ok_or_else(|| ".heading 的 ref: 必须是文本".to_string()))
+            .transpose()?
+            .map(|r| r.trim().to_string())
+            .filter(|r| !r.is_empty());
+        let mut md = format!("{} {}", "#".repeat(depth), content);
+        // ref: 以标题 {#id} 形态落进产物，编号与账本登记由 postprocess 的标题趟统一处理
+        // （numbered / indexed / breakpage / 样式参数无 Markdown 落点，收下忽略）
+        if let Some(id) = refr {
+            md.push_str(&format!(" {{#{}}}", id));
+        }
+        Ok(Value::Markdown(md))
     });
 
     add(m, "paragraph", |ev, call| {

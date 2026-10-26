@@ -67,8 +67,14 @@ pub struct Evaluator {
     pub figures: usize,
     /// .numbered 的计数分组：key → 当前序号
     pub num_counters: HashMap<String, usize>,
-    /// 交叉引用账本：ref id → 编号（.numbered / 图登记，.ref 解析）
-    pub numbered: Vec<(String, usize)>,
+    /// 交叉引用账本：ref id → 引用文本（编号已按格式串渲染；.numbered / 图 / 标题登记，.ref 解析）
+    pub numbered: Vec<(String, String)>,
+    /// .numbering 的格式串：类别（headings / figures / tables / 自定义 key）→ 模板
+    pub numbering: HashMap<String, String>,
+    /// .nonumbering 关闭全部编号
+    pub numbering_off: bool,
+    /// 表题注计数（postprocess 的表格趟用）
+    pub tables: usize,
     /// .ref 的 id 按调用顺序记录，出口统一解析
     pub refs: Vec<String>,
     /// 可加载库目录（Libraries/，阶段 4）：include {名} 按文件名 stem 精确匹配 .qd 文件
@@ -95,6 +101,9 @@ impl Evaluator {
             figures: 0,
             num_counters: HashMap::new(),
             numbered: Vec::new(),
+            numbering: HashMap::new(),
+            numbering_off: false,
+            tables: 0,
             refs: Vec::new(),
             libs_dir: None,
             packages_dir: None,
@@ -483,6 +492,17 @@ impl Evaluator {
 
     /// 绑定参数并求值 lambda 体
     fn bind_and_run(&mut self, params: &[String], body: &[Block], args: &[Value], node: &CallNode) -> Result<Value, ()> {
+        // lambda 解构（Kotlin Destructuring）：参数表多于一个、实参只有一个二元组 / 列表时按位置拆包
+        // （字典经 as_items 迭代出的就是 [键, 值] 对，.foreach {.dict} key value: 与
+        //   .sorted by:{name value: …} 都吃这条）
+        let args: Vec<Value> = if params.len() > 1 && args.len() == 1 {
+            match &args[0] {
+                Value::List(items) if items.len() >= params.len() => items.clone(),
+                _ => args.to_vec(),
+            }
+        } else {
+            args.to_vec()
+        };
         for (i, p) in params.iter().enumerate() {
             let optional = p.ends_with('?');
             let name = p.trim_end_matches('?');
@@ -601,8 +621,28 @@ impl Evaluator {
         }
         let mut outs: Vec<String> = Vec::new();
         for item in items {
+            // 解构：多参数 lambda 收到列表项时按位置拆包（字典条目是 [键, 值] 对）
+            let bound: Vec<Value> = if params.len() > 1 {
+                match &item {
+                    Value::List(xs) if xs.len() >= params.len() => xs.clone(),
+                    _ => vec![item],
+                }
+            } else {
+                vec![item]
+            };
             self.push_scope();
-            self.define(&params[0], item);
+            for (i, p) in params.iter().enumerate() {
+                let optional = p.ends_with('?');
+                let name = p.trim_end_matches('?');
+                match bound.get(i) {
+                    Some(v) => self.define(name, v.clone()),
+                    None if optional => self.define(name, Value::None),
+                    None => {
+                        self.diagnostics.push(Diagnostic { line: 0, message: format!("缺少参数 .{}", name) });
+                        break;
+                    }
+                }
+            }
             let r: Result<String, ()> = match self.eval_blocks(rest) {
                 Ok(v) => Ok(v.to_output()),
                 Err(()) => Ok(String::new()), // 单项失败不炸整个循环（诊断已记录）
@@ -757,6 +797,7 @@ pub fn eval_document_with(
     super::localization::install_std(&mut ev);
     let mut out = ev.run_document(blocks);
     super::bibliography::resolve_citations(&mut ev, &mut out);
+    super::postprocess::run(&mut ev, &mut out);
     super::reference::resolve_refs(&mut ev, &mut out);
     (out, ev.diagnostics)
 }

@@ -20,9 +20,8 @@
 //    htmloptions / cssproperties / llmstxt 是 HTML 编译器的生成选项，无输出。
 //  · Process.env 读进程环境变量（Kotlin 需 ProcessAccess 权限，本引擎无权限系统——
 //    库与包是用户显式引入的受信内容， Caveat 见 CLAUDE.md），缺失回落 none。
-//
-// 未移植：Icon.icon 与 Emoji.emoji / allemojis（Bootstrap 图标与 1900 条 emoji 词表在
-// Rust 侧复制一份不值；emoji 显示层由前端 emoji-text.js 承担）——调用即未知函数降级。
+//  · Text.text 行内文本节点：case 变换与 url 链接真实生效，纯样式参数无 Markdown 落点收下忽略；
+//    Icon.icon 落 Bootstrap CDN 的 SVG 图片（emoji.rs 与 emoji_data.rs 见对应模块）。
 
 use std::collections::HashMap;
 
@@ -45,6 +44,51 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
 
     // ============ Text ============
     add(m, "br", |_, _| Ok(Value::Str("\\\n".to_string())));
+    add(m, "text", |_, call| {
+        // 行内文本节点（Text.kt）：case 变换真实生效；url 给了就包成链接。
+        // size / weight / style / decoration / variant / script / color / classname 是纯样式，
+        // Markdown 输出无落点，收下忽略（与 Document 元数据 no-op 同口径）
+        let content = pos(call, 0)?.as_str().ok_or_else(|| ".text 的内容必须是文本".to_string())?;
+        let named = |name: &str| -> Result<Option<String>, String> {
+            match call.named.iter().find(|(n, _)| n == name) {
+                Some((_, v)) => v.as_str().map(Some).ok_or_else(|| format!(".text 的 {}: 必须是文本", name)),
+                None => Ok(None),
+            }
+        };
+        let mut s = content;
+        match named("case")?.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+            Some("uppercase") => s = s.to_uppercase(),
+            Some("lowercase") => s = s.to_lowercase(),
+            Some("capitalize") => {
+                let mut cs = s.chars();
+                if let Some(f) = cs.next() {
+                    s = f.to_uppercase().collect::<String>() + cs.as_str();
+                }
+            }
+            Some(other) => return Err(format!(".text 的 case: 不支持 {}", other)),
+            None => {}
+        }
+        match named("url")?.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) {
+            Some(u) => Ok(Value::Str(format!("[{}]({})", s, u))),
+            None => Ok(Value::Str(s)),
+        }
+    });
+    add(m, "icon", |_, call| {
+        // Bootstrap 图标（Icon.kt）：无 Markdown 原生形态，落 jsDelivr CDN 的 SVG 图片
+        // （与 Kotlin 的 web-icons 同一图标源）；断网时裂图，属可接受的降级
+        let name = pos(call, 0)?
+            .as_str()
+            .ok_or_else(|| ".icon 的图标名必须是文本".to_string())?
+            .trim()
+            .to_string();
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+            return Err(".icon 的图标名必须是 Bootstrap 图标 id（如 house / github）".to_string());
+        }
+        Ok(Value::Str(format!(
+            "![icon {}](https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/icons/{}.svg)",
+            name, name
+        )))
+    });
     add(m, "codespan", |_, call| {
         let text = pos(call, 0)?.as_str().ok_or_else(|| ".codespan 实参必须是文本".to_string())?;
         // 含反引号时用双反引号夹空格（CommonMark 口径）
@@ -285,6 +329,36 @@ mod tests {
     fn out(src: &str) -> String {
         let blocks = parse_document(src);
         eval_document(&blocks, builtins(), None).0
+    }
+
+    #[test]
+    fn text_case变换与url链接() {
+        assert_eq!(out(".text {hello} case:{uppercase}"), "HELLO");
+        assert_eq!(out(".text {HELLO} case:{lowercase}"), "hello");
+        assert_eq!(out(".text {hello world} case:{capitalize}"), "Hello world");
+        assert_eq!(out(".text {点我} url:{https://x.com}"), "[点我](https://x.com)");
+        // 未知 case 诊断降级
+        let (t, n) = {
+            let blocks = parse_document(".text {x} case:{italic}");
+            eval_document(&blocks, builtins(), None)
+        };
+        assert!(t.contains(".text"));
+        assert_eq!(n.len(), 1);
+    }
+
+    #[test]
+    fn icon_落bootstrap_cdn图片() {
+        assert_eq!(
+            out(".icon {github}"),
+            "![icon github](https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/icons/github.svg)"
+        );
+        // 非法图标名（路径穿越尝试）诊断降级
+        let (t, n) = {
+            let blocks = parse_document(".icon {../etc}");
+            eval_document(&blocks, builtins(), None)
+        };
+        assert!(t.contains(".icon"));
+        assert_eq!(n.len(), 1);
     }
 
     #[test]

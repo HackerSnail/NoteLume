@@ -245,6 +245,13 @@ pub fn builtins() -> HashMap<String, Builtin> {
     fn get_at_index(items: &[Value], index: usize) -> Option<&Value> {
         items.get(index)
     }
+    /// 数值优先、文本兜底的比较（isgreater / sorted 同口径）
+    fn cmp_key(a: &Value, b: &Value) -> std::cmp::Ordering {
+        if let (Some(x), Some(y)) = (a.as_num(), b.as_num()) {
+            return x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal);
+        }
+        a.to_output().cmp(&b.to_output())
+    }
     register(&mut m, "getat", |_, call| {
         let items = items_arg(call, 0)?;
         let index = num(call, 1)? as i64;
@@ -343,16 +350,28 @@ pub fn builtins() -> HashMap<String, Builtin> {
         }
         Ok(Value::List(out))
     });
-    register(&mut m, "sorted", |_, call| {
-        let mut items = items_arg(call, 0)?;
-        // 数值优先、文本兜底（与 isgreater 同口径）
-        items.sort_by(|a, b| {
-            if let (Some(x), Some(y)) = (a.as_num(), b.as_num()) {
-                return x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal);
+    register_l(&mut m, "sorted", &["by"], |ev, call| {
+        let items = items_arg(call, 0)?;
+        let by = call.named.iter().find(|(n, _)| n == "by").map(|(_, v)| v.clone());
+        match by {
+            Some(f) => {
+                // by:{lambda}：每元素求值作排序键（键比较数值优先、文本兜底）；键相同保持原序
+                let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(items.len());
+                for it in items {
+                    let k = ev
+                        .call_lambda(&f, &[it.clone()], 0)
+                        .map_err(|()| ".sorted 的 by: 求值失败".to_string())?;
+                    keyed.push((k, it));
+                }
+                keyed.sort_by(|a, b| cmp_key(&a.0, &b.0));
+                Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
             }
-            a.to_output().cmp(&b.to_output())
-        });
-        Ok(Value::List(items))
+            None => {
+                let mut items = items;
+                items.sort_by(|a, b| cmp_key(a, b));
+                Ok(Value::List(items))
+            }
+        }
     });
     register(&mut m, "reversed", |_, call| {
         let mut items = items_arg(call, 0)?;
@@ -627,41 +646,7 @@ pub fn builtins() -> HashMap<String, Builtin> {
             Some(b) if !b.is_empty() => b,
             _ => return Err(".dictionary 需要 Markdown 列表作为块参数".to_string()),
         };
-        let mut lines: Vec<String> = Vec::new();
-        for b in body {
-            match b {
-                Block::Text(t) => lines.extend(t.split('\n').map(|s| s.to_string())),
-                Block::Inline(segs) => lines.push(ev.eval_inline(segs)),
-                Block::Call(c) => match ev.eval_call(c) {
-                    Ok(v) => lines.push(v.to_output()),
-                    Err(()) => lines.push(c.src.clone()),
-                },
-            }
-        }
-        let mut entries: Vec<(usize, String)> = Vec::new();
-        for l in &lines {
-            let t = l.trim_end();
-            if let Some(rest) = t.trim_start().strip_prefix("- ") {
-                let text = rest.trim();
-                if !text.is_empty() {
-                    entries.push((t.len() - t.trim_start().len(), text.to_string()));
-                }
-            }
-        }
-        if entries.is_empty() {
-            return Err(".dictionary 块参数里没有 Markdown 列表".to_string());
-        }
-        // 缩进层级按出现过的缩进值定级（2 / 4 空格风格都吃），相对首项归零
-        let mut levels: Vec<usize> = entries.iter().map(|(i, _)| *i).collect();
-        levels.sort_unstable();
-        levels.dedup();
-        let items: Vec<(usize, String)> = entries
-            .into_iter()
-            .map(|(i, t)| (levels.iter().position(|&l| l == i).unwrap_or(0), t))
-            .collect();
-        let mut idx = 0;
-        let dict = build_dict(&items, &mut idx, 0);
-        Ok(Value::Dict(dict))
+        Ok(Value::Dict(dict_from_body(ev, body).map_err(|e| format!(".dictionary {}", e))?))
     });
 
     // ============ FileTree（MiscElements.kt，阶段 2 批 2）============
@@ -757,6 +742,7 @@ pub fn builtins() -> HashMap<String, Builtin> {
     // ============ 长尾模块 / Primitives（阶段 5）============
     super::longtail::register(&mut m);
     super::primitives::register(&mut m);
+    super::emoji::register(&mut m);
 
     m
 }
@@ -796,6 +782,45 @@ fn build_dict(items: &[(usize, String)], idx: &mut usize, depth: usize) -> Vec<(
         dict.push((key, value));
     }
     dict
+}
+
+/// 块参数 Markdown 列表 → 字典条目。dictionary 与 .numbering 共用：
+/// 行内调用照常求值，`- key: value` 行内值按字面量推断，嵌套列表落嵌套字典。
+pub(crate) fn dict_from_body(ev: &mut super::eval::Evaluator, body: &[Block]) -> Result<Vec<(String, Value)>, String> {
+    let mut lines: Vec<String> = Vec::new();
+    for b in body {
+        match b {
+            Block::Text(t) => lines.extend(t.split('\n').map(|s| s.to_string())),
+            Block::Inline(segs) => lines.push(ev.eval_inline(segs)),
+            Block::Call(c) => match ev.eval_call(c) {
+                Ok(v) => lines.push(v.to_output()),
+                Err(()) => lines.push(c.src.clone()),
+            },
+        }
+    }
+    let mut entries: Vec<(usize, String)> = Vec::new();
+    for l in &lines {
+        let t = l.trim_end();
+        if let Some(rest) = t.trim_start().strip_prefix("- ") {
+            let text = rest.trim();
+            if !text.is_empty() {
+                entries.push((t.len() - t.trim_start().len(), text.to_string()));
+            }
+        }
+    }
+    if entries.is_empty() {
+        return Err("块参数里没有 Markdown 列表".to_string());
+    }
+    // 缩进层级按出现过的缩进值定级（2 / 4 空格风格都吃），相对首项归零
+    let mut levels: Vec<usize> = entries.iter().map(|(i, _)| *i).collect();
+    levels.sort_unstable();
+    levels.dedup();
+    let items: Vec<(usize, String)> = entries
+        .into_iter()
+        .map(|(i, t)| (levels.iter().position(|&l| l == i).unwrap_or(0), t))
+        .collect();
+    let mut idx = 0;
+    Ok(build_dict(&items, &mut idx, 0))
 }
 
 /// serde_json 值 → 求值器值：对象 → 字典（保持键序）、数组 → 列表、标量按类型
@@ -939,6 +964,23 @@ mod tests {
         assert_eq!(out(".var {l}\n    - a\n\n.l::appended {b}::foreach\n    .1"), "a\nb");
         // 实参首尾空白按 Quarkdown 口径 trim：分隔符 {, } 落成 ","
         assert_eq!(out(".var {l}\n    - a\n    - b\n\n.joinstring {.l} {, }"), "a,b");
+    }
+
+    #[test]
+    fn sorted_by_lambda与字典解构() {
+        // by:{lambda}：字典迭代出 [键, 值] 对，双参 lambda 解构取值作排序键
+        let src = ".var {d}\n    .dictionary\n        - c: 3\n        - a: 1\n        - b: 2\n\n.d::sorted by:{k v: .v}::foreach\n    .1::first";
+        assert_eq!(out(src), "a\nb\nc");
+        // 多参数 lambda 解构：foreach 收 [键, 值] 对按位置拆包（参数头独占块行）
+        assert_eq!(
+            out(".var {d}\n    .dictionary\n        - x: 1\n        - y: 2\n\n.foreach {.d}\n    k v:\n    .k=.v"),
+            "x=1\ny=2"
+        );
+        // 解构 lambda 单收一个二元组也拆（bind_and_run 同口径）
+        assert_eq!(
+            out(".function {show}\n    l r:\n    .l-.r\n\n.show {.pair {a} {b}}"),
+            "a-b"
+        );
     }
 
     #[test]

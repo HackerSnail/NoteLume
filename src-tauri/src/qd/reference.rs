@@ -52,14 +52,16 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
                 1
             }
         };
+        // 编号文本按 .numbering 里该 key 的格式串渲染（如 eq: (1) → "(1)"），无登记则十进制
+        let label = super::postprocess::format_counter(ev, &key, n);
         if let Some(id) = refr {
-            ev.numbered.push((id, n));
+            ev.numbered.push((id, label.clone()));
         }
         let body = match &call.body {
             Some(b) if !b.is_empty() => b.clone(),
-            _ => return Ok(Value::Str(super::value::fmt_num(n as f64))), // 无 body：只出编号
+            _ => return Ok(Value::Str(label)), // 无 body：只出编号
         };
-        ev.call_block(&body, &[Value::Str(super::value::fmt_num(n as f64))], 0)
+        ev.call_block(&body, &[Value::Str(label)], 0)
             .map_err(|()| ".numbered 内容求值失败".to_string())
     });
 
@@ -82,14 +84,15 @@ pub fn register(m: &mut HashMap<String, Builtin>) {
     add(m, "marker", |_, _| Ok(Value::None));
 }
 
-/// 引用占位符统一解析：按账本里的 ref id 出编号；查不到 [???]（Kotlin 未解析引用同款）。
+/// 引用占位符统一解析：按账本里的 ref id 出登记的引用文本（编号已按格式串渲染）；
+/// 查不到 [???]（Kotlin 未解析引用同款）。
 pub fn resolve_refs(ev: &mut Evaluator, out: &mut String) {
     if ev.refs.is_empty() {
         return;
     }
     for (i, id) in ev.refs.iter().enumerate() {
         let label = match ev.numbered.iter().find(|(rid, _)| rid == id) {
-            Some((_, n)) => super::value::fmt_num(*n as f64),
+            Some((_, label)) => label.clone(),
             None => "[???]".to_string(),
         };
         *out = out.replace(&format!("{{{{nlref-{}}}}}", i), &label);
