@@ -48,16 +48,16 @@ t('网格规模：10×8，默认 2×2', () => {
   openPicker()
   assert.equal(doc.querySelectorAll('.nl-tp-cell').length, MAX_ROWS * MAX_COLS)
   assert.deepStrictEqual([MAX_ROWS, MAX_COLS], [8, 10])
-  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '2 × 2')
+  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '2 行 × 2 列')
   assert.ok(cellAt(1, 1).classList.contains('on'))
   assert.ok(!cellAt(1, 2).classList.contains('on'))
   closeTableSizePicker()
 })
 
-t('悬停：高亮到命中的格子，提示给出范围', () => {
+t('悬停：高亮到命中的格子，提示给出范围（行 × 列，口径与插入一致）', () => {
   const picks = openPicker()
   mouse(cellAt(2, 3), 'mousemove')
-  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '3 × 4')
+  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '3 行 × 4 列')
   assert.ok(cellAt(0, 0).classList.contains('on'))
   assert.ok(cellAt(2, 3).classList.contains('on'))
   assert.ok(!cellAt(2, 4).classList.contains('on'))
@@ -92,13 +92,25 @@ t('键盘：方向键移动（越界钳住）+ Enter 落定', () => {
   key('ArrowDown')
   key('ArrowDown')
   key('ArrowRight')
-  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '4 × 3')
+  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '4 行 × 3 列')
   key('ArrowUp')
   key('ArrowUp')
   key('ArrowUp') // 钳回第 1 行
-  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '1 × 3')
+  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '1 行 × 3 列')
   key('Enter')
   assert.deepEqual(picks, [[1, 3]])
+  assert.equal(doc.querySelector('.nl-table-picker'), null)
+})
+
+t('键盘：Tab 右移换行，末格再按落定', () => {
+  const picks = openPicker()
+  key('Tab')
+  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '2 行 × 3 列')
+  // 从 2×2 到最后一格（8×10）共 68 步，上面已走 1 步，再走 67 步到位
+  for (let i = 0; i < (MAX_ROWS - 2) * MAX_COLS + (MAX_COLS - 2) - 1; i++) key('Tab')
+  assert.equal(doc.querySelector('.nl-tp-hint').textContent, '8 行 × 10 列')
+  key('Tab')
+  assert.deepEqual(picks, [[8, 10]])
   assert.equal(doc.querySelector('.nl-table-picker'), null)
 })
 

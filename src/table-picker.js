@@ -3,7 +3,7 @@
 // 入口：Ctrl+T / 命令面板 / mac「段落」菜单（editor.block.table）与斜杠菜单的「表格」项。
 // 选中范围后回调 onPick(rows, cols)，由调用方落进文档——本模块只管选，不管插。
 // 机制：纯 DOM 浮层（定位 / 关闭套路同 slash-menu、code-lang-picker），网格 10×8，
-// 悬停高亮 + 底部尺寸提示；方向键移动、Enter 落定、Esc 或点外面关闭。
+// 悬停高亮 + 底部尺寸提示；方向键 / Tab 移动、Enter 落定、Esc 或点外面关闭。
 // 同刻只开一个：入口可能连点，或快捷键与斜杠菜单前后脚触发。
 
 import { t } from './i18n.js'
@@ -74,7 +74,9 @@ export function showTableSizePicker(view, { pos, onPick }) {
   function onDocDown(e) {
     if (!el.contains(e.target)) close()
   }
-  // 键盘：方向键移、Enter 落定、Esc 关。capture 阶段拿，免得编辑器 keymap 先处理
+  // 键盘：方向键移、Tab 同右移（Shift+Tab 左移）、Enter 落定、Esc 关。capture 阶段拿，
+  // 免得编辑器 keymap 先处理。Tab 走到最后一格再按 = 直接落定（QA GU-019：此前穿透给
+  // 编辑器 keymap，不建行不退出还丢焦点）
   function onKeyDown(e) {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return }
     if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); pick(); return }
@@ -84,14 +86,26 @@ export function showTableSizePicker(view, { pos, onPick }) {
     else if (e.key === 'ArrowDown') dr = 1
     else if (e.key === 'ArrowLeft') dc = -1
     else if (e.key === 'ArrowRight') dc = 1
+    else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) move(-1, 0); else next(); return }
     else return
     e.preventDefault()
     e.stopPropagation()
+    move(dr, dc)
+  }
+
+  function move(dr, dc) {
     cur = {
       row: Math.min(MAX_ROWS - 1, Math.max(0, cur.row + dr)),
       col: Math.min(MAX_COLS - 1, Math.max(0, cur.col + dc)),
     }
     paint()
+  }
+
+  // Tab 前进：到右边界换行，最后一格（8×10）再按 = 落定
+  function next() {
+    if (cur.row === MAX_ROWS - 1 && cur.col === MAX_COLS - 1) { pick(); return }
+    if (cur.col === MAX_COLS - 1) move(1, -cur.col)
+    else move(0, 1)
   }
 
   grid.addEventListener('mousemove', (e) => {

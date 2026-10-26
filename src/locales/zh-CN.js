@@ -138,11 +138,16 @@ export default {
   'menu.revealInFolder': '在资源管理器中显示',
   'menu.newFileEllipsis': '新建文件…',
   'menu.newFolderEllipsis': '新建文件夹…',
+  'menu.tabClose': '关闭标签页',
+  'menu.tabCloseOthers': '关闭其他标签页',
+  'menu.tabPin': '固定标签页',
+  'menu.copyPath': '复制文件路径',
   'menu.noRecent': '（暂无最近打开记录）',
   'ctx.cut': '剪切',
   'ctx.copy': '复制',
   'ctx.paste': '粘贴',
   'ctx.selectAll': '全选',
+  'ctx.undo': '撤消',
   'ctx.imgSave': '将图像另存为…',
   'ctx.imgCopy': '复制图像',
   'ctx.imgCopyLink': '复制图像链接',
@@ -324,6 +329,7 @@ export default {
 
   // —— 斜杠菜单 ——
   'slash.head': '插入块',
+  'slash.noMatch': '没有匹配的块（Esc 取消并清掉「/」）',
 
   // —— 弹窗（main.js 各调用点） ——
   'dlg.unsavedTitle': '未保存的更改',
@@ -378,6 +384,7 @@ export default {
   'common.expand': '展开',
   'common.collapse': '收起',
   'outline.emptyTitle': '（空标题）',
+  'outline.empty': '没有标题',
   'ui.noDocOpen': '（无打开文档）',
   'doc.untitled': '未命名',
   'doc.untitledMd': '未命名.md',
@@ -422,7 +429,7 @@ export default {
   'status.oneTab': '只有一个标签页',
   'status.saveCanceled': '已取消保存（文件仍在临时目录）',
   'status.savedTo': '已保存到：{abs}',
-  'msg.saveFailedDlg': '保存失败：{err}',
+  'msg.saveFailedDlg': '{err}',
   'status.opened': '已打开：{rel}',
   'status.canvasOpened': '已打开画布：{path}',
   'msg.canvasOpenFailed': '打开画布失败：{err}',
@@ -489,8 +496,11 @@ export default {
   'status.noTab': '没有打开的标签页',
   'status.imgOnlyMd': '插入图片仅用于 Markdown 文档',
   'status.clipFail': '读取剪贴板失败：{err}',
+  'status.pathCopied': '已复制路径：{path}',
   'status.clipEmpty': '剪贴板里没有文本',
   'status.imgSaved': '已保存图片：{name}',
+  'status.imgInserted': '已插入 {n} 张图片',
+  'status.imgInsertFailed': '{n} 张图片写入失败',
   'status.imgCopied': '已复制图片到剪贴板',
   'status.imgLinkCopied': '已复制图片链接',
   'status.imgFail': '图片操作失败：{msg}',
@@ -792,7 +802,7 @@ export default {
   'table.mergeCells': '合并单元格',
   'table.splitCells': '拆分单元格',
   'table.tableDelete': '删除整个表格',
-  'table.sizeHint': '{rows} × {cols}',
+  'table.sizeHint': '{rows} 行 × {cols} 列',
 
   // —— 文档内查找栏（find-in-doc.js） ——
   'find.placeholder': '在本篇文档中查找…',
@@ -807,6 +817,7 @@ export default {
   'find.replaceOneTip': '替换当前项（Enter）',
   'find.replaceAll': '全部替换',
   'find.replaceAllTip': '替换全部命中',
+  'find.confirmDeleteAll': '替换框为空，将删除全部 {n} 处命中。继续？',
 
   // —— 文档属性面板（frontmatter-panel.js） ——
   'fm.needDoc': '打开一个 Markdown 文档后可编辑文档属性',

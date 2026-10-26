@@ -75,8 +75,9 @@ export function createSlashMenuPlugin() {
     // 仅当整块内容就是 `/query`（即块是从空开始敲的），避免命中行中斜杠
     const fullText = $h.parent.textContent || ''
     if (fullText !== before) return null
+    // 过滤后没有命中也照常返回（items 为空）：菜单要显示「无匹配」空态，
+    // 而不是整个消失，让 /xxx 悬在文档里没人管（QA GU-018）
     const items = filterItems(m[1])
-    if (!items.length) return null
     return { from: blockFrom, to: caret, blockStart: $h.before($h.depth), blockEnd: $h.after($h.depth), items }
   }
 
@@ -146,6 +147,12 @@ export function createSlashMenuPlugin() {
     head.className = 'nl-suggest-head'
     head.textContent = t('slash.head')
     el.appendChild(head)
+    if (!spec.items.length) {
+      const none = document.createElement('div')
+      none.className = 'nl-suggest-item nl-slash-empty'
+      none.textContent = t('slash.noMatch')
+      el.appendChild(none)
+    }
     spec.items.forEach((it, i) => {
       const item = document.createElement('div')
       item.className = 'nl-suggest-item' + (i === 0 ? ' active' : '')
@@ -179,6 +186,21 @@ export function createSlashMenuPlugin() {
     removeMenu()
   }
 
+  // Esc：收菜单并清掉块里的 /xxx（QA GU-018：此前只摘菜单，斜杠串残留在文档里）
+  function escapeToBlank(view) {
+    const spec = menu && menu.spec
+    removeMenu()
+    if (!spec) return
+    const st = view.state
+    const $h = st.selection.$head
+    if (!$h.parent || $h.parent.type.name !== 'paragraph') return
+    const start = $h.start()
+    if (!/^\/([A-Za-z0-9_\u4e00-\u9fff]*)$/.test(st.doc.textBetween(start, $h.pos, '\u0000', '\u0000'))) return
+    const tr = st.tr.replaceWith(spec.blockStart, spec.blockEnd, para())
+    try { tr.setSelection(Selection.near(tr.doc.resolve(spec.blockStart))) } catch (_) {}
+    view.dispatch(tr.scrollIntoView())
+  }
+
   return new Plugin({
     key: slashKey,
     props: {
@@ -188,7 +210,7 @@ export function createSlashMenuPlugin() {
         if (event.key === 'ArrowUp') { event.preventDefault(); moveActive(-1); return true }
         if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); applyActive(view); return true }
         if (event.key === 'Tab') { event.preventDefault(); applyActive(view); return true }
-        if (event.key === 'Escape') { event.preventDefault(); removeMenu(); return true }
+        if (event.key === 'Escape') { event.preventDefault(); escapeToBlank(view); return true }
         return false
       },
     },

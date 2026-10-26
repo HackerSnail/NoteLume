@@ -20,7 +20,14 @@ export function createShortcutSettings(deps) {
   const { getCommands, getOverrides, saveOverrides, isMac = false, setStatus } = deps
   let overlay = null
   let bodyEl = null
+  let statusEl = null // 冲突 / 保存结果写在面板内（setStatus 只进 console，用户看不到失败原因）
   let recordingId = null
+
+  function showStatus(msg, isErr) {
+    if (!statusEl) return
+    statusEl.textContent = msg
+    statusEl.classList.toggle('err', !!isErr)
+  }
 
   function titleOf(id) {
     const c = getCommands().find((x) => x.id === id)
@@ -44,11 +51,14 @@ export function createShortcutSettings(deps) {
     const hit = conflicts.find((c) => c.ids.includes(id))
     if (hit) {
       const others = hit.ids.filter((x) => x !== id).map(titleOf)
-      setStatus(t('ks.conflict', { binding: formatBinding(hit.binding, isMac), names: others.join('、') }))
+      const msg = t('ks.conflict', { binding: formatBinding(hit.binding, isMac), names: others.join('、') })
+      showStatus(msg, true)
+      setStatus(msg)
       render()
       return false
     }
     saveOverrides(ov)
+    showStatus(t('ks.saved'), false)
     setStatus(t('ks.saved'))
     render()
     return true
@@ -162,6 +172,7 @@ export function createShortcutSettings(deps) {
     resetAll.addEventListener('click', () => {
       stopRecording()
       saveOverrides({})
+      showStatus(t('ks.resetAllDone'), false)
       setStatus(t('ks.resetAllDone'))
       render()
     })
@@ -175,6 +186,9 @@ export function createShortcutSettings(deps) {
     bodyEl.className = 'nl-ks-body'
 
     box.append(head, bodyEl)
+    statusEl = document.createElement('div')
+    statusEl.className = 'nl-panel-status'
+    box.appendChild(statusEl)
     overlay.appendChild(box)
     overlay.addEventListener('pointerdown', (e) => {
       if (e.target === overlay) close()

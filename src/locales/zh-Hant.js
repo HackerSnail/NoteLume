@@ -138,11 +138,16 @@ export default {
   'menu.revealInFolder': '在檔案總管中顯示',
   'menu.newFileEllipsis': '新增檔案…',
   'menu.newFolderEllipsis': '新增資料夾…',
+  'menu.tabClose': '關閉標籤頁',
+  'menu.tabCloseOthers': '關閉其他標籤頁',
+  'menu.tabPin': '釘選標籤頁',
+  'menu.copyPath': '複製檔案路徑',
   'menu.noRecent': '（暫無最近開啟記錄）',
   'ctx.cut': '剪下',
   'ctx.copy': '複製',
   'ctx.paste': '貼上',
   'ctx.selectAll': '全選',
+  'ctx.undo': '復原',
   'ctx.imgSave': '將圖像另存為…',
   'ctx.imgCopy': '複製圖像',
   'ctx.imgCopyLink': '複製圖像連結',
@@ -324,6 +329,7 @@ export default {
 
   // —— 斜杠選單 ——
   'slash.head': '插入區塊',
+  'slash.noMatch': '沒有符合的區塊（Esc 取消並清掉「/」）',
 
   // —— 彈窗（main.js 各呼叫點） ——
   'dlg.unsavedTitle': '未儲存的變更',
@@ -378,6 +384,7 @@ export default {
   'common.expand': '展開',
   'common.collapse': '收起',
   'outline.emptyTitle': '（空標題）',
+  'outline.empty': '沒有標題',
   'ui.noDocOpen': '（無開啟文件）',
   'doc.untitled': '未命名',
   'doc.untitledMd': '未命名.md',
@@ -422,7 +429,7 @@ export default {
   'status.oneTab': '只有一個分頁',
   'status.saveCanceled': '已取消儲存（檔案仍在暫存目錄）',
   'status.savedTo': '已儲存到：{abs}',
-  'msg.saveFailedDlg': '儲存失敗：{err}',
+  'msg.saveFailedDlg': '{err}',
   'status.opened': '已開啟：{rel}',
   'status.canvasOpened': '已開啟畫布：{path}',
   'msg.canvasOpenFailed': '開啟畫布失敗：{err}',
@@ -489,8 +496,11 @@ export default {
   'status.noTab': '沒有開啟的分頁',
   'status.imgOnlyMd': '插入圖片僅適用於 Markdown 文件',
   'status.clipFail': '讀取剪貼簿失敗：{err}',
+  'status.pathCopied': '已複製路徑：{path}',
   'status.clipEmpty': '剪貼簿裡沒有文字',
   'status.imgSaved': '已儲存圖片：{name}',
+  'status.imgInserted': '已插入 {n} 張圖片',
+  'status.imgInsertFailed': '{n} 張圖片寫入失敗',
   'status.imgCopied': '已複製圖片到剪貼簿',
   'status.imgLinkCopied': '已複製圖片連結',
   'status.imgFail': '圖片操作失敗：{msg}',
@@ -791,7 +801,7 @@ export default {
   'table.mergeCells': '合併儲存格',
   'table.splitCells': '拆分儲存格',
   'table.tableDelete': '刪除整個表格',
-  'table.sizeHint': '{rows} × {cols}',
+  'table.sizeHint': '{rows} 行 × {cols} 列',
 
   // —— 文件內尋找欄（find-in-doc.js） ——
   'find.placeholder': '在本篇文件中尋找…',
@@ -806,6 +816,7 @@ export default {
   'find.replaceOneTip': '取代目前項目（Enter）',
   'find.replaceAll': '全部取代',
   'find.replaceAllTip': '取代全部命中',
+  'find.confirmDeleteAll': '取代框為空，將刪除全部 {n} 處命中。繼續？',
 
   // —— 文件屬性面板（frontmatter-panel.js） ——
   'fm.needDoc': '開啟一個 Markdown 文件後可編輯文件屬性',

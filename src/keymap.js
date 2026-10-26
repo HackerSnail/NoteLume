@@ -22,10 +22,12 @@ export function detectIsMac() {
 }
 
 // 基础键是否合法：可打印单字符（非空格）、F1–F12，或带修饰的 Tab（Ctrl+Tab 切标签页）
+// Tab 不分大小写：注册串 'Ctrl-Tab' 是大写形，eventToBinding 产出的是小写 'tab'，
+// 只认大写会让事件反解在 resolveBinding 一层被误判非法，Ctrl+Tab 就静默失灵
 function validBase(base) {
   if (base == null) return false
   if (isFKey(base)) return true
-  if (base === 'Tab') return true
+  if (typeof base === 'string' && base.toLowerCase() === 'tab') return true
   return base.length === 1 && base !== ' '
 }
 

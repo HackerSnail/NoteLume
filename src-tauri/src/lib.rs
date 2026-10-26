@@ -310,7 +310,8 @@ fn write_md_file(vault_root: String, path: String, content: String) -> Result<()
     if !parent.starts_with(&root) {
         return Err(ui_msg!("pathOutsideVault"));
     }
-    fs::write(&abs, content).map_err(|e| ui_msg!("saveFailed", "err" => e))
+    // 文案带相对路径：库里改错哪个文件一眼可辨（QA GU-007/008：错误里没有文件名）
+    fs::write(&abs, content).map_err(|e| ui_msg!("saveFailed", "path" => path, "err" => e))
 }
 
 /// 在库根按文件名查找 md（wikilink 解析），命中返回相对路径
@@ -422,9 +423,7 @@ fn trash_err(e: trash::Error) -> String {
 #[tauri::command]
 fn delete_file(vault_root: String, path: String) -> Result<(), String> {
     let abs = abs_in_vault(&vault_root, &path)?;
-    if abs.is_dir() {
-        return Err(ui_msg!("noFolderDelete"));
-    }
+    // 目录也走回收站（trash crate 全平台支持目录）；此前拒删目录，界面上连删除入口都没有
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut))] // 非 mac 没有可选的通道
     let mut ctx = trash::TrashContext::new();
     #[cfg(target_os = "macos")]
@@ -562,6 +561,35 @@ pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
+/// 魔数嗅探：内容是否为常见图片格式（PNG / JPEG / GIF / WebP / BMP / ICO / SVG）。
+/// 只挡「根本不是图片」的文件（扩展名叫 .png 的文本 / 二进制垃圾，QA GU-027 的 fake.png），
+/// 不校验完整性——截断的真图仍放行，读取端自有降级。
+fn looks_like_image(bytes: &[u8]) -> bool {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return true; // PNG
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return true; // JPEG
+    }
+    if bytes.len() >= 6 && (&bytes[..6] == b"GIF87a" || &bytes[..6] == b"GIF89a") {
+        return true; // GIF
+    }
+    if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return true; // WebP
+    }
+    if bytes.starts_with(b"BM") {
+        return true; // BMP
+    }
+    if bytes.len() >= 4 && &bytes[..4] == [0x00, 0x00, 0x01, 0x00] {
+        return true; // ICO
+    }
+    // SVG 是文本：剥 BOM 与行首空白后以 <svg 开头，或 <?xml 声明后跟着 <svg
+    let body = bytes.strip_prefix([0xEF, 0xBB, 0xBF].as_slice()).unwrap_or(bytes);
+    let text = String::from_utf8_lossy(body);
+    let text = text.trim_start();
+    text.starts_with("<svg") || (text.starts_with("<?xml") && text.contains("<svg"))
+}
+
 /// 把库外图片拷入该文档同级的 assets/ 目录，返回可直接写入 md 的相对链接。
 #[tauri::command]
 fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<String, String> {
@@ -585,6 +613,10 @@ fn copy_image_asset(vault_root: String, md_rel: String, path: String) -> Result<
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
     let bytes = fs::read(&src).map_err(|e| ui_msg!("readImgFailed", "err" => e))?;
+    // 内容校验在写盘前：扩展名骗得过 IMG_EXTS，骗不过魔数
+    if !looks_like_image(&bytes) {
+        return Err(ui_msg!("imgNotImage", "path" => name));
+    }
     let stem = name.rsplit_once('.').map_or(name.as_str(), |(s, _)| s).to_string();
     let mut file_name = name.clone();
     let mut dest = assets_dir.join(&file_name);
@@ -2999,13 +3031,12 @@ mod tests {
 
         // 借 .. 越权跳出被 abs_in_vault 拒绝
         assert!(delete_file(root.clone(), "../outside.md".to_string()).is_err());
-        // 目录被拒（仅允许删文件）
-        assert!(delete_file(root.clone(), "sub".to_string()).is_err());
         // 不存在的文件被拒
         assert!(delete_file(root.clone(), "ghost.md".to_string()).is_err());
-        // 三条拒绝均在调用回收站前就返回 Err，note.md 应仍在原处
+        // 两条拒绝均在调用回收站前就返回 Err，note.md 应仍在原处
         assert!(tmp.join("note.md").exists());
-        // 注：成功路径会真的把文件移入系统回收站，为避免污染用户回收站，happy path 交由手动验证
+        // 注：成功路径（文件 / 目录）会真的移入系统回收站，为避免污染用户回收站，
+        // happy path 交由手动验证；目录删除由界面入口（文件夹右键「移入回收站」）手动覆盖
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -3323,6 +3354,50 @@ mod tests {
         assert!(save_image_from_data_uri(bad.to_string_lossy().to_string(), "https://x/a.png".into()).is_err());
         assert!(save_image_from_data_uri(bad.to_string_lossy().to_string(), "data:image/png;base64,".into()).is_err());
         assert!(!bad.exists());
+    }
+
+    #[test]
+    fn looks_like_image_accepts_known_magics_and_rejects_garbage() {
+        let png = b"\x89PNG\r\n\x1a\nrest".to_vec();
+        assert!(looks_like_image(&png)); // PNG
+        assert!(looks_like_image(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00])); // JPEG
+        assert!(looks_like_image(b"GIF89a0102"));
+        assert!(looks_like_image(b"GIF87a0102"));
+        assert!(looks_like_image(b"RIFF\x24\x00\x00\x00WEBPVP8 ")); // WebP
+        assert!(looks_like_image(b"BM\x36\x00\x00\x00")); // BMP
+        assert!(looks_like_image(&[0x00, 0x00, 0x01, 0x00, 0x01])); // ICO
+        // SVG 是文本，但要真以 <svg / <?xml（可带 BOM 与前导空白）开头
+        assert!(looks_like_image(b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"));
+        assert!(looks_like_image("\u{feff}  <?xml version=\"1.0\"?><svg/>".as_bytes()));
+        assert!(!looks_like_image(b"<?xml-stylesheet?>")); // xml 指令但不是 svg 文档
+        // 文本 / 随机字节 / 空文件都拒绝
+        assert!(!looks_like_image(b"hello, definitely not an image"));
+        assert!(!looks_like_image(&[0x01, 0x02, 0x03, 0x04]));
+        assert!(!looks_like_image(b""));
+    }
+
+    #[test]
+    fn copy_image_asset_rejects_non_image_content() {
+        let tmp = std::env::temp_dir().join(format!("notelume-fake-img-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let doc_dir = tmp.join("notes");
+        fs::create_dir_all(&doc_dir).unwrap();
+        let fake = tmp.join("fake.png");
+        fs::write(&fake, b"plain text pretending to be a png").unwrap();
+        let root = tmp.to_string_lossy().to_string();
+
+        let err = copy_image_asset(root.clone(), "notes/a.md".into(), fake.to_string_lossy().to_string()).unwrap_err();
+        assert!(err.contains("不是有效的图片文件"), "错误应是「不是有效的图片文件」，实得：{err}");
+        // 不落任何副本
+        assert!(!doc_dir.join("assets").join("fake.png").exists());
+
+        // 真 PNG 魔数的文件照常入库（只写 8 字节头，不校验完整性）
+        let real = tmp.join("real.png");
+        fs::write(&real, b"\x89PNG\r\n\x1a\npayload").unwrap();
+        let rel = copy_image_asset(root, "notes/a.md".into(), real.to_string_lossy().to_string()).unwrap();
+        assert_eq!(rel, "./assets/real.png");
+        assert!(doc_dir.join("assets").join("real.png").exists());
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
