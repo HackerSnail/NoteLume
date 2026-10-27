@@ -56,6 +56,7 @@ export async function openGraph({ vaultRoot, currentPath, onNodeClick, onClose }
   const view = { x: 0, y: 0, scale: 1 }  // 平移 + 缩放
   let hoverNode = null
   let dragNode = null
+  let dragFrom = null  // 按下时的屏幕坐标：拖完松手要按位移区分点击
   let panOrigin = null
   let alpha = 1
   let warmup = CFG.WARMUP_TICKS
@@ -201,6 +202,7 @@ export async function openGraph({ vaultRoot, currentPath, onNodeClick, onClose }
     if (n) {
       dragNode = n
       n.fixed = true
+      dragFrom = { mx: evt.clientX, my: evt.clientY }
       canvas.setPointerCapture?.(evt.pointerId)
     } else {
       panOrigin = { mx: evt.clientX, my: evt.clientY, vx: view.x, vy: view.y }
@@ -224,11 +226,13 @@ export async function openGraph({ vaultRoot, currentPath, onNodeClick, onClose }
   canvas.addEventListener('mouseup', (evt) => {
     if (dragNode) {
       const n = dragNode
+      const from = dragFrom
       dragNode = null
+      dragFrom = null
       n.fixed = false
-      // 命中判定：位移小于 3px 视为点击
-      const p = toWorld(evt)
-      const dx = p.x - n.x, dy = p.y - n.y
+      // 命中判定：按下到松手位移小于 3px 视为点击（节点一直跟着鼠标，其自身坐标不能拿来算）
+      const dx = from ? evt.clientX - from.mx : 0
+      const dy = from ? evt.clientY - from.my : 0
       if (dx * dx + dy * dy < 9 && onNodeClick) {
         onNodeClick(n.id)
         close()
