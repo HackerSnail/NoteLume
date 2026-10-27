@@ -81,7 +81,7 @@ function escapeCss(s) {
 export function printStyles(options, title) {
   const o = options || {}
   const chunks = []
-  chunks.push('@page { margin: 18mm 20mm; }')
+  chunks.push('@page { size: A4; margin: 18mm 20mm; }')
   // 排版件之外的基版：克隆进来的 ProseMirror DOM 带的是屏幕样式类，纸面排印自给
   chunks.push(
     '.nl-print-doc { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 11pt; line-height: 1.65; color: #111; }' +
@@ -132,21 +132,38 @@ export function printStyles(options, title) {
   return chunks.join('\n')
 }
 
-// ============ 编排：克隆 → 排版件 → 预分页 → 打印 → 清理 ============
+// ============ 编排：克隆 → 排版件 → 预分页 → 打印 / 出 PDF → 清理 ============
+
+// 分页是一页一帧推出来的：Paged.js 的排版队列 `Queue.tick` 挂在 requestAnimationFrame 上，
+// 窗口被遮挡 / 最小化时 WebKit 不再出帧，队列就停在半路（真实 WebKit 探针复现过：页面盒数
+// 恒定不动，而 setInterval 照跑）。没有上限的话状态栏会一直停在「正在排版…」，
+// 所以到点按排版失败处理——打印退回普通打印，导出给出错误提示。
+const PREVIEW_TIMEOUT_MS = 60_000
 
 /**
- * 打印排版主链路（Ctrl+P 确认选项后调用）。
- * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean, headingNumbering?: boolean }} options
- * @param {string} title 页眉 / 封面标题（main.js 传当前文件名主干）
- *  焦点窗格取不到内容时直接 window.print()（空态兜底）；预分页抛错向上抛，
- *  `#print-root` 与 body 标记在 finally 里摘除——打印完与抛错两条路都不留残骸。
+ * 关掉 Paged.js 挂在每个页面盒上的重排监听（`Page.removeListeners`）。
+ * 这些监听是为了「页面内容变了就重排该页」，而排版一旦完成，逐页尺寸就该定死了；
+ * 截取态改容器 transform、teardown 摘 #print-root 都会让回调落到已经被移走的节点上，
+ * 进 `findEndToken` → `findElement` 读 null 的 `data-ref`。Blink 侧同一条链路 A/B：
+ * 不关监听时四组夹具（9 / 7 / 3 / 22 页）抛 6 / 6 / 0 / 19 条
+ * 「reading 'getAttribute'」，关掉后四组都是 0。更要紧的是逐页截取途中重排会把
+ * 正在截的那一页换掉。
  */
-export async function printPaged(options, title = '') {
-  const sourceEl = document.querySelector('.nl-pane.focused .ProseMirror')
-  if (!sourceEl) {
-    window.print()
-    return
+function stopPagedObservers(chunker) {
+  for (const page of (chunker && chunker.pages) || []) {
+    if (typeof page.removeListeners === 'function') page.removeListeners()
   }
+}
+
+/**
+ * 预分页共用链路：克隆焦点窗格 → 封面 / 目录 → Paged.js 分页。
+ * @returns {Promise<{printRoot: HTMLElement, chunker: object}|null>} 挂好的容器与排版器
+ *  （排版器用来关掉页面盒上的重排监听）。取不到焦点窗格返回 null；预览抛错或超时先把已挂载
+ *  的容器摘干净再向上抛，调用方不必管残骸。
+ */
+async function previewPaged(options, title) {
+  const sourceEl = document.querySelector('.nl-pane.focused .ProseMirror')
+  if (!sourceEl) return null
 
   const doc = document.createElement('div')
   doc.className = 'nl-print-doc'
@@ -199,14 +216,115 @@ export async function printPaged(options, title = '') {
   document.body.appendChild(printRoot)
   document.body.setAttribute('data-paged-print', '')
 
+  // 动态 import：pagedjs 只在真打印时加载，node 单测不必拖它进来
+  const { Previewer } = await import('pagedjs')
+  const previewer = new Previewer()
+  // stylesheets 参数是「URL → CSS 文本」的对象：直接传 CSS 字符串会被当成 URL 去 fetch，
+  // 拿回整份 index.html 再按 CSS 解析，报「... is not a valid selector」
+  const running = previewer.preview(doc, [{ 'notelume-print.css': printStyles(options, title) }], printRoot)
+  // 超时只是不再等它，这一路之后还会自己 settle；不接住就是一条无人处理的 rejection
+  running.catch(() => {})
+  let timer
   try {
-    // 动态 import：pagedjs 只在真打印时加载，node 单测不必拖它进来
-    const { Previewer } = await import('pagedjs')
-    const previewer = new Previewer()
-    await previewer.preview(doc, [printStyles(options, title)], printRoot)
+    await Promise.race([
+      running,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(t('print.timeout'))), PREVIEW_TIMEOUT_MS)
+      }),
+    ])
+    clearTimeout(timer)
+    // Paged.js 插进 head 的 @page 同时管着纸面：这里补一条更靠后的，把纸面钉成 A4 零边距，
+    // 18mm/20mm 只留在页面盒内当版心，否则每个页面盒会被纸面边距再缩一次、还会被劈成两页
+    const paper = document.createElement('style')
+    paper.id = 'nl-print-paper'
+    paper.textContent = '@media print { @page { size: 210mm 297mm; margin: 0 } }'
+    document.head.appendChild(paper)
+  } catch (e) {
+    clearTimeout(timer)
+    teardown(printRoot)
+    throw e
+  }
+  return { printRoot, chunker: previewer.chunker }
+}
+
+function teardown(printRoot) {
+  if (printRoot && printRoot.parentNode) printRoot.parentNode.removeChild(printRoot)
+  document.body.removeAttribute('data-paged-print')
+  document.body.removeAttribute('data-nl-pdf')
+  for (const id of ['nl-pdf-capture', 'nl-print-paper']) {
+    const el = document.getElementById(id)
+    if (el) el.remove()
+  }
+  // Paged.js 每次 preview 都往 head 追加解析后的样式表，不清会带着上一篇的页眉一直堆下去
+  for (const el of document.querySelectorAll('[data-pagedjs-inserted-styles]')) el.remove()
+}
+
+/**
+ * 逐页截取几何（CSS 像素、网页坐标系）：每个 Paged.js 页面盒一个矩形。
+ * 截取态把整叠页缩到 0.75，让盒宽从 794px（210mm @96dpi）回到 595px，
+ * 配合 createPDF 的 1px = 1pt，出来的就是标准 A4（595×842pt）而不是 1.33 倍大的纸。
+ */
+function capturePages(printRoot) {
+  const boxes = [...printRoot.querySelectorAll('.pagedjs_page')]
+  if (!boxes.length) throw new Error('paged layout produced no pages')
+  return boxes.map((el) => {
+    const b = el.getBoundingClientRect()
+    return { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height }
+  })
+}
+
+/**
+ * 打印排版主链路（Ctrl+P 确认选项后调用）。
+ * @param {{ toc: boolean, pageNumbers: boolean, h1Break: boolean, cover: boolean, headingNumbering?: boolean }} options
+ * @param {string} title 页眉 / 封面标题（main.js 传当前文件名主干）
+ *  焦点窗格取不到内容时直接 window.print()（空态兜底）；预分页抛错或超时向上抛，
+ *  调用方（main.js printViaDialog）按「排版失败」退回普通打印。
+ */
+export async function printPaged(options, title = '') {
+  const laid = await previewPaged(options, title)
+  if (!laid) {
+    window.print()
+    return
+  }
+  const { printRoot, chunker } = laid
+  try {
+    stopPagedObservers(chunker)
     window.print()
   } finally {
-    if (printRoot.parentNode) printRoot.parentNode.removeChild(printRoot)
-    document.body.removeAttribute('data-paged-print')
+    teardown(printRoot)
   }
+}
+
+/**
+ * 导出 PDF 主链路（mac）：预分页后把每个页面盒交给 `onSave(rects)` 逐页截取，不弹打印面板。
+ * @param {Function} onSave 拿到逐页矩形后写文件，返回 Promise
+ */
+export async function exportPdf(options, title = '', onSave) {
+  const laid = await previewPaged(options, title)
+  if (!laid) throw new Error('no focused pane')
+  const { printRoot, chunker } = laid
+  stopPagedObservers(chunker)
+  const style = document.createElement('style')
+  style.id = 'nl-pdf-capture'
+  style.textContent = captureCss()
+  document.head.appendChild(style)
+  document.body.setAttribute('data-nl-pdf', '')
+  window.scrollTo(0, 0)
+  try {
+    await onSave(capturePages(printRoot))
+  } finally {
+    teardown(printRoot)
+  }
+}
+
+// 截取态样式不带媒体限定：createPDF 实测按网页坐标截 rect、忽略 @page size，
+// 无论它用哪种介质，屏上都只剩 #print-root 这一叠页。
+function captureCss() {
+  return (
+    '@page { margin: 0 }' +
+    'body[data-nl-pdf] > :not(#print-root) { display: none !important; }' +
+    'body[data-nl-pdf] #print-root { position: static; left: auto; top: 0; width: auto;' +
+    ' transform: scale(.75); transform-origin: 0 0; }' +
+    '#print-root .pagedjs_page { margin: 0 !important; box-shadow: none !important; }'
+  )
 }

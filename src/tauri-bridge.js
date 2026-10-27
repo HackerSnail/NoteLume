@@ -321,6 +321,11 @@ export function exportFile(absPath, content) {
   return invoke('export_file', { args: { absPath, content } })
 }
 
+/** mac：逐页截取矩形交给 Rust（WKWebView createPDF + PDFKit 合并），不弹打印面板 */
+export function exportPdfFile(absPath, pages) {
+  return invoke('export_pdf', { path: absPath, pages })
+}
+
 /** P2：知识图谱数据 {nodes:[{path,title}], edges:[{s,t,w}]} */
 export function getGraphData(vaultRoot) {
   return invoke('get_graph_data', { vaultRoot })
