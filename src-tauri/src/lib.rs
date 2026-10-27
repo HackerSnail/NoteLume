@@ -938,6 +938,33 @@ fn drop_path_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+/// 用系统默认浏览器打开站外链接（「关于」对话框的仓库 / LICENSE / Releases 按钮）。
+/// 只放行 http / https，避免把任意 scheme 交给系统 shell；三平台各自的打开方式
+/// 与 reveal_in_folder 同一惯例（Windows start、macOS open、Linux xdg-open）。
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let u = url.trim();
+    if !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err(ui_msg!("openUrlFailed", "url" => u.to_string()));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", u])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(u).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(u).spawn().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// 在系统文件管理器中显示库内文件 / 文件夹（文件树右键）。Windows 用 explorer /select 选中
 /// 该项（退出码经常回 1，只要进程起得来即算成功）；macOS 用 open -R 反选；Linux 没有
 /// 通用反选，xdg-open 打开所在目录。
@@ -3968,6 +3995,7 @@ pub fn run() {
             qd_eval,
             qd_package_install,
             drop_path_is_dir,
+            open_external_url,
             reveal_in_folder,
             scan_vault,
             read_md_file,
