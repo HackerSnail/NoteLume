@@ -21,6 +21,7 @@ import {
   isImportableFileName,
   isImagePath,
   importVaultFileFrom,
+  probeExternalDrop,
   revealInFolder,
   confirmDialog,
   messageDialog,
@@ -48,6 +49,8 @@ import {
   exportDocx,
   fileToBase64,
   takeLaunchPaths,
+  openVaultWindow,
+  takeWindowVault,
   readImageDataUri,
   fetchRemoteImageDataUri,
   saveImageDataUri,
@@ -77,6 +80,7 @@ import { bindDropOpen, isDroppableName, isBinaryName } from './drop-open.js'
 import { createPaneDrag } from './pane-drag.js'
 import { mountSplitTree, normalizeTree, serializeTree, paneIds, freshId, closePane } from './split-pane.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { listen } from '@tauri-apps/api/event'
 import { initTitlebar } from './titlebar.js'
 import { openGraph } from './graph-view.js'
@@ -114,6 +118,10 @@ import { analyzeOutline, hiddenRows } from './outline-tree.js'
 import { sanitizeHtml } from './html-sanitize.js'
 import MarkdownIt from 'markdown-it'
 import { tempDir, join } from '@tauri-apps/api/path'
+
+// mac 上的系统文件管理器是访达，其余平台沿用「文件管理器」这一通用说法。
+// 各处右键入口共用这一个取词口，不在每张菜单里重复判平台。
+const revealLabel = () => t(IS_MAC ? 'menu.revealInFinder' : 'menu.revealInFolder')
 
 // 用于 HTML 导出的独立 markdown-it 实例：commonmark + table/strikethrough
 // 与 editor-schema 里的 tokenizer 分开，避免污染 schema 层的解析器
@@ -227,6 +235,12 @@ let frontmatterPanel = null
 let pluginManager = null
 let canvasView = null
 let paneDrag = null // 窗格拖拽控制器（pane-drag.js，标签 / 文件树 → 窗格）
+
+// 多窗口：settings.json 只有一份，工作区与标签列的记忆归主窗口写。拖入文件夹另开的
+// 窗口照常读设置（主题 / 语言 / 功能开关），但不写这两段——否则两个窗口交替操作会把
+// 对方的工作区覆盖掉，下次启动只剩最后动过的那个。
+const WINDOW_LABEL = window.__TAURI_INTERNALS__ ? getCurrentWindow().label : 'main'
+const IS_PRIMARY_WINDOW = WINDOW_LABEL === 'main'
 
 // 画布文件判定（JSON Canvas 规范）
 function isCanvasPath(p) {
@@ -883,7 +897,7 @@ async function openAbsPath(abs, preview = false) {
 // 工作区记忆（settings.json 的 workspace 段）：下次启动无参数时恢复上次的库与文档。
 // 内容没变不写盘（JSON 比对）：点文件不触发一次设置落盘。
 function persistWorkspace() {
-  if (!settingsStore) return
+  if (!settingsStore || !IS_PRIMARY_WINDOW) return
   const cur = settingsStore.get().workspace || {}
   const next = {
     ...cur,
@@ -979,8 +993,19 @@ async function handleOpenTargets(targets, { interactive = false, preview = false
   }
 }
 
-// 启动：取走启动参数；无参数则恢复上次工作区（p5plan §6.6「无参数则恢复上次工作区」）
+// 启动：取走启动参数；无参数则恢复上次工作区（p5plan §6.6「无参数才恢复上次工作区」）
 async function handleLaunchArgs() {
+  // 拖入文件夹另开的窗口：库路径按窗口标签暂存在 Rust 侧，先取自己的那份
+  if (!IS_PRIMARY_WINDOW) {
+    const root = await takeWindowVault().catch(() => null)
+    if (!root) return
+    try {
+      await openVaultPath(root, null)
+    } catch (e) {
+      setStatus(t('ws.restoreFailed', { msg: (e && e.message) || e }))
+    }
+    return
+  }
   let targets = []
   try {
     targets = await takeLaunchPaths()
@@ -1019,7 +1044,7 @@ function renderSingleFileTree(name) {
   li.addEventListener('click', () => openFile(name))
   // 单文件树此前没有任何右键处理：节点上弹 WebView2 原生菜单，空白区整个没菜单。
   // 行为对齐 renderNode 的文件行（菜单各项吃 rel 路径，单文件模式下 state.vaultRoot
-  // 就是该文件所在目录，重命名 / 回收站 / 资源管理器都成立）
+  // 就是该文件所在目录，重命名 / 回收站 / 在文件管理器中显示都成立）
   li.addEventListener('contextmenu', (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -1189,6 +1214,65 @@ async function importDroppedFiles(files, destDir) {
     startIndexPolling()
     setStatus(t('status.imported', { n: imported.length }))
   }
+}
+
+// —— 打包版的系统拖入 ——
+// wry 默认接管窗口拖放（dragDropEnabled），打包版里 HTML5 的 dragover / drop 收不到，
+// 只来 tauri://drag-drop 原生事件，且只带绝对路径；「是否目录」由 probe_external_drop 补。
+// 语义与「打开方式」一致：文件在当前窗口开，文件夹另开一个窗口当知识库打开。
+async function openDropTargets(targets, el) {
+  const leaf = el && el.closest ? el.closest('.nl-pane') : null
+  const paneId = leaf && leaf.dataset.paneId
+  if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
+    await focusPaneUi(paneId)
+  }
+  return handleOpenTargets(targets, { interactive: true, preview: true })
+}
+
+function bindNativeDrop() {
+  if (!window.__TAURI_INTERNALS__) return
+  const bodyEl = document.querySelector('.body')
+  const mark = (on) => { if (bodyEl) bodyEl.classList.toggle('nl-drop-on', on) }
+  getCurrentWebview()
+    .onDragDropEvent(async ({ payload }) => {
+      const p = payload || {}
+      if (p.type === 'enter' || p.type === 'over') {
+        clearDropHl() // 落点不再分左右栏：两种目标都是「打开」，树那边的「导入到某夹」高亮会误导
+        mark(true)
+        return
+      }
+      if (p.type === 'leave') {
+        clearDropHl()
+        mark(false)
+        return
+      }
+      if (p.type !== 'drop') return
+      mark(false)
+      const paths = (p.paths || []).filter(Boolean)
+      if (!paths.length) return
+      const pos = p.position || {}
+      const dpr = window.devicePixelRatio || 1
+      const el = Number.isFinite(pos.x) ? document.elementFromPoint(pos.x / dpr, pos.y / dpr) : null
+      const files = []
+      const dirs = []
+      for (const path of paths) {
+        try {
+          const info = await probeExternalDrop(path)
+          ;(info.isDir ? dirs : files).push({ path, isDir: info.isDir })
+        } catch (e) {
+          await messageDialog(t('msg.openFileFailedDlg', { msg: errText(e) }))
+        }
+      }
+      for (const d of dirs) {
+        try {
+          await openVaultWindow(d.path)
+        } catch (e) {
+          await messageDialog(t('msg.openFileFailedDlg', { msg: errText(e) }))
+        }
+      }
+      if (files.length) await openDropTargets(files, el)
+    })
+    .catch(() => {}) // 纯 web 构建没有这条通道
 }
 
 // ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
@@ -1447,7 +1531,7 @@ function showTreeMenu(clientX, clientY, node) {
   menu.className = 'cv-menu tree-menu'
   if (node.type === 'file') {
     menu.appendChild(makeMenuItem(t('menu.open'), () => openFile(node.path)))
-    menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath(node.path)))
+    menu.appendChild(makeMenuItem(revealLabel(), () => revealVaultPath(node.path)))
     menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, false)))
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.trash'), () => deleteVaultFile(node.path, node.name), true))
@@ -1456,7 +1540,7 @@ function showTreeMenu(clientX, clientY, node) {
     menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn(node.path)))
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.renameMove'), () => renameEntry(node.path, node.name, true)))
-    menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath(node.path)))
+    menu.appendChild(makeMenuItem(revealLabel(), () => revealVaultPath(node.path)))
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(t('menu.trash'), () => deleteVaultFile(node.path, node.name), true))
   }
@@ -1486,7 +1570,7 @@ function showTreeBgMenu(clientX, clientY) {
     menu.appendChild(makeMenuItem(t('menu.newFileEllipsis'), () => newFileIn('')))
     menu.appendChild(makeMenuItem(t('menu.newFolderEllipsis'), () => newFolderIn('')))
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem(t('menu.revealInFolder'), () => revealVaultPath('')))
+    menu.appendChild(makeMenuItem(revealLabel(), () => revealVaultPath('')))
   }
   placeMenu(menu, clientX, clientY)
 }
@@ -1949,7 +2033,7 @@ function openEditContextMenu(e, target) {
   placeMenu(menu, e.clientX, e.clientY)
 }
 
-// 标签条右键：关闭 / 关闭其他 / 固定预览标签 / 复制路径 / 在资源管理器中显示。
+// 标签条右键：关闭 / 关闭其他 / 固定预览标签 / 复制路径 / 在系统文件管理器中显示。
 // 条子不在焦点窗格时先切焦点——closeTab 全链路只认焦点窗格
 function openTabContextMenu(e, pane) {
   const paneId = pane.dataset.paneId
@@ -1985,7 +2069,7 @@ function openTabContextMenu(e, pane) {
       setStatus(t('status.clipFail', { err: errText(err) }))
     }
   }))
-  menu.appendChild(makeMenuItem(t('menu.revealInFolder'), async () => {
+  menu.appendChild(makeMenuItem(revealLabel(), async () => {
     if (tab.root) {
       try { await revealInFolder(tab.root, tab.rel) } catch (err) {
         await messageDialog(t('msg.revealFailed', { err: errText(err) }))
@@ -4506,7 +4590,7 @@ function commitPaneRatios() {
 // 分栏树与各窗格标签列进 settings.json 的 panes 段（拆分 / 关闭 / 拖拽结束 /
 // 开关标签都落盘）。预览与脏标记不持久化（serialize 里已剔除）。
 function persistPanes() {
-  if (!settingsStore) return
+  if (!settingsStore || !IS_PRIMARY_WINDOW) return
   const tabs = {}
   for (const paneId of paneIds(panes.tree)) {
     const strip = panes.strips.get(paneId)
@@ -4565,7 +4649,10 @@ async function boot() {
   // （上次会话的分栏布局）。旧格式（裸树）迁移时首窗格按 workspace.lastFile
   // 建一个固定标签；panes 为空 / 坏 → 单窗格空布局，走下面的工作区恢复老路。
   const wsFallback = settingsStore.get().workspace || {}
-  const panesData = normalizeTree(settingsStore.get().panes, 'p1', wsFallback.lastVault && wsFallback.lastFile ? { root: wsFallback.lastVault, rel: wsFallback.lastFile } : null)
+  // 另开的窗口不继承主窗口的上次会话（布局与标签列的记忆只归主窗口）：从单窗格空布局起
+  const panesData = IS_PRIMARY_WINDOW
+    ? normalizeTree(settingsStore.get().panes, 'p1', wsFallback.lastVault && wsFallback.lastFile ? { root: wsFallback.lastVault, rel: wsFallback.lastFile } : null)
+    : normalizeTree(null, 'p1', null)
   // 恢复出的布局里可能带着空窗格（上次会话关光了标签的窗格、恢复失败摘光的那类）。
   // 启动时直接剪掉，不留一排要手动关的空壳；首叶子保留（画布挂载点的宿主）。
   const pruned = pruneEmptyPanes(panesData)
@@ -4608,7 +4695,7 @@ async function boot() {
   // 上次会话里文件夹是被当库打开的：先把目录树铺回来，标签里的文档随后装载。
   // 只在 folderVault 为真时铺——单文件打开记住的根不该在重启后摊成整个文件夹。
   const wsBoot = settingsStore.get().workspace || {}
-  if (wsBoot.folderVault === true && wsBoot.lastVault) {
+  if (IS_PRIMARY_WINDOW && wsBoot.folderVault === true && wsBoot.lastVault) {
     try {
       await openVaultPath(wsBoot.lastVault, null)
     } catch (e) {
@@ -4780,19 +4867,13 @@ async function boot() {
   // 工作区。拖入 / 唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
   bindDropOpen({
     rootEl: document.querySelector('.body'),
-    onTargets: async (targets, e) => {
-      // 分栏后：拖进哪个窗格就落哪个窗格（落点在窗格外才用当前焦点窗格）
-      const leaf = e && e.target && e.target.closest ? e.target.closest('.nl-pane') : null
-      const paneId = leaf && leaf.dataset.paneId
-      if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
-        await focusPaneUi(paneId)
-      }
-      return handleOpenTargets(targets, { interactive: true, preview: true })
-    },
+    onTargets: (targets, e) => openDropTargets(targets, e && e.target),
   })
+  bindNativeDrop()
   // Rust 侧的唤起只排队、不带路径：事件叫醒后统一去 takeLaunchPaths 取。
   // 冷启动那次事件没人听也不丢——排着的同一份队列由 handleLaunchArgs 兜走。
   listen('file-opened', () => {
+    if (!IS_PRIMARY_WINDOW) return // 队列全应用共享：让主窗口取，另开的窗口不抢
     takeLaunchPaths()
       .then((targets) => {
         if (targets && targets.length) return handleOpenTargets(targets, { interactive: true, preview: true })

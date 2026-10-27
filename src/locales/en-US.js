@@ -141,6 +141,7 @@ export default {
   'menu.renameMove': 'Rename / Move…',
   'menu.trash': 'Move to Trash',
   'menu.revealInFolder': 'Reveal in File Manager',
+  'menu.revealInFinder': 'Reveal in Finder',
   'menu.newFileEllipsis': 'New File…',
   'menu.newFolderEllipsis': 'New Folder…',
   'menu.tabClose': 'Close Tab',

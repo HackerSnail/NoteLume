@@ -551,6 +551,27 @@ fn import_vault_file(vault_root: String, args: ImportArgs) -> Result<String, Str
     Ok(rel)
 }
 
+/// 系统拖入的路径探测：打包版 wry 接管了窗口拖放，HTML5 的 dragover / drop 收不到，
+/// 原生事件只给绝对路径。这里补回「名字 / 是否目录」，前端据此决定开文档还是另开窗口。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalDrop {
+    pub name: String,
+    pub is_dir: bool,
+}
+
+#[tauri::command]
+fn probe_external_drop(path: String) -> Result<ExternalDrop, String> {
+    let p = PathBuf::from(&path);
+    let meta = fs::metadata(&p).map_err(|e| e.to_string())?;
+    let name = p
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(ExternalDrop { name, is_dir: meta.is_dir() })
+}
+
 /// FNV-1a 64 位哈希：用于图片内容去重（同名不同内容时追加内容指纹）
 pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -3702,7 +3723,8 @@ fn set_ui_lang(lang: String) -> bool {
 //    路径只经 application:openURLs: 递来、不进 argv，要 run callback 接 RunEvent::Opened，
 //    不接就只剩「唤起应用、文件没打开」。
 //  · 单实例二次唤起：第二个进程把新路径交给第一个进程的 argv 回调。
-//  · 拖入窗口：纯前端（DataTransfer 拿路径后走同一套 openAbsPath），不经 Rust。
+//  · 拖入窗口：打包版由 wry 原生事件递绝对路径，前端 probe_external_drop 判类型后分流——
+//    文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；纯 web 构建走 DataTransfer。
 // 交付通道只做两件事：目标排进 LaunchPaths，再 emit 一次 file-opened 叫前端来取。
 // 两条都不能省：冷启动时前端监听未必就绪，排着等它 boot 来取；应用常驻时前端不再主动
 // 取，得靠这次 emit 叫醒。emit 不带路径（同一条走队列只出一份，不会开两遍）。
@@ -3785,6 +3807,69 @@ fn take_launch_paths(app: tauri::AppHandle) -> Vec<LaunchTarget> {
         Some(s) => s.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default(),
         None => Vec::new(),
     }
+}
+
+// —— 拖入文件夹 → 另开一个窗口 ——
+// 库路径按「窗口标签 → 路径」暂存，新窗口 boot 时凭自己的标签取走。不塞进 URL query：
+// 打包版走自定义协议加载前端，query 能不能透传到 location.search 取决于协议实现；
+// 也不排进 LaunchPaths：那份队列全应用共享，新窗口 boot 会把主窗口待开的目标抢走。
+#[derive(Default)]
+struct WindowVaults(std::sync::Mutex<HashMap<String, String>>);
+
+/// 新建一个窗口把 path 当知识库打开，返回窗口标签。
+/// 索引与文件监听是应用级单份（IndexState / FsWatcherState），两窗口开两个库时后 boot 的
+/// 那份接管：先开的窗口全文检索/反链会指到后开的库上，直到某个窗口重新扫描自己的库。
+#[tauri::command]
+fn open_vault_window(window: tauri::WebviewWindow, app: tauri::AppHandle, path: String) -> Result<String, String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tauri::{LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
+    static SEQ: AtomicUsize = AtomicUsize::new(2); // 主窗口算第 1 个
+    if !Path::new(&path).is_dir() {
+        return Err(ui_msg!("badPath"));
+    }
+    let label = format!("vault-{}", SEQ.fetch_add(1, Ordering::Relaxed));
+    if let Some(state) = app.try_state::<WindowVaults>() {
+        if let Ok(mut m) = state.0.lock() {
+            m.insert(label.clone(), path);
+        }
+    }
+    // 新窗口沿用拖入那个窗口的尺寸、往右下错开一格：同尺寸才看得出是「同一应用的另一个窗口」，
+    // 完全重叠会把旧窗口整个盖住。取不到几何（异常平台状态）就退回 tauri.conf.json 的默认尺寸。
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let size = window.outer_size().ok().map(|s| LogicalSize::new(s.width as f64 / scale, s.height as f64 / scale));
+    let pos = window.outer_position().ok().map(|p| {
+        let step = 40.0 * scale;
+        LogicalPosition::new((p.x as f64 + step) / scale, (p.y as f64 + step) / scale)
+    });
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title("NoteLume — Markdown 知识库编辑器")
+        .inner_size(1240.0, 820.0)
+        .min_inner_size(900.0, 600.0);
+    let builder = match size {
+        Some(s) => builder.inner_size(s.width, s.height),
+        None => builder,
+    };
+    let builder = match pos {
+        Some(p) => builder.position(p.x, p.y),
+        None => builder.center(),
+    };
+    // 与主窗口同一套标题栏：mac 用 Overlay 保留红黄绿按钮，其余平台去边框由前端 .titlebar 顶替
+    #[cfg(target_os = "macos")]
+    let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+    let win = builder.build().map_err(|e| e.to_string())?;
+    let _ = win.set_focus();
+    Ok(label)
+}
+
+/// 新窗口 boot 时取自己该开的库（取后即清：刷新页面不重复打开）
+#[tauri::command]
+fn take_window_vault(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let state = app.try_state::<WindowVaults>()?;
+    let mut m = state.0.lock().ok()?;
+    m.remove(window.label())
 }
 
 /// 打开目标交给前端的唯一通道：排进队列 + 敲一次 file-opened（详见本节抬头）。
@@ -3914,6 +3999,7 @@ pub fn run() {
             deliver_open_targets(app, launch_targets(argv));
         }))
         .manage(LaunchPaths(std::sync::Mutex::new(launch)))
+        .manage(WindowVaults::default())
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))
         .manage(webclip::ClipServerState::default())
         .manage(fs_watcher::FsWatcherState::default())
@@ -3970,6 +4056,7 @@ pub fn run() {
             create_dir,
             rename_item,
             import_vault_file,
+            probe_external_drop,
             copy_image_asset,
             save_image_bytes,
             read_image_data_uri,
@@ -4047,7 +4134,9 @@ pub fn run() {
             clip_server_apply,
             clip_server_status,
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
-            take_launch_paths
+            take_launch_paths,
+            open_vault_window,
+            take_window_vault
         ])
         .on_menu_event(|app, event| {
             use tauri::Emitter;
