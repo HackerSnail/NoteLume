@@ -11,6 +11,12 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>')
 globalThis.window = dom.window
 globalThis.document = dom.window.document
 
+// 断言的是中文文案：Node ≥21 的全局 navigator.language 是 en-US，会被 detectLocale 判成英文，故显式钉住。
+// setLocale 会往 jsdom window 上派发事件，得用 jsdom 自己的 CustomEvent（Node 全局那个不是同一类型）。
+globalThis.CustomEvent = dom.window.CustomEvent
+const { setLocale } = await import('../i18n.js')
+setLocale('zh-CN')
+
 const { showTableSizePicker, closeTableSizePicker, MAX_ROWS, MAX_COLS } = await import('../table-picker.js')
 
 const doc = dom.window.document

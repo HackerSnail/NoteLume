@@ -1,10 +1,11 @@
 // math-nodeviews.js —— KaTeX 数学公式的 ProseMirror NodeView
 // schema 里的 math_inline / math_block 是无 DOM 依赖的原子节点，此处把它们渲染为公式；
-// 双击可编辑，编辑走 prompt（Tauri v2 WebView2/WebKit 已支持）。
+// 双击可编辑（走应用内 promptDialog：mac 的 wry 没实现 JS 输入面板，window.prompt 直接返回 null）。
 
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { t } from './i18n.js'
+import { promptDialog } from './prompt-dialog.js'
 
 function renderKatex(latex, el, displayMode) {
   try {
@@ -15,11 +16,9 @@ function renderKatex(latex, el, displayMode) {
   }
 }
 
-function editLatex(current, apply) {
-  // 简单可靠：window.prompt；后续 P2 可以换成更好的编辑器
-  const next = window.prompt(t('math.editPrompt'), current)
-  if (next == null) return
-  if (next === current) return
+async function editLatex(current, apply) {
+  const next = await promptDialog({ title: t('math.editPrompt'), defaultValue: current })
+  if (next == null || next === current) return
   apply(next)
 }
 

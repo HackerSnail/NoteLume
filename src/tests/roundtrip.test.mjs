@@ -117,6 +117,16 @@ let foundTag = false
 tagDoc.descendants((n) => { if (n.type.name === 'tag') foundTag = true })
 assert.ok(foundTag, '应解析出 tag 节点')
 
+// 中文标签：字符集与 Rust 侧 is_tag_char 同口径（不一致时全局标签面板有、文档标签面板空）；
+// 词中井号（C#）仍不算标签，靠左边界白名单挡住
+const cjkTagDoc = parseMarkdown('化学式 #能力/标签 与 C# 语言混排。\n')
+const cjkTags = []
+cjkTagDoc.descendants((n) => { if (n.type.name === 'tag') cjkTags.push(n.attrs.tag) })
+assert.deepStrictEqual(cjkTags, ['能力/标签'], '中文多级标签应解析出且 C# 不误判')
+const cjkOnce = serializeMarkdown(cjkTagDoc)
+assert.ok(cjkOnce.includes('#能力/标签'), '中文标签序列化应原样写回')
+assert.strictEqual(cjkOnce, serializeMarkdown(parseMarkdown(cjkOnce)), '中文标签序列化应幂等')
+
 // 交叉引用锚点：`<a id="…"></a>` 应解析为原子 anchor 节点（而非 html:false 下的转义文本），序列化原样写回
 const anchorDoc = parseMarkdown('见 [52](#_Ref52)。\n\n<a id="_Ref52"></a>文献全文\n')
 let foundAnchor = false
