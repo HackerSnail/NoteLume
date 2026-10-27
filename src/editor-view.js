@@ -407,6 +407,35 @@ export function createEditor(opts) {
     }
   })
 
+  // 岛状块（contenteditable=false 且 nodeView/装饰把事件全挡）：PM 收不到 mousedown，
+  // 于是 WebKit 自己决定选区——mac 打包版实测一次单击把文档起点到该岛整段选中。
+  // 捕获阶段掐掉原生选区，再按落点自己选中原子块（preventDefault 不吞 click，
+  // html_block 的单击改源码、csv/mermaid 的单击出码照旧；这些岛内若真需要选字复制，
+  // 代价是走就地编辑态，而不是让 mac 每次单击都选中半篇）。
+  const PM_BLIND_ISLANDS = '.nl-math, .nl-html-block, .nl-csv, .nl-mermaid, .nl-qd'
+  view.dom.addEventListener(
+    'mousedown',
+    (e) => {
+      if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
+      if (!e.target.closest) return
+      if (e.target.closest('a[href], button, input, textarea, select, [contenteditable="true"]')) return
+      const island = e.target.closest(PM_BLIND_ISLANDS)
+      if (!island || !view.dom.contains(island)) return
+      e.preventDefault()
+      const at = view.posAtCoords({ left: e.clientX, top: e.clientY })
+      if (!at) return
+      const { state } = view
+      const inside = at.inside > -1 ? state.doc.nodeAt(at.inside) : null
+      const sel =
+        inside && NodeSelection.isSelectable(inside)
+          ? NodeSelection.create(state.doc, at.inside)
+          : TextSelection.near(state.doc.resolve(Math.min(Math.max(at.pos, 0), state.doc.content.size)))
+      view.dispatch(state.tr.setSelection(sel).scrollIntoView())
+      view.focus()
+    },
+    true,
+  )
+
   // 拖拽图片到编辑器
   view.dom.addEventListener('dragover', (e) => {
     if (e.dataTransfer && Array.from(e.dataTransfer.files).some(isImage)) e.preventDefault()

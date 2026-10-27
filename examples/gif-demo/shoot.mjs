@@ -144,6 +144,13 @@ function makeCtx(page) {
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
       await wait(300)
     },
+    async clickPoint(p, ms = 300) {
+      // 按内容（而非选择器）定位的小控件用这个：先 js() 取到中心点，再走真实鼠标点击
+      await page.mouse.move(p.x, p.y, { steps: 8 })
+      await wait(120)
+      await page.mouse.click(p.x, p.y)
+      await wait(ms)
+    },
     async js(fn, ...args) {
       return page.evaluate(fn, ...args)
     },
