@@ -55,43 +55,43 @@ node capture/shoot.mjs theme-switch
 
 #### 输入即渲染 `wysiwyg-typing`
 
-![输入即渲染](../img/demo/wysiwyg-typing.gif)
+![输入即渲染](img/demo/wysiwyg-typing.gif)
 
 标题走快捷键，正文里的 `**重点**`、`*强调*`、`#project`、`$E=mc^2$`、`[[wiki-links]]` 在语法落定时直接换成富文本，不用切预览。
 
 #### 双链补全 `wikilink-suggest`
 
-![双链补全](../img/demo/wikilink-suggest.gif)
+![双链补全](img/demo/wikilink-suggest.gif)
 
 敲 `[[` 弹出候选，继续打字按名称过滤，回车插入链接节点。
 
 #### 命令面板 `command-palette`
 
-![命令面板](../img/demo/command-palette.gif)
+![命令面板](img/demo/command-palette.gif)
 
 裸词搜文档；前缀 `>` 切成命令模式，选中「Markdown 源码模式」后整篇切到源码态。
 
 #### 正文与源码互切 `source-toggle`
 
-![正文与源码互切](../img/demo/source-toggle.gif)
+![正文与源码互切](img/demo/source-toggle.gif)
 
 源码态里补一段 Markdown，切回正文时按规则渲染成标题与列表。
 
 #### 主题轮换 `theme-switch`
 
-![主题轮换](../img/demo/theme-switch.gif)
+![主题轮换](img/demo/theme-switch.gif)
 
 浅色、暗黑、Dracula、跟随系统四态，按顺序循环。
 
 #### 富文本渲染 `rich-render`
 
-![富文本渲染](../img/demo/rich-render.gif)
+![富文本渲染](img/demo/rich-render.gif)
 
 代码高亮、块级公式、Mermaid 流程图、表格逐段滚过。
 
 #### 分栏 `split-panes`
 
-![分栏](../img/demo/split-panes.gif)
+![分栏](img/demo/split-panes.gif)
 
 把一个窗格拆成两个，左右各自开文档、各自滚动。
 
@@ -157,3 +157,5 @@ ffmpeg -y -i note-lume.mov \
 ```
 
 不要在路径上追加尺寸后缀。带尺寸后缀的图片行在 Gitee 与 GitHub 上可能整行退化成纯文本，GIF 尤其明显。README 里有注释掉的动图占位（`img/qd-demo.gif`），启用时同样写裸路径。
+
+动图放在 `docs/img/demo/`，引用时不再往上跳层。应用里按单文件打开这份文档时，库根就是 `docs/`，`../` 会逸出库根被路径守卫拒掉，画面只剩「未找到图片」；写在 `docs/` 之内时，单文件打开与整目录打开都能解析。
