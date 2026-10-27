@@ -4,7 +4,7 @@
 // 录制捕获一次按键 → 组成逻辑绑定串 → 立即做冲突校验：若与其它命令撞键则「硬阻止」（不写盘、
 // 给出占用者提示）；否则写 localStorage['nl-keymap'] 并即时生效（saveOverrides 由 main.js 注入，
 // 内部会重算全局分发器 + 热重配编辑器 keymap）。结构性键无法被录成绑定（eventToBinding 返回 null 则继续等待）。
-import { formatBinding, eventToBinding, effectiveBindings } from './keymap.js'
+import { formatBinding, eventToBinding, effectiveBindings, defaultKeyFor } from './keymap.js'
 import { t } from './i18n.js'
 
 /**
@@ -39,7 +39,7 @@ export function createShortcutSettings(deps) {
     const ov = getOverrides()
     if (Object.prototype.hasOwnProperty.call(ov, id)) return ov[id]
     const c = getCommands().find((x) => x.id === id)
-    return c && c.defaultKey ? c.defaultKey : ''
+    return c && defaultKeyFor(c, isMac) ? defaultKeyFor(c, isMac) : ''
   }
 
   // 提交一次改动：binding='' 解绑、null 重置为默认、逻辑串重绑。冲突则硬阻止并提示。

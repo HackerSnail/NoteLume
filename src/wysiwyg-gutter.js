@@ -1,8 +1,9 @@
 // wysiwyg-gutter.js —— 所见即所得编辑器的视觉行号装订线
 // 源码模式（CodeMirror）自带行号，这里给 WYSIWYG 对齐同款口径：按折行后的视觉行
-// 编号、常开、无开关。行位来自 DOM Range 的 getClientRects 按 top 合并；装订线只
-// 渲染视口上下各 30 行（虚拟化），5 万字单段、18001 字大文档都不卡。overlay 挂在
-// .editor 里，源码模式 .editor 整体 display:none，装订线跟着消失，不会和 CM 叠罗汉。
+// 编号。开关是 features.lineNumbers（设置页「功能开关」，关掉后装订线和左侧留白一起
+// 消失）。行位来自 DOM Range 的 getClientRects 按 top 合并；装订线只渲染视口上下各 30
+// 行（虚拟化），5 万字单段、18001 字大文档都不卡。overlay 挂在 .editor 里，源码模式
+// .editor 整体 display:none，装订线跟着消失，不会和 CM 叠罗汉。
 import { Plugin } from 'prosemirror-state'
 
 // 纯函数：把一组矩形按视觉行合并，返回每行 {top, height}（按 top 升序）。
@@ -28,6 +29,14 @@ export function mergeLineTops(rects) {
   return lines
 }
 
+// 纯函数：丢掉整块落在盒子左右之外的矩形。标题左侧的折叠三角是绝对定位的装饰件，
+// 它的盒子会混进 Range 矩形里；它和正文行盒垂直重叠不足一半时会被当成多出一行，
+// 装订线就在同一处叠两个号、后面的号全往下串一位。盒子里的矩形（含通栏图片）保留。
+// jsdom 无布局，测试直接喂数组。
+export function clipToBox(rects, box) {
+  return rects.filter((r) => r.right > box.left && r.left < box.right)
+}
+
 // 从编辑器 DOM 向上找滚动容器（.nl-pane）：虚拟化窗口按它的 scrollTop / clientHeight 取
 function findScroller(dom) {
   let el = dom.parentElement
@@ -39,32 +48,65 @@ function findScroller(dom) {
   return document.scrollingElement
 }
 
+// 纯函数：功能开关是否放行号。读不到（未注入 / 老 settings 无该键）一律算开，
+// 与引入开关之前的行为逐字一致。
+export function lineNumbersOn(flags) {
+  return !flags || flags.lineNumbers !== false
+}
+
 class GutterView {
-  constructor(view) {
+  constructor(view, getFeatures) {
     this.view = view
     this.host = view.dom.parentNode // .editor
+    this.getFeatures = getFeatures || null
+    this.enabled = false // 当前是否挂载，构造时由 setEnabled 按开关决定
     this.lines = [] // [{y, h, n}]，y 为 .editor 内容坐标
     this.raf = 0
     this.overlay = document.createElement('div')
     this.overlay.className = 'nl-ln-gutter'
     this.overlay.setAttribute('aria-hidden', 'true')
-    this.host.classList.add('nl-has-gutter')
-    this.host.appendChild(this.overlay)
     this.scroller = findScroller(view.dom)
     this.onScroll = () => this.renderWindow()
-    if (this.scroller) this.scroller.addEventListener('scroll', this.onScroll, { passive: true })
     // 窗格宽 / 字号 / 折叠展开等任何引起编辑器尺寸变化的，都要重算行位
     this.ro = new ResizeObserver(() => this.schedule())
-    this.ro.observe(view.dom)
-    this.schedule()
+    this.setEnabled(this.wanted())
+  }
+
+  wanted() {
+    return lineNumbersOn(this.getFeatures && this.getFeatures())
+  }
+
+  setEnabled(on) {
+    if (on === this.enabled) return
+    this.enabled = on
+    if (on) {
+      this.host.classList.add('nl-has-gutter')
+      this.host.appendChild(this.overlay)
+      if (this.scroller) this.scroller.addEventListener('scroll', this.onScroll, { passive: true })
+      this.ro.observe(this.view.dom)
+      this.schedule()
+      return
+    }
+    if (this.raf) {
+      cancelAnimationFrame(this.raf)
+      this.raf = 0
+    }
+    this.ro.disconnect()
+    if (this.scroller) this.scroller.removeEventListener('scroll', this.onScroll)
+    this.lines = []
+    this.overlay.remove()
+    this.host.classList.remove('nl-has-gutter')
   }
 
   update(update) {
-    if (update.docChanged) this.schedule()
+    // ViewUpdate 上没有本次事务（getMeta 只在 Transaction 上），逐次对一下开关即可，
+    // 读的是内存里的 settings，代价与 emoji / 目录块插件同量级
+    this.setEnabled(this.wanted())
+    if (this.enabled && update.docChanged) this.schedule()
   }
 
   schedule() {
-    if (this.raf) return
+    if (!this.enabled || this.raf) return
     this.raf = requestAnimationFrame(() => {
       this.raf = 0
       this.recompute()
@@ -88,7 +130,7 @@ class GutterView {
       }
       let rects
       try {
-        rects = Array.from(range.getClientRects())
+        rects = clipToBox(Array.from(range.getClientRects()), dom.getBoundingClientRect())
       } catch (_) {
         return
       }
@@ -133,10 +175,10 @@ class GutterView {
   }
 }
 
-export function createLineNumbersPlugin() {
+export function createLineNumbersPlugin(getFeatures) {
   return new Plugin({
     view(editorView) {
-      return new GutterView(editorView)
+      return new GutterView(editorView, getFeatures)
     },
   })
 }

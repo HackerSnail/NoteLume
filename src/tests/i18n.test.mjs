@@ -67,6 +67,17 @@ t('段落前缀词条在各语言都存在（mac 菜单剥前缀用）', () => {
   for (const { id } of LOCALES) assert.ok(MESSAGES[id]['menu.paraPrefix'].length > 1)
 })
 
+// 菜单整理新增的词条：导出子菜单标题 + 剥前缀、Git 组标题 + 剥前缀、打开文件位置
+t('菜单分组词条与「打开文件位置」五语言齐全', () => {
+  const ids = ['cmd.app.revealFile', 'menu.export', 'menu.exportPrefix', 'menu.group.git', 'menu.gitPrefix']
+  for (const key of ids) {
+    for (const { id: loc } of LOCALES) {
+      const v = MESSAGES[loc][key]
+      assert.ok(typeof v === 'string' && v.length > 0, loc + ' 缺 ' + key)
+    }
+  }
+})
+
 t('setLocale 拒绝未知 id；localeName 返回各语言自称', () => {
   assert.strictEqual(setLocale('xx-XX'), false)
   assert.strictEqual(localeName('zh-Hant'), '繁體中文')

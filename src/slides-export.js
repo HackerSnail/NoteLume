@@ -92,6 +92,9 @@ function slidesCss() {
 .reveal section table{border-collapse:collapse;margin:1em 0;font-size:.9em}
 .reveal section th,.reveal section td{border:1px solid rgba(127,127,127,.4);padding:6px 10px}
 .reveal section img{max-width:100%;max-height:70vh}
+/* 一页装不下时（长文剪藏按 ## 切，单页可能几千像素高）reveal 会把超出部分裁掉且没有任何
+   滚动途径，页内靠后的图片 / 代码块就永久看不见。让页自身纵向滚，翻页与滚轮导航不受影响。 */
+.reveal .slides>section,.reveal .slides>section>section{max-height:100%;overflow-y:auto;box-sizing:border-box}
 .reveal section blockquote{border-left:3px solid rgba(127,127,127,.4);padding:.1em 1em;font-style:normal}
 .reveal section .nl-math-block{overflow-x:auto}
 `

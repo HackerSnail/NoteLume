@@ -38,6 +38,7 @@
     "test:split-pane-dom": "node tests/split-pane-dom.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:pane-strip": "node tests/pane-strip.test.mjs",
+    "test:format-bar": "node tests/format-bar.test.mjs",
     "test:vault-path": "node tests/vault-path.test.mjs",
     "test:drop-open": "node tests/drop-open.test.mjs",
     "test:pane-drag": "node tests/pane-drag.test.mjs",

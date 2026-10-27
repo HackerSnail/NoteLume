@@ -1,6 +1,6 @@
 // wysiwyg-gutter 的行合并纯函数测试（jsdom 无布局，矩形手工构造）
 import assert from 'node:assert'
-import { mergeLineTops } from '../wysiwyg-gutter.js'
+import { mergeLineTops, clipToBox, lineNumbersOn } from '../wysiwyg-gutter.js'
 
 let pass = 0
 let fail = 0
@@ -59,6 +59,36 @@ t('行内代码等不同字号的混排：重叠过半并入，换行分离', ()
   // 12px 小字号行内码与 30px 正文同行：top=106, bottom=118，与 100..130 重叠 12/12 过半
   const lines = mergeLineTops([row(100), { top: 106, bottom: 118 }, row(130)])
   assert.deepStrictEqual(lines.map((l) => l.top), [100, 130])
+})
+
+// —— 离流装饰件裁剪：块盒子 333–517，标题折叠三角绝对定位在 311–327 ——
+const hbox = { left: 333, right: 517 }
+const htext = { top: 49, bottom: 87, left: 333, right: 517 }
+const htoggle = { top: 65, bottom: 81, left: 311, right: 327 }
+
+t('折叠三角整块落在正文左侧外：裁掉后标题只占一行', () => {
+  assert.deepStrictEqual(clipToBox([htext, htoggle], hbox), [htext])
+  assert.strictEqual(mergeLineTops(clipToBox([htext, htoggle], hbox)).length, 1)
+})
+
+t('标题下内边距变大、三角落到行盒下方时仍不叠两个号', () => {
+  const low = { top: 95, bottom: 111, left: 311, right: 327 }
+  assert.strictEqual(mergeLineTops(clipToBox([htext, low], hbox)).length, 1)
+})
+
+t('贴右边框的零宽把手裁掉，通栏图片和正文矩形保留', () => {
+  const grip = { top: 60, bottom: 76, left: 517, right: 517 }
+  const img = { top: 40, bottom: 200, left: 333, right: 517 }
+  const kept = clipToBox([img, grip, htext], hbox)
+  assert.ok(kept.includes(img) && kept.includes(htext) && !kept.includes(grip))
+})
+
+t('行号开关：显式关才关，缺键 / 读不到都算开', () => {
+  assert.strictEqual(lineNumbersOn({ lineNumbers: false }), false)
+  assert.strictEqual(lineNumbersOn({ lineNumbers: true }), true)
+  assert.strictEqual(lineNumbersOn({}), true) // 老 settings.json 没有该键
+  assert.strictEqual(lineNumbersOn(null), true)
+  assert.strictEqual(lineNumbersOn(undefined), true)
 })
 
 console.log(`\nwysiwyg-gutter: ${pass} passed, ${fail} failed`)
