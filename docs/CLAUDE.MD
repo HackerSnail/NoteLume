@@ -132,6 +132,7 @@
 - 应用命令（文件、标签页、视图、粘贴为纯文本）走 document 级 keydown 分发器；F2 这类无修饰键与 Ctrl+Tab 这类带修饰的 Tab 均已放行（keymap.js 的 `isFKey` 与 Tab 例外）。
 - 表格出表另有就地入口：右键菜单「表后另起一段」，与末格 Enter 同一个 `exitTableBelow`。表格 / 代码块 / 公式在文档末尾时下方有一个可点可打字的间隙落点（gapcursor），落点只是选区、不改文档，因此不判脏也不落盘。
 - 块类型菜单两个入口：mac 是原生「段落」菜单（`app-menu.js` 的 paragraph 组），Windows / Linux 是工具条「段落」按钮下拉（`main.js` 的 `openParagraphMenu`，按钮在 `.btn-group` 里，mac 该组整体隐藏）。两边同源：条目顺序与「当前块类型」单选勾都读 `menuCommands()`，执行走命令注册表。两平台的「表格」项与斜杠菜单的「表格」都先弹 Word 式 N×M 选择器（`src/table-picker.js`），Esc / 点外面关掉即不插；Tab 在选择器里是右移一格（右边界换行、末格落定），底部提示是明确的「N 行 × M 列」。
+- Windows / Linux 的「更多」菜单与 mac 菜单栏同一套功能面（2026-10-27 同步）：导出七项收进「导出」子菜单、Git 八项收进「Git」子菜单（`openCmdSubmenu`，剥注册表标题里的「导出」「Git：」归类前缀，勾选态与置灰走 `MENU_CHECKED` / `menuEnabled` 同一口径），并补齐 mac 侧已有的入口——保存、重命名、打开文件位置、速记、自动保存（带勾选态）、关闭文档、安装 Quarkdown 包。此前这些命令在 Windows / Linux 只有快捷键与命令面板两条路。
 - 所见即所得也有行号装订线（`src/wysiwyg-gutter.js`，2026-10-26 起）：与源码模式同口径——按折行后的视觉行连续编号、常开、无开关。行位来自 DOM Range `getClientRects` 按 top 合并（纯函数 `mergeLineTops`），装订线只渲染视口 ±30 行；文档变更 rAF 去抖重算，宽 / 字号变化与折叠展开靠 ResizeObserver 兜住，折叠隐藏的行不编号不断号。overlay 挂在 `.editor` 里（源码态 `.editor` 整体隐藏所以不会和 CM 行号叠罗汉），打印样式里不上纸。
 - 右键菜单全部自绘（2026-10-26 起，WebView2 原生菜单不再出现）：编辑器窗格（文本格式 + 块插入，`attachEditorContextMenu`）、表格行列操作（`table-editing.js`）、图片（另存 / 复制）、文件树（文件 / 文件夹 / 空白区，文件夹含删除；单文件树 `renderSingleFileTree` 的行与侧栏空白同样有菜单——空白区在单文件 / 未开库时给「打开单个文件 / 打开知识库文件夹」）、画布各自的监听照旧；标签条、查找栏、源码模式、输入框与其余空白区域由 `main.js` 的 `installGlobalContextMenu` 在 document capture 阶段兜底——输入框与源码 CodeMirror 弹剪切 / 复制 / 粘贴 / 全选编辑菜单（粘贴走 navigator.clipboard，输入框用 `setRangeText`、CM 用 `insertText`），标签条弹关闭 / 关闭其他 / 固定 / 复制路径 / 在资源管理器中显示，其余区域压掉原生、不出菜单。已有自绘菜单的区域在 capture 阶段一律放行（它们在冒泡阶段 preventDefault）。所有自绘菜单共用 `.cv-menu` 样式与 `placeMenu`（定位翻转 + 点外面 / Esc / 滚轮 / resize 关闭）。
 
@@ -279,7 +280,13 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 4. 处理路径：统一相对路径、库内路径转换；处理跨平台路径兼容（Windows/macOS）
 5. 不做编辑器渲染，渲染交给前端ProseMirror
 6. 提供invoke接口，给前端调用知识库API
-7. 文件打开链路的原生侧（P5 §6.6）：四条入口——启动参数、macOS 的 `application:openURLs:`、单实例二次唤起、窗口内拖入——汇到 `deliver_open_targets` 一条交付通道：目标排进 `LaunchPaths` 队列，再 emit 一次不带路径的 `file-opened`，前端 boot 主动取、常驻时被动叫醒，两条时序都不丢。mac 的双击关联文件、右键「打开方式」、拖到 Dock 图标都只以 `RunEvent::Opened` 递 URL、不进 argv，要用 `build(context)?.run(callback)` 才接得到；目录也收（`Info.macOS.plist` 声明 `public.folder`），前端按 `isDir` 分流 `openVaultPath` / `openAbsPath`。窗口内拖入是例外，不走 `LaunchPaths`：wry 默认接管窗口拖放，打包版收不到 HTML5 的 `dragover` / `drop`，前端 `bindNativeDrop()` 只订阅 `tauri://drag-*`；原生事件仅给绝对路径，由 `probe_external_drop` 补名字与 `isDir`，再按同一口径分流——文件在当前窗口 `openAbsPath`，文件夹调 `open_vault_window` 另开一个 `vault-*` 窗口，库路径按窗口标签存 `WindowVaults`、新窗口 boot 调 `take_window_vault` 取走（排进 `LaunchPaths` 会让新窗口抢走主窗口待开的目标）。开发态与网页构建仍是 HTML5 拖放导入（`drop-open.js` + `importDroppedFiles`）。多窗口写盘约束：`settings.json` 单份，`persistWorkspace` / `persistPanes` 与 `file-opened` 只认主窗口；`IndexState` / `FsWatcherState` 仍是应用级单份，两窗口开两库时后 boot 的接管索引。
+7. 文件打开链路的原生侧（P5 §6.6）：四条入口——启动参数、macOS 的 `application:openURLs:`、单实例二次唤起、窗口内拖入——汇到 `deliver_open_targets` 一条交付通道：目标排进 `LaunchPaths` 队列，再 emit 一次不带路径的 `file-opened`，前端 boot 主动取、常驻时被动叫醒，两条时序都不丢。mac 的双击关联文件、右键「打开方式」、把文件拖到 Dock 图标都只以 `RunEvent::Opened` 递 URL、不进 argv，要用 `build(context)?.run(callback)` 才接得到；目录也收（`Info.macOS.plist` 声明 `public.folder`），前端按 `isDir` 分流 `openVaultPath` / `openAbsPath`。
+
+   窗口内拖入按平台分两条通道，同一时刻只有一条会触发。mac 留着 Tauri 的拖放拦截，事件只以 `tauri://drag-*` 给前端且只带绝对路径，前端 `bindNativeDrop()` 调 `probe_external_drop` 补名字与 `isDir` 再分流：文件在当前窗口 `openAbsPath`，文件夹调 `open_vault_window` 另开一个 `vault-*` 窗口，库路径按窗口标签存 `WindowVaults`、新窗口 boot 调 `take_window_vault` 取走（排进 `LaunchPaths` 会让新窗口抢走主窗口待开的目标）。Windows / Linux 与纯 web 构建走 HTML5 的 `dragover` / `drop`（`drop-open.js` + `collectDropPaths`），`webkitGetAsEntry().fullPath` 给 `/C:/a/b.md` 形态、`normDropPath` 剥前导斜杠。分两条的原因是取路径：WebView2 的 `File.path` 有值，WKWebView 没有，mac 只能靠原生事件；装了拦截就一定收不到 HTML5 事件（handler 恒返回 true），dev 与打包同一口径。
+
+   `dragDropEnabled` 因此按平台分置：`tauri.conf.json` 设 `false`（Tauri v2 默认的拖放拦截在 Windows 上会吃掉 WebView2 的原生 HTML5 drop 事件，拖入打开整条链路失效；mac 的 WKWebView 拿不到路径、不受这条影响，问题因此只在 Windows 暴露），`tauri.macos.conf.json` 覆盖回 `true`。平台文件的合并是 JSON Merge Patch（`json_patch::merge`），数组整体替换、不逐项合并，所以 mac 那份要重复整个 `app.windows` 条目：改窗口尺寸或标题栏得同时改两份，只改一份 mac 会静默用旧值。拦截在 `tauri-runtime-wry` 建 webview 时决定（`drag_drop_handler_enabled` 为 false 就不装 handler，wry 的 `draggingEntered:` 等一律转给 WKWebView 默认行为），没有运行期开关，Rust 侧建的 `vault-*` 窗口要单独 `disable_drag_drop_handler()` 才与主窗口同口径。改完须重启 tauri dev 或重打包生效。
+
+   多窗口写盘约束：`settings.json` 单份，`persistWorkspace` / `persistPanes` 与 `file-opened` 只认主窗口；`IndexState` / `FsWatcherState` 仍是应用级单份，两窗口开两库时后 boot 的接管索引。
 
 ### 前端 src/ 职责
 

@@ -551,7 +551,7 @@ fn import_vault_file(vault_root: String, args: ImportArgs) -> Result<String, Str
     Ok(rel)
 }
 
-/// 系统拖入的路径探测：打包版 wry 接管了窗口拖放，HTML5 的 dragover / drop 收不到，
+/// 系统拖入的路径探测：mac 打包版留着 wry 的窗口拖放拦截，HTML5 的 dragover / drop 收不到，
 /// 原生事件只给绝对路径。这里补回「名字 / 是否目录」，前端据此决定开文档还是另开窗口。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3723,8 +3723,9 @@ fn set_ui_lang(lang: String) -> bool {
 //    路径只经 application:openURLs: 递来、不进 argv，要 run callback 接 RunEvent::Opened，
 //    不接就只剩「唤起应用、文件没打开」。
 //  · 单实例二次唤起：第二个进程把新路径交给第一个进程的 argv 回调。
-//  · 拖入窗口：打包版由 wry 原生事件递绝对路径，前端 probe_external_drop 判类型后分流——
-//    文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；纯 web 构建走 DataTransfer。
+//  · 拖入窗口：mac 由 wry 原生事件递绝对路径，前端 probe_external_drop 判类型后分流——
+//    文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；Windows / Linux 与纯 web
+//    构建走 HTML5 的 DataTransfer（那边把拖放拦截关掉才收得到事件，见 dragDropEnabled）。
 // 交付通道只做两件事：目标排进 LaunchPaths，再 emit 一次 file-opened 叫前端来取。
 // 两条都不能省：冷启动时前端监听未必就绪，排着等它 boot 来取；应用常驻时前端不再主动
 // 取，得靠这次 emit 叫醒。emit 不带路径（同一条走队列只出一份，不会开两遍）。
@@ -3858,6 +3859,11 @@ fn open_vault_window(window: tauri::WebviewWindow, app: tauri::AppHandle, path: 
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
+    // 拖放通道与主窗口同口径：mac 留着 Tauri 的原生拦截（HTML5 的 drop 拿不到绝对路径），
+    // 其余平台关拦截、让 WebView2 / WebKitGTK 自己派发 dragover / drop。
+    // 这个窗口由 Rust 建，不读 tauri.conf.json，不显式设置就一律拿到默认的启用。
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.disable_drag_drop_handler();
     let win = builder.build().map_err(|e| e.to_string())?;
     let _ = win.set_focus();
     Ok(label)
