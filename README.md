@@ -24,6 +24,63 @@
   </tr>
 </table>
 
+## 功能演示 · Feature demos
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/img/demo/wysiwyg-typing.gif" alt="所写即所得" width="480"><br>所写即所得 · Live Markdown</td>
+    <td width="50%" align="center"><img src="docs/img/demo/rich-render.gif" alt="富文本渲染" width="480"><br>公式、图表、代码高亮就地渲染 · Rich rendering</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/source-toggle.gif" alt="正文与源码互切" width="480"><br>正文与 Markdown 源码互切 · Source toggle</td>
+    <td align="center"><img src="docs/img/demo/slash-menu.gif" alt="斜杠菜单" width="480"><br>斜杠菜单插入块 · Slash menu</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/wikilink-suggest.gif" alt="双链补全" width="480"><br>[[ 双链]] 输入补全 · Wikilink suggest</td>
+    <td align="center"><img src="docs/img/demo/mermaid-edit.gif" alt="图表就地改码" width="480"><br>单击图表就地出源码 · Edit diagram inline</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/table-edit.gif" alt="表格编辑" width="480"><br>表格右键插行插列 · Table editing</td>
+    <td align="center"><img src="docs/img/demo/image-resize.gif" alt="图片缩放" width="480"><br>正文图片拖拽缩放 · Image resize</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/command-palette.gif" alt="命令面板" width="480"><br>命令面板：搜文档、跑命令 · Command palette</td>
+    <td align="center"><img src="docs/img/demo/outline-fold.gif" alt="大纲折叠" width="480"><br>大纲按层级折叠 · Outline folding</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/split-panes.gif" alt="分栏" width="480"><br>双栏对照与多窗格 · Split panes</td>
+    <td align="center"><img src="docs/img/demo/view-modes.gif" alt="专注与打字机" width="480"><br>专注模式与打字机模式 · Focus &amp; typewriter</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/inspector-panel.gif" alt="检查器" width="480"><br>检查器：标签、属性、双向链接、历史 · Inspector</td>
+    <td align="center"><img src="docs/img/demo/daily-capture.gif" alt="今日速记" width="480"><br>今日速记浮层 · Daily capture</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/canvas-board.gif" alt="Canvas" width="480"><br>Canvas 便签板拖拽 · Canvas board</td>
+    <td align="center"><img src="docs/img/demo/desktop-graph.gif" alt="知识图谱" width="480"><br>知识图谱：拖节点、跳文档 · Knowledge graph</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/docx-import.gif" alt="Word 导入" width="480"><br>Word 导入：左预览右源码，校对后落库 · Word import</td>
+    <td align="center"><img src="docs/img/demo/desktop-drop.gif" alt="拖入打开" width="480"><br>拖入文件即打开，拖入文件夹即开库 · Drag &amp; drop</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/theme-switch.gif" alt="主题" width="480"><br>四套主题轮换 · Themes</td>
+    <td align="center"><img src="docs/img/demo/appearance-settings.gif" alt="外观设置" width="480"><br>外观：主题即时切换 · Appearance</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/shortcuts-settings.gif" alt="快捷键设置" width="480"><br>快捷键设置：键位一张表 · Shortcuts</td>
+    <td align="center"><img src="docs/img/demo/language-switch.gif" alt="界面语言" width="480"><br>五语言界面即时切换 · Five languages</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/desktop-context.gif" alt="右键菜单" width="480"><br>文件树与正文右键菜单 · Context menus</td>
+    <td align="center"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板" width="480"><br>Git：暂存、提交、历史 · Git panel</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/desktop-menu.gif" alt="原生菜单" width="480"><br>系统原生菜单 · Native menus</td>
+    <td align="center"><img src="docs/img/demo/desktop-tray.gif" alt="托盘" width="480"><br>菜单栏托盘快捷入口（mac） · Tray menu</td>
+  </tr>
+</table>
+
 ---
 
 ## 中文
@@ -101,10 +158,6 @@ npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 ```
 
 约 200 个内置函数：正则替换、CSV / JSON 读取、表格计算、BibTeX 参考文献、多语言本地化、emoji 短代码、`.extend` 自定义扩展。**不用学语法也能上手**：斜杠菜单（`/`）里搜 Quarkdown 有即插即出的片段；工具条「模板」菜单带三个开箱即跑的内置模板（周报、变量化文档头、编号与交叉引用）。完整函数清单见 [`docs/FEATURES.md`](docs/FEATURES.md)。
-
-<!-- 动图演示：录好后放到 img/qd-demo.gif，取消下一行注释
-![Quarkdown 演示](img/qd-demo.gif)
--->
 
 ### 网页剪藏
 
@@ -282,10 +335,6 @@ See .ref {intro}.
 ```
 
 About 200 builtins: regex replace, CSV / JSON readers, table computation, BibTeX, localization, emoji shortcodes, `.extend` wrapping. **No syntax learning required to start**: the slash menu (`/`) has ready-to-insert snippets (search Quarkdown), and the toolbar Templates menu ships three runnable built-in templates (weekly report, variable document header, numbering & cross-references). The full function list is in [`docs/FEATURES.md`](docs/FEATURES.md).
-
-<!-- Demo GIF: once recorded, place it at img/qd-demo.gif and uncomment the next lines
-![Quarkdown demo](img/qd-demo.gif)
--->
 
 ### Web Clipping
 

@@ -4,7 +4,7 @@
 
 | 路线 | 覆盖界面 | 录制方式 |
 | --- | --- | --- |
-| 网页版 | 编辑器、文件树、命令面板、主题、分栏 | 脚本驱动 headless Chrome 逐帧抓取 |
+| 网页版 | 编辑器与行内渲染、斜杠菜单、表格、图片缩放、大纲、分栏、专注 / 打字机、速记、检查器、外观 / 快捷键 / 语言设置、Canvas、Word 导入 | 脚本驱动 headless Chrome 逐帧抓取 |
 | 桌面版 | 托盘、原生菜单、Git、知识图谱、右键菜单、拖入打开 | 脚本合成鼠标键盘操作，系统录屏后裁切转 GIF |
 
 网页版的画面来自 `web` 分支的网页沙盒，抓帧脚本放在主干 `examples/gif-demo/`。脚本只是录制工具，不参与任何构建，也不把网页版产物带进主干。
@@ -101,9 +101,81 @@ node capture/shoot.mjs theme-switch
 
 侧栏切到「大纲」，逐节收起小标题，再按档位条的 H1 一键收到只剩大标题，最后一点回到全展开。
 
+#### 专注与打字机 `view-modes`
+
+![专注与打字机](img/demo/view-modes.gif)
+
+`Ctrl+Shift+`` 隐去无关内容只留当前段，`Ctrl+Shift+T` 让光标行始终停在版面中部。
+
+#### 今日速记 `daily-capture`
+
+![今日速记](img/demo/daily-capture.gif)
+
+独立于当前知识库的浮层，按日期落到速记目录。
+
+#### 斜杠菜单 `slash-menu`
+
+![斜杠菜单](img/demo/slash-menu.gif)
+
+敲 `/` 搜块类型，回车插入；表格、代码、公式、Quarkdown 片段都从这里出。
+
+#### 界面语言 `language-switch`
+
+![界面语言](img/demo/language-switch.gif)
+
+「更多 → 界面语言」切到 English，整站文案当场换掉。
+
+#### 正文图片缩放 `image-resize`
+
+![正文图片缩放](img/demo/image-resize.gif)
+
+按住图片右下角把手拖动，宽度按比例写回 md 的图片后缀，原图不动。
+
+#### 表格就地编辑 `table-edit`
+
+![表格就地编辑](img/demo/table-edit.gif)
+
+Tab 逐格跳转；单元格右键出菜单（插行、插列、删除、四向对齐、表头切换、合并拆分），镜头点其中「下方插入行」与「右侧插入列」两项。
+
+#### Mermaid 就地改码 `mermaid-edit`
+
+![Mermaid 就地改码](img/demo/mermaid-edit.gif)
+
+单击渲染出来的图表，光标直接落进上方代码块，改完移开即重渲染。
+
+#### Canvas 便签板 `canvas-board`
+
+![Canvas 便签板](img/demo/canvas-board.gif)
+
+打开 `.canvas`，按住便签拖动，连线跟着走。
+
+#### 右侧检查器 `inspector-panel`
+
+![右侧检查器](img/demo/inspector-panel.gif)
+
+标签、文档属性（frontmatter）、双向链接、历史版本收在一栏里。
+
+#### 外观设置 `appearance-settings`
+
+![外观设置](img/demo/appearance-settings.gif)
+
+外观面板里连点三套主题，正文与代码配色当场跟着换。
+
+#### 快捷键设置 `shortcuts-settings`
+
+![快捷键设置](img/demo/shortcuts-settings.gif)
+
+全部键位列成一张可滚动的表；重绑走同一面板，撞键当场拦下、不会静默丢掉（镜头只滚列表，未演示重绑）。
+
+#### Word 导入校对 `docx-import`
+
+![Word 导入校对](img/demo/docx-import.gif)
+
+「更多 → 导入 Word」选库内 `.docx` → 左预览右源码的校对窗（降级项列在窗顶）→ 接受才落库并自动打开。
+
 ### 5. 加新场景
 
-场景写在 `scenarios.mjs`，`shoot.mjs` 提供操作原语：`type`、`press`、`click`、`clickText`、`clickPoint`、`scroll`、`wait`、`js`。约定只有一条：画面必须由真实输入事件产生，不直接改 DOM、不调应用内部函数。
+场景写在 `scenarios.mjs`，`shoot.mjs` 提供操作原语：`type`、`press`、`click`、`clickText`、`clickPoint`、`clickMatch`、`rightClick`、`drag`、`scroll`、`wait`、`js`。约定只有一条：画面必须由真实输入事件产生，不直接改 DOM、不调应用内部函数。
 
 几条实测下来容易踩的：
 
@@ -112,8 +184,8 @@ node capture/shoot.mjs theme-switch
 - 边打边变的只有行内规则：`#tag`（标签字符限 ASCII）、`$公式$`、`[[双链]]`、`**粗**` 一类强调。行首没有 `# `、`- ` 这样的标题与列表规则，标题要用快捷键或斜杠菜单。
 - 打开文档、切换主题之后留 600 到 900 毫秒再抓，否则拿到的是过渡中的一帧。
 - screencast 只在画面变化时推帧。脚本按每帧的 screencast 时间戳写一份 concat 清单交给 ffmpeg，静止停留才不会被压成闪帧。
-- 网页沙盒没有插件目录，开库时后端会回一条 desktop-only 拒绝，提示条会糊在画面底部。脚本在抓帧前用一行 CSS 藏掉 `#nl-web-toasts`，其余界面元素不动。
-- 知识图谱在网页沙盒里打不开：后端索引状态里的库根是 `/private/var/...`，前端比较的是 `/var/...`，两串对不上，`state.indexReady` 一直为假，入口只回一句「索引尚未就绪」。这一项留给桌面版。
+- 网页沙盒没有插件目录，开库时后端会回一条 desktop-only 拒绝，提示条会糊在画面底部；顶部还有一条「网页沙盒试用版 · 功能为桌面版子集」横幅。这两样都属于运行环境而不是功能，脚本在抓帧前用一行 CSS 藏掉 `#nl-web-toasts` 与 `#nl-web-banner`，其余界面元素不动。
+- 知识图谱、全库搜索、全局标签、反链在网页沙盒里出不来画面：沙盒后端没实现 `index_status`，`state.indexReady` 一直为假，搜索没有命中行、标签与反链面板是空的。这几项的画面来自桌面版。
 - 大纲 tab 在文档没有标题时会被 `syncOutlineTab` 藏掉，切过去也留不住。要先打完标题再点 tab；取不到可见的 `.outline-toolbar button` 就是这个原因。
 - 网页工作树落后主干时，主干新加的功能不会出现在画面里。录制新一轮之前先把主干合进 `web`（方向允许，见 `docs/SERVER.MD`），重新 `npm run web:build`。
 
@@ -221,12 +293,14 @@ ffmpeg -y -ss 1.0 -to 6.0 -i /tmp/cap.mov \
 
 ## 三、放进 README
 
-配图路径保持裸路径：
+README 顶部一张「功能演示 · Feature demos」两列表格，一格一个动图，配一句话案（中文 · English）。新增场景要进这张表才有人看得到，只在本文档登记的话等于没配图。
 
-```markdown
-![命令面板](img/demo/command-palette.gif)
+表格用 HTML 写，尺寸挂在 `<img width="...">` 上，路径保持裸路径：
+
+```html
+<td width="50%" align="center"><img src="docs/img/demo/command-palette.gif" alt="命令面板" width="480"><br>命令面板 · Command palette</td>
 ```
 
-不要在路径上追加尺寸后缀。带尺寸后缀的图片行在 Gitee 与 GitHub 上可能整行退化成纯文本，GIF 尤其明显。README 里有注释掉的动图占位（`img/qd-demo.gif`），启用时同样写裸路径。
+不要在 `<img src>` 的路径后面追加 `=WxH` 尺寸后缀。那是应用自己认的写法，带后缀的图片行在 Gitee 与 GitHub 上可能整行退化成纯文本，GIF 尤其明显。
 
-动图放在 `docs/img/demo/`，引用时不再往上跳层。应用里按单文件打开这份文档时，库根就是 `docs/`，`../` 会逸出库根被路径守卫拒掉，画面只剩「未找到图片」；写在 `docs/` 之内时，单文件打开与整目录打开都能解析。
+动图一律放在 `docs/img/demo/`，`docs/GIF-DEMO.md` 里用相对路径 `img/demo/<场景名>.gif` 引用。应用里按单文件打开这份文档时，库根就是 `docs/`，`../` 会逸出库根被路径守卫拒掉，画面只剩「未找到图片」；写在 `docs/` 之内时，单文件打开与整目录打开都能解析。

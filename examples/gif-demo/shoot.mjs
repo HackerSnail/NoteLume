@@ -37,8 +37,9 @@ await page.goto(URL_, { waitUntil: 'networkidle2', timeout: 60000 })
 await page.waitForSelector('.ProseMirror', { timeout: 30000 })
 await page.evaluate(() => document.fonts.ready)
 // 网页沙盒没有插件目录，开库时会回一条 desktop-only 拒绝；那条提示只属于运行环境，
-// 会糊在演示画面底部，抓图前统一藏掉。其余界面元素一概不动。
-await page.addStyleTag({ content: '#nl-web-toasts{display:none!important}' })
+// 会糊在演示画面底部。连同顶部「网页沙盒试用版」横幅一起藏掉——README 配图讲的是功能本身。
+// 其余界面元素一概不动。
+await page.addStyleTag({ content: '#nl-web-toasts,#nl-web-banner{display:none!important}' })
 await wait(800)
 
 const session = await page.createCDPSession()
@@ -105,6 +106,12 @@ async function puppeteerLaunch() {
 
 // 场景脚本用的操作原语：全部走真实事件（键盘 / 鼠标），不直接改 DOM，
 // 这样抓到的画面就是用户手点出来的效果
+async function inView(handle) {
+  // boundingBox 给的是视口坐标：元素在视口外时点下去就是空点（图片把手那次踩过了）
+  try { await handle.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'instant' })) } catch (_) { /* 元素已 detached */ }
+  await wait(180)
+}
+
 function makeCtx(page) {
   return {
     wait,
@@ -129,6 +136,7 @@ function makeCtx(page) {
     },
     async click(sel) {
       const el = await page.waitForSelector(sel, { visible: true, timeout: 15000 })
+      await inView(el)
       const box = await el.boundingBox()
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 })
       await wait(120)
@@ -139,6 +147,7 @@ function makeCtx(page) {
       const el = await page.evaluateHandle((s, t) => {
         return [...document.querySelectorAll(s)].find((e) => e.textContent.trim().includes(t)) || null
       }, sel, text)
+      await inView(el)
       const box = await el.boundingBox()
       if (!box) throw new Error(`未找到可见的 ${sel} 含「${text}」`)
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
@@ -150,6 +159,32 @@ function makeCtx(page) {
       await wait(120)
       await page.mouse.click(p.x, p.y)
       await wait(ms)
+    },
+    async rightClick(sel, nth = 0) {
+      // 右键菜单（表格行列、画布便签、文件树）必须由真实 contextmenu 事件唤起
+      const el = await page.evaluateHandle(([s, i]) => {
+        const all = [...document.querySelectorAll(s)]
+        return all.length > i ? all[i] : null
+      }, [sel, nth])
+      await inView(el)
+      const box = await el.boundingBox()
+      if (!box) throw new Error(`未找到可见的 ${sel}[${nth}]`)
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' })
+      await wait(400)
+    },
+    async drag(from, to, ms = 900) {
+      // 按住拖拽（图片缩放把手、画布便签、分栏宽度）：走真实按下 / 移动 / 抬起
+      await page.mouse.move(from.x, from.y, { steps: 6 })
+      await wait(120)
+      await page.mouse.down()
+      const steps = 24
+      for (let i = 1; i <= steps; i++) {
+        const k = i / steps
+        await page.mouse.move(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k)
+        await wait(Math.round(ms / steps))
+      }
+      await page.mouse.up()
+      await wait(200)
     },
     async js(fn, ...args) {
       return page.evaluate(fn, ...args)

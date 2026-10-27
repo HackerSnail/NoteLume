@@ -9,6 +9,8 @@
 
 ### Added
 
+* **README 顶部功能演示墙，动图补到 20 个场景**：`README.md` 在主题预览下方加「功能演示 · Feature demos」两列表格，一格一个动图、中英一句话案，原先注释掉的 `img/qd-demo.gif` 占位（中英各一处）删除。`examples/gif-demo/scenarios.mjs` 新增 12 个场景：`view-modes`（专注 / 打字机）、`daily-capture`（速记浮层）、`slash-menu`、`language-switch`、`image-resize`（拖把手缩放）、`canvas-board`、`inspector-panel`、`mermaid-edit`、`appearance-settings`、`shortcuts-settings`、`docx-import`（选文件 → 校对窗 → 接受落库）、`table-edit`（Tab 跨格 + 右键插行插列），全部 20 个场景重录一遍收进 `docs/img/demo/`；根 `img/demo/outline-fold.gif` 一并挪进该目录，动图只有一个落点。`shoot.mjs` 补三条原语：`drag`（按住拖拽）、`rightClick`（真 contextmenu，表格行列菜单靠它）、`clickMatch`（按正则命中，中英文案都点得中），并给 `click` / `clickText` 补 `scrollIntoView`——`boundingBox` 给的是视口坐标，元素在视口外时点下去是空点（图片把手那次踩过）。抓帧前除 `#nl-web-toasts` 外再藏一条 `#nl-web-banner`（「网页沙盒试用版」横幅属于运行环境，不属于功能）。删掉 `vault-search` 场景：沙盒后端没实现 `index_status`，搜索命中行与全局标签永远不出画面，这几项配图改由桌面版镜头承担。`docs/GIF-DEMO.md` 同步新场景、覆盖范围与 README 表格写法。
+
 * **修复 mac 单击公式 / HTML 块把整篇选中**：数学（`math_inline` / `math_block`）、`html_block`、CSV / Mermaid / Quarkdown 快照这几类块是 `contenteditable=false` 的岛，nodeView 又 `stopEvent: () => true` 把事件全挡，ProseMirror 的 mousedown 处理收不到事件，于是 WebKit 自己决定选区——mac 打包版实测一次单击把文档起点到该岛整段涂蓝。`editor-view.js` 在捕获阶段给这几类岛补一条 mousedown 守卫：`preventDefault()` 掐掉原生选区，再按落点自己选中该原子块（`NodeSelection`，取不到原子块时 `TextSelection.near`）。`preventDefault` 不吞 click，块内原有的单击行为（HTML 块就地改源码、CSV / Mermaid 单击出码、快照点击）一律照旧；岛内链接 / 按钮 / 输入框直接放行不挡。代价是岛内不能再按住鼠标选字复制，改走就地编辑态取源码。Blink 侧经 CDP 逐块点击复核：普通段落仍是收起的光标，点行内公式得到只覆盖该公式的 NodeSelection，双击编辑弹窗照旧。
 
 * **动图新增「大纲层级折叠」场景**：`examples/gif-demo/scenarios.mjs` 加 `outline-fold`——打一篇三级标题的周报，切到侧栏「大纲」，逐节收起小标题，再按档位条 H1 一键收到只剩大标题、点回全展开；产物 `img/demo/outline-fold.gif`。`shoot.mjs` 补一条操作原语 `clickPoint`（按内容定位、没有可用选择器的小控件用），`docs/GIF-DEMO.md` 同步场景与「空文档切不到大纲 tab」这条坑。
