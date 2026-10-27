@@ -3347,6 +3347,21 @@ html.nl-dragging * {
   accent-color: var(--accent);
 }
 
+/* 图标态（标题栏右侧）：勾选框隐藏，开关状态用颜色表达——开=主题色、关=灰 */
+.autosave-toggle.icon-only {
+  position: relative;
+}
+.autosave-toggle.icon-only input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.autosave-toggle.icon-only:has(input:checked) {
+  color: var(--accent);
+}
+
 /* 搜索 */
 /* 搜索框：容器承边框与图标，输入本体无边框透明（聚焦时容器出主题色） */
 .search-box {

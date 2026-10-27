@@ -121,7 +121,7 @@ export function findPlugin() {
  *   paneEl：查找栏挂载容器（.editor-pane，position:relative 且为滚动容器）
  */
 export function createFindBar({ view, paneEl }) {
-  let bar, input, replaceInput, countEl, caseBtn
+  let bar, input, replaceInput, countEl, caseBtn, replaceRow
   let caseSensitive = false
   let visible = false
   let lastMatches = []
@@ -176,9 +176,12 @@ export function createFindBar({ view, paneEl }) {
 
     row1.append(input, countEl, caseBtn, prev, next, closeBtn)
 
-    // —— 第二行：替换输入 + 替换 / 全部替换（常显） ——
+    // —— 第二行：替换输入 + 替换 / 全部替换 ——
+    // 默认隐藏：Ctrl+F / 查找按钮只开查找行，替换行随 Ctrl+H / 替换按钮（open('replace')）出现
     const row2 = document.createElement('div')
     row2.className = 'nl-find-row nl-find-row-replace'
+    row2.style.display = 'none'
+    replaceRow = row2
 
     replaceInput = document.createElement('input')
     replaceInput.type = 'text'
@@ -301,11 +304,13 @@ export function createFindBar({ view, paneEl }) {
     view.focus() // 焦点留在替换框时 Ctrl+Z 撤的是输入框内容，撤不到刚做的替换
   }
 
-  // focus：'find'（Ctrl+F）或 'replace'（Ctrl+H）；决定打开后光标落在哪个输入框
+  // focus：'find'（Ctrl+F / 查找按钮）或 'replace'（Ctrl+H / 替换按钮）；
+  // 决定光标落点，也决定替换行显隐——查找态不带替换行
   function openBar(focus = 'find') {
     if (!bar) build()
     visible = true
     bar.classList.add('show')
+    if (replaceRow) replaceRow.style.display = focus === 'replace' ? '' : 'none'
     paneEl.addEventListener('scroll', pin)
     pin()
     // 若编辑器有非空文本选区，用它预填查找词并立刻定位

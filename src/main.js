@@ -77,6 +77,7 @@ import { createShortcutSettings } from './shortcut-settings.js'
 import { createHighlightToolbar } from './highlight-toolbar.js'
 import { createFormatBar } from './format-bar.js'
 import { bindDropOpen, isDroppableName, isBinaryName } from './drop-open.js'
+import { bindTauriDragOpen } from './tauri-drag-open.js'
 import { createPaneDrag } from './pane-drag.js'
 import { mountSplitTree, normalizeTree, serializeTree, paneIds, freshId, closePane } from './split-pane.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -195,6 +196,8 @@ const els = {
   btnNewFile: $('btn-new-file'),
   btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
+btnFind: $('btn-find'),
+btnReplace: $('btn-replace'),
   chkAutosave: $('chk-autosave'),
   searchInput: $('search-input'),
   searchResults: $('search-results'),
@@ -1216,24 +1219,11 @@ async function importDroppedFiles(files, destDir) {
   }
 }
 
-// 系统拖入的统一落点：两条通道（bindNativeDrop 与 bindDropOpen）都汇到这里，
-// 语义与「打开方式」一致——文件在当前窗口开，文件夹另开一个窗口当知识库打开。
-async function openDropTargets(targets, el) {
-  const leaf = el && el.closest ? el.closest('.nl-pane') : null
-  const paneId = leaf && leaf.dataset.paneId
-  if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
-    await focusPaneUi(paneId)
-  }
-  return handleOpenTargets(targets, { interactive: true, preview: true })
-}
-
-// mac 走的这条：Tauri 留着窗口拖放拦截，HTML5 的 dragover / drop 收不到，只来
-// tauri://drag-drop 原生事件且只带绝对路径（是否目录由 probe_external_drop 补）。
-// Windows / Linux 把拦截关掉（tauri.conf.json 设 dragDropEnabled: false，mac 用
-// tauri.macos.conf.json 覆盖回 true），那边由 drop-open.js 处理 HTML5 事件。
-// 分两条的原因是取路径：WebView2 的 File.path 有值、WKWebView 没有，mac 只能靠原生事件。
+// Tauri 原生拖放通道（桌面版两端同一条）：窗口留着拖放拦截，HTML5 的 dragover / drop
+// 收不到，只来 tauri://drag-drop 事件且只带绝对路径（是否目录由探针命令补）。
 // 装了拦截就一定没有 HTML5 事件（tauri-runtime-wry 的 handler 恒返回 true），dev 与
-// 打包同一口径；纯 web 构建只剩 HTML5 这条，此处订阅不到任何事件。
+// 打包同一口径；纯 web 构建没有这条通道，那边走 bindDropOpen 的 HTML5 事件。
+// 落点与语义都交给 handleDropTargets，与 Windows / Linux 的 tauri-drag-open.js 同一出口。
 function bindNativeDrop() {
   if (!window.__TAURI_INTERNALS__) return
   const bodyEl = document.querySelector('.body')
@@ -1258,26 +1248,18 @@ function bindNativeDrop() {
       const pos = p.position || {}
       const dpr = window.devicePixelRatio || 1
       const el = Number.isFinite(pos.x) ? document.elementFromPoint(pos.x / dpr, pos.y / dpr) : null
-      const files = []
-      const dirs = []
+      const targets = []
       for (const path of paths) {
         try {
           const info = await probeExternalDrop(path)
-          ;(info.isDir ? dirs : files).push({ path, isDir: info.isDir })
+          targets.push({ path, isDir: info.isDir })
         } catch (e) {
           await messageDialog(t('msg.openFileFailedDlg', { msg: errText(e) }))
         }
       }
-      for (const d of dirs) {
-        try {
-          await openVaultWindow(d.path)
-        } catch (e) {
-          await messageDialog(t('msg.openFileFailedDlg', { msg: errText(e) }))
-        }
-      }
-      if (files.length) await openDropTargets(files, el)
+      if (targets.length) await handleDropTargets(targets, { target: el })
     })
-    .catch(() => {}) // 纯 web 构建没有这条通道
+    .catch(() => {}) // 无后端时订阅不到事件
 }
 
 // ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
@@ -4692,6 +4674,30 @@ function pruneEmptyPanes(data) {
   return { tree, focused }
 }
 
+// 拖入打开的统一落点（mac 的 bindNativeDrop、Windows / Linux 的 tauri-drag-open、
+// 纯 web 的 drop-open 三条通道共用）：分栏后拖进哪个窗格就落哪个窗格（落点在窗格外
+// 才用当前焦点窗格）。语义与「打开方式」一致——文件在当前窗口开，文件夹另开一个窗口
+// 当知识库打开，当前窗口的库不变。
+async function handleDropTargets(targets, e) {
+  const list = (targets || []).filter((t) => t && t.path)
+  if (!list.length) return
+  for (const d of list.filter((t) => t.isDir)) {
+    try {
+      await openVaultWindow(d.path)
+    } catch (err) {
+      await messageDialog(t('msg.openFileFailedDlg', { msg: errText(err) }))
+    }
+  }
+  const files = list.filter((t) => !t.isDir)
+  if (!files.length) return
+  const leaf = e && e.target && e.target.closest ? e.target.closest('.nl-pane') : null
+  const paneId = leaf && leaf.dataset.paneId
+  if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
+    await focusPaneUi(paneId)
+  }
+  return handleOpenTargets(files, { interactive: true, preview: true })
+}
+
 async function boot() {
   // 界面语言：i18n.js 导入时已按「本地记忆 → 系统语言 → 简体中文」定好 locale；
   // 这里把 <html lang> 与静态文案对齐当前语言（默认词条也是中文，重复一遍无副作用）
@@ -4877,6 +4883,9 @@ async function boot() {
   els.btnNewFile.addEventListener('click', () => newScratchFile())
   els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
+// 标题栏「查找 / 替换」：走命令注册表同一入口（无文档 / 源码态时命令自守卫为空操作）
+els.btnFind && els.btnFind.addEventListener('click', () => runViaShortcut('app.findInDoc'))
+els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut('app.replace'))
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
   els.btnSource && els.btnSource.addEventListener('click', toggleSourceMode)
   els.btnParagraph && els.btnParagraph.addEventListener('click', (e) => openParagraphMenu(e.currentTarget))
@@ -4934,11 +4943,21 @@ async function boot() {
   // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到
   // Dock 图标，二次唤起）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次
   // 工作区。拖入 / 唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
+  // 拖入打开：桌面版两端都走 Tauri 原生拖放事件（拖动落点 + 真实绝对路径），差别只在
+  // 类型探针——mac 用 probe_external_drop，Windows / Linux 用 drop_path_is_dir；
+  // 纯 web 构建没有事件通道，仍走 drop-open.js 的 HTML5 drop。三条都汇到 handleDropTargets。
   bindDropOpen({
     rootEl: document.querySelector('.body'),
-    onTargets: (targets, e) => openDropTargets(targets, e && e.target),
+    onTargets: handleDropTargets,
   })
-  bindNativeDrop()
+  if (IS_MAC) {
+    bindNativeDrop()
+  } else if (window.__TAURI_INTERNALS__) {
+    bindTauriDragOpen({
+      rootEl: document.querySelector('.body'),
+      onTargets: handleDropTargets,
+    })
+  }
   // Rust 侧的唤起只排队、不带路径：事件叫醒后统一去 takeLaunchPaths 取。
   // 冷启动那次事件没人听也不丢——排着的同一份队列由 handleLaunchArgs 兜走。
   listen('file-opened', () => {
