@@ -300,7 +300,7 @@ export function createEditor(opts) {
       findPlugin(),
       modes.plugin,
       fold.plugin,
-      createLineNumbersPlugin(),
+      createLineNumbersPlugin(opts.getFeatures),
       ...tablePlugins(),
       // 块间隙光标：表格 / 代码块 / 公式在文末时给它下方一个可点可打字的位置，
       // 不改文档所以不判脏；放在表格插件之后，让列宽拖拽先取得鼠标事件
@@ -742,6 +742,19 @@ export function createEditor(opts) {
     isSourceMode() { return sourceMode },
     // 当前块类型（mac「段落」菜单的勾）；源码态可见的是 CodeMirror，无块可言
     activeBlock() { return sourceMode ? null : activeBlockKey(view.state) },
+    // 格式按钮条的按下态：有选区看选区内是否含该 mark，光标态看光标处生效 mark
+    activeMarks() {
+      if (sourceMode) return []
+      const { from, $from, to, empty } = view.state.selection
+      const out = []
+      for (const name of ['strong', 'em', 'code', 'strike', 'link']) {
+        const type = view.state.schema.marks[name]
+        if (!type) continue
+        const on = empty ? !!type.isInSet(view.state.storedMarks || $from.marks()) : view.state.doc.rangeHasMark(from, to, type)
+        if (on) out.push(name)
+      }
+      return out
+    },
     enterSource,
     exitSource,
     async toggleSource() { return sourceMode ? exitSource() : await enterSource() },

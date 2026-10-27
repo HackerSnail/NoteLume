@@ -11,6 +11,7 @@ import {
   formatBinding,
   toAccelerator,
   effectiveBindings,
+  defaultKeyFor,
   fuzzyMatch,
 } from '../keymap.js'
 import { createRegistry } from '../commands.js'
@@ -114,6 +115,33 @@ check('effectiveBindings 空串解绑 / 覆盖改键', () => {
   assert.strictEqual(map.get('Ctrl-k'), 'a')
 })
 
+// —— defaultKeyMac：mac 专用默认键 ——
+const MAC_CMDS = [
+  { id: 'find', defaultKey: 'Mod-f' },
+  { id: 'replace', defaultKey: 'Mod-h', defaultKeyMac: 'Mod-Alt-f' },
+  { id: 'palette', defaultKey: 'Mod-p', defaultKeyMac: '' },
+]
+check('defaultKeyFor：mac 取 defaultKeyMac，其余取 defaultKey；缺省回退', () => {
+  const [find, replace, palette] = MAC_CMDS
+  assert.strictEqual(defaultKeyFor(replace, true), 'Mod-Alt-f')
+  assert.strictEqual(defaultKeyFor(replace, false), 'Mod-h')
+  assert.strictEqual(defaultKeyFor(find, true), 'Mod-f')
+  assert.strictEqual(defaultKeyFor(palette, true), '')
+  assert.strictEqual(defaultKeyFor(null, true), undefined)
+})
+check('effectiveBindings 按平台取默认键：mac 不出现 Ctrl-H，win 仍占着', () => {
+  const mac = effectiveBindings(MAC_CMDS, {}, true)
+  assert.strictEqual(mac.map.get('Cmd-Alt-f'), 'replace')
+  assert.ok(!mac.map.has('Cmd-H'), 'mac 上 Mod-H 被原生「隐藏」占用，不该再挂')
+  assert.ok(!mac.map.has('Cmd-P'), 'mac 显式解绑（空串）不应落表')
+  const win = effectiveBindings(MAC_CMDS, {}, false)
+  assert.strictEqual(win.map.get('Ctrl-h'), 'replace')
+  assert.strictEqual(win.map.get('Ctrl-p'), 'palette')
+  // 覆盖表优先于平台默认
+  const ov = effectiveBindings(MAC_CMDS, { replace: 'Mod-r' }, true)
+  assert.strictEqual(ov.map.get('Cmd-r'), 'replace')
+})
+
 // —— formatBinding ——
 check('formatBinding win 文本 / mac 符号', () => {
   assert.strictEqual(formatBinding('Mod-Shift-p', false), 'Ctrl+Shift+P')
@@ -181,6 +209,7 @@ check('registry 拒非法 / 插件不得覆盖内置 / removeWhere', () => {
   const r = createRegistry()
   r.register({ id: 'app.x', title: 'X', category: 'app', run() {} })
   assert.strictEqual(r.register({ id: 'app.y', category: 'app', run() {} }), false) // 缺 title
+  assert.strictEqual(r.register({ id: 'app.z', title: 'Z', category: 'app', defaultKeyMac: 1, run() {} }), false) // defaultKeyMac 非串
   assert.strictEqual(r.register({ id: 'app.x', title: 'px', category: 'plugin', run() {} }), false) // 插件覆盖内置
   assert.strictEqual(r.register({ id: 'p.a', title: 'A', category: 'plugin', run() {} }), true)
   assert.strictEqual(r.register({ id: 'p.b', title: 'B', category: 'plugin', run() {} }), true)

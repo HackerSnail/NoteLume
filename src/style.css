@@ -405,6 +405,66 @@ body {
   gap: 4px;
   flex: none;
 }
+/* —— 内联格式按钮条（format-bar.js）：每个窗格一条，紧贴正文上方 —— */
+/* 与标签条同一 sticky 上下文（.nl-pane 仍是滚动容器）；有文档时标签条必然可见，
+   故按钮条钉在标签条下沿（min-height 30 含 1px 下边框，box-sizing: border-box） */
+.nl-fmt-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 3px 6px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+.nl-pane-strip + .nl-fmt-bar {
+  top: 30px;
+}
+.nl-fmt-bar.hidden {
+  display: none;
+}
+.nl-fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 23px;
+  flex: none;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nl-fmt-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.nl-fmt-btn.active {
+  background: var(--hover);
+  color: var(--accent);
+  border-color: var(--border);
+}
+.nl-fmt-btn .nl-ico {
+  width: 14px;
+  height: 14px;
+}
+.nl-fmt-glyph-b {
+  font-weight: 700;
+}
+.nl-fmt-glyph-i {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+}
+.nl-fmt-glyph-s {
+  text-decoration: line-through;
+}
 .tab {
   display: inline-flex;
   align-items: center;
@@ -1825,8 +1885,9 @@ html.nl-dragging * {
     max-width: 1200px;
   }
 }
-/* 所见即所得行号装订线（wysiwyg-gutter.js）：与源码模式同口径，视觉行、常开。
-   数字画在 .editor 左侧原有的 30px 内边距里，开行号后把内容再让出 16px */
+/* 所见即所得行号装订线（wysiwyg-gutter.js）：与源码模式同口径，视觉行，开关在
+   features.lineNumbers。数字画在 .editor 左侧原有的 30px 内边距里，开行号后把内容
+   再让出 16px；关掉时整个类摘掉，回到引入装订线之前的静态定位与原内边距 */
 .editor.nl-has-gutter {
   position: relative;
   padding-left: 46px;
@@ -1843,7 +1904,7 @@ html.nl-dragging * {
 }
 .nl-ln-num {
   position: absolute;
-  right: 8px;
+  right: 26px; /* 数字右沿退到 18px：折叠三角占 24–40px，两者不再叠在同一个号上 */
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
 }

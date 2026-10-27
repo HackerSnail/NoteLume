@@ -155,9 +155,15 @@ export function toAccelerator(raw) {
   return mods.concat(key).join('+')
 }
 
+/** 命令在本平台的默认键：mac 优先取 defaultKeyMac（含显式 ''，即 mac 不绑）。 */
+export function defaultKeyFor(cmd, isMac = false) {
+  if (isMac && cmd && cmd.defaultKeyMac != null) return cmd.defaultKeyMac
+  return cmd ? cmd.defaultKey : undefined
+}
+
 /**
  * 合成有效绑定。
- * @param {Array<{id:string, defaultKey?:string}>} commands
+ * @param {Array<{id:string, defaultKey?:string, defaultKeyMac?:string}>} commands
  * @param {Object<string,string>} overrides  {id: 绑定串}；空串 '' = 解绑
  * @param {boolean} isMac
  * @returns {{ map: Map<string,string>, conflicts: Array<{binding:string, ids:string[]}> }}
@@ -168,7 +174,7 @@ export function effectiveBindings(commands, overrides = {}, isMac = false) {
   const byBinding = new Map() // 解析后键形 -> [id...]
   for (const cmd of commands || []) {
     if (!cmd || !cmd.id) continue
-    const chosen = Object.prototype.hasOwnProperty.call(overrides, cmd.id) ? overrides[cmd.id] : cmd.defaultKey
+    const chosen = Object.prototype.hasOwnProperty.call(overrides, cmd.id) ? overrides[cmd.id] : defaultKeyFor(cmd, isMac)
     if (chosen == null || chosen === '') continue
     const resolved = resolveBinding(chosen, isMac)
     if (!resolved) continue // 非法绑定跳过

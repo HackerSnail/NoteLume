@@ -1,9 +1,11 @@
-// app-menu.js —— macOS 系统菜单栏的 spec 构建
+// app-menu.js —— 菜单 spec 构建（mac 系统菜单栏；Windows / Linux 的工具条「段落」菜单也取同一份的段落组）
 //
-// 只在 mac 装配：Windows/Linux 保留窗口内工具条，不建第二套 UI（设计文档的非目标）。
-// 这里只做纯数据变换（buildMacMenuSpec）→ 可 Node 单测；落地成原生菜单由 Rust 的
-// `set_mac_menu` 完成（一次 IPC 换整棵菜单），点击经 `nl:menu-select` 事件回 main.js。
+// mac 上原生菜单由本模块出 spec，Rust 的 `set_mac_menu` 落地（一次 IPC 换整棵菜单），点击经
+// `nl:menu-select` 事件回 main.js；Windows / Linux 保留窗口内工具条，只有「段落」下拉直接渲染
+// 这里的同一条目表，免得两边各排一次序。
+// 这里只做纯数据变换（buildMacMenuSpec）→ 可 Node 单测。
 // 条目一律取命令注册表的 title 与「覆盖 ∪ 默认」绑定：这里不写第二份文案或快捷键。
+// 注册表里每条命令都必须在某个组里出现（单测按叶子 id 全量核对），功能不留没有入口的。
 
 // 系统预定义项的标题由我们给出：muda 只按文字建项、动作仍是原生 selector，
 // 不给标题就会留一手英文（mac 上「剪切/复制/退出」这类是约定俗成的固定译法）。
@@ -29,6 +31,18 @@ const ROLE_TEXT = {
 
 const role = (name) => ({ type: 'role', role: name })
 const submenu = (id, text, dynamic, tail = []) => ({ type: 'submenu', id, text, dynamic, tail })
+// 静态子菜单：list 里放命令 id / 'sep' / 再一层 sub()。strip 是注册表标题里的归类前缀
+// （命令面板靠它检索，菜单里父项已经说了同一件事），只在本子菜单内剥掉。
+const sub = (id, text, list, strip = '') => ({ type: 'sub', id, text, list, strip })
+
+function stripTitles(items, prefix) {
+  if (!prefix) return
+  const re = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*')
+  for (const it of items) {
+    if (typeof it.text === 'string') it.text = it.text.replace(re, '')
+    if (it.items) stripTitles(it.items, prefix)
+  }
+}
 
 /**
  * @param {object} ctx
@@ -60,7 +74,8 @@ export function buildMacMenuSpec(ctx = {}) {
 
   const blockIds = (ctx.commands || []).filter((c) => c.id.startsWith('editor.block.')).map((c) => c.id)
 
-  const group = (id, text, list) => {
+  // 一条命令清单 → 菜单项数组：未注册 id 跳过、连续 / 首尾分隔符去重、静态子菜单递归
+  const buildItems = (list) => {
     const items = []
     const push = (it) => {
       if (it && (it.type !== 'sep' || (items.length && items[items.length - 1].type !== 'sep'))) items.push(it)
@@ -70,13 +85,22 @@ export function buildMacMenuSpec(ctx = {}) {
       if (entry === 'sep') {
         push({ type: 'sep' })
         continue
-      }      if (typeof entry === 'string') {
+      }
+      if (typeof entry === 'string') {
         push(item(entry))
         continue
       }
       if (entry.type === 'role') {
         const label = ROLE_TEXT[entry.role]
         push(label ? { ...entry, text: label(ctx.appName || 'NoteLume') } : entry)
+        continue
+      }
+      if (entry.type === 'sub') {
+        const kids = buildItems(entry.list)
+        if (kids.length) {
+          stripTitles(kids, entry.strip)
+          push({ type: 'submenu', id: entry.id, text: entry.text, items: kids })
+        }
         continue
       }
       const kids = []
@@ -102,8 +126,20 @@ export function buildMacMenuSpec(ctx = {}) {
     }
     // 尾部分隔符：注册表里缺该组的某些项（如尚未注册的提升/降级）时会留下悬空分隔线
     while (items.length && items[items.length - 1].type === 'sep') items.pop()
+    return items
+  }
+
+  const group = (id, text, list) => {
+    const items = buildItems(list)
     return items.length ? { id, text, items } : null
   }
+
+  // 「段落」组：标题 / 列表两个子菜单先收走对应块类型，其余 editor.block.*（新加的块）
+  // 仍按注册表顺序平铺在子菜单之后，不会因为没有归类就从菜单里消失
+  const placed = new Set(['editor.block.para', 'editor.block.quote', 'editor.block.table', 'editor.block.code',
+    'editor.block.callout', 'editor.block.mermaid', 'editor.block.hr', 'editor.block.bullet', 'editor.block.ordered',
+    'editor.block.task', ...blockIds.filter((id) => /^editor\.block\.h[1-6]$/.test(id))])
+  const restBlocks = blockIds.filter((id) => !placed.has(id))
 
   const groups = [
     group('app', ctx.appName || 'NoteLume', [
@@ -113,6 +149,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.appearance',
       'app.clipSettings',
       'app.qdToggleEval',
+      'app.qdInstallPackage',
       submenu('language', t('menu.language'), 'languages'),
       'sep',
       role('Services'),
@@ -123,23 +160,30 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       role('Quit'),
     ]),
+    // 文件组按「新建 / 打开 → 保存与定位 → 导入导出 → 记录 → 关闭」分段；
+    // 导出全部收进子菜单（PDF 走打印面板，语义上是导出不是打印，故也归在这里）
     group('file', t('menu.group.file'), [
+      'app.newFile',
+      'app.newCanvas',
       'app.openFile',
       'app.openFolder',
-      'app.newFile',
-      'app.renameFile',
       submenu('recent', t('menu.recentMac'), 'recents', ['app.clearRecents']),
-      'app.newCanvas',
       submenu('templates', t('menu.templatesMac'), 'templates', ['app.newTemplate', 'app.dailySettings']),
       'sep',
       'app.save',
-      'app.export',
-      'app.exportSlides',
-      'app.exportVaultSlides',
-      'app.exportSite',
+      'app.renameFile',
+      'app.revealFile',
+      'sep',
       'app.importWord',
-      'app.exportWord',
-      'app.print',
+      sub('export', t('menu.export'), [
+        'app.print',
+        'app.export',
+        'app.exportPlain',
+        'app.exportWord',
+        'app.exportSlides',
+        'app.exportVaultSlides',
+        'app.exportSite',
+      ], t('menu.exportPrefix')),
       'sep',
       'app.dailyCapture',
       'app.autosave',
@@ -155,21 +199,55 @@ export function buildMacMenuSpec(ctx = {}) {
       role('Copy'),
       role('Paste'),
       'app.pastePlain',
-      'app.insertImage',
-      role('SelectAll'),
       'sep',
+      role('SelectAll'),
+      'app.insertImage',
+      'editor.deleteLine',
+      'sep',
+      'app.findInDoc',
+      'app.replace',
       'app.search',
     ]),
+    // 格式组只放行内标记（块级的公式块在段落组，与 Typora 同口径）
     group('format', t('menu.group.format'), [
       'editor.bold',
       'editor.italic',
-      'editor.code',
       'editor.strike',
+      'editor.code',
+      'editor.highlight',
       'sep',
       'editor.mathInline',
-      'editor.mathBlock',
     ]),
-    group('paragraph', t('menu.group.paragraph'), [...blockIds, 'sep', 'editor.headingUp', 'editor.headingDown']),
+    // 段落组照 Typora：全部平铺、不出子菜单。标题六级在最上（⌘1~6），其后正文、标题升降，
+    // 再按「块 → 引用 → 列表 → 链接脚注 → 分割线」分段。公式块属块级，归这里；行内公式在格式组。
+    group('paragraph', t('menu.group.paragraph'), [
+      ...blockIds.filter((id) => /^editor\.block\.h[1-6]$/.test(id)),
+      'sep',
+      'editor.block.para',
+      'sep',
+      'editor.headingUp',
+      'editor.headingDown',
+      'sep',
+      'editor.block.table',
+      'editor.mathBlock',
+      'editor.block.code',
+      'editor.exitBlock',
+      'sep',
+      'editor.block.quote',
+      'sep',
+      'editor.block.ordered',
+      'editor.block.bullet',
+      'editor.block.task',
+      'sep',
+      'editor.link',
+      'editor.footnote',
+      'editor.footnoteDelete',
+      'sep',
+      'editor.block.hr',
+      'editor.block.callout',
+      'editor.block.mermaid',
+      ...restBlocks,
+    ]),
     group('view', t('menu.group.view'), [
       'app.sourceMode',
       'sep',
@@ -177,12 +255,26 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       'app.focusMode',
       'app.typewriterMode',
+      'sep',
       'app.toggleSidebar',
       'app.toggleInspector',
       'sep',
       'app.graph',
       'app.palette',
+      'sep',
       submenu('theme', t('menu.theme'), 'themes'),
+    ]),
+    group('git', t('menu.group.git'), [
+      'app.git.refresh',
+      'app.git.commit',
+      'sep',
+      'app.git.fetch',
+      'app.git.pull',
+      'app.git.pullMerge',
+      'app.git.push',
+      'sep',
+      'app.git.remote',
+      'app.git.init',
     ]),
     group('window', t('menu.group.window'), [
       'app.nextTab',
@@ -197,12 +289,10 @@ export function buildMacMenuSpec(ctx = {}) {
     ]),
   ].filter(Boolean)
 
-  // 「段落」组的注册表标题带当前语言的段落前缀（面板里便于归类），菜单里是多余的
-  const para = groups.find((g) => g.id === 'paragraph')
-  if (para) {
-    const prefix = t('menu.paraPrefix')
-    const re = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    for (const it of para.items) it.text = String(it.text).replace(re, '')
+  // 「段落」「Git」组的注册表标题带当前语言的归类前缀（面板里便于归类），菜单里是多余的
+  for (const [gid, key] of [['paragraph', 'menu.paraPrefix'], ['git', 'menu.gitPrefix']]) {
+    const g = groups.find((x) => x.id === gid)
+    if (g) stripTitles(g.items, t(key))
   }
 
   return { groups }

@@ -2,8 +2,10 @@
 //
 // 单一事实源：命令面板、快捷键设置、插件 registerCommand 三者都读写这里。
 // 命令记录形状：
-//   { id, title, category:'app'|'editor'|'plugin', defaultKey?:string,
+//   { id, title, category:'app'|'editor'|'plugin', defaultKey?:string, defaultKeyMac?:string,
 //     run(ctx), when?:'editor'|'always' }
+// defaultKeyMac：只在 mac 生效的默认键，覆盖 defaultKey（'' = mac 上不绑）。
+// 用于和系统角色键撞车的场合，例如 ⌘H 已被原生「隐藏」占用，替换在 mac 改绑 ⌥⌘F。
 // 具体 run 由调用方注入闭包（app 命令在 main.js 注册、editor 命令经 ctx.runEditorCommand、
 // plugin 命令包一层 runCommand）。本模块只管登记/查询/分派，不含任何应用逻辑，故可纯 Node 单测。
 
@@ -21,6 +23,7 @@ export function createRegistry() {
     if (!CATEGORIES.has(cmd.category)) return t('cmd.err.badCategory', { id: cmd.id, category: cmd.category })
     if (typeof cmd.run !== 'function') return t('cmd.err.badRun', { id: cmd.id })
     if (cmd.defaultKey != null && typeof cmd.defaultKey !== 'string') return t('cmd.err.badKey', { id: cmd.id })
+    if (cmd.defaultKeyMac != null && typeof cmd.defaultKeyMac !== 'string') return t('cmd.err.badKey', { id: cmd.id })
     return null
   }
 

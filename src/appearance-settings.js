@@ -433,6 +433,7 @@ export function createAppearanceSettings(deps) {
     { key: 'emoji', labelKey: 'feature.emoji' },
     { key: 'headingNumbering', labelKey: 'feature.headingNumbering' },
     { key: 'quarkdown', labelKey: 'feature.quarkdown' },
+    { key: 'lineNumbers', labelKey: 'feature.lineNumbers' },
   ]
   function renderFeatures() {
     if (!getFeatures) return

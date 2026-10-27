@@ -72,6 +72,7 @@ import { openDocxReview } from './docx-review.js'
 import { createPalette } from './command-palette.js'
 import { createShortcutSettings } from './shortcut-settings.js'
 import { createHighlightToolbar } from './highlight-toolbar.js'
+import { createFormatBar } from './format-bar.js'
 import { bindDropOpen, isDroppableName, isBinaryName } from './drop-open.js'
 import { createPaneDrag } from './pane-drag.js'
 import { mountSplitTree, normalizeTree, serializeTree, paneIds, freshId, closePane } from './split-pane.js'
@@ -88,7 +89,7 @@ import { createRegistry } from './commands.js'
 import { createTabs } from './tabs.js'
 import { createPaneStrip } from './pane-strip.js'
 import { normVaultPath, rootChanged } from './vault-path.js'
-import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, formatBinding, toAccelerator } from './keymap.js'
+import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, defaultKeyFor, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
@@ -253,6 +254,7 @@ const panes = {
   editors: new Map(), // paneId -> 编辑器实例
   findBars: new Map(), // paneId -> 查找栏
   hlBars: new Map(), // paneId -> 选区高亮浮动工具栏（p5plan §6.4）
+  fmtBars: new Map(), // paneId -> 内联格式按钮条（format-bar.js）
   contents: new Map(), // paneId -> .nl-pane-body（编辑器 + 源码挂载点）
   mounts: new Map(), // paneId -> { editorDiv, sourceDiv, canvasDiv }
   ctx: new Map(), // paneId -> { vaultRoot, rel, scratch, dirty }
@@ -698,6 +700,7 @@ async function toggleSourceMode() {
   }
   const on = await editor.toggleSource()
   if (els.btnSource) els.btnSource.classList.toggle('active', on)
+  syncFmtBars()
   setStatus(on ? t('status.sourceOn') : t('status.sourceOff'))
 }
 
@@ -1701,6 +1704,7 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.importWord', 'file')
   addMenuCmd(menu, 'app.exportWord', 'export')
   addMenuCmd(menu, 'app.print', 'printer')
+  addMenuCmd(menu, 'app.revealFile', 'folder')
   addMenuCmd(menu, 'app.graph', 'graph')
   addMenuCmd(menu, 'app.newCanvas', 'board')
   // 这两项是子菜单而非命令，注册表里没有对应条目，文案走词条
@@ -1721,34 +1725,26 @@ function openMoreMenu(anchorEl) {
 }
 
 // 工具条「段落」菜单（Windows / Linux 用；mac 是原生「段落」菜单，两边不同时挂）：
-// 块类型 + 标题升 / 降级。条目顺序、勾选态都取 menuCommands() 那一份（与 mac 同源，
-// 含「当前块类型」单选勾与标题升降的可用性），文案剥掉注册表标题里的「段落：」前缀
-// ——按钮已经叫段落了。执行走 runViaShortcut → 命令注册表，与命令面板同一条链路。
+// 直接取 buildMacMenuSpec 的「段落」组渲染 —— 分组、顺序、勾选、置灰、剥掉的「段落：」前缀
+// 与 mac 同一份定义，两边不会各改各的。执行走 runViaShortcut → 命令注册表，与命令面板同链路。
 function openParagraphMenu(anchorEl) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
   const icons = {
-    para: 'pilcrow', quote: 'quote', code: 'code', mermaid: 'diagram',
-    bullet: 'list-bullet', task: 'task', hr: 'hr', table: 'table', callout: 'lightbulb',
+    para: 'pilcrow', quote: 'quote', code: 'code', mermaid: 'diagram', exitBlock: 'arrow-down',
+    bullet: 'list-bullet', ordered: 'list-ordered', task: 'task', hr: 'hr', table: 'table', callout: 'lightbulb',
+    link: 'link', footnote: 'pen', footnoteDelete: 'eraser', mathBlock: 'math', headingUp: 'arrow-up', headingDown: 'arrow-down',
   }
-  const cmds = menuCommands()
-  const prefix = t('menu.paraPrefix')
-  const item = (c, icon) => {
-    const key = commandBindingFor(c.id)
-    const title = String(c.title).startsWith(prefix) ? c.title.slice(prefix.length) : c.title
-    return makeMenuItem(title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(c.id), false, !!c.checked, icon)
+  const para = (buildMacMenuSpec(menuSpecCtx()).groups.find((g) => g.id === 'paragraph') || { items: [] }).items
+  for (const it of para) {
+    if (it.type === 'sep') { menu.appendChild(menuSep()); continue }
+    const name = it.id.split('.').pop()
+    const key = commandBindingFor(it.id)
+    const el = makeMenuItem(it.text + (key ? ' (' + key + ')' : ''), () => runViaShortcut(it.id),
+      false, it.type === 'check' && !!it.checked, icons[name] || null, it.enabled === false)
+    menu.appendChild(el)
   }
-  for (const c of cmds) {
-    if (c.id.startsWith('editor.block.')) {
-      menu.appendChild(item(c, icons[c.id.slice('editor.block.'.length)] || null))
-    }
-  }
-  menu.appendChild(menuSep())
-  const up = cmds.find((c) => c.id === 'editor.headingUp')
-  const down = cmds.find((c) => c.id === 'editor.headingDown')
-  if (up) menu.appendChild(item(up))
-  if (down) menu.appendChild(item(down))
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
 }
@@ -2533,6 +2529,7 @@ function showPaneEmpty(paneId, on) {
   } else if (hint) {
     hint.remove()
   }
+  syncFmtBars()
 }
 
 // 换根（换知识库 / 单文件模式 / 打开跨库的最近文档）前的收尾：
@@ -2695,6 +2692,7 @@ function setMode(mode) {
   els.canvasMount.classList.toggle('hidden', !canvasOn)
   if (frontmatterPanel) frontmatterPanel.refresh() // 画布态下属性面板转为占位
   updateDocStats()
+  syncFmtBars()
 }
 
 // 画布打开（内容装载；标签入列由 openDocInPane 负责）。
@@ -3466,8 +3464,8 @@ function rebuildKeymap() {
 }
 
 function registerAppCommands() {
-  const app = (id, defaultKey, run) =>
-    commandRegistry.register({ id, title: t('cmd.' + id), category: 'app', defaultKey, run })
+  const app = (id, defaultKey, run, defaultKeyMac) =>
+    commandRegistry.register({ id, title: t('cmd.' + id), category: 'app', defaultKey, defaultKeyMac, run })
   app('app.save', 'Mod-s', () => saveCurrent(true))
   app('app.openFile', 'Mod-o', () => openSingleFile())
   app('app.openFolder', 'Mod-Shift-o', () => openFolder())
@@ -3476,9 +3474,10 @@ function registerAppCommands() {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open()
   })
   // Ctrl+H：打开同一查找栏，但焦点落在替换框（替换行常显）
+  // mac 上 ⌘H 是系统「隐藏」的角色键，原生菜单会静默丢掉这条快捷键，故 mac 绑 ⌥⌘F
   app('app.replace', 'Mod-h', () => {
     if (editor && state.mode === 'md' && !editor.isSourceMode()) findBar && findBar.open('replace')
-  })
+  }, 'Mod-Alt-f')
   app('app.search', 'Mod-Shift-f', () => { setSidebar(false); els.searchInput.focus(); els.searchInput.select() })
   // 新建文件（Ctrl+N）：建到系统临时目录，不要求先开知识库；Ctrl+S / 关闭时再选保存位置
   app('app.newFile', 'Mod-n', () => newScratchFile())
@@ -3489,6 +3488,22 @@ function registerAppCommands() {
       return
     }
     renameEntry(state.currentFile, baseName(state.currentFile), false)
+  })
+  // 在文件管理器里显示当前文件（菜单「打开文件位置」）。临时目录里的未命名文档也真在磁盘上，
+  // 照用活动页自己的 root/rel；单文件模式（无库根）回落到 state.vaultRoot 那条路径。
+  app('app.revealFile', null, () => {
+    const act = ftabs() && ftabs().active()
+    if (!state.currentFile) {
+      setStatus(t('status.noOpenFile'))
+      return
+    }
+    if (act && act.root && act.rel) {
+      revealInFolder(act.root, act.rel).catch(async (e) => {
+        await messageDialog(t('msg.revealFailed', { err: errText(e) }))
+      })
+      return
+    }
+    revealVaultPath(state.currentFile)
   })
   // 关闭当前标签页（Ctrl+W）：关焦点窗格的活动标签；关完没有邻居则窗格留空态
   app('app.closeFile', 'Mod-w', () => {
@@ -3688,7 +3703,7 @@ function commandBindingFor(id) {
   const cmd = commandRegistry.get(id)
   if (!cmd) return ''
   const ov = loadKeymapOverrides()
-  const chosen = Object.prototype.hasOwnProperty.call(ov, id) ? ov[id] : cmd.defaultKey
+  const chosen = Object.prototype.hasOwnProperty.call(ov, id) ? ov[id] : defaultKeyFor(cmd, IS_MAC)
   if (!chosen) return ''
   return formatBinding(chosen, IS_MAC)
 }
@@ -3703,7 +3718,7 @@ let macMenuSig = ''
 let macTitle = ''
 const lastRunAt = new Map()
 
-const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.exportSlides', 'app.print', 'app.closeFile', 'app.renameFile'])
+const MENU_NEEDS_DOC = new Set(['app.save', 'app.export', 'app.exportSlides', 'app.print', 'app.closeFile', 'app.renameFile', 'app.revealFile'])
 const MENU_NEEDS_VAULT = new Set(['app.exportSite', 'app.exportPlain', 'app.exportVaultSlides', 'app.newCanvas', 'app.newTemplate', 'app.graph'])
 // 导出 Word 取的是当前 md 文档的 PM 节点树：画布与未打开文档时置灰，同 editor.* 的口径
 const MENU_NEEDS_MD = new Set(['app.exportWord', 'app.insertImage'])
@@ -3735,7 +3750,7 @@ function menuCommands() {
   const active = (editor && editor.activeBlock && editor.activeBlock()) || null
   const isH = active && /^h[1-6]$/.test(active) ? Number(active.slice(1)) : 0
   return commandRegistry.list().map((c) => {
-    const raw = Object.prototype.hasOwnProperty.call(ov, c.id) ? ov[c.id] : c.defaultKey
+    const raw = Object.prototype.hasOwnProperty.call(ov, c.id) ? ov[c.id] : defaultKeyFor(c, IS_MAC)
     const out = { id: c.id, title: c.title, accelerator: toAccelerator(raw), enabled: menuEnabled(c.id) }
     const check = MENU_CHECKED[c.id]
     if (check) out.checked = check()
@@ -3971,6 +3986,7 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
       scheduleMacChrome()
       const bar = panes.hlBars.get(paneId)
       if (bar) bar.sync()
+      syncFmtBars()
     },
     // Ctrl+K 的 URL 询问：所见即所得里没有直接改 href 的入口，只能弹窗问。
     // 返回 null = 取消，'' = 解除链接，其余为链接地址。
@@ -4058,6 +4074,48 @@ function ensurePaneHlBar(paneId) {
   return bar
 }
 
+// 键位提示每次 sync 只查一遍（每次选区变化都要刷按钮标题，逐格逐颗去解析键位覆盖表太碎）
+let fmtBinds = new Map()
+function fmtBindingFor(id) {
+  if (!fmtBinds.has(id)) fmtBinds.set(id, commandBindingFor(id))
+  return fmtBinds.get(id)
+}
+
+// 格式按钮条按窗格各一条：常驻标签条下方，动作转给本窗格的编辑器实例
+// （选的是哪一格的文字就改哪一格，与高亮浮栏同口径）
+function ensurePaneFmtBar(paneId) {
+  const exist = panes.fmtBars.get(paneId)
+  if (exist) return exist
+  const leaf = paneLeaf(paneId)
+  if (!leaf) return null
+  const bar = createFormatBar({
+    paneEl: leaf,
+    runCommand: (cmd) => {
+      const inst = panes.editors.get(paneId)
+      if (inst) inst.runEditorCommand(cmd)
+    },
+    pickImages: () => {
+      const inst = panes.editors.get(paneId)
+      if (inst) inst.pickAndInsertImages()
+    },
+    bindingFor: fmtBindingFor,
+  })
+  panes.fmtBars.set(paneId, bar)
+  return bar
+}
+
+// 显隐：这一格有可编辑的 md 文档才出（空态 / 画布 / 源码态整条藏——按钮改的是 PM
+// 模型，源码态下动的是用户看不见的文档）；按下态跟选区里是否含该 mark 走。
+function syncFmtBars() {
+  fmtBinds = new Map()
+  for (const [paneId, bar] of panes.fmtBars) {
+    const inst = panes.editors.get(paneId)
+    const ctx = paneCtx(paneId)
+    const visible = !!inst && !!ctx.rel && !isCanvasPath(ctx.rel) && !inst.isSourceMode()
+    bar.sync(visible ? new Set(inst.activeMarks()) : new Set(), visible)
+  }
+}
+
 // 焦点切换（split-pane 的 onPaneFocus 回调）：全局镜像、树 / 索引（跨根时）、
 // 面板、查找栏、高亮工具栏全部换成新焦点窗格的
 async function focusPaneUi(paneId) {
@@ -4138,6 +4196,7 @@ async function splitFocusedPane(orientation) {
   mountPaneChrome(newId)
   ensurePaneFindBar(newId)
   ensurePaneHlBar(newId)
+  ensurePaneFmtBar(newId)
   updatePaneChrome()
   if (dup) await openDocInPane(newId, dup)
   else showPaneEmpty(newId, true)
@@ -4209,6 +4268,7 @@ function splitEmptyPane(dstPaneId, orientation, newFirst) {
   mountPaneChrome(newId)
   ensurePaneFindBar(newId)
   ensurePaneHlBar(newId)
+  ensurePaneFmtBar(newId)
   panes.focused = newId // 先定焦点再打标：updatePaneChrome 按当前焦点画环，反了环就留在旧窗格
   updatePaneChrome()
   return newId
@@ -4391,6 +4451,7 @@ async function closePaneUi(paneId) {
   // 查找栏 / 高亮工具栏 / 标签条的 DOM 都在被摘掉的叶子里，随垃圾回收；只清控制器引用
   panes.findBars.delete(paneId)
   panes.hlBars.delete(paneId)
+  panes.fmtBars.delete(paneId)
   panes.contents.delete(paneId)
   panes.mounts.delete(paneId)
   panes.ctx.delete(paneId)
@@ -4431,6 +4492,7 @@ function updatePaneChrome() {
     const strip = panes.strips.get(paneId)
     if (strip) strip.setMulti(multi)
   }
+  syncFmtBars()
 }
 
 // 分割条拖完：引擎里改比例是 `setRatio` 生成的新树，只在引擎内部，
@@ -4535,6 +4597,7 @@ async function boot() {
     mountPaneChrome(paneId)
     ensurePaneFindBar(paneId)
     ensurePaneHlBar(paneId)
+    ensurePaneFmtBar(paneId)
   }
   bindPaneDragging() // 标签 / 文件树的拖拽要在窗格与标签条都就位之后才绑
   editor = panes.editors.get(panes.focused)

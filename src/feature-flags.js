@@ -12,6 +12,7 @@ export const DEFAULT_FEATURES = {
   emoji: true, // emoji 短代码显示层换脸
   headingNumbering: false, // 导出 / 打印时标题自动编号
   quarkdown: true, // Quarkdown 指令求值（编辑器快照 + 导出展开）
+  lineNumbers: true, // WYSIWYG 左侧行号装订线（编辑器显示）
 }
 
 const KEYS = Object.keys(DEFAULT_FEATURES)

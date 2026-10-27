@@ -20,55 +20,74 @@ function t(name, fn) {
 const C = (id, title, extra = {}) => ({ id, title, category: id.split('.')[0], ...extra })
 
 const base = () => [
-  C('app.save', '保存当前文件', { accelerator: 'Cmd+S' }),
-  C('app.openFile', '打开单个文件', { accelerator: 'Cmd+O' }),
-  C('app.openFolder', '打开知识库文件夹', { accelerator: 'Cmd+Shift+O' }),
+  C('app.save', '保存', { accelerator: 'Cmd+S' }),
+  C('app.openFile', '打开文件', { accelerator: 'Cmd+O' }),
+  C('app.openFolder', '打开文件夹', { accelerator: 'Cmd+Shift+O' }),
   C('app.newFile', '新建文件', { accelerator: 'Cmd+N' }),
-  C('app.renameFile', '重命名当前文件', { accelerator: 'F2' }),
-  C('app.closeFile', '关闭当前标签页', { accelerator: 'Cmd+W' }),
-  C('app.nextTab', '切换下一个标签页', { accelerator: 'Ctrl+Tab' }),
-  C('app.prevTab', '切换上一个标签页', { accelerator: 'Ctrl+Shift+Tab' }),
-  C('app.splitH', '向左 / 右拆分窗格'),
-  C('app.splitV', '向上 / 下拆分窗格'),
-  C('app.newCanvas', '新画布 / 白板'),
+  C('app.renameFile', '重命名', { accelerator: 'F2' }),
+  C('app.revealFile', '打开文件位置'),
+  C('app.findInDoc', '查找', { accelerator: 'Cmd+F' }),
+  C('app.replace', '替换', { accelerator: 'Cmd+Option+F' }),
+  C('app.closeFile', '关闭标签页', { accelerator: 'Cmd+W' }),
+  C('app.nextTab', '下一个标签页', { accelerator: 'Ctrl+Tab' }),
+  C('app.prevTab', '上一个标签页', { accelerator: 'Ctrl+Shift+Tab' }),
+  C('app.splitH', '左右分栏'),
+  C('app.splitV', '上下分栏'),
+  C('app.newCanvas', '新画布'),
   C('app.newTemplate', '新建空白模板…'),
   C('app.dailySettings', '今日速记设置…'),
   C('app.clearRecents', '清空最近记录'),
-  C('app.export', '导出为 HTML'),
+  C('app.export', '导出 HTML'),
+  C('app.exportPlain', '导出标准 Markdown…'),
+  C('app.exportSlides', '导出演示文稿…'),
+  C('app.exportVaultSlides', '导出整库演示文稿…'),
   C('app.exportSite', '导出整站…'),
   C('app.importWord', '导入 Word(.docx)…'),
   C('app.exportWord', '导出 Word(.docx)…'),
-  C('app.print', '打印 / 另存 PDF', { accelerator: 'Cmd+P' }),
+  C('app.print', '导出 PDF', { accelerator: 'Cmd+P' }),
   C('app.dailyCapture', '今日速记', { accelerator: 'Cmd+Shift+D' }),
   C('app.autosave', '自动保存', { checked: false }),
   C('app.shortcuts', '快捷键设置…'),
   C('app.clipSettings', '网页剪藏设置…'),
-  C('app.qdToggleEval', 'Quarkdown：开 / 关求值', { checked: true }),
-  C('app.search', '聚焦侧栏搜索', { accelerator: 'Cmd+Shift+F' }),
+  C('app.qdToggleEval', 'Quarkdown 求值', { checked: true }),
+  C('app.qdInstallPackage', '安装 Quarkdown 包…'),
+  C('app.search', '侧栏搜索', { accelerator: 'Cmd+Shift+F' }),
   C('app.insertImage', '插入图片…', { accelerator: 'Cmd+Shift+I' }),
+  C('app.git.refresh', 'Git：刷新状态'),
+  C('app.git.commit', 'Git：提交全部…'),
+  C('app.git.init', 'Git：初始化仓库'),
+  C('app.git.fetch', 'Git：抓取远端'),
+  C('app.git.pull', 'Git：拉取（仅快进）'),
+  C('app.git.push', 'Git：推送到远端'),
+  C('app.git.pullMerge', 'Git：拉取（合并）…'),
+  C('app.git.remote', 'Git：设置远端 origin…'),
   C('editor.undo', '撤销', { accelerator: 'Cmd+Z' }),
   C('editor.redo', '重做', { accelerator: 'Cmd+Y' }),
   C('editor.bold', '加粗', { accelerator: 'Cmd+B' }),
   C('editor.italic', '斜体', { accelerator: 'Cmd+I' }),
   C('editor.code', '行内代码', { accelerator: 'Cmd+`' }),
   C('editor.strike', '删除线', { accelerator: 'Cmd+Shift+X' }),
-  C('editor.link', '插入 / 编辑链接', { accelerator: 'Cmd+K' }),
+  C('editor.link', '链接', { accelerator: 'Cmd+K' }),
   C('editor.deleteLine', '删除当前行 / 段落', { accelerator: 'Cmd+D' }),
+  C('editor.highlight', '高亮'),
+  C('editor.footnote', '脚注'),
+  C('editor.footnoteDelete', '删除脚注'),
+  C('editor.exitBlock', '离开代码块'),
   C('app.pastePlain', '粘贴为纯文本', { accelerator: 'Cmd+Shift+V' }),
   C('editor.mathInline', '行内公式', { accelerator: 'Cmd+M' }),
   C('editor.mathBlock', '块级公式', { accelerator: 'Cmd+Shift+M' }),
   C('editor.block.para', '段落：正文', { checked: false }),
   C('editor.block.h1', '段落：一级标题', { checked: true }),
   C('editor.block.mermaid', '段落：Mermaid 图', { checked: false }),
-  C('editor.headingUp', '段落：提升标题级别', { accelerator: 'Cmd+]' }),
-  C('editor.headingDown', '段落：降低标题级别', { accelerator: 'Cmd+[' }),
+  C('editor.headingUp', '提升标题级别', { accelerator: 'Cmd+]' }),
+  C('editor.headingDown', '降低标题级别', { accelerator: 'Cmd+[' }),
   C('editor.foldSection', '折叠 / 展开本节', { accelerator: 'Cmd+Shift+H' }),
-  C('app.sourceMode', 'Markdown 源码模式', { accelerator: 'Cmd+E' }),
+  C('app.sourceMode', '源码模式', { accelerator: 'Cmd+E' }),
   C('app.focusMode', '专注模式', { checked: true }),
   C('app.typewriterMode', '打字机模式', { checked: false }),
-  C('app.toggleSidebar', '隐藏 / 显示侧栏', { checked: true }),
-  C('app.toggleInspector', '隐藏 / 显示检查器', { accelerator: 'Cmd+Shift+B' }),
-  C('app.graph', '打开知识图谱', { accelerator: 'Cmd+G' }),
+  C('app.toggleSidebar', '显示侧栏', { checked: true }),
+  C('app.toggleInspector', '显示检查器', { accelerator: 'Cmd+Shift+B' }),
+  C('app.graph', '知识图谱', { accelerator: 'Cmd+G' }),
   C('app.palette', '命令面板', { accelerator: 'Cmd+Shift+P' }),
 ]
 
@@ -76,10 +95,10 @@ const specOf = (commands = base(), extra = {}) => buildMacMenuSpec({ commands, .
 const group = (spec, id) => spec.groups.find((g) => g.id === id)
 const ids = (g) => g.items.map((i) => i.id || i.role || i.type)
 
-t('七组齐全且顺序为 应用/文件/编辑/格式/段落/视图/窗口', () => {
+t('八组齐全且顺序为 应用/文件/编辑/格式/段落/视图/Git/窗口', () => {
   const spec = specOf()
-  assert.deepEqual(spec.groups.map((g) => g.id), ['app', 'file', 'edit', 'format', 'paragraph', 'view', 'window'])
-  assert.deepEqual(spec.groups.map((g) => g.text), ['NoteLume', '文件', '编辑', '格式', '段落', '视图', '窗口'])
+  assert.deepEqual(spec.groups.map((g) => g.id), ['app', 'file', 'edit', 'format', 'paragraph', 'view', 'git', 'window'])
+  assert.deepEqual(spec.groups.map((g) => g.text), ['NoteLume', '文件', '编辑', '格式', '段落', '视图', 'Git', '窗口'])
 })
 
 t('标题取自注册表，菜单不自带第二份文案', () => {
@@ -94,10 +113,18 @@ t('注册表缺失的 id 被跳过（不会挂空动作）', () => {
   assert.equal(group(spec, 'view').items.filter((i) => i.id === 'app.graph').length, 0)
 })
 
-t('Word 导入/导出落在「文件」组，紧跟导出整站', () => {
-  const list = ids(group(specOf(), 'file'))
-  const i = list.indexOf('app.exportSite')
-  assert.deepEqual(list.slice(i, i + 4), ['app.exportSite', 'app.importWord', 'app.exportWord', 'app.print'])
+t('导出全部收进「文件 ▸ 导出」子菜单，剥掉标题里的「导出」前缀', () => {
+  const spec = specOf()
+  const sub = group(spec, 'file').items.find((i) => i.id === 'export')
+  assert.equal(sub.type, 'submenu')
+  assert.equal(sub.text, '导出')
+  assert.deepEqual(sub.items.map((i) => i.id), [
+    'app.print', 'app.export', 'app.exportPlain', 'app.exportWord', 'app.exportSlides', 'app.exportVaultSlides', 'app.exportSite',
+  ])
+  assert.deepEqual(sub.items.map((i) => i.text), ['PDF', 'HTML', '标准 Markdown…', 'Word(.docx)…', '演示文稿…', '整库演示文稿…', '整站…'])
+  // 导入只有一种，平铺在子菜单之前
+  const list = ids(group(spec, 'file'))
+  assert.equal(list[list.indexOf('export') - 1], 'app.importWord')
 })
 
 t('拆分命令落在「窗口」组，跟在两个切页项之后', () => {
@@ -155,28 +182,36 @@ t('应用组含原生角色项（关于/服务/隐藏/退出）', () => {
   ])
 })
 
-t('编辑组含剪贴板角色，且角色项排在撤销/重做之后', () => {
+t('编辑组含剪贴板角色，查找 / 替换在组尾', () => {
   const spec = specOf()
   assert.deepEqual(ids(group(spec, 'edit')), [
-    'editor.undo', 'editor.redo', 'sep', 'Cut', 'Copy', 'Paste', 'app.pastePlain', 'app.insertImage', 'SelectAll', 'sep', 'app.search',
+    'editor.undo', 'editor.redo', 'sep', 'Cut', 'Copy', 'Paste', 'app.pastePlain', 'sep',
+    'SelectAll', 'app.insertImage', 'editor.deleteLine', 'sep', 'app.findInDoc', 'app.replace', 'app.search',
   ])
 })
 
-t('文件组新建/重命名/关闭依次落在打开文件夹之后', () => {
+t('文件组按「新建打开 → 保存定位 → 导入导出 → 记录 → 关闭」分段', () => {
   const list = ids(group(specOf(), 'file'))
-  assert.deepEqual(list.slice(1, 4), ['app.openFolder', 'app.newFile', 'app.renameFile'])
+  assert.deepEqual(list.slice(0, 6), [
+    'app.newFile', 'app.newCanvas', 'app.openFile', 'app.openFolder', 'recent', 'templates',
+  ])
+  assert.deepEqual(list.slice(7, 11), ['app.save', 'app.renameFile', 'app.revealFile', 'sep'])
   assert.equal(list[list.length - 2], 'app.closeFile')
+  assert.equal(list[list.length - 1], 'CloseWindow')
 })
 
-t('段落组由注册表 editor.block.* 驱动、去掉「段落：」前缀，尾部挂提升 / 降级', () => {
+t('段落组全部平铺（不出子菜单），按 Typora 分段：标题 / 正文 / 升降 / 块 / 引用 / 列表 / 链接脚注 / 分割线', () => {
   const spec = specOf()
   const para = group(spec, 'paragraph')
   assert.deepEqual(para.items.map((i) => i.id || i.type), [
-    'editor.block.para', 'editor.block.h1', 'editor.block.mermaid', 'sep', 'editor.headingUp', 'editor.headingDown',
+    'editor.block.h1', 'sep', 'editor.block.para', 'sep', 'editor.headingUp', 'editor.headingDown', 'sep',
+    'editor.mathBlock', 'editor.exitBlock', 'sep', 'editor.link', 'editor.footnote', 'editor.footnoteDelete', 'sep',
+    'editor.block.mermaid',
   ])
   assert.deepEqual(para.items.filter((i) => i.type !== 'sep').map((i) => i.text), [
-    '正文', '一级标题', 'Mermaid 图', '提升标题级别', '降低标题级别',
+    '一级标题', '正文', '提升标题级别', '降低标题级别', '块级公式', '离开代码块', '链接', '脚注', '删除脚注', 'Mermaid 图',
   ])
+  assert.ok(!para.items.some((i) => i.type === 'submenu'), '段落组不该出现下一级菜单')
 })
 
 t('段落组当前块单选：命中项 checked true，未命中也是勾选项（只是无勾）', () => {
@@ -195,15 +230,25 @@ t('未知：注册表缺提升 / 降级时，段落组不以悬空分隔符收�
   const cmds = base().filter((c) => !/^editor\.heading(Up|Down)$/.test(c.id))
   const para = group(specOf(cmds), 'paragraph')
   assert.notEqual(para.items[para.items.length - 1].type, 'sep')
-  assert.deepEqual(para.items.map((i) => i.id || i.type), ['editor.block.para', 'editor.block.h1', 'editor.block.mermaid'])
+  assert.deepEqual(para.items.map((i) => i.id || i.type), [
+    'editor.block.h1', 'sep', 'editor.block.para', 'sep', 'editor.mathBlock', 'editor.exitBlock', 'sep',
+    'editor.link', 'editor.footnote', 'editor.footnoteDelete', 'sep', 'editor.block.mermaid',
+  ])
 })
 
 t('段落组跟随注册表顺序（新增块命令自动上榜）', () => {
   const cmds = [...base()]
   cmds.splice(cmds.findIndex((c) => c.id === 'editor.block.para') + 1, 0, C('editor.block.h2', '段落：二级标题', { checked: false }))
-  assert.deepEqual(group(specOf(cmds), 'paragraph').items.map((i) => i.id || i.type), [
-    'editor.block.para', 'editor.block.h2', 'editor.block.h1', 'editor.block.mermaid', 'sep', 'editor.headingUp', 'editor.headingDown',
+  assert.deepEqual(group(specOf(cmds), 'paragraph').items.map((i) => i.id || i.type).slice(0, 3), [
+    'editor.block.h2', 'editor.block.h1', 'sep',
   ])
+})
+
+t('未归类的块命令仍平铺在段落组末尾（不会因为没有归类就消失）', () => {
+  const cmds = [...base(), C('editor.block.diagram', '段落：新块型', { checked: false })]
+  const para = group(specOf(cmds), 'paragraph')
+  assert.equal(para.items[para.items.length - 1].id, 'editor.block.diagram')
+  assert.equal(para.items[para.items.length - 1].text, '新块型')
 })
 
 t('打开最近：有记录则逐条列出，id 带 recent: 前缀', () => {
@@ -323,6 +368,41 @@ t('解绑的命令（无 accelerator）仍出现在菜单里，只是不带键',
   const it = group(spec, 'file').items.find((i) => i.id === 'app.save')
   assert.ok(it)
   assert.equal('accelerator' in it, false)
+})
+
+t('注册表里的每条命令都在菜单上（功能不留无入口的）', () => {
+  const spec = specOf(base(), { languages: [{ id: 'app.lang.zh-CN', label: '简体中文', checked: true }] })
+  const listed = new Set()
+  const walk = (items) => items.forEach((i) => { if (i.items) walk(i.items); else if (i.id) listed.add(i.id) })
+  spec.groups.forEach((g) => walk(g.items))
+  // app.about 在 mac 走原生 About role，不占注册表 id —— 唯一豁免
+  const missing = base().map((c) => c.id).filter((id) => !listed.has(id) && id !== 'app.about')
+  assert.deepEqual(missing, [])
+})
+
+t('Git 组剥掉「Git：」前缀，按 状态 / 同步 / 设置 分段', () => {
+  const spec = specOf()
+  const g = group(spec, 'git')
+  assert.deepEqual(g.items.map((i) => i.id || i.type), [
+    'app.git.refresh', 'app.git.commit', 'sep', 'app.git.fetch', 'app.git.pull', 'app.git.pullMerge', 'app.git.push', 'sep',
+    'app.git.remote', 'app.git.init',
+  ])
+  assert.deepEqual(g.items.filter((i) => i.type !== 'sep').map((i) => i.text), [
+    '刷新状态', '提交全部…', '抓取远端', '拉取（仅快进）', '拉取（合并）…', '推送到远端', '设置远端 origin…', '初始化仓库',
+  ])
+})
+
+t('有默认键的命令一定带 accelerator（菜单上看得见键，才有人用）', () => {
+  const spec = specOf()
+  const flat = []
+  const walk = (items) => items.forEach((i) => { if (i.items) walk(i.items); else flat.push(i) })
+  spec.groups.forEach((g) => walk(g.items))
+  for (const c of base()) {
+    if (!c.accelerator) continue
+    const it = flat.find((i) => i.id === c.id)
+    assert.ok(it, c.id + ' 不在菜单上')
+    assert.equal(it.accelerator, c.accelerator, c.id + ' 的键没透传')
+  }
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)

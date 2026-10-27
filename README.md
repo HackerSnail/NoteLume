@@ -30,7 +30,7 @@
 
 ### 简介
 
-Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian 有组织，但双栏源码、插件、图谱一层套一层，重。NoteLume（中文名「文溯」）走的是两头都没占的那条路：像 Typora 一样单文档 WYSIWYG 直接写，像 Obsidian 一样把本地文件夹当知识库——`[[双链]]`、标签、反链、全文搜索、Git 同步都是内置的，不背插件生态和全量图谱的重量。
+Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian 有组织，但双栏源码、插件、图谱一层套一层，重。NoteLume（中文名「文溯」）走的是两头都没占的那条路：像 Typora 一样单文档 WYSIWYG 直接写，像 Obsidian 一样把本地文件夹当知识库——\[\[双链\]\]、标签、反链、全文搜索、Git 同步都是内置的，不背插件生态和全量图谱的重量。
 
 **适合谁用**：想要 Typora 的手感、又需要文件一多时找得回来的人。要插件生态、重型图谱、或 Obsidian 默认双栏源码的，请直接用 Obsidian，这里没有。
 
@@ -50,13 +50,13 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 
 ### 快速开始
 
-**安装**：到 [Releases][releases] 下载对应平台的安装包——
+**安装**：到 [Releases](https://github.com/HackerSnail/NoteLume/releases) 下载对应平台的安装包；国内网络改走 [Gitee 发行版](https://gitee.com/hackerSnail/note-lume/releases)（同一批安装包）——
 
-| 平台    | 文件                              | 安装方式            |
-| ------- | --------------------------------- | ------------------- |
+| 平台      | 文件                              | 安装方式            |
+| ------- | ------------------------------- | --------------- |
 | Windows | `NoteLume_x.y.z_x64-setup.exe`  | 双击安装            |
-| macOS   | `NoteLume_x.y.z_aarch64.dmg`    | 拖入 Applications   |
-| Linux   | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x` 后运行 |
+| macOS   | `NoteLume_x.y.z_aarch64.dmg`    | 拖入 Applications |
+| Linux   | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x` 后运行  |
 
 **使用**：打开后 `Ctrl+Shift+O` 选一个存着 `.md` 的文件夹作为知识库，开写；只想改单个文件就 `Ctrl+O`。全部键位可在命令面板（`Ctrl+Shift+P`）和快捷键设置里查看、重绑；界面语言在工具条「更多 → 界面语言」切换。
 
@@ -110,10 +110,10 @@ npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 
 1. **装扩展**：Edge 地址栏输 `edge://extensions`，打开左下角「开发人员模式」，点「加载已解压缩的扩展」选仓库里的 `extension/` 目录（Chrome 是 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」）。加载后建议在工具栏拼图菜单里把「NoteLume 剪藏」固定出来。
 2. **NoteLume 里开服务**：mac 从菜单栏「NoteLume → 网页剪藏设置」进入，Windows / Linux 走工具条「更多 → 网页剪藏设置」；勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
-3. **扩展里填地址**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），「测试连接」应回「连接正常 · 已打开知识库」。填这一项就够了，没有令牌要配。
+3. **扩展里填地址**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），「测试连接」应回「连接正常 · 已打开知识库」。填这一项就够了。
 4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段（用内置 highlight 模板落盘，来源行进引用块）。
 
-正文提取按优先级降级：Defuddle → Readability + Turndown →（设置里打开「整页兜底」才有）整页 HTML。剪藏落在 `Clippings/<日期>-<标题>.md`，frontmatter 记 `title / source / author / published_at / clipped_at / tags / template`，文末「## 相关笔记」列出打分最高的相关文档，点开即跳；被关联文档的反链面板里也能看到这篇剪藏。
+正文提取按优先级降级：Defuddle → Readability + Turndown →（设置里打开「整页兜底」才有）整页 HTML。剪藏落在 `Clippings/<日期>-<标题>.md`，frontmatter 记 `title / source / author / published_at / clipped_at / tags / template`，文末「\#\# 相关笔记」列出打分最高的相关文档，点开即跳；被关联文档的反链面板里也能看到这篇剪藏。
 
 图片本地化默认关：正文保留网页原链接，剪藏快，但外链图在离线 / 防盗链场景会裂图。在剪藏设置里勾选「图片本地化」后，扩展才把图取成 data URI 落 `Clippings/assets/`（按内容去重，md 里是 `./assets/` 相对链接）。
 
@@ -125,66 +125,66 @@ mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置�
 
 **文件与导航**
 
-| 键位                              | 作用                                     |
-| --------------------------------- | ---------------------------------------- |
-| `Ctrl+N`                        | 新建文件（先落系统临时目录，不要求开库） |
-| `Ctrl+O`                        | 打开单个 Markdown 文件                   |
-| `Ctrl+Shift+O`                  | 打开文件夹作为知识库                     |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 切换下一个 / 上一个标签页                |
-| `Ctrl+W`                        | 关闭当前标签页                           |
-| `F2`                            | 重命名当前文件（可顺带移动）             |
-| `Ctrl+S`                        | 保存（临时文件 = 另存为，选正式位置）    |
-| `Ctrl+P`                        | 打印 / 另存 PDF                          |
-| `Ctrl+Shift+P`                  | 命令面板（模糊搜命令 / 文档）            |
-| `Ctrl+E`                        | 正文与 Markdown 源码整篇互切             |
-| `Ctrl+F`                        | 本篇文档内查找                           |
-| `Ctrl+H`                        | 本篇文档内查找替换                       |
-| `Ctrl+Shift+F`                  | 聚焦侧栏全局搜索                         |
-| `Ctrl+Shift+V`                  | 粘贴为纯文本                             |
-| `Ctrl+Shift+I`                  | 插入图片（自动入库 `assets/`）         |
-| `Ctrl+K`                        | 插入 / 编辑链接（地址留空 = 解除链接）   |
+| 键位                            | 作用                     |
+| ----------------------------- | ---------------------- |
+| `Ctrl+N`                      | 新建文件（先落系统临时目录，不要求开库）   |
+| `Ctrl+O`                      | 打开单个 Markdown 文件       |
+| `Ctrl+Shift+O`                | 打开文件夹作为知识库             |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 切换下一个 / 上一个标签页         |
+| `Ctrl+W`                      | 关闭当前标签页                |
+| `F2`                          | 重命名当前文件（可顺带移动）         |
+| `Ctrl+S`                      | 保存（临时文件 = 另存为，选正式位置）   |
+| `Ctrl+P`                      | 打印 / 另存 PDF            |
+| `Ctrl+Shift+P`                | 命令面板（模糊搜命令 / 文档）       |
+| `Ctrl+E`                      | 正文与 Markdown 源码整篇互切    |
+| `Ctrl+F`                      | 本篇文档内查找                |
+| `Ctrl+H`                      | 本篇文档内查找替换              |
+| `Ctrl+Shift+F`                | 聚焦侧栏全局搜索               |
+| `Ctrl+Shift+V`                | 粘贴为纯文本                 |
+| `Ctrl+Shift+I`                | 插入图片（自动入库 `assets/`）   |
+| `Ctrl+K`                      | 插入 / 编辑链接（地址留空 = 解除链接） |
 
 **格式与段落**
 
-| 键位                                | 作用                             |
-| ----------------------------------- | -------------------------------- |
-| `Ctrl+B` / `Ctrl+I`             | 粗体 / 斜体                      |
-| `` Ctrl+` ``                      | 行内代码                         |
-| `Ctrl+Shift+K`                    | 代码块                           |
-| `Ctrl+Shift+X`                    | 删除线                           |
-| `Ctrl+1` ~ `Ctrl+6`             | 设为一级 ~ 六级标题              |
-| `Ctrl+]` / `Ctrl+[`             | 提升 / 降低标题级别              |
-| `Ctrl+Shift+Q`                    | 引用块                           |
-| `Ctrl+Shift+L`                    | 任务列表                         |
-| `Ctrl+Shift+[` / `Ctrl+Shift+]` | 无序 / 有序列表                  |
-| `Ctrl+T`                          | 插入表格                         |
-| `Ctrl+D`                          | 删除当前行 / 段落                |
-| `Ctrl+M`                          | 插入行内公式（有选区则包裹）     |
-| `Ctrl+Shift+M`                    | 插入块级公式                     |
-| `Ctrl+Z` / `Ctrl+Y`             | 撤销 / 重做                      |
-| `Shift+Enter`                     | 硬换行                           |
+| 键位                              | 作用               |
+| ------------------------------- | ---------------- |
+| `Ctrl+B` / `Ctrl+I`             | 粗体 / 斜体          |
+| `` Ctrl+` ``                    | 行内代码             |
+| `Ctrl+Shift+K`                  | 代码块              |
+| `Ctrl+Shift+X`                  | 删除线              |
+| `Ctrl+1` \~ `Ctrl+6`            | 设为一级 \~ 六级标题     |
+| `Ctrl+]` / `Ctrl+[`             | 提升 / 降低标题级别      |
+| `Ctrl+Shift+Q`                  | 引用块              |
+| `Ctrl+Shift+L`                  | 任务列表             |
+| `Ctrl+Shift+[` / `Ctrl+Shift+]` | 无序 / 有序列表        |
+| `Ctrl+T`                        | 插入表格             |
+| `Ctrl+D`                        | 删除当前行 / 段落       |
+| `Ctrl+M`                        | 插入行内公式（有选区则包裹）   |
+| `Ctrl+Shift+M`                  | 插入块级公式           |
+| `Ctrl+Z` / `Ctrl+Y`             | 撤销 / 重做          |
+| `Shift+Enter`                   | 硬换行              |
 | `Tab` / `Shift+Tab`             | 表格单元格间跳转（末行自动补行） |
 
 **视图**
 
-| 键位                | 作用                               |
-| ------------------- | ---------------------------------- |
-| `Ctrl+G`          | 打开 / 关闭知识图谱                |
-| `Ctrl+Shift+D`    | 今日速记（全局浮层，独立于知识库） |
-| `` Ctrl+Shift+` `` | 专注模式（当前块高亮）             |
-| `Ctrl+Shift+T`    | 打字机模式（当前块居中）           |
-| `Ctrl+Shift+S`    | 隐藏 / 显示侧栏                    |
-| `Ctrl+Shift+B`    | 隐藏 / 显示右侧检查器栏            |
-| `Ctrl+Shift+H`    | 折叠 / 展开当前节                  |
+| 键位                 | 作用                |
+| ------------------ | ----------------- |
+| `Ctrl+G`           | 打开 / 关闭知识图谱       |
+| `Ctrl+Shift+D`     | 今日速记（全局浮层，独立于知识库） |
+| `` Ctrl+Shift+` `` | 专注模式（当前块高亮）       |
+| `Ctrl+Shift+T`     | 打字机模式（当前块居中）      |
+| `Ctrl+Shift+S`     | 隐藏 / 显示侧栏         |
+| `Ctrl+Shift+B`     | 隐藏 / 显示右侧检查器栏     |
+| `Ctrl+Shift+H`     | 折叠 / 展开当前节        |
 
 ### 技术栈
 
-| 层       | 选型                                                                |
-| -------- | ------------------------------------------------------------------- |
-| 桌面外壳 | Tauri v2 + Rust（文件 I/O、索引、docx 解析、Git、Quarkdown 引擎全在 Rust 侧）      |
-| 编辑器   | ProseMirror（WYSIWYG）+ CodeMirror 6（源码模式），无 Vue/React 框架 |
-| 前端构建 | Vite                                                                |
-| 存储     | 本地文件夹 + 标准 GFM `.md`，无数据库、无私有格式                 |
+| 层    | 选型                                                           |
+| ---- | ------------------------------------------------------------ |
+| 桌面外壳 | Tauri v2 + Rust（文件 I/O、索引、docx 解析、Git、Quarkdown 引擎全在 Rust 侧） |
+| 编辑器  | ProseMirror（WYSIWYG）+ CodeMirror 6（源码模式），无 Vue/React 框架      |
+| 前端构建 | Vite                                                         |
+| 存储   | 本地文件夹 + 标准 GFM `.md`，无数据库、无私有格式                              |
 
 ### 贡献指南
 
@@ -201,7 +201,7 @@ Issue 和 PR 都欢迎，也欢迎任何形式的功能建议。
 
 ### 许可证
 
-[Apache License 2.0][license] · Copyright 2026 hackerSnail
+[Apache License 2.0](LICENSE) · Copyright 2026 hackerSnail
 
 ---
 
@@ -229,12 +229,12 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 
 ### Quick Start
 
-**Install**: grab the package for your platform from [Releases][releases] —
+**Install**: grab the package for your platform from [Releases](https://github.com/HackerSnail/NoteLume/releases) —
 
-| Platform | File                              | How                    |
-| -------- | --------------------------------- | ---------------------- |
-| Windows  | `NoteLume_x.y.z_x64-setup.exe`  | Run the installer      |
-| macOS    | `NoteLume_x.y.z_aarch64.dmg`    | Drag to Applications   |
+| Platform | File                            | How                  |
+| -------- | ------------------------------- | -------------------- |
+| Windows  | `NoteLume_x.y.z_x64-setup.exe`  | Run the installer    |
+| macOS    | `NoteLume_x.y.z_aarch64.dmg`    | Drag to Applications |
 | Linux    | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x`, then run |
 
 **Use**: press `Ctrl+Shift+O` and point NoteLume at a folder of `.md` files to open it as a vault, or `Ctrl+O` for a single file. Every shortcut is discoverable in the command palette (`Ctrl+Shift+P`) and fully remappable; the UI language switches under More → Interface language.
@@ -292,7 +292,7 @@ Save web pages into your vault: content lands as standard Markdown per your temp
 3. **Point the extension at it**: right-click the extension icon → Options, fill in the address shown in NoteLume (default `http://127.0.0.1:3210`), then "Test connection" should report OK with an open vault. That's the only field you need — no token.
 4. **Clip**: click the pinned icon for the whole page, or select text first and right-click → "剪藏选中内容到 NoteLume" for just the selection (which lands through the built-in highlight template, with the source as a block quote).
 
-Content extraction falls back in order: Defuddle → Readability + Turndown → whole-page HTML (only if "Fall back to the whole page" is enabled). Clips land at `Clippings/<date>-<title>.md` with a `title / source / author / published_at / clipped_at / tags / template` frontmatter, and a "## 相关笔记" section at the end listing the highest-scoring related documents — clickable both ways, since the linked documents also see the clip in their backlinks panel.
+Content extraction falls back in order: Defuddle → Readability + Turndown → whole-page HTML (only if "Fall back to the whole page" is enabled). Clips land at `Clippings/<date>-<title>.md` with a `title / source / author / published_at / clipped_at / tags / template` frontmatter, and a "\#\# 相关笔记" section at the end listing the highest-scoring related documents — clickable both ways, since the linked documents also see the clip in their backlinks panel.
 
 Image localization is off by default: markdown keeps the original remote links, which is fast but breaks offline or behind hotlink protection. Enable "Localize images" in the clipping settings and the extension fetches images as data URIs into `Clippings/assets/` (content-deduplicated, referenced as `./assets/` relative links).
 
@@ -304,66 +304,66 @@ On macOS, `Ctrl` means `⌘`. Everything below follows Typora / Obsidian convent
 
 **Files & navigation**
 
-| Keys                              | Action                                                    |
-| --------------------------------- | --------------------------------------------------------- |
-| `Ctrl+N`                        | New file (lands in a temp scratch dir; no vault required) |
-| `Ctrl+O`                        | Open a single Markdown file                               |
-| `Ctrl+Shift+O`                  | Open a folder as a vault                                  |
+| Keys                          | Action                                                    |
+| ----------------------------- | --------------------------------------------------------- |
+| `Ctrl+N`                      | New file (lands in a temp scratch dir; no vault required) |
+| `Ctrl+O`                      | Open a single Markdown file                               |
+| `Ctrl+Shift+O`                | Open a folder as a vault                                  |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab                                       |
-| `Ctrl+W`                        | Close current tab                                         |
-| `F2`                            | Rename current file (doubles as move)                     |
-| `Ctrl+S`                        | Save (a scratch file becomes Save As)                     |
-| `Ctrl+P`                        | Print / export PDF                                        |
-| `Ctrl+Shift+P`                  | Command palette (fuzzy-search commands & docs)            |
-| `Ctrl+E`                        | Toggle between WYSIWYG and Markdown source                |
-| `Ctrl+F`                        | Find in document                                          |
-| `Ctrl+H`                        | Find & replace in document                                |
-| `Ctrl+Shift+F`                  | Focus vault-wide search                                   |
-| `Ctrl+Shift+V`                  | Paste as plain text                                       |
-| `Ctrl+Shift+I`                  | Insert image (auto-saved to `assets/`)                  |
-| `Ctrl+K`                        | Insert / edit link (empty URL removes it)                 |
+| `Ctrl+W`                      | Close current tab                                         |
+| `F2`                          | Rename current file (doubles as move)                     |
+| `Ctrl+S`                      | Save (a scratch file becomes Save As)                     |
+| `Ctrl+P`                      | Print / export PDF                                        |
+| `Ctrl+Shift+P`                | Command palette (fuzzy-search commands & docs)            |
+| `Ctrl+E`                      | Toggle between WYSIWYG and Markdown source                |
+| `Ctrl+F`                      | Find in document                                          |
+| `Ctrl+H`                      | Find & replace in document                                |
+| `Ctrl+Shift+F`                | Focus vault-wide search                                   |
+| `Ctrl+Shift+V`                | Paste as plain text                                       |
+| `Ctrl+Shift+I`                | Insert image (auto-saved to `assets/`)                    |
+| `Ctrl+K`                      | Insert / edit link (empty URL removes it)                 |
 
 **Format & blocks**
 
-| Keys                                | Action                                              |
-| ----------------------------------- | --------------------------------------------------- |
+| Keys                            | Action                                              |
+| ------------------------------- | --------------------------------------------------- |
 | `Ctrl+B` / `Ctrl+I`             | Bold / italic                                       |
-| `` Ctrl+` ``                      | Inline code                                         |
-| `Ctrl+Shift+K`                    | Code block                                          |
-| `Ctrl+Shift+X`                    | Strikethrough                                       |
-| `Ctrl+1` ~ `Ctrl+6`             | Heading level 1–6                                  |
+| `` Ctrl+` ``                    | Inline code                                         |
+| `Ctrl+Shift+K`                  | Code block                                          |
+| `Ctrl+Shift+X`                  | Strikethrough                                       |
+| `Ctrl+1` \~ `Ctrl+6`            | Heading level 1–6                                   |
 | `Ctrl+]` / `Ctrl+[`             | Promote / demote heading                            |
-| `Ctrl+Shift+Q`                    | Blockquote                                          |
-| `Ctrl+Shift+L`                    | Task list                                           |
+| `Ctrl+Shift+Q`                  | Blockquote                                          |
+| `Ctrl+Shift+L`                  | Task list                                           |
 | `Ctrl+Shift+[` / `Ctrl+Shift+]` | Bullet / numbered list                              |
-| `Ctrl+T`                          | Insert table                                        |
-| `Ctrl+D`                          | Delete current line / block                         |
-| `Ctrl+M`                          | Inline math (wraps selection if any)                |
-| `Ctrl+Shift+M`                    | Block math                                          |
+| `Ctrl+T`                        | Insert table                                        |
+| `Ctrl+D`                        | Delete current line / block                         |
+| `Ctrl+M`                        | Inline math (wraps selection if any)                |
+| `Ctrl+Shift+M`                  | Block math                                          |
 | `Ctrl+Z` / `Ctrl+Y`             | Undo / redo                                         |
-| `Shift+Enter`                     | Hard line break                                     |
+| `Shift+Enter`                   | Hard line break                                     |
 | `Tab` / `Shift+Tab`             | Jump between table cells (appends a row at the end) |
 
 **View**
 
-| Keys                | Action                                                   |
-| ------------------- | -------------------------------------------------------- |
-| `Ctrl+G`          | Toggle knowledge graph                                   |
-| `Ctrl+Shift+D`    | Daily capture (global overlay, independent of the vault) |
+| Keys               | Action                                                   |
+| ------------------ | -------------------------------------------------------- |
+| `Ctrl+G`           | Toggle knowledge graph                                   |
+| `Ctrl+Shift+D`     | Daily capture (global overlay, independent of the vault) |
 | `` Ctrl+Shift+` `` | Focus mode (highlight current block)                     |
-| `Ctrl+Shift+T`    | Typewriter mode (center current block)                   |
-| `Ctrl+Shift+S`    | Toggle sidebar                                           |
-| `Ctrl+Shift+B`    | Toggle right inspector                                   |
-| `Ctrl+Shift+H`    | Fold / unfold current section                            |
+| `Ctrl+Shift+T`     | Typewriter mode (center current block)                   |
+| `Ctrl+Shift+S`     | Toggle sidebar                                           |
+| `Ctrl+Shift+B`     | Toggle right inspector                                   |
+| `Ctrl+Shift+H`     | Fold / unfold current section                            |
 
 ### Tech Stack
 
-| Layer   | Choice                                                                            |
-| ------- | --------------------------------------------------------------------------------- |
+| Layer   | Choice                                                                                                      |
+| ------- | ----------------------------------------------------------------------------------------------------------- |
 | Shell   | Tauri v2 + Rust (file I/O, indexing, docx parsing, Git, and the Quarkdown engine all live on the Rust side) |
-| Editor  | ProseMirror (WYSIWYG) + CodeMirror 6 (source mode), no UI framework               |
-| Bundler | Vite                                                                              |
-| Storage | Plain folders of GFM `.md` — no database, no proprietary format                |
+| Editor  | ProseMirror (WYSIWYG) + CodeMirror 6 (source mode), no UI framework                                         |
+| Bundler | Vite                                                                                                        |
+| Storage | Plain folders of GFM `.md` — no database, no proprietary format                                             |
 
 ### Contributing
 
@@ -380,10 +380,6 @@ Issues and PRs of every kind are welcome.
 
 ### License
 
-[Apache License 2.0][license] · Copyright 2026 hackerSnail
+[Apache License 2.0](LICENSE) · Copyright 2026 hackerSnail
 
 <!-- links -->
-
-[license]: LICENSE
-[repo]: https://github.com/HackerSnail/NoteLume
-[releases]: https://github.com/HackerSnail/NoteLume/releases

@@ -79,6 +79,11 @@ check('产物结构：section 数、内联资源、notes aside', () => {
   assert.ok(html.includes('cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'))
 })
 
+check('装不下的页自身纵向滚，不静默裁掉靠后的图片 / 代码块', () => {
+  const html = buildSlidesHtml('## A\n\nx', { assets: FAKE })
+  assert.ok(/\.reveal \.slides>section[^{]*\{[^}]*overflow-y:auto/.test(html))
+})
+
 check('notes 插件内联且注册，初始化不含外部资源引用', () => {
   const html = buildSlidesHtml('## A', { assets: FAKE })
   assert.strictEqual((html.match(/<notes-js>/g) || []).length, 1) // v5 演讲者页面内嵌在插件里，一份即可
