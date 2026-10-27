@@ -74,6 +74,7 @@ import { createShortcutSettings } from './shortcut-settings.js'
 import { createHighlightToolbar } from './highlight-toolbar.js'
 import { createFormatBar } from './format-bar.js'
 import { bindDropOpen, isDroppableName, isBinaryName } from './drop-open.js'
+import { bindTauriDragOpen } from './tauri-drag-open.js'
 import { createPaneDrag } from './pane-drag.js'
 import { mountSplitTree, normalizeTree, serializeTree, paneIds, freshId, closePane } from './split-pane.js'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -4586,6 +4587,17 @@ function pruneEmptyPanes(data) {
   return { tree, focused }
 }
 
+// 拖入打开的统一落点（HTML5 通道与 Tauri drag-drop 通道共用）：
+// 分栏后拖进哪个窗格就落哪个窗格（落点在窗格外才用当前焦点窗格）
+async function handleDropTargets(targets, e) {
+  const leaf = e && e.target && e.target.closest ? e.target.closest('.nl-pane') : null
+  const paneId = leaf && leaf.dataset.paneId
+  if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
+    await focusPaneUi(paneId)
+  }
+  return handleOpenTargets(targets, { interactive: true, preview: true })
+}
+
 async function boot() {
   // 界面语言：i18n.js 导入时已按「本地记忆 → 系统语言 → 简体中文」定好 locale；
   // 这里把 <html lang> 与静态文案对齐当前语言（默认词条也是中文，重复一遍无副作用）
@@ -4828,18 +4840,19 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
   // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到
   // Dock 图标，二次唤起）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次
   // 工作区。拖入 / 唤起是浏览式打开，落预览标签；启动参数是显式意图，落固定标签。
+  // 拖入分两条通道：mac 走 HTML5 drop（drop-open.js），Windows / Linux 走 Tauri
+  // drag-drop 事件（tauri-drag-open.js，WebView2 被 Tauri 拦截收不到 DOM drop），
+  // 两条都汇到 handleDropTargets → handleOpenTargets。
   bindDropOpen({
     rootEl: document.querySelector('.body'),
-    onTargets: async (targets, e) => {
-      // 分栏后：拖进哪个窗格就落哪个窗格（落点在窗格外才用当前焦点窗格）
-      const leaf = e && e.target && e.target.closest ? e.target.closest('.nl-pane') : null
-      const paneId = leaf && leaf.dataset.paneId
-      if (paneId && paneId !== panes.focused && panes.editors.has(paneId)) {
-        await focusPaneUi(paneId)
-      }
-      return handleOpenTargets(targets, { interactive: true, preview: true })
-    },
+    onTargets: handleDropTargets,
   })
+  if (!IS_MAC) {
+    bindTauriDragOpen({
+      rootEl: document.querySelector('.body'),
+      onTargets: handleDropTargets,
+    })
+  }
   // Rust 侧的唤起只排队、不带路径：事件叫醒后统一去 takeLaunchPaths 取。
   // 冷启动那次事件没人听也不丢——排着的同一份队列由 handleLaunchArgs 兜走。
   listen('file-opened', () => {
