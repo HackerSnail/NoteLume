@@ -99,6 +99,8 @@
              applyStaticDom 切语言时会把带该属性的元素整片重刷，真实文件名会被占位文案顶掉 -->
         <span id="filename" class="filename">（无打开文档）</span>
         <span class="spacer" data-tauri-drag-region></span>
+        <button id="btn-find" data-i18n-title="ui.tipFind" title="查找 (Ctrl+F)"><span data-i18n="ui.find">查找</span></button>
+        <button id="btn-replace" data-i18n-title="ui.tipReplace" title="查找替换 (Ctrl+H)"><span data-i18n="ui.replace">替换</span></button>
         <label class="autosave-toggle" data-i18n-title="ui.tipAutosave" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
           <input type="checkbox" id="chk-autosave" /> <span data-i18n="ui.autosave">自动保存</span>
         </label>

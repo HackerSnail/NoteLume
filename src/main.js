@@ -187,6 +187,8 @@ const els = {
   btnNewFile: $('btn-new-file'),
   btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
+btnFind: $('btn-find'),
+btnReplace: $('btn-replace'),
   chkAutosave: $('chk-autosave'),
   searchInput: $('search-input'),
   searchResults: $('search-results'),
@@ -4766,6 +4768,9 @@ async function boot() {
   els.btnNewFile.addEventListener('click', () => newScratchFile())
   els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
+// 标题栏「查找 / 替换」：走命令注册表同一入口（无文档 / 源码态时命令自守卫为空操作）
+els.btnFind && els.btnFind.addEventListener('click', () => runViaShortcut('app.findInDoc'))
+els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut('app.replace'))
   els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
   els.btnSource && els.btnSource.addEventListener('click', toggleSourceMode)
   els.btnParagraph && els.btnParagraph.addEventListener('click', (e) => openParagraphMenu(e.currentTarget))
