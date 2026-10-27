@@ -7,7 +7,7 @@ import { t } from './i18n.js'
 import pkg from './package.json'
 import { messageDialog, openExternalUrl } from './tauri-bridge.js'
 
-const REPO = 'https://gitee.com/hackerSnail/note-lume'
+const REPO = 'https://github.com/HackerSnail/NoteLume'
 
 let overlay = null
 
