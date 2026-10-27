@@ -952,6 +952,40 @@ fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
     Err(ui_msg!("downloadImgFailed", "code" => if err.is_empty() { format!("curl {}", out.status) } else { err }))
 }
 
+/// 拖放落点判定（Windows / Linux 的 Tauri drag-drop 事件只给路径不给类型）：
+/// 判断拖入路径是否目录，前端按 isDir 分流打开文件夹还是打开文件。
+#[tauri::command]
+fn drop_path_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
+/// 用系统默认浏览器打开站外链接（「关于」对话框的仓库 / LICENSE / Releases 按钮）。
+/// 只放行 http / https，避免把任意 scheme 交给系统 shell；三平台各自的打开方式
+/// 与 reveal_in_folder 同一惯例（Windows start、macOS open、Linux xdg-open）。
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let u = url.trim();
+    if !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err(ui_msg!("openUrlFailed", "url" => u.to_string()));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", u])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(u).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(u).spawn().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// 在系统文件管理器中显示库内文件 / 文件夹（文件树右键）。Windows 用 explorer /select 选中
 /// 该项（退出码经常回 1，只要进程起得来即算成功）；macOS 用 open -R 反选；Linux 没有
 /// 通用反选，xdg-open 打开所在目录。
@@ -3723,9 +3757,9 @@ fn set_ui_lang(lang: String) -> bool {
 //    路径只经 application:openURLs: 递来、不进 argv，要 run callback 接 RunEvent::Opened，
 //    不接就只剩「唤起应用、文件没打开」。
 //  · 单实例二次唤起：第二个进程把新路径交给第一个进程的 argv 回调。
-//  · 拖入窗口：mac 由 wry 原生事件递绝对路径，前端 probe_external_drop 判类型后分流——
-//    文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；Windows / Linux 与纯 web
-//    构建走 HTML5 的 DataTransfer（那边把拖放拦截关掉才收得到事件，见 dragDropEnabled）。
+//  · 拖入窗口：桌面版由 wry 原生事件递绝对路径（HTML5 的 drop 在拦截下收不到），前端按平台
+//    补类型后分流——文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；
+//    纯 web 构建没有事件通道，走 HTML5 的 DataTransfer。
 // 交付通道只做两件事：目标排进 LaunchPaths，再 emit 一次 file-opened 叫前端来取。
 // 两条都不能省：冷启动时前端监听未必就绪，排着等它 boot 来取；应用常驻时前端不再主动
 // 取，得靠这次 emit 叫醒。emit 不带路径（同一条走队列只出一份，不会开两遍）。
@@ -3859,11 +3893,9 @@ fn open_vault_window(window: tauri::WebviewWindow, app: tauri::AppHandle, path: 
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
-    // 拖放通道与主窗口同口径：mac 留着 Tauri 的原生拦截（HTML5 的 drop 拿不到绝对路径），
-    // 其余平台关拦截、让 WebView2 / WebKitGTK 自己派发 dragover / drop。
-    // 这个窗口由 Rust 建，不读 tauri.conf.json，不显式设置就一律拿到默认的启用。
-    #[cfg(not(target_os = "macos"))]
-    let builder = builder.disable_drag_drop_handler();
+    // 拖放通道与主窗口同口径：留着 Tauri 的原生拦截，拖入经 tauri://drag-* 事件递到前端
+    // （前端按平台用 probe_external_drop / drop_path_is_dir 补类型，再落 handleDropTargets）。
+    // 这个窗口由 Rust 建、不读 tauri.conf.json，默认就是启用，无需显式设置。
     let win = builder.build().map_err(|e| e.to_string())?;
     let _ = win.set_focus();
     Ok(label)
@@ -4052,6 +4084,8 @@ pub fn run() {
             // P0
             qd_eval,
             qd_package_install,
+            drop_path_is_dir,
+            open_external_url,
             reveal_in_folder,
             scan_vault,
             read_md_file,
