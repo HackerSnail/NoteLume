@@ -9,8 +9,6 @@
 
 ### Added
 
-* **mac 的「导出 PDF」直接出文件，路径自己选**：⌘P 与「文件 → 导出 → PDF」此前一律弹系统打印面板，要拿到 PDF 得在面板里再选「存储为 PDF」。mac 打包版改为排版完直接写文件：先弹同一份排版选项窗（目录 / 页码页眉 / H1 起新页 / 封面），再弹系统保存面板定路径（默认名取当前文件名，`.md` 换成 `.pdf`），确认后就地落盘，全程不出打印界面。截法按 WebKit 的实际行为来：`createPDFWithConfiguration:` 不参与分页，传进去的 rect 直接当作那一页的纸张尺寸、1 CSS 像素等于 1 pt、`@page size` 一律忽略，所以每个 Paged.js 页面盒单独截一趟，再用 PDFKit 按页合并；截取态给整叠页套 `transform: scale(.75)`，把 794 CSS 像素宽的页面盒（210mm @96dpi）压回 595，出来的正是 595.27×841.89 的 A4。Rust 侧新模块 `src-tauri/src/pdf_export.rs`：命令 `export_pdf(path, pages)` 先补父目录，逐页 `with_webview` 取 WKWebView 回主线程配 `WKPDFConfiguration.setRect` 截取（每页 60 秒上限），合并写盘也走主线程（PDFKit 只认主线程）。画布态、非 mac、纯网页构建仍落回打印面板。实测：Swift 起 WKWebView 按同一配置出三页合并件；Blink 侧跑真实模块链路四组夹具（9 / 7 / 3 / 22 页）逐页矩形恒为 595.27×841.89，落盘后 `#print-root`、`#nl-print-paper`、`#nl-pdf-capture` 与 Paged.js 插入样式全部归零。打包版里「确认 → 保存面板 → 拿到 PDF」这一趟只能人工走，待用户侧确认。
-
 * **修复 mac 单击公式 / HTML 块把整篇选中**：数学（`math_inline` / `math_block`）、`html_block`、CSV / Mermaid / Quarkdown 快照这几类块是 `contenteditable=false` 的岛，nodeView 又 `stopEvent: () => true` 把事件全挡，ProseMirror 的 mousedown 处理收不到事件，于是 WebKit 自己决定选区——mac 打包版实测一次单击把文档起点到该岛整段涂蓝。`editor-view.js` 在捕获阶段给这几类岛补一条 mousedown 守卫：`preventDefault()` 掐掉原生选区，再按落点自己选中该原子块（`NodeSelection`，取不到原子块时 `TextSelection.near`）。`preventDefault` 不吞 click，块内原有的单击行为（HTML 块就地改源码、CSV / Mermaid 单击出码、快照点击）一律照旧；岛内链接 / 按钮 / 输入框直接放行不挡。代价是岛内不能再按住鼠标选字复制，改走就地编辑态取源码。Blink 侧经 CDP 逐块点击复核：普通段落仍是收起的光标，点行内公式得到只覆盖该公式的 NodeSelection，双击编辑弹窗照旧。
 
 * **动图新增「大纲层级折叠」场景**：`examples/gif-demo/scenarios.mjs` 加 `outline-fold`——打一篇三级标题的周报，切到侧栏「大纲」，逐节收起小标题，再按档位条 H1 一键收到只剩大标题、点回全展开；产物 `img/demo/outline-fold.gif`。`shoot.mjs` 补一条操作原语 `clickPoint`（按内容定位、没有可用选择器的小控件用），`docs/GIF-DEMO.md` 同步场景与「空文档切不到大纲 tab」这条坑。
@@ -91,11 +89,11 @@
 
 ### Fixed
 
-* **Paged.js 预分页此前从未生效，目录 / 页码 / 封面在打包版里一直没出现过**：`Previewer.preview(content, stylesheets, renderTo)` 的第二个参数是「URL 到 CSS 文本」的映射，`print-paged.js` 早期直接把 CSS 字符串塞进去，Paged.js 的 Polisher 把字符串当 URL 去 fetch，拿回整份 index.html 再按 CSS 解析，第一行 `<!DOCTYPE html>` 就报「'&lt;!DOCTYPE html&gt; …' is not a valid selector」；异常被调用方按「排版失败」吞掉、静默回退普通打印，所以现象只是「排版选项勾了没反应」，直到导出 PDF 直出文件把这条链路变成必经路才露出来。改为传 `{ 'notelume-print.css': css }`。顺带修逐页取矩形时查的选择器：Paged.js 出的是 `.pagedjs_page`，原来查 `.page` 恒空。
+* **Paged.js 预分页此前从未生效，目录 / 页码 / 封面在打包版里一直没出现过**：`Previewer.preview(content, stylesheets, renderTo)` 的第二个参数是「URL 到 CSS 文本」的映射，`print-paged.js` 早期直接把 CSS 字符串塞进去，Paged.js 的 Polisher 把字符串当 URL 去 fetch，拿回整份 index.html 再按 CSS 解析，第一行 `<!DOCTYPE html>` 就报「'&lt;!DOCTYPE html&gt; …' is not a valid selector」；异常被调用方按「排版失败」吞掉、静默回退普通打印，所以现象只是「排版选项勾了没反应」，界面上不报错、也不出页码。改为传 `{ 'notelume-print.css': css }`。顺带修逐页取矩形时查的选择器：Paged.js 出的是 `.pagedjs_page`，原来查 `.page` 恒空。
 
-* **排版定稿后关掉页面盒的重排监听**：Paged.js 给每个页面盒挂 ResizeObserver，为的是「页面内容变了就重排该页」。排版一旦完成逐页尺寸就该定死，而截取态要改容器 transform、收尾要摘 `#print-root`，回调落到已被移走的节点上会进 `findEndToken` → `findElement` 读 null 的 `data-ref` 抛错，更糟的是可能在逐页截取途中把正在截的那一页换掉。`printPaged` 与 `exportPdf` 现在都在收尾动作前调 `Page.removeListeners()`。Blink 侧同一条链路 A/B：9 / 7 / 3 / 22 页四组夹具不关监听抛 6 / 6 / 0 / 19 条 `reading 'getAttribute'`，关掉后四组都是 0 条。
+* **排版定稿后关掉页面盒的重排监听**：Paged.js 给每个页面盒挂 ResizeObserver，为的是「页面内容变了就重排该页」。排版一旦完成逐页尺寸就该定死，而 `window.print()` 与收尾摘 `#print-root` 会让回调落到已被移走的节点上，进 `findEndToken` → `findElement` 读 null 的 `data-ref` 抛错，还可能在打印途中把已经排好的页换掉。`printPaged` 现在在打印前先调 `Page.removeListeners()`。Blink 侧同一条排版链路 A/B：9 / 7 / 3 / 22 页四组夹具不关监听抛 6 / 6 / 0 / 19 条 `reading 'getAttribute'`，关掉后四组都是 0 条。
 
-* **排版加 60 秒上限**：Paged.js 的逐页推进挂在 `requestAnimationFrame` 上（排版队列 `Queue.tick`），窗口被遮挡或最小化时 WebView 不再出帧，队列会停在半路，状态栏的「正在排版…」永不结束。到点按排版失败处理：打印退回普通打印，导出报「排版超时」。上限只截断等待，不接住那一路后续结算，故补一个空 catch 免生无人处理的 rejection。
+* **排版加 60 秒上限**：Paged.js 的逐页推进挂在 `requestAnimationFrame` 上（排版队列 `Queue.tick`），窗口被遮挡或最小化时 WebView 不再出帧，队列会停在半路，状态栏的「正在排版…」永不结束。到点按排版失败处理，与排版报错同一口径退回普通打印。上限只截断等待，不接住那一路后续结算，故补一个空 catch 免生无人处理的 rejection；新词条 `print.timeout` 五语言。
 
 * **mac dmg 卷根多出一个 .DS_Store**：打 dmg 的 `bundle_dmg.sh` 会给卷宗写 Finder 美化信息，卷根随之生成 `.DS_Store`，发出去的包挂载后多一个蓝点文件。改为打完包从干净暂存目录用 `hdiutil create -srcfolder` 重制 dmg；本机产物是 linker 签名的，重打前先 `codesign --force --deep -s -` 补一次签名，否则重制后的包起不来。
 

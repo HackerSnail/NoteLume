@@ -460,7 +460,6 @@ export default {
   'msg.pullConflict': 'The remote may have updated this document. Discard local unsaved changes and reload?',
   'msg.pullConflictTitle': 'Pull conflict',
   'status.exportedHtml': 'Exported HTML: {abs}',
-  'status.exportedPdf': 'Exported PDF: {abs}',
   'status.printPaging': 'Laying out…',
   'status.printPagedFallback': 'Layout failed, fell back to plain print',
   'status.exportedSlides': 'Exported presentation: {abs}',

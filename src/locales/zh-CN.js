@@ -459,7 +459,6 @@ export default {
   'msg.pullConflict': '远端可能更新了当前文档，是否放弃本地未保存改动并重新加载？',
   'msg.pullConflictTitle': '拉取冲突',
   'status.exportedHtml': '已导出 HTML：{abs}',
-  'status.exportedPdf': '已导出 PDF：{abs}',
   'status.printPaging': '正在排版…',
   'status.printPagedFallback': '排版失败，已回退普通打印',
   'status.exportedSlides': '已导出演示文稿：{abs}',

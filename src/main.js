@@ -36,7 +36,6 @@ import {
   removeIndexDoc,
   backupWrite,
   exportFile,
-  exportPdfFile,
   buildSiteGraph,
   copyVaultAssets,
   setMacMenu,
@@ -65,7 +64,7 @@ import { anchorSlug } from './heading-anchor.js'
 import { getFeatures, setFeature } from './feature-flags.js'
 import { buildSlidesHtml, buildVaultSlidesHtml } from './slides-export.js'
 import { slidesAssets } from './slides-assets.js'
-import { printPaged, exportPdf } from './print-paged.js'
+import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
 import { numberingCss } from './heading-numbering.js'
@@ -3289,32 +3288,8 @@ async function exportHTML() {
   }
 }
 
-// —— 导出 PDF（Ctrl+P / 菜单）：画布与网页态、非 mac 走打印面板；
-// mac 打包版排版完直接写 PDF 文件（路径由保存对话框自定义）。
-// 排版链路 spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md ——
-async function exportPdfCommand() {
-  if (state.mode === 'canvas' || !NATIVE_PDF) {
-    await printViaDialog()
-    return
-  }
-  const options = await printOptionsDialog()
-  if (!options) return
-  const opts = { ...options, headingNumbering: getFeatures(settingsStore).headingNumbering }
-  const defaultName = (state.currentFile || 'untitled').replace(/\.md$/i, '.pdf')
-  const abs = await pickSaveAs(defaultName)
-  if (!abs) return
-  setStatus(t('status.printPaging'))
-  try {
-    await exportPdf(opts, defaultName.replace(/\.pdf$/i, ''), (pages) => exportPdfFile(abs, pages))
-    setStatus(t('status.exportedPdf', { abs }))
-  } catch (e) {
-    setStatus('')
-    await messageDialog(t('msg.exportFailed', { err: (e && e.message) || e }))
-  }
-}
-
-// —— 打印：普通文档先弹排版选项窗，Paged.js 预分页后再走系统打印面板，
-// 预分页失败回退直打（网页态与非 mac 的「导出 PDF」落在这里）——
+// —— 打印（Ctrl+P）：画布直出老打印；普通文档先弹排版选项窗，Paged.js 预分页后再走系统打印，
+// 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）——
 async function printViaDialog() {
   if (state.mode === 'canvas') {
     window.print()
@@ -3603,8 +3578,6 @@ async function openGraphModal() {
 // 取代旧的硬编码 if/else 链。editor / plugin 命令在后续步骤并入同一注册表。
 const commandRegistry = createRegistry()
 const IS_MAC = detectIsMac()
-// mac 打包版才有 WKWebView 直出 PDF；网页态与非 mac 仍走打印面板
-const NATIVE_PDF = IS_MAC && typeof window.__TAURI_INTERNALS__ !== 'undefined'
 let effectiveKeymap = new Map() // 解析后键形 → 命令 id
 
 // 读用户覆盖；损坏 JSON 视为空覆盖（回退默认）
@@ -3708,7 +3681,7 @@ function registerAppCommands() {
   // Ctrl+E = 编辑 / 预览互切（Typora 语义，即源码 ⇄ 所见即所得）；Ctrl+/ 不再占默认键
   app('app.sourceMode', 'Mod-e', () => toggleSourceMode())
   // 打印保留 Ctrl+P（用户明确要求）；命令面板回 Ctrl+Shift+P
-  app('app.print', 'Mod-p', () => exportPdfCommand())
+  app('app.print', 'Mod-p', () => printViaDialog())
   app('app.palette', 'Mod-Shift-p', () => { if (palette) palette.open() })
   app('app.graph', 'Mod-g', () => openGraphModal())
   app('app.dailyCapture', 'Mod-Shift-d', () => toggleDailyCapture())

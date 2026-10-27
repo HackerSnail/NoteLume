@@ -459,7 +459,6 @@ export default {
   'msg.pullConflict': 'Das Remote hat dieses Dokument möglicherweise aktualisiert. Lokale ungespeicherte Änderungen verwerfen und neu laden?',
   'msg.pullConflictTitle': 'Pull-Konflikt',
   'status.exportedHtml': 'HTML exportiert: {abs}',
-  'status.exportedPdf': 'PDF exportiert: {abs}',
   'status.printPaging': 'Layout wird erstellt…',
   'status.printPagedFallback': 'Layout fehlgeschlagen, normaler Druck verwendet',
   'status.exportedSlides': 'Präsentation exportiert: {abs}',

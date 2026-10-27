@@ -34,9 +34,6 @@ mod fs_watcher;
 // 设计与分期见 docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md。
 mod qd;
 
-// mac「导出 PDF」直出文件（不弹系统打印面板）；非 mac 目标整个文件被 cfg 掉。
-mod pdf_export;
-
 /// qd_eval 的返回：展开文本 + 诊断（camelCase 对前端）
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -4179,9 +4176,7 @@ pub fn run() {
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
             take_launch_paths,
             open_vault_window,
-            take_window_vault,
-            // mac「导出 PDF」直出文件（非 mac 为同名桩，前端仍走打印面板）
-            pdf_export::export_pdf
+            take_window_vault
         ])
         .on_menu_event(|app, event| {
             use tauri::Emitter;
