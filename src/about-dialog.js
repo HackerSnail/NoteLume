@@ -5,7 +5,7 @@
 // 三个按钮都指向站外地址：webview 里 window.open 被拦时退化为消息框贴链接，不至于点了没反应。
 import { t } from './i18n.js'
 import pkg from './package.json'
-import { messageDialog } from './tauri-bridge.js'
+import { messageDialog, openExternalUrl } from './tauri-bridge.js'
 
 const REPO = 'https://gitee.com/hackerSnail/note-lume'
 
@@ -24,9 +24,15 @@ function close() {
   document.removeEventListener('keydown', onKey, true)
 }
 
-function openExternal(url) {
-  const w = window.open(url, '_blank', 'noopener,noreferrer')
-  if (!w) messageDialog(url)
+async function openExternal(url) {
+  // Tauri 里走系统默认浏览器（open_external_url，只放行 http / https）；
+  // 无 Tauri 的网页预览退 window.open，仍被拦才贴链接
+  try {
+    await openExternalUrl(url)
+  } catch {
+    const w = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!w) messageDialog(url)
+  }
 }
 
 export function openAboutDialog() {

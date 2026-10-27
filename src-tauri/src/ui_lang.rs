@@ -386,6 +386,13 @@ const TABLE: &[Entry] = &[
         "Échec du téléchargement de l’image ({code})",
         "Bild konnte nicht heruntergeladen werden ({code})",
     ]},
+    Entry { key: "openUrlFailed", texts: [
+        "无法打开链接：{url}（仅支持 http / https）",
+        "無法開啟連結：{url}（僅支援 http / https）",
+        "Cannot open the link: {url} (http / https only)",
+        "Impossible d’ouvrir le lien : {url} (http / https uniquement)",
+        "Link kann nicht geöffnet werden: {url} (nur http / https)",
+    ]},
     // ---------- 索引 / 备份 / 插件 ----------
     Entry { key: "writeBackupFailed", texts: [
         "写入备份失败：{err}",

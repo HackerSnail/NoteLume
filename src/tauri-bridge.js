@@ -99,6 +99,11 @@ export async function evalQd(md, docDir = null, libsDir = null) {
   return invoke('qd_eval', { md, docDir, libsDir })
 }
 
+/** 用系统默认浏览器打开站外链接（关于对话框的仓库 / LICENSE / Releases 按钮） */
+export function openExternalUrl(url) {
+  return invoke('open_external_url', { url })
+}
+
 /** 显式安装 Quarkdown 包（@scope/name:version，atoms 源），返回缓存入口文件路径 */
 export function qdPackageInstall(reference) {
   return invoke('qd_package_install', { reference })
