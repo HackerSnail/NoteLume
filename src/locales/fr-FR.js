@@ -459,7 +459,6 @@ export default {
   'msg.pullConflict': 'Le distant a peut-être mis à jour ce document. Abandonner les modifications locales non enregistrées et recharger ?',
   'msg.pullConflictTitle': 'Conflit de pull',
   'status.exportedHtml': 'HTML exporté : {abs}',
-  'status.exportedPdf': 'PDF exporté : {abs}',
   'status.printPaging': 'Mise en page…',
   'status.printPagedFallback': 'Échec de la mise en page, impression simple utilisée',
   'status.exportedSlides': 'Présentation exportée : {abs}',
