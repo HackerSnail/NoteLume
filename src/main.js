@@ -1773,29 +1773,74 @@ function addMenuCmd(menu, id, icon) {
   menu.appendChild(makeMenuItem(cmd.title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, icon))
 }
 
+// 命令子菜单（导出 / Git）：与 mac 菜单栏同构——同一组命令 id，剥掉注册表标题里的
+// 归类前缀（「导出」「Git：」，父项已经说了同一件事），勾选态与置灰走同一套口径
+function openCmdSubmenu(anchorEl, text, icon, ids, prefixKey) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  const re = new RegExp('^' + t(prefixKey).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*')
+  for (const id of ids) {
+    const cmd = commandRegistry.get(id)
+    if (!cmd) continue
+    const key = commandBindingFor(id)
+    const checked = MENU_CHECKED[id] ? MENU_CHECKED[id]() : false
+    const title = String(cmd.title).replace(re, '')
+    menu.appendChild(makeMenuItem(title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, null, !menuEnabled(id)))
+  }
+  placeMenu(menu, anchorEl.getBoundingClientRect().left, anchorEl.getBoundingClientRect().bottom + 4)
+}
+
 function openMoreMenu(anchorEl) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
+  // 文件：新建 / 打开 → 最近 / 模板 → 保存 / 重命名 / 定位 → 导入导出 → 速记 / 自动保存 / 关闭
+  addMenuCmd(menu, 'app.newFile', 'file-plus')
+  addMenuCmd(menu, 'app.openFile', 'file')
+  addMenuCmd(menu, 'app.openFolder', 'folder')
+  menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
+  menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.save', 'save')
+  addMenuCmd(menu, 'app.renameFile', 'pen')
+  addMenuCmd(menu, 'app.revealFile', 'folder')
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.importWord', 'file')
+  menu.appendChild(makeMenuItem(t('menu.export'), () => openCmdSubmenu(anchorEl, t('menu.export'), 'export', [
+    'app.print',
+    'app.export',
+    'app.exportPlain',
+    'app.exportWord',
+    'app.exportSlides',
+    'app.exportVaultSlides',
+    'app.exportSite',
+  ], 'menu.exportPrefix'), false, false, 'export'))
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.dailyCapture', 'calendar')
+  addMenuCmd(menu, 'app.autosave', 'save')
+  addMenuCmd(menu, 'app.closeFile', 'close')
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.graph', 'graph')
+  addMenuCmd(menu, 'app.newCanvas', 'board')
+  addMenuCmd(menu, 'app.clipSettings', 'clipboard')
+  addMenuCmd(menu, 'app.qdToggleEval', 'terminal')
+  addMenuCmd(menu, 'app.qdInstallPackage', 'plus')
+  // Git：与 mac 顶级 Git 组同一组命令
+  menu.appendChild(makeMenuItem(t('menu.group.git'), () => openCmdSubmenu(anchorEl, t('menu.group.git'), 'branch', [
+    'app.git.refresh',
+    'app.git.commit',
+    'app.git.fetch',
+    'app.git.pull',
+    'app.git.pullMerge',
+    'app.git.push',
+    'app.git.remote',
+    'app.git.init',
+  ], 'menu.gitPrefix'), false, false, 'branch'))
+  menu.appendChild(menuSep())
   addMenuCmd(menu, 'app.palette', 'terminal')
   addMenuCmd(menu, 'app.shortcuts', 'sliders')
   addMenuCmd(menu, 'app.appearance', 'palette')
-  addMenuCmd(menu, 'app.export', 'export')
-  addMenuCmd(menu, 'app.exportSlides', 'export')
-  addMenuCmd(menu, 'app.exportVaultSlides', 'export')
-  addMenuCmd(menu, 'app.exportSite', 'globe')
-  addMenuCmd(menu, 'app.exportPlain', 'export')
-  addMenuCmd(menu, 'app.importWord', 'file')
-  addMenuCmd(menu, 'app.exportWord', 'export')
-  addMenuCmd(menu, 'app.print', 'printer')
-  addMenuCmd(menu, 'app.revealFile', 'folder')
-  addMenuCmd(menu, 'app.graph', 'graph')
-  addMenuCmd(menu, 'app.newCanvas', 'board')
-  // 这两项是子菜单而非命令，注册表里没有对应条目，文案走词条
-  menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
-  menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
-  addMenuCmd(menu, 'app.clipSettings', 'clipboard')
-  addMenuCmd(menu, 'app.qdToggleEval', 'terminal')
   // 语言：子菜单列出全部语言，当前语言打勾
   menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
   addMenuCmd(menu, 'app.about', 'info')

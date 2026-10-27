@@ -152,7 +152,7 @@ export function revealInFolder(vaultRoot, rel) {
 
 /**
  * 系统拖入的路径探测：返回 { name, isDir }。
- * 打包版收不到 HTML5 drop，原生拖放事件只给绝对路径，是否目录由这里补。
+ * mac 打包版收不到 HTML5 drop，原生拖放事件只给绝对路径，是否目录由这里补。
  */
 export function probeExternalDrop(path) {
   return invoke('probe_external_drop', { path })

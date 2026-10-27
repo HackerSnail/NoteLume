@@ -5,7 +5,8 @@
 // 本模块只负责把 DataTransfer 里的路径干净地取出来。
 //  · 路径来源优先 DataTransferItem.webkitGetAsEntry()：只有它能给出文件夹 entry。
 //    Windows 下 entry.fullPath 形如 /C:/a/b.md（前导斜杠），normDropPath 剥掉。
-//  · dataTransfer.files 的 path 属性是 Tauri webview 注入的，个别环境没有，作兜底。
+//  · dataTransfer.files 的 path 属性是 Tauri webview 注入的（Windows 的 WebView2 有、mac 的
+//    WKWebView 没有），作兜底；mac 打包版靠原生拖放事件那条通道，见 main.js 的 bindNativeDrop。
 
 const OPENABLE_EXTS = ['md', 'markdown', 'canvas']
 
