@@ -27,6 +27,7 @@
       <symbol id="i-win-max" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1" /></symbol>
       <symbol id="i-win-restore" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="9" height="9" rx="1" /><path d="M5.5 15.5v-8a2 2 0 0 1 2-2h8" /></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></symbol>
+      <symbol id="i-replace" viewBox="0 0 24 24"><path d="M4.5 8h10M4.5 8l3-3M4.5 8l3 3" /><path d="M19.5 16h-10M19.5 16l-3-3M19.5 16l-3 3" /></symbol>
       <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5" /></symbol>
       <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4 21 19.5H3z" /><path d="M12 10v4.2M12 17h.01" /></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" /></symbol>
@@ -99,8 +100,8 @@
              applyStaticDom 切语言时会把带该属性的元素整片重刷，真实文件名会被占位文案顶掉 -->
         <span id="filename" class="filename">（无打开文档）</span>
         <span class="spacer" data-tauri-drag-region></span>
-        <button id="btn-find" data-i18n-title="ui.tipFind" title="查找 (Ctrl+F)"><span data-i18n="ui.find">查找</span></button>
-        <button id="btn-replace" data-i18n-title="ui.tipReplace" title="查找替换 (Ctrl+H)"><span data-i18n="ui.replace">替换</span></button>
+        <button id="btn-find" data-i18n-title="ui.tipFind" title="查找 (Ctrl+F)"><svg class="nl-ico"><use href="#i-search" /></svg><span data-i18n="ui.find">查找</span></button>
+        <button id="btn-replace" data-i18n-title="ui.tipReplace" title="查找替换 (Ctrl+H)"><svg class="nl-ico"><use href="#i-replace" /></svg><span data-i18n="ui.replace">替换</span></button>
         <label class="autosave-toggle" data-i18n-title="ui.tipAutosave" title="开启后：停止输入 2s 自动写回原文件；每 2分钟保留一份时间戳副本到库内 .notelume-backup/">
           <input type="checkbox" id="chk-autosave" /> <span data-i18n="ui.autosave">自动保存</span>
         </label>

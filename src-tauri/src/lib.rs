@@ -931,6 +931,13 @@ fn download_remote(url: &str, dest: &std::path::Path) -> Result<(), String> {
     Err(ui_msg!("downloadImgFailed", "code" => if err.is_empty() { format!("curl {}", out.status) } else { err }))
 }
 
+/// 拖放落点判定（Windows / Linux 的 Tauri drag-drop 事件只给路径不给类型）：
+/// 判断拖入路径是否目录，前端按 isDir 分流打开文件夹还是打开文件。
+#[tauri::command]
+fn drop_path_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
 /// 在系统文件管理器中显示库内文件 / 文件夹（文件树右键）。Windows 用 explorer /select 选中
 /// 该项（退出码经常回 1，只要进程起得来即算成功）；macOS 用 open -R 反选；Linux 没有
 /// 通用反选，xdg-open 打开所在目录。
@@ -3960,6 +3967,7 @@ pub fn run() {
             // P0
             qd_eval,
             qd_package_install,
+            drop_path_is_dir,
             reveal_in_folder,
             scan_vault,
             read_md_file,
