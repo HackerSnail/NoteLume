@@ -106,8 +106,8 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     bar.appendChild(btn(t('fm.apply'), 'primary', () => apply(ta.value)))
     bar.appendChild(btn(t('fm.reformatBtn'), '', reformat))
     if (hasFm) {
-      bar.appendChild(btn(t('fm.removeBtn'), 'danger', () => {
-        if (window.confirm(t('fm.removeConfirm'))) setFm(null)
+      bar.appendChild(btn(t('fm.removeBtn'), 'danger', async () => {
+        if (await confirmDialog(t('fm.removeConfirm'))) setFm(null)
       }))
     }
     container.appendChild(bar)

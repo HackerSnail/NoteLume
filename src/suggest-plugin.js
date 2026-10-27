@@ -57,7 +57,8 @@ export function createSuggestPlugin({ getDocs, getTags }) {
       return null
     }
 
-    m = /(?:^|[\s(\u0000])#([A-Za-z0-9_\-/]*)$/.exec(before)
+    // 字符集与 editor-schema.js 的标签行内规则、Rust 侧 is_tag_char 同一口径（含中文标签）
+    m = /(?:^|[\s(\u0000])#([\p{L}\p{N}_\-/]*)$/u.exec(before)
     if (m) {
       const whole = m[0]
       const hashIdx = whole.indexOf('#')

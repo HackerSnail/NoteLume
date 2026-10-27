@@ -368,10 +368,28 @@ export function createEditor(opts) {
 
   // 点击 [[链接]]：拦截跳转（链接节点 contenteditable=false）
   view.dom.addEventListener('click', (e) => {
+    // 任务列表勾选框：CSS ::before 画的，DOM 里没有 <input>（content hole 必须是 li 唯一子节点），
+    // 故按 li 的 padding 区几何自己判定命中。命中范围与 style.css 的 14px 框 + top:0.32em 对齐。
+    const task = e.target.closest('li.nl-task')
+    if (task) {
+      const r = task.getBoundingClientRect()
+      const top = r.top + parseFloat(getComputedStyle(task).fontSize) * 0.32
+      if (e.clientX >= r.left && e.clientX <= r.left + 20 && e.clientY >= top && e.clientY <= top + 20) {
+        const pos = Math.max(0, view.posAtDOM(task, 0) - 1)
+        const node = view.state.doc.nodeAt(pos)
+        if (node && node.type.name === 'list_item') {
+          e.preventDefault()
+          e.stopPropagation()
+          view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: !node.attrs.checked }))
+          view.focus()
+          return
+        }
+      }
+    }
     const wiki = e.target.closest('.nl-wiki')
     if (wiki) {
       e.preventDefault()
-      opts.onOpenWiki && opts.onOpenWiki(wiki.getAttribute('data-target'))
+      opts.onOpenWiki && opts.onOpenWiki(wiki.getAttribute('data-target'), { newPane: e.ctrlKey || e.metaKey })
       return
     }
     // 点击文档内 #锚点 链接（docx 交叉引用等产出）：按共享 slug 规则反查标题并跳转。

@@ -577,13 +577,17 @@ tokenizer.inline.ruler.push('wikilink', (state, silent) => {
 })
 
 // #tag（词首的 # 不会进到这里：标题在 block 阶段已被消费；行内 # 视为标签）
-const TAG_RE = /[A-Za-z0-9_\-/]/
+// 字符集与左边界白名单对齐 Rust 侧的 is_tag_char / extract_tags（src-tauri/src/lib.rs）：
+// 两边不一致时，全局标签面板有、文档标签面板空，中文标签正好踩中这个缝。
+const TAG_RE = /[\p{L}\p{N}_\-/]/u
+const TAG_LEFT_OK = (c) => c === undefined || /\s/.test(c) || '()>"\'[]*~,.;:!?'.includes(c)
 tokenizer.inline.ruler.push('tag', (state, silent) => {
   const src = state.src
   const pos = state.pos
   if (src.charCodeAt(pos) !== 0x23 /* # */) return false
   const next = src[pos + 1]
   if (!next || !TAG_RE.test(next)) return false
+  if (!TAG_LEFT_OK(src[pos - 1])) return false // C# 这类词中井号不算标签
   let n = 1
   while (pos + n < src.length && TAG_RE.test(src[pos + n])) n++
   const tag = src.slice(pos + 1, pos + n)

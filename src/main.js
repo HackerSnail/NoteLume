@@ -1216,10 +1216,8 @@ async function importDroppedFiles(files, destDir) {
   }
 }
 
-// —— 打包版的系统拖入 ——
-// wry 默认接管窗口拖放（dragDropEnabled），打包版里 HTML5 的 dragover / drop 收不到，
-// 只来 tauri://drag-drop 原生事件，且只带绝对路径；「是否目录」由 probe_external_drop 补。
-// 语义与「打开方式」一致：文件在当前窗口开，文件夹另开一个窗口当知识库打开。
+// 系统拖入的统一落点：两条通道（bindNativeDrop 与 bindDropOpen）都汇到这里，
+// 语义与「打开方式」一致——文件在当前窗口开，文件夹另开一个窗口当知识库打开。
 async function openDropTargets(targets, el) {
   const leaf = el && el.closest ? el.closest('.nl-pane') : null
   const paneId = leaf && leaf.dataset.paneId
@@ -1229,6 +1227,13 @@ async function openDropTargets(targets, el) {
   return handleOpenTargets(targets, { interactive: true, preview: true })
 }
 
+// mac 走的这条：Tauri 留着窗口拖放拦截，HTML5 的 dragover / drop 收不到，只来
+// tauri://drag-drop 原生事件且只带绝对路径（是否目录由 probe_external_drop 补）。
+// Windows / Linux 把拦截关掉（tauri.conf.json 设 dragDropEnabled: false，mac 用
+// tauri.macos.conf.json 覆盖回 true），那边由 drop-open.js 处理 HTML5 事件。
+// 分两条的原因是取路径：WebView2 的 File.path 有值、WKWebView 没有，mac 只能靠原生事件。
+// 装了拦截就一定没有 HTML5 事件（tauri-runtime-wry 的 handler 恒返回 true），dev 与
+// 打包同一口径；纯 web 构建只剩 HTML5 这条，此处订阅不到任何事件。
 function bindNativeDrop() {
   if (!window.__TAURI_INTERNALS__) return
   const bodyEl = document.querySelector('.body')
@@ -3011,7 +3016,7 @@ function timeStr() {
 }
 
 // —— [[wikilink]] 点击：跳转或新建 ——
-async function onOpenWiki(name) {
+async function onOpenWiki(name, { newPane = false } = {}) {
   if (!state.vaultRoot) {
     setStatus(t('status.needVaultFolder'))
     return
@@ -3019,7 +3024,17 @@ async function onOpenWiki(name) {
   try {
     const res = await resolveWikiLink(state.vaultRoot, state.currentFile || '', name)
     if (res.exists) {
-      await openFile(res.path)
+      if (newPane) await openInSplitPane(res.path)
+      else await openFile(res.path)
+      return
+    }
+    if (newPane) {
+      // 不存在的页面走「是否新建」确认框，新窗格模式下先不拆，避免取消后留一个空窗格
+      if (!(await confirmDialog(t('dlg.wikiMissingDoc', { name }), t('dlg.wikiNewDocTitle')))) return
+      const rel = await createMdFile(state.vaultRoot, name, `# ${name}\n\n`)
+      renderTree(await scanVault(state.vaultRoot))
+      await openInSplitPane(rel)
+      try { await updateIndexDoc(rel, `# ${name}\n\n`) } catch (_) {}
       return
     }
     const create = await confirmDialog(t('dlg.wikiMissingDoc', { name }), t('dlg.wikiNewDocTitle'))
@@ -3034,6 +3049,15 @@ async function onOpenWiki(name) {
   } catch (e) {
     await messageDialog(t('msg.opFailed', { err: e }))
   }
+}
+
+// 在当前窗格右侧拆一个新窗格并落文档（双链 ⌘/Ctrl+点击的去处）
+async function openInSplitPane(rel) {
+  const newId = splitEmptyPane(panes.focused, 'horizontal', false)
+  if (!newId) return
+  await syncFocusedEditor()
+  await landDocInPane(newId, { root: state.vaultRoot, rel })
+  persistPanes()
 }
 
 // —— 大纲 / 标签面板 ——
@@ -3083,8 +3107,8 @@ function onMetaChange({ outline, tags }) {
     chip.textContent = '#' + tag
     chip.title = t('tags.searchInVault')
     chip.addEventListener('click', () => {
-      els.searchInput.value = '#' + t
-      runSearch('#' + t)
+      els.searchInput.value = '#' + tag
+      runSearch('#' + tag)
     })
     tw.appendChild(chip)
   })
