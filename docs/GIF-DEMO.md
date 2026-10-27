@@ -95,9 +95,15 @@ node capture/shoot.mjs theme-switch
 
 把一个窗格拆成两个，左右各自开文档、各自滚动。
 
+#### 大纲层级折叠 `outline-fold`
+
+![大纲层级折叠](img/demo/outline-fold.gif)
+
+侧栏切到「大纲」，逐节收起小标题，再按档位条的 H1 一键收到只剩大标题，最后一点回到全展开。
+
 ### 5. 加新场景
 
-场景写在 `scenarios.mjs`，`shoot.mjs` 提供操作原语：`type`、`press`、`click`、`clickText`、`scroll`、`wait`、`js`。约定只有一条：画面必须由真实输入事件产生，不直接改 DOM、不调应用内部函数。
+场景写在 `scenarios.mjs`，`shoot.mjs` 提供操作原语：`type`、`press`、`click`、`clickText`、`clickPoint`、`scroll`、`wait`、`js`。约定只有一条：画面必须由真实输入事件产生，不直接改 DOM、不调应用内部函数。
 
 几条实测下来容易踩的：
 
@@ -108,6 +114,7 @@ node capture/shoot.mjs theme-switch
 - screencast 只在画面变化时推帧。脚本按每帧的 screencast 时间戳写一份 concat 清单交给 ffmpeg，静止停留才不会被压成闪帧。
 - 网页沙盒没有插件目录，开库时后端会回一条 desktop-only 拒绝，提示条会糊在画面底部。脚本在抓帧前用一行 CSS 藏掉 `#nl-web-toasts`，其余界面元素不动。
 - 知识图谱在网页沙盒里打不开：后端索引状态里的库根是 `/private/var/...`，前端比较的是 `/var/...`，两串对不上，`state.indexReady` 一直为假，入口只回一句「索引尚未就绪」。这一项留给桌面版。
+- 大纲 tab 在文档没有标题时会被 `syncOutlineTab` 藏掉，切过去也留不住。要先打完标题再点 tab；取不到可见的 `.outline-toolbar button` 就是这个原因。
 - 网页工作树落后主干时，主干新加的功能不会出现在画面里。录制新一轮之前先把主干合进 `web`（方向允许，见 `docs/SERVER.MD`），重新 `npm run web:build`。
 
 ## 二、桌面版：脚本驱动 + 系统录屏

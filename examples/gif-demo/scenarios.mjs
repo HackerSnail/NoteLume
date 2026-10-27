@@ -139,4 +139,49 @@ export const scenarios = {
     await ctx.clickText('.nl-pane:first-child .tab', 'home')
     await ctx.wait(900)
   },
+
+  // 大纲层级折叠：逐节收起小标题，再用档位条一键收到只剩大标题
+  'outline-fold': async (ctx) => {
+    await openDoc(ctx, '空白页')
+    await focusEnd(ctx)
+    for (const [key, text] of [
+      ['Meta+1', '产品周报'],
+      ['Meta+2', '三月'],
+      ['Meta+3', '上线'],
+      ['Meta+3', '风险'],
+      ['Meta+2', '二月'],
+      ['Meta+3', '上线'],
+    ]) {
+      await ctx.press(key)
+      await ctx.type(text)
+      await ctx.press('Enter')
+    }
+    // 没有标题时大纲 tab 会被 syncOutlineTab 藏掉，所以先打字再切过去
+    await ctx.click('.side-tab[data-tab="outline"]')
+    await ctx.wait(1000)
+    await clickOutlineCaret(ctx, '三月')
+    await ctx.wait(1200)
+    await clickOutlineCaret(ctx, '二月')
+    await ctx.wait(1400)
+    await ctx.click('.outline-toolbar button[data-mode="1"]')
+    await ctx.wait(1400)
+    await ctx.click('.outline-toolbar button[data-mode="1"]')
+    await ctx.wait(900)
+  },
+}
+
+/** 点某条大纲行左侧的伸缩箭头：按标题文字找行，箭头本身没有可用选择器 */
+async function clickOutlineCaret(ctx, text) {
+  const p = await ctx.js((t) => {
+    const row = [...document.querySelectorAll('.outline-row')].find(
+      (r) => (r.querySelector('.outline-item') || {}).textContent?.trim() === t,
+    )
+    const caret = row && row.querySelector('button.outline-caret')
+    if (!caret) return null
+    const b = caret.getBoundingClientRect()
+    if (!b.width) return null // 侧栏还停在「文件」tab：整棵大纲是隐藏的，别去点一个零尺寸的框
+    return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) }
+  }, text)
+  if (!p) throw new Error(`大纲里没有可折叠的「${text}」`)
+  await ctx.clickPoint(p)
 }
