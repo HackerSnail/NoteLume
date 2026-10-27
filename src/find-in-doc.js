@@ -268,12 +268,41 @@ export function createFindBar({ view, paneEl }) {
     reveal(idx)
   }
 
-  // 滚动到第 idx 个命中并选中（选区让 PM 原生把它滚入视野）；不动 DOM 焦点（由调用方决定焦点落哪）
+  // 滚动到第 idx 个命中并选中；不动 DOM 焦点（由调用方决定焦点落哪）
+  // 滚动显式接管而不用 PM 的 tr.scrollIntoView()：后者只把光标头部滚进视野，
+  // 焦点在查找栏 / 命中贴近文档首尾时行为不稳。这里按命中的视口矩形滚动滚动容器
+  // （paneEl），命中已完整可见时不动——连续搜索不产生视图跳动；超出滚动边界时
+  // scrollTop 由浏览器钳制，文档首尾自然落定。
   function reveal(idx) {
     const m = findState().matches[idx]
     if (!m) return
-    const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to))
-    view.dispatch(tr.scrollIntoView())
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to)))
+    scrollMatchIntoView(m)
+  }
+
+  // 把命中矩形滚进滚动容器可视区（上下各留 72px 上下文），已在视野内则不滚
+  function scrollMatchIntoView(m) {
+    let top, bottom
+    try {
+      const a = view.coordsAtPos(Math.max(0, Math.min(m.from, view.state.doc.content.size)))
+      const b = view.coordsAtPos(Math.max(0, Math.min(m.to, view.state.doc.content.size)))
+      top = Math.min(a.top, b.top)
+      bottom = Math.max(a.bottom, b.bottom)
+    } catch {
+      return // 坐标不可得（文档刚被外部改动的瞬间）：跳过本次滚动，高亮仍正确
+    }
+    const rect = paneEl.getBoundingClientRect()
+    const MARGIN = 72
+    if (bottom - top >= rect.height - MARGIN * 2) {
+      // 命中比可视区还高（超长块内命中）：对齐顶部
+      paneEl.scrollTop += top - MARGIN - rect.top
+      return
+    }
+    if (top < rect.top + MARGIN) {
+      paneEl.scrollTop -= rect.top + MARGIN - top
+    } else if (bottom > rect.bottom - MARGIN) {
+      paneEl.scrollTop += bottom - (rect.bottom - MARGIN)
+    }
   }
 
   // 替换当前高亮项，随后重算命中（被替换项消失后 activeIndex 自然落到下一个）
