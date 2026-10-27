@@ -78,6 +78,19 @@ t('菜单分组词条与「打开文件位置」五语言齐全', () => {
   }
 })
 
+// mac 上的系统文件管理器是访达：revealLabel() 按平台在两个词条之间取，两边都要五语言齐全
+t('「在文件管理器中显示」与「在访达中显示」五语言齐全', () => {
+  for (const key of ['menu.revealInFolder', 'menu.revealInFinder']) {
+    for (const { id: loc } of LOCALES) {
+      const v = MESSAGES[loc][key]
+      assert.ok(typeof v === 'string' && v.length > 0, loc + ' 缺 ' + key)
+    }
+  }
+  setLocale('zh-CN')
+  assert.ok(MESSAGES['zh-CN']['menu.revealInFinder'].includes('访达'))
+  assert.ok(!MESSAGES['zh-CN']['menu.revealInFolder'].includes('访达'))
+})
+
 t('setLocale 拒绝未知 id；localeName 返回各语言自称', () => {
   assert.strictEqual(setLocale('xx-XX'), false)
   assert.strictEqual(localeName('zh-Hant'), '繁體中文')

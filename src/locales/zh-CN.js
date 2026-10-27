@@ -140,6 +140,7 @@ export default {
   'menu.renameMove': '重命名 / 移动…',
   'menu.trash': '移入回收站',
   'menu.revealInFolder': '在资源管理器中显示',
+  'menu.revealInFinder': '在访达中显示',
   'menu.newFileEllipsis': '新建文件…',
   'menu.newFolderEllipsis': '新建文件夹…',
   'menu.tabClose': '关闭标签页',

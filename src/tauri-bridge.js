@@ -150,6 +150,14 @@ export function revealInFolder(vaultRoot, rel) {
   return invoke('reveal_in_folder', { vaultRoot, rel })
 }
 
+/**
+ * 系统拖入的路径探测：返回 { name, isDir }。
+ * 打包版收不到 HTML5 drop，原生拖放事件只给绝对路径，是否目录由这里补。
+ */
+export function probeExternalDrop(path) {
+  return invoke('probe_external_drop', { path })
+}
+
 const IMG_EXT_SET = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'])
 
 /** 判断一个库内路径是否图片附件（与 Rust scan_dir 的 IMG_EXTS 白名单一致）：点击时走图片查看器 */
@@ -457,6 +465,16 @@ export function clipServerStatus() {
 /** P5 §6.6：取走启动参数（[{ path, isDir }]，取后即清）；无参数返回 [] */
 export function takeLaunchPaths() {
   return invoke('take_launch_paths', {})
+}
+
+/** 拖入文件夹：另开一个窗口将该文件夹作为知识库打开，resolve 新窗口标签 */
+export function openVaultWindow(path) {
+  return invoke('open_vault_window', { path })
+}
+
+/** 新窗口 boot 时取自己该开的库路径；非拖入另开的窗口返回 null */
+export function takeWindowVault() {
+  return invoke('take_window_vault', {})
 }
 
 /** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。

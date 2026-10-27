@@ -140,6 +140,7 @@ export default {
   'menu.renameMove': '重新命名 / 移動…',
   'menu.trash': '移入回收筒',
   'menu.revealInFolder': '在檔案總管中顯示',
+  'menu.revealInFinder': '在 Finder 中顯示',
   'menu.newFileEllipsis': '新增檔案…',
   'menu.newFolderEllipsis': '新增資料夾…',
   'menu.tabClose': '關閉標籤頁',

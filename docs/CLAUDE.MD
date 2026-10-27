@@ -279,7 +279,7 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 4. 处理路径：统一相对路径、库内路径转换；处理跨平台路径兼容（Windows/macOS）
 5. 不做编辑器渲染，渲染交给前端ProseMirror
 6. 提供invoke接口，给前端调用知识库API
-7. 文件打开链路的原生侧（P5 §6.6）：四条入口——启动参数、macOS 的 `application:openURLs:`、单实例二次唤起、窗口内拖入（纯前端，不经 Rust）——汇到 `deliver_open_targets` 一条交付通道：目标排进 `LaunchPaths` 队列，再 emit 一次不带路径的 `file-opened`，前端 boot 主动取、常驻时被动叫醒，两条时序都不丢。mac 的双击关联文件、右键「打开方式」、拖到 Dock 图标都只以 `RunEvent::Opened` 递 URL、不进 argv，要用 `build(context)?.run(callback)` 才接得到；目录也收（`Info.macOS.plist` 声明 `public.folder`），前端按 `isDir` 分流 `openVaultPath` / `openAbsPath`
+7. 文件打开链路的原生侧（P5 §6.6）：四条入口——启动参数、macOS 的 `application:openURLs:`、单实例二次唤起、窗口内拖入——汇到 `deliver_open_targets` 一条交付通道：目标排进 `LaunchPaths` 队列，再 emit 一次不带路径的 `file-opened`，前端 boot 主动取、常驻时被动叫醒，两条时序都不丢。mac 的双击关联文件、右键「打开方式」、拖到 Dock 图标都只以 `RunEvent::Opened` 递 URL、不进 argv，要用 `build(context)?.run(callback)` 才接得到；目录也收（`Info.macOS.plist` 声明 `public.folder`），前端按 `isDir` 分流 `openVaultPath` / `openAbsPath`。窗口内拖入是例外，不走 `LaunchPaths`：wry 默认接管窗口拖放，打包版收不到 HTML5 的 `dragover` / `drop`，前端 `bindNativeDrop()` 只订阅 `tauri://drag-*`；原生事件仅给绝对路径，由 `probe_external_drop` 补名字与 `isDir`，再按同一口径分流——文件在当前窗口 `openAbsPath`，文件夹调 `open_vault_window` 另开一个 `vault-*` 窗口，库路径按窗口标签存 `WindowVaults`、新窗口 boot 调 `take_window_vault` 取走（排进 `LaunchPaths` 会让新窗口抢走主窗口待开的目标）。开发态与网页构建仍是 HTML5 拖放导入（`drop-open.js` + `importDroppedFiles`）。多窗口写盘约束：`settings.json` 单份，`persistWorkspace` / `persistPanes` 与 `file-opened` 只认主窗口；`IndexState` / `FsWatcherState` 仍是应用级单份，两窗口开两库时后 boot 的接管索引。
 
 ### 前端 src/ 职责
 

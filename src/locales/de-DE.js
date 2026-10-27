@@ -140,6 +140,7 @@ export default {
   'menu.renameMove': 'Umbenennen / verschieben…',
   'menu.trash': 'In den Papierkorb legen',
   'menu.revealInFolder': 'Im Dateimanager anzeigen',
+  'menu.revealInFinder': 'Im Finder anzeigen',
   'menu.newFileEllipsis': 'Neue Datei…',
   'menu.newFolderEllipsis': 'Neuer Ordner…',
   'menu.tabClose': 'Tab schließen',
