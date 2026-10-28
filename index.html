@@ -244,11 +244,21 @@
     line-height: 1.1;
     font-weight: 700;
   }
-  .demo-grid {
+  /* 苹果式翻页：外层撑出滚动距离，内层 sticky 满屏，8 张叠在同格由滚动驱动交叉翻页 */
+  .demo-stage { position: relative; height: 660vh; /* (8-1)×80vh 翻页 + 100vh 展示 */ }
+  .demo-pin {
+    position: sticky;
+    top: 0;
+    height: 100vh;
     display: grid;
-    grid-template-columns: 1fr; /* 单列全宽：一屏一张 */
-    gap: 110px;
+    place-items: center;
+    padding: 80px clamp(20px, 5vw, 64px);
   }
+  .demo-pin .demo-item { grid-area: 1 / 1; width: 100%; will-change: transform, opacity; }
+  /* 降级（无 GSAP 或用户偏好减动效）：取消钉屏，退回普通纵向排列 */
+  .demo-stage.static { height: auto; }
+  .demo-stage.static .demo-pin { position: static; height: auto; display: block; }
+  .demo-stage.static .demo-item { margin-bottom: 40px; }
   .demo-item {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
@@ -256,10 +266,9 @@
     overflow: hidden;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    transition: transform 0.25s ease, border-color 0.25s ease;
-    will-change: transform, opacity;
+    transition: border-color 0.25s ease;
   }
-  .demo-item:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.2); }
+  .demo-item:hover { border-color: rgba(255, 255, 255, 0.2); }
   .demo-item .gif-wrap {
     aspect-ratio: 16 / 10;
     overflow: hidden;
@@ -344,7 +353,8 @@
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
     #demo { padding-bottom: 110px; }
-    .demo-grid { gap: 70px; }
+    .demo-stage { height: 620vh; }
+    .demo-pin { padding-top: 60px; padding-bottom: 60px; }
     .nav-links { gap: 18px; }
     .panel-inner p { line-height: 1.35; }
   }
@@ -423,8 +433,9 @@
       <div class="eyebrow">功能演示</div>
       <h2>写作时，它长这样。</h2>
     </div>
-    <div class="demo-grid">
-      <figure class="demo-item">
+    <div class="demo-stage">
+      <div class="demo-pin">
+        <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/wysiwyg-typing.gif" alt="所写即所得输入演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>所写即所得</strong><span class="en">Live Markdown</span></figcaption>
       </figure>
@@ -456,6 +467,7 @@
         <div class="gif-wrap"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>Git 面板</strong><span class="en">Git panel</span></figcaption>
       </figure>
+      </div>
     </div>
   </section>
 
@@ -510,6 +522,12 @@
   var hasGSAP = typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined';
   var hasThree = typeof THREE !== 'undefined';
 
+  // 无 GSAP 或用户偏好减动效时，翻页区退回普通纵向排列
+  if (!hasGSAP || reducedMotion) {
+    var stage = document.querySelector('.demo-stage');
+    if (stage) stage.classList.add('static');
+  }
+
   /* ---------------- 平滑滚动（Lenis 可用时启用，失败则回退原生滚动） ---------------- */
   if (hasGSAP && !reducedMotion) {
     gsap.registerPlugin(ScrollTrigger);
@@ -547,17 +565,21 @@
       scrollTrigger: { trigger: '#features', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
 
-    // 演示墙：区块标题正常入场；单列全宽后每张独立绑定滚动进度，一张显现完再滚出下一张
+    // 演示墙：钉屏翻页。滚动进度驱动时间线，每段交叉翻页：上一张上移淡出缩小，下一张从下方进入放大归位
     gsap.from('#demo .section-head', {
       y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
       scrollTrigger: { trigger: '#demo', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
-    gsap.utils.toArray('.demo-item').forEach(function (item) {
-      gsap.from(item, {
-        y: 70, opacity: 0, ease: 'none',
-        scrollTrigger: { trigger: item, start: 'top 92%', end: 'top 55%', scrub: 0.4 }
-      });
+    var demoItems = gsap.utils.toArray('.demo-item');
+    var flip = gsap.timeline({
+      scrollTrigger: { trigger: '.demo-stage', start: 'top top', end: 'bottom bottom', scrub: 0.5 }
     });
+    // 第一张默认可见，钉住即有内容
+    for (var d = 1; d < demoItems.length; d++) {
+      flip.to(demoItems[d - 1], { opacity: 0, y: -60, scale: 0.97, duration: 0.7, ease: 'power2.inOut' }, '+=0.3')
+          .from(demoItems[d], { opacity: 0, y: 70, scale: 0.97, duration: 0.7, ease: 'power2.inOut' }, '<0.1');
+    }
+    flip.to({}, { duration: 0.5 }); // 末张停留
 
     // 技术亮点：每屏文字由灰渐显为白
     gsap.utils.toArray('.panel-inner p').forEach(function (p) {
