@@ -24,12 +24,30 @@
   html.lenis { scroll-behavior: auto; }
 
   body {
-    background: var(--bg);
+    background:
+      radial-gradient(1100px 560px at 75% -8%, rgba(138, 43, 226, 0.09), transparent 62%),
+      radial-gradient(900px 520px at 8% 108%, rgba(91, 140, 255, 0.08), transparent 62%),
+      var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
       "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
+  }
+
+  /* 工程网格底纹 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(109, 40, 217, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(109, 40, 217, 0.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 78%);
+    mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 78%);
   }
 
   ::selection { background: rgba(138, 43, 226, 0.45); }
@@ -99,6 +117,15 @@
     text-transform: uppercase;
     color: var(--text-dim);
     margin-bottom: 22px;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 26px;
+    height: 2px;
+    margin-right: 12px;
+    vertical-align: middle;
+    background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
   }
 
   /* ---------- Hero ---------- */
@@ -607,7 +634,7 @@
   var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
   camera.position.set(0, 0, 15.5);
 
-  scene.add(new THREE.AmbientLight(0x8a8aa8, 0.55));
+  scene.add(new THREE.AmbientLight(0xbfbcd8, 0.8));
   var keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
   keyLight.position.set(6, 10, 8);
   scene.add(keyLight);
@@ -622,16 +649,29 @@
   var core = new THREE.Group();
   var coreGeo = new THREE.IcosahedronGeometry(1.7, 1);
   var coreMesh = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({
-    color: 0x8b5cf6, metalness: 0.3, roughness: 0.35,
-    emissive: 0x7b3ff2, emissiveIntensity: 0.18, flatShading: true
+    color: 0x9b6cff, metalness: 0.15, roughness: 0.35,
+    emissive: 0x7b3ff2, emissiveIntensity: 0.32, flatShading: true
   }));
   var coreWire = new THREE.LineSegments(
     new THREE.EdgesGeometry(coreGeo),
-    new THREE.LineBasicMaterial({ color: 0x7b3ff2, transparent: true, opacity: 0.55 })
+    new THREE.LineBasicMaterial({ color: 0x6d28d9, transparent: true, opacity: 0.85 })
   );
   core.add(coreMesh);
   core.add(coreWire);
   world.add(core);
+
+  // 双轨道环：倾斜环绕光核慢转
+  var rings = new THREE.Group();
+  var ringMatA = new THREE.MeshBasicMaterial({ color: 0x8a2be2, transparent: true, opacity: 0.45 });
+  var ringMatB = new THREE.MeshBasicMaterial({ color: 0x5b8cff, transparent: true, opacity: 0.35 });
+  var ringA = new THREE.Mesh(new THREE.TorusGeometry(2.9, 0.014, 8, 96), ringMatA);
+  var ringB = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.01, 8, 96), ringMatB);
+  ringA.rotation.x = Math.PI / 2.15;
+  ringB.rotation.x = Math.PI / 1.8;
+  ringB.rotation.y = 0.5;
+  rings.add(ringA);
+  rings.add(ringB);
+  world.add(rings);
 
   // 纸页：环绕光核的薄板几何体（本页签名元素）
   var pages = [];
@@ -645,11 +685,11 @@
     page.position.set(Math.cos(angle) * radius, (t - 0.5) * 6.4, Math.sin(angle) * radius);
     page.lookAt(0, page.position.y * 0.55, 0);
     page.add(new THREE.Mesh(pageGeo, new THREE.MeshStandardMaterial({
-      color: 0x6d28d9, transparent: true, opacity: 0.07, metalness: 0.2, roughness: 0.45
+      color: 0x6d28d9, transparent: true, opacity: 0.1, metalness: 0.2, roughness: 0.45
     })));
     page.add(new THREE.LineSegments(
       new THREE.EdgesGeometry(pageGeo),
-      new THREE.LineBasicMaterial({ color: 0x7b3ff2, transparent: true, opacity: 0.4 })
+      new THREE.LineBasicMaterial({ color: 0x7b3ff2, transparent: true, opacity: 0.6 })
     ));
     page.userData = {
       base: page.position.clone(),
@@ -674,7 +714,7 @@
   var particleGeo = new THREE.BufferGeometry();
   particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   var particles = new THREE.Points(particleGeo, new THREE.PointsMaterial({
-    color: 0x9a6bff, size: 0.05, transparent: true, opacity: 0.4, depthWrite: false
+    color: 0x8a5cf6, size: 0.065, transparent: true, opacity: 0.6, depthWrite: false
   }));
   scene.add(particles);
 
@@ -724,6 +764,8 @@
     }
     core.rotation.y = time * 0.15;
     core.rotation.x = time * 0.08;
+    rings.rotation.y = time * 0.1;
+    rings.rotation.z = time * 0.04;
     var coreScale = 1 + Math.sin(time * 0.8) * 0.03 + scroll.v * 0.35;
     core.scale.setScalar(coreScale);
     coreGlow.intensity = 2.4 + scroll.v * 1.2;
