@@ -44,6 +44,10 @@
     <td align="center"><img src="docs/img/demo/image-resize.gif" alt="图片缩放" width="480"><br>正文图片拖拽缩放 · Image resize</td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/img/demo/paste-clean.gif" alt="粘贴自动清理" width="480"><br>外部复制内容粘贴即净 · Paste cleaning</td>
+    <td align="center"><img src="docs/img/demo/qd-snapshot.gif" alt="Quarkdown 快照" width="480"><br>Quarkdown 模板快照预览 · Quarkdown snapshot</td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/img/demo/command-palette.gif" alt="命令面板" width="480"><br>命令面板：搜文档、跑命令 · Command palette</td>
     <td align="center"><img src="docs/img/demo/outline-fold.gif" alt="大纲折叠" width="480"><br>大纲按层级折叠 · Outline folding</td>
   </tr>
