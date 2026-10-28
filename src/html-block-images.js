@@ -3,6 +3,7 @@
 // 解析到应用自身 origin。统一口径：远程 / 内联 / blob 透传，相对路径读库内字节转
 // data: URI。只改 DOM，块源码（attrs.source）不动。
 import { readImageDataUri } from './tauri-bridge.js'
+import { openImage, openImageSource } from './img-viewer.js'
 import { t } from './i18n.js'
 
 const PASSTHROUGH_RE = /^(https?:|data:|blob:)/i
@@ -49,6 +50,7 @@ export function hydrateBlockImages(root, getVault, cache) {
       continue
     }
     img.setAttribute(PENDING_ATTR, src)
+    img.__rel = src // 查看器标题用：装成 data URI 之后原路径就不在属性里了
     const ctx = getVault()
     if (!ctx || !ctx.vaultRoot || !ctx.mdRel) continue
     const key = ctx.vaultRoot + '|' + ctx.mdRel + '|' + src
@@ -103,4 +105,23 @@ export function retryWhenVisible(el, getVault, cache, hydrate) {
   })
   io.observe(el)
   return io
+}
+
+/**
+ * 单击岛状块（HTML 块）里的图片：进全屏查看器放大，而不是把整块切成源码。
+ * 已装成 data URI / 外链的直接用现成 src；相对路径还没装成的（冷启动读空、读失败留的
+ * data-nl-src）回库读一趟，与就地渲染同一口径。返回 true 表示这一击已被图片吃掉。
+ */
+export function openIslandImage(target, getVault) {
+  if (!target || target.tagName !== 'IMG') return false
+  const src = target.getAttribute('src')
+  if (src) {
+    openImageSource(src, target.getAttribute('alt') || target.__rel || (/^https?:/i.test(src) ? src : ''))
+    return true
+  }
+  const pending = target.getAttribute(PENDING_ATTR)
+  const ctx = getVault && getVault()
+  if (!pending || !ctx || !ctx.vaultRoot) return false
+  openImage(pending, ctx)
+  return true
 }

@@ -24,7 +24,7 @@ import { qdPlugin } from './qd/editor.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
 import { cleanPastedHtml } from './paste-clean.js'
-import { hydrateBlockImages, retryWhenVisible, PENDING_ATTR } from './html-block-images.js'
+import { hydrateBlockImages, retryWhenVisible, openIslandImage, PENDING_ATTR } from './html-block-images.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
@@ -903,6 +903,8 @@ function htmlBlockView(node, view, getPos, getVault) {
   dom.addEventListener('click', (e) => {
     // 块内链接不跟（与编辑器其余链接一致，免得 webview 整页跳走），单击只用来就地改源码
     if (e.target.closest('a[href]')) e.preventDefault()
+    // 点在图片上只看图（同 GitHub），不把整块切成源码
+    if (openIslandImage(e.target.closest('img'), getVault)) return
     enterEdit()
   })
   paint(node)
