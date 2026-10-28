@@ -4,7 +4,7 @@
 
 | 路线 | 覆盖界面 | 录制方式 |
 | --- | --- | --- |
-| 网页版 | 编辑器与行内渲染、斜杠菜单、表格、图片缩放、大纲、分栏、专注 / 打字机、速记、检查器、外观 / 快捷键 / 语言设置、Canvas、Word 导入 | 脚本驱动 headless Chrome 逐帧抓取 |
+| 网页版 | 编辑器与行内渲染、斜杠菜单、表格、图片缩放、大纲、分栏、专注 / 打字机、速记、检查器、全库搜索、全局标签、双向链接、知识图谱、外观 / 快捷键 / 语言设置、Canvas、Word 导入 | 脚本驱动 headless Chrome 逐帧抓取 |
 | 桌面版 | 托盘、原生菜单、Git、知识图谱、右键菜单、拖入打开 | 脚本合成鼠标键盘操作，系统录屏后裁切转 GIF |
 
 网页版的画面来自 `web` 分支的网页沙盒，抓帧脚本放在主干 `examples/gif-demo/`。脚本只是录制工具，不参与任何构建，也不把网页版产物带进主干。
@@ -173,9 +173,33 @@ Tab 逐格跳转；单元格右键出菜单（插行、插列、删除、四向�
 
 「更多 → 导入 Word」选库内 `.docx` → 左预览右源码的校对窗（降级项列在窗顶）→ 接受才落库并自动打开。
 
+#### 全库搜索 `vault-search`
+
+![全库搜索](img/demo/vault-search.gif)
+
+侧栏搜索框输入即查，卡片按命中来源带「标题」「标签」角标，点一张直接打开那篇。
+
+#### 全局标签 `global-tags`
+
+![全局标签](img/demo/global-tags.gif)
+
+检查器「标签」面板列出全库标签与计数，点一个标签就地展开含该标签的文档，再点文档跳过去。
+
+#### 双向链接 `backlinks`
+
+![双向链接](img/demo/backlinks.gif)
+
+打开 `wiki-links.md`，检查器「双向链接」给出「引用本文档」与「本文档引用」两列，点一行跳到那篇引用者。
+
+#### 知识图谱铺盘 `knowledge-graph`
+
+![知识图谱铺盘](img/demo/knowledge-graph.gif)
+
+`⌘G` 就地铺开全库节点，力导预热几帧后自己散开；拖一个节点看回弹，原位再点一下关窗并跳到那篇文档。桌面版另有一段带窗口边框的近景（`desktop-graph`）。
+
 ### 5. 加新场景
 
-场景写在 `scenarios.mjs`，`shoot.mjs` 提供操作原语：`type`、`press`、`click`、`clickText`、`clickPoint`、`clickMatch`、`rightClick`、`drag`、`scroll`、`wait`、`js`。约定只有一条：画面必须由真实输入事件产生，不直接改 DOM、不调应用内部函数。
+场景写在 `scenarios.mjs`，`shoot.mjs` 提供操作原语：`type`、`press`、`click`、`clickText`、`clickPoint`、`clickMatch`、`rightClick`、`drag`、`move`、`scroll`、`wait`、`js`。约定只有一条：画面必须由真实输入事件产生，不直接改 DOM、不调应用内部函数。
 
 几条实测下来容易踩的：
 
@@ -185,7 +209,10 @@ Tab 逐格跳转；单元格右键出菜单（插行、插列、删除、四向�
 - 打开文档、切换主题之后留 600 到 900 毫秒再抓，否则拿到的是过渡中的一帧。
 - screencast 只在画面变化时推帧。脚本按每帧的 screencast 时间戳写一份 concat 清单交给 ffmpeg，静止停留才不会被压成闪帧。
 - 网页沙盒没有插件目录，开库时后端会回一条 desktop-only 拒绝，提示条会糊在画面底部；顶部还有一条「网页沙盒试用版 · 功能为桌面版子集」横幅。这两样都属于运行环境而不是功能，脚本在抓帧前用一行 CSS 藏掉 `#nl-web-toasts` 与 `#nl-web-banner`，其余界面元素不动。
-- 知识图谱、全库搜索、全局标签、反链在网页沙盒里出不来画面：沙盒后端没实现 `index_status`，`state.indexReady` 一直为假，搜索没有命中行、标签与反链面板是空的。这几项的画面来自桌面版。
+- 搜索、全局标签、反链、图谱这几项都吃 `state.indexReady`，而它要求后端 `get_index_status` 回的库根与前端 `state.vaultRoot` 归一后相等。macOS 的 `os.tmpdir()` 落在 `/var` → `/private/var` 这条链接之下，沙盒早先只有一侧做了 realpath：前端拿 `/var/…`、索引回填 `/private/var/…`，`normVaultPath` 又只归一大小写与尾斜杠、不解链接，于是 `indexReady` 恒假，这几块面板全空。现在 `server/src/paths.mjs` 的 `jailRoot` 统一 `fs.realpathSync` 后再往外发，`server/tests/sandbox.test.mjs` 有断言钉住两侧一致。
+- 搜索框里的上一条查询要清干净再打下一条：`⌘A` 会被应用级快捷键抢走，`Escape` 只在焦点还留在输入框时才清（点过命中卡片后焦点已经跑到正文）。脚本里用输入框自己的 `select()` 选中整串，随后真实按键直接替换。
+- 标签查询不带 `#`。索引存的是去掉井号的标签名，搜索按子串匹配（桌面版 Rust 同一行为），`#能力/表格` 只会得到「无匹配」。
+- 图谱节点坐标只在 canvas 内部，外面读不到。定位靠真实悬停：命中时 `graph-view.js` 把 cursor 改成 `pointer`，脚本从画布中心一圈圈探出去；拖拽松手处就是那个节点，原位再点一下（位移 <3px 按点击算）即关窗跳文档。
 - 大纲 tab 在文档没有标题时会被 `syncOutlineTab` 藏掉，切过去也留不住。要先打完标题再点 tab；取不到可见的 `.outline-toolbar button` 就是这个原因。
 - 网页工作树落后主干时，主干新加的功能不会出现在画面里。录制新一轮之前先把主干合进 `web`（方向允许，见 `docs/SERVER.MD`），重新 `npm run web:build`。
 

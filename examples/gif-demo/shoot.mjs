@@ -172,6 +172,11 @@ function makeCtx(page) {
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' })
       await wait(400)
     },
+    async move(p) {
+      // 只移动不按下：图谱画布靠悬停命中节点（cursor 变 pointer），得先探到位置才谈拖拽
+      await page.mouse.move(p.x, p.y, { steps: 4 })
+      await wait(90)
+    },
     async drag(from, to, ms = 900) {
       // 按住拖拽（图片缩放把手、画布便签、分栏宽度）：走真实按下 / 移动 / 抬起
       await page.mouse.move(from.x, from.y, { steps: 6 })
