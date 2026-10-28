@@ -13,16 +13,21 @@
 <meta name="twitter:title" content="NoteLume · 文溯 — 本地 Markdown 编辑器">
 <meta name="twitter:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所写即所得，文件夹即知识库，完全本地、零锁定。">
 <title>NoteLume · 文溯 — 本地 Markdown 编辑器</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238a2be2'/%3E%3Cstop offset='1' stop-color='%235b8cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23007aff'/%3E%3Cstop offset='1' stop-color='%234da3ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #ffffff;
-    --text: #1d1d1f;
-    --text-dim: #6e6e73;
-    --accent-a: #8a2be2;
-    --accent-b: #5b8cff;
-    --card-bg: rgba(255, 255, 255, 0.65);
-    --card-border: rgba(0, 0, 0, 0.08);
+    --text: #1d1d1f;        /* 深空黑：标题 */
+    --text-body: #424245;   /* 深中灰：正文 */
+    --text-dim: #86868b;    /* 高级浅灰：辅助说明 */
+    --blue: #0066cc;
+    --blue-strong: #007aff;
+    --accent-a: #007aff;
+    --accent-b: #4da3ff;
+    --card-bg: rgba(255, 255, 255, 0.7);
+    --card-border: #e5e5ea;
+    --card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.04);
+    --card-shadow-hover: 0 28px 52px -12px rgba(0, 0, 0, 0.09);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -32,8 +37,9 @@
 
   body {
     background:
-      radial-gradient(1100px 560px at 75% -8%, rgba(138, 43, 226, 0.09), transparent 62%),
-      radial-gradient(900px 520px at 8% 108%, rgba(91, 140, 255, 0.08), transparent 62%),
+      radial-gradient(1400px 720px at 50% -12%, rgba(230, 235, 255, 0.8), transparent 68%),
+      radial-gradient(1000px 560px at 82% 38%, rgba(230, 240, 255, 0.5), transparent 65%),
+      radial-gradient(900px 560px at 8% 108%, rgba(224, 238, 255, 0.55), transparent 62%),
       var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
@@ -42,7 +48,7 @@
     overflow-x: hidden;
   }
 
-  /* 工程网格底纹 */
+  /* 极淡的工程网格底纹 */
   body::before {
     content: "";
     position: fixed;
@@ -50,14 +56,14 @@
     z-index: 0;
     pointer-events: none;
     background-image:
-      linear-gradient(rgba(109, 40, 217, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(109, 40, 217, 0.05) 1px, transparent 1px);
+      linear-gradient(rgba(0, 102, 204, 0.032) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 102, 204, 0.032) 1px, transparent 1px);
     background-size: 48px 48px;
     -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 78%);
     mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 78%);
   }
 
-  ::selection { background: rgba(138, 43, 226, 0.45); }
+  ::selection { background: rgba(0, 122, 255, 0.22); }
 
   #scene {
     position: fixed;
@@ -95,14 +101,14 @@
   .brand .cn { color: var(--text-dim); font-weight: 400; margin-left: 6px; }
   .nav-links { display: flex; gap: 28px; }
   .nav-links a {
-    color: var(--text-dim);
+    color: var(--text-body);
     text-decoration: none;
     font-size: 13px;
     transition: color 0.2s ease;
   }
-  .nav-links a:hover, .nav-links a:active { color: var(--text); }
+  .nav-links a:hover, .nav-links a:active { color: var(--blue); }
   .nav-links a:focus-visible, a:focus-visible, button:focus-visible {
-    outline: 2px solid var(--accent-b);
+    outline: 2px solid var(--blue-strong);
     outline-offset: 3px;
     border-radius: 4px;
   }
@@ -111,11 +117,8 @@
   section { position: relative; }
 
   .gradient-text {
-    display: inline-block; /* 渐变词整体换行，不在词中间断开 */
-    background: linear-gradient(92deg, var(--accent-a) 0%, var(--accent-b) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    display: inline-block; /* 高亮词整体换行，不在词中间断开 */
+    color: var(--blue);
   }
 
   .eyebrow {
@@ -179,16 +182,16 @@
   }
   .btn:active { transform: scale(0.97); }
   .btn-primary {
-    background: var(--text);
+    background: var(--blue-strong);
     color: #fff;
     font-weight: 600;
   }
-  .btn-primary:hover { background: #000; }
+  .btn-primary:hover { background: var(--blue); }
   .btn-ghost {
-    color: var(--text);
-    border: 1px solid rgba(0, 0, 0, 0.3);
+    color: var(--blue);
+    border: 1px solid rgba(0, 102, 204, 0.35);
   }
-  .btn-ghost:hover { border-color: rgba(0, 0, 0, 0.6); }
+  .btn-ghost:hover { border-color: var(--blue); background: rgba(0, 122, 255, 0.05); }
   .scroll-hint {
     position: absolute;
     bottom: 34px;
@@ -201,13 +204,13 @@
 
   /* ---------- 产品介绍 · 特性卡片 ---------- */
   #features {
-    padding: 140px clamp(20px, 5vw, 64px) 160px;
+    padding: 200px clamp(20px, 5vw, 64px) 220px;
     max-width: 1240px;
     margin: 0 auto;
   }
   #features .section-head {
     text-align: center;
-    margin-bottom: 64px;
+    margin-bottom: 88px;
   }
   #features .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -224,13 +227,14 @@
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 22px;
-    padding: 38px 32px;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    transition: transform 0.25s ease, border-color 0.25s ease;
+    padding: 44px 38px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--card-shadow);
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
     will-change: transform, opacity;
   }
-  .card:hover { transform: translateY(-4px); border-color: rgba(0, 0, 0, 0.22); }
+  .card:hover { transform: translateY(-4px); box-shadow: var(--card-shadow-hover); }
   .card .icon {
     width: 44px;
     height: 44px;
@@ -238,10 +242,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 22px;
-    background: linear-gradient(135deg, rgba(138, 43, 226, 0.16), rgba(91, 140, 255, 0.16));
+    margin-bottom: 24px;
+    background: linear-gradient(135deg, rgba(0, 122, 255, 0.14), rgba(77, 163, 255, 0.14));
   }
-  .card .icon svg { width: 22px; height: 22px; stroke: #6d28d9; fill: none; stroke-width: 1.6; }
+  .card .icon svg { width: 22px; height: 22px; stroke: var(--blue-strong); fill: none; stroke-width: 1.6; }
   .card h3 {
     font-size: 1.3rem;
     font-weight: 600;
@@ -250,27 +254,27 @@
   }
   .card p {
     font-size: 0.95rem;
-    line-height: 1.65;
-    color: var(--text-dim);
+    line-height: 1.7;
+    color: var(--text-body);
   }
   .card p code {
     font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
     font-size: 0.82em;
-    color: #6d28d9;
-    background: rgba(138, 43, 226, 0.08);
+    color: var(--blue);
+    background: rgba(0, 122, 255, 0.07);
     padding: 1px 5px;
     border-radius: 5px;
   }
 
   /* ---------- 功能演示 · GIF 墙 ---------- */
   #demo {
-    padding: 40px clamp(20px, 5vw, 64px) 160px;
+    padding: 60px clamp(20px, 5vw, 64px) 200px;
     max-width: 1240px;
     margin: 0 auto;
   }
   #demo .section-head {
     text-align: center;
-    margin-bottom: 56px;
+    margin-bottom: 80px;
   }
   #demo .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -294,31 +298,36 @@
   .demo-stage.static .demo-pin { position: static; height: auto; display: block; }
   .demo-stage.static .demo-item { margin-bottom: 40px; }
   .demo-item {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 22px;
-    overflow: hidden;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    transition: border-color 0.25s ease;
+    transition: transform 0.4s ease;
   }
-  .demo-item:hover { border-color: rgba(0, 0, 0, 0.22); }
+  .demo-item:hover { transform: translateY(-4px); }
+  /* GIF 本体做成 Mac 窗口：细描边 + 大扩散投影，融进白底 */
   .demo-item .gif-wrap {
     aspect-ratio: 16 / 10;
     overflow: hidden;
     background: #f5f5f7;
+    border: 1px solid #e5e5ea;
+    border-radius: 18px;
+    box-shadow:
+      0 40px 80px -24px rgba(0, 0, 0, 0.16),
+      0 12px 28px -12px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.4s ease;
+  }
+  .demo-item:hover .gif-wrap {
+    box-shadow:
+      0 48px 88px -24px rgba(0, 0, 0, 0.2),
+      0 16px 32px -12px rgba(0, 0, 0, 0.1);
   }
   .demo-item .gif-wrap img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: transform 0.3s ease;
   }
-  .demo-item:hover .gif-wrap img { transform: scale(1.03); }
   .demo-item figcaption {
-    padding: 16px 22px 18px;
+    padding: 18px 8px 0;
     font-size: 0.9rem;
+    text-align: center;
   }
   .demo-item figcaption strong { font-weight: 600; color: var(--text); }
   .demo-item figcaption .en {
@@ -367,10 +376,10 @@
   }
 
   /* ---------- 更新日志 · 轮播 ---------- */
-  #changelog { padding: 40px 0 120px; }
+  #changelog { padding: 60px 0 180px; }
   #changelog .section-head {
     text-align: center;
-    margin-bottom: 48px;
+    margin-bottom: 64px;
     padding: 0 24px;
   }
   #changelog .section-head h2 {
@@ -401,10 +410,13 @@
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 20px;
-    padding: 26px 28px;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    padding: 28px 30px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--card-shadow);
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
   }
+  .cl-card:hover { transform: translateY(-4px); box-shadow: var(--card-shadow-hover); }
   .cl-card h3 {
     font-size: 1.12rem;
     font-weight: 650;
@@ -413,8 +425,8 @@
   }
   .cl-card p {
     font-size: 0.9rem;
-    line-height: 1.65;
-    color: var(--text-dim);
+    line-height: 1.7;
+    color: var(--text-body);
   }
   .cl-chip {
     display: inline-block;
@@ -424,7 +436,7 @@
     border-radius: 999px;
     font-weight: 600;
   }
-  .chip-feature { background: rgba(138, 43, 226, 0.12); color: #6d28d9; }
+  .chip-feature { background: rgba(0, 122, 255, 0.1); color: #0066cc; }
   .chip-export { background: rgba(91, 140, 255, 0.14); color: #2f5fd0; }
   .chip-ux { background: rgba(16, 163, 127, 0.12); color: #0d8a6c; }
   .chip-fix { background: rgba(255, 159, 10, 0.14); color: #b25000; }
@@ -433,7 +445,7 @@
   footer {
     position: relative;
     z-index: 1;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-top: 1px solid var(--card-border);
     padding: 44px clamp(20px, 4vw, 48px);
     display: flex;
     align-items: center;
@@ -441,8 +453,8 @@
     flex-wrap: wrap;
     gap: 16px;
     background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
   }
   footer .copy { font-size: 13px; color: var(--text-dim); }
   footer .links { display: flex; gap: 26px; }
@@ -452,7 +464,7 @@
     font-size: 13px;
     transition: color 0.2s ease;
   }
-  footer .links a:hover { color: var(--text); }
+  footer .links a:hover { color: var(--blue); }
 
   /* ---------- 响应式 ---------- */
   @media (max-width: 860px) {
@@ -770,10 +782,10 @@ function boot() {
     var ph = 'data:image/svg+xml,' + encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">' +
       '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
-      '<stop offset="0" stop-color="#8a2be2"/><stop offset="1" stop-color="#5b8cff"/>' +
+      '<stop offset="0" stop-color="#007aff"/><stop offset="1" stop-color="#4da3ff"/>' +
       '</linearGradient></defs>' +
       '<rect width="800" height="500" fill="url(#g)" opacity="0.15"/>' +
-      '<text x="50%" y="50%" fill="#6d28d9" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">演示动图未能加载</text></svg>');
+      '<text x="50%" y="50%" fill="#0066cc" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">演示动图未能加载</text></svg>');
     document.querySelectorAll('.gif-wrap img').forEach(function (img) {
       var failed = function () { img.onerror = null; img.src = ph; };
       if (img.complete && img.naturalWidth === 0) { failed(); }
@@ -864,7 +876,7 @@ function boot() {
   keyLight.position.set(6, 10, 8);
   scene.add(keyLight);
   // r155+ 物理光照单位：点光强度按 candela，衰减 decay=2
-  var coreGlow = new THREE.PointLight(0x8a2be2, 25, 32);
+  var coreGlow = new THREE.PointLight(0x007aff, 25, 32);
   coreGlow.position.set(0, 0, 2);
   scene.add(coreGlow);
 
@@ -875,12 +887,12 @@ function boot() {
   var core = new THREE.Group();
   var coreGeo = new THREE.IcosahedronGeometry(1.7, 1);
   var coreMesh = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({
-    color: 0x9b6cff, metalness: 0.15, roughness: 0.35,
-    emissive: 0x7b3ff2, emissiveIntensity: 0.32, flatShading: true
+    color: 0x4da3ff, metalness: 0.15, roughness: 0.35,
+    emissive: 0x0066cc, emissiveIntensity: 0.32, flatShading: true
   }));
   var coreWire = new THREE.LineSegments(
     new THREE.EdgesGeometry(coreGeo),
-    new THREE.LineBasicMaterial({ color: 0x6d28d9, transparent: true, opacity: 0.85 })
+    new THREE.LineBasicMaterial({ color: 0x0066cc, transparent: true, opacity: 0.85 })
   );
   core.add(coreMesh);
   core.add(coreWire);
@@ -888,8 +900,8 @@ function boot() {
 
   // 双轨道环：倾斜环绕光核慢转
   var rings = new THREE.Group();
-  var ringMatA = new THREE.MeshBasicMaterial({ color: 0x8a2be2, transparent: true, opacity: 0.45 });
-  var ringMatB = new THREE.MeshBasicMaterial({ color: 0x5b8cff, transparent: true, opacity: 0.35 });
+  var ringMatA = new THREE.MeshBasicMaterial({ color: 0x007aff, transparent: true, opacity: 0.45 });
+  var ringMatB = new THREE.MeshBasicMaterial({ color: 0x4da3ff, transparent: true, opacity: 0.35 });
   var ringA = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.014, 8, 96), ringMatA);
   var ringB = new THREE.Mesh(new THREE.TorusGeometry(3.9, 0.01, 8, 96), ringMatB);
   ringA.rotation.x = Math.PI / 2.15;
@@ -911,11 +923,11 @@ function boot() {
     page.position.set(Math.cos(angle) * radius, (t - 0.5) * 6.4, Math.sin(angle) * radius);
     page.lookAt(0, page.position.y * 0.55, 0);
     page.add(new THREE.Mesh(pageGeo, new THREE.MeshStandardMaterial({
-      color: 0x6d28d9, transparent: true, opacity: 0.1, metalness: 0.2, roughness: 0.45
+      color: 0x0066cc, transparent: true, opacity: 0.1, metalness: 0.2, roughness: 0.45
     })));
     page.add(new THREE.LineSegments(
       new THREE.EdgesGeometry(pageGeo),
-      new THREE.LineBasicMaterial({ color: 0x7b3ff2, transparent: true, opacity: 0.6 })
+      new THREE.LineBasicMaterial({ color: 0x2f81f7, transparent: true, opacity: 0.6 })
     ));
     page.userData = {
       base: page.position.clone(),
@@ -940,7 +952,7 @@ function boot() {
   var particleGeo = new THREE.BufferGeometry();
   particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   var particles = new THREE.Points(particleGeo, new THREE.PointsMaterial({
-    color: 0x8a5cf6, size: 0.065, transparent: true, opacity: 0.6, depthWrite: false
+    color: 0x4d94ff, size: 0.065, transparent: true, opacity: 0.6, depthWrite: false
   }));
   scene.add(particles);
 
