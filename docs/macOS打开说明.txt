@@ -9,7 +9,7 @@ NoteLume · macOS 首次打开
 
 3. 或：系统设置 → 隐私与安全性 → 找到「已阻止使用 NoteLume」→ 点「仍要打开」。
 
-机型：本 dmg 为 Apple Silicon（aarch64），M 系列芯片可用。
+机型：分两个包——Apple Silicon（文件名带 aarch64，M 系列芯片）与 Intel（文件名带 x64），按本机芯片选；不确定就看苹果菜单 →「关于本机」里的「芯片」一行。
 
 英文：The app is ad-hoc signed and not notarized. Right-click the app → Open once, or run
    xattr -dr com.apple.quarantine /Applications/NoteLume.app
