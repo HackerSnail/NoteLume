@@ -127,7 +127,7 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 | macOS   | `NoteLume_x.y.z_aarch64.dmg`    | 拖入 Applications |
 | Linux   | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x` 后运行  |
 
-macOS 包只做了 ad-hoc 签名，没走开发者公证。首次打开被系统拦下时，右键应用选「打开」；或先执行 `xattr -dr com.apple.quarantine /Applications/NoteLume.app` 再启动。
+macOS 包只做了 ad-hoc 签名，没走开发者公证。首次打开被系统拦下时，右键应用选「打开」；或先执行 `xattr -dr com.apple.quarantine /Applications/NoteLume.app` 再启动。同一个卷宗里附了 `打开说明.txt`，三种办法都写在里面（源文件 `docs/macOS打开说明.txt`）。
 
 **使用**：打开后 `Ctrl+Shift+O` 选一个存着 `.md` 的文件夹作为知识库，开写；只想改单个文件就 `Ctrl+O`。全部键位可在命令面板（`Ctrl+Shift+P`）和快捷键设置里查看、重绑；界面语言在工具条「更多 → 界面语言」切换。
 
@@ -313,7 +313,7 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 | macOS    | `NoteLume_x.y.z_aarch64.dmg`    | Drag to Applications |
 | Linux    | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x`, then run |
 
-The macOS build carries an ad-hoc signature only (no developer notarization). If Gatekeeper blocks the first launch, right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/NoteLume.app` first.
+The macOS build carries an ad-hoc signature only (no developer notarization). If Gatekeeper blocks the first launch, right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/NoteLume.app` first. The same steps ship inside the DMG as `打开说明.txt` (source: `docs/macOS打开说明.txt`).
 
 **Use**: press `Ctrl+Shift+O` and point NoteLume at a folder of `.md` files to open it as a vault, or `Ctrl+O` for a single file. Every shortcut is discoverable in the command palette (`Ctrl+Shift+P`) and fully remappable; the UI language switches under More → Interface language.
 
