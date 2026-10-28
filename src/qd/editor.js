@@ -59,7 +59,7 @@ export function collectQdRegions(doc) {
   return regions
 }
 
-/** 区域成员节点 → 源码行：code_block 还原 4 空格缩进（函数体 / 块参数），列表项还原 `- ` */
+/** 区域成员节点 → 源码行：code_block 与列表都还原成 4 空格缩进的块参数 */
 function serializeRegionNode(node) {
   if (node.type.name === 'code_block') {
     return node.textContent
@@ -80,7 +80,9 @@ function serializeList(list) {
     const text = item.textContent
     lines.push((ordered ? '1. ' : '- ') + text)
   })
-  return lines.join('\n')
+  // 列表成员也是块参数：不补 4 空格，Rust 侧就把 `- 条目 .1` 当成顶层正文，
+  // `.foreach` 收不到循环体，`.1` 反倒被解析成一个不存在的函数调用。
+  return lines.map((l) => '    ' + l).join('\n')
 }
 
 // ============ 装饰插件 ============
