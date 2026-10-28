@@ -84,6 +84,40 @@ async function openInspector(ctx) {
   await ctx.wait(700)
 }
 
+/** 检查器里按面板标题展开某个 details：默认折叠的面不点开，画面里就只有一行标题 */
+async function openInspectorPanel(ctx, src) {
+  const p = await ctx.js((r) => {
+    const d = [...document.querySelectorAll('#inspector details')].find((x) =>
+      new RegExp(r).test((x.querySelector('h2') || {}).textContent || ''))
+    const sum = d && d.querySelector('summary')
+    if (!sum || d.open) return null
+    const b = sum.getBoundingClientRect()
+    return b.width ? { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) } : null
+  }, src)
+  if (!p) return
+  await ctx.clickPoint(p)
+  await ctx.wait(600)
+}
+
+/**
+ * 侧栏搜索：先把输入框整体选中（原生 select，等价于 ⌘A；⌘A 会被应用级快捷键抢走），
+ * 随后真实按键直接替换掉上一条查询，框里不会留着拼接后的脏字串。
+ * 索引就绪前 runSearch 直接清空结果集就返回，首帧打字有可能赶上还没就绪的那一刻，
+ * 删一个字再打回去重触发一次。
+ */
+async function searchFor(ctx, text, check, what) {
+  await ctx.click('#search-input')
+  await ctx.js(() => document.querySelector('#search-input').select())
+  await ctx.type(text)
+  for (let i = 0; i < 8; i++) {
+    await ctx.wait(1200)
+    if (await ctx.js(check)) return
+    await ctx.press('Backspace')
+    await ctx.type(text.slice(-1))
+  }
+  throw new Error(`搜索「${text}」没达到预期：${what}`)
+}
+
 
 export const scenarios = {
   // 所写即所得：Markdown 语法落定即变富文本（标题走快捷键，其余靠输入规则）
@@ -434,6 +468,92 @@ export const scenarios = {
     }
     await ctx.wait(900)
   },
+
+  // 全库搜索：侧栏搜索框输入即查，命中卡片分「标题 / 正文 / 标签」三种来源
+  'vault-search': async (ctx) => {
+    await until(ctx, () => document.querySelectorAll('.tree-file').length > 3, 20000, '文件树渲染')
+    await searchFor(ctx, '表格', () => document.querySelectorAll('.search-hit').length > 1, '多篇命中')
+    await ctx.wait(1200)
+    await ctx.clickText('.search-hit', 'tables-tasks')
+    await until(ctx, () => /表格、任务/.test(document.querySelector('.ProseMirror').textContent), 8000, '搜索命中的文档')
+    await ctx.wait(900)
+    // 标签检索：索引里存的是去掉 # 的标签名，按子串匹配标签，所以查询不带井号
+    await searchFor(ctx, '能力/表格', () => !!document.querySelector('.search-hit-badge'), '标签命中角标')
+    await ctx.wait(1600)
+  },
+
+  // 全局标签：检查器列出全库标签与计数，点标签就地展开含该标签的文档
+  'global-tags': async (ctx) => {
+    await openInspector(ctx)
+    await openInspectorPanel(ctx, '标签|Tags')
+    await until(ctx, () => document.querySelectorAll('.tag-global-chip').length > 2, 25000, '全局标签芯片')
+    await ctx.wait(900)
+    await ctx.clickText('.tag-global-chip', '开始/演示')
+    await until(ctx, () => document.querySelectorAll('.tag-doc-item').length > 0, 10000, '标签下的文档列表')
+    await ctx.wait(1600)
+    await ctx.clickText('.tag-doc-item', '标签与文档属性')
+    await until(ctx, () => /标签与文档属性/.test(document.querySelector('.ProseMirror').textContent), 10000, '标签跳转的文档')
+    await ctx.wait(1800)
+  },
+
+  // 双向链接：引用本文档 / 本文档引用两列，点一行直接跳过去
+  'backlinks': async (ctx) => {
+    await openDoc(ctx, 'wiki-links')
+    await until(ctx, () => /双向链接/.test(document.querySelector('.ProseMirror').textContent), 15000, '双链示例文档')
+    await openInspector(ctx)
+    await openInspectorPanel(ctx, '双向链接|链接|Links')
+    await until(ctx, () => document.querySelectorAll('#backlinks .link-item').length > 1, 25000, '引用本文档')
+    await ctx.wait(1200)
+    await ctx.clickText('#backlinks .link-item', '表格、任务')
+    await until(ctx, () => /表格、任务/.test(document.querySelector('.ProseMirror').textContent), 10000, '反链跳转的文档')
+    await ctx.wait(1400)
+  },
+
+  // 知识图谱：⌘G 就地铺开全库节点，拖一个节点看力导回弹，点节点跳到那篇
+  'knowledge-graph': async (ctx) => {
+    await until(ctx, () => document.querySelectorAll('.tree-file').length > 3, 20000, '文件树渲染')
+    for (let i = 0; i < 10; i++) {
+      await ctx.press('Meta+g')
+      if (await ctx.js(() => !document.querySelector('#graph-modal').classList.contains('hidden'))) break
+      await ctx.wait(1500) // 索引没就绪时快捷键只回一条状态提示，等一会再按
+    }
+    await until(ctx, () => !document.querySelector('#graph-modal').classList.contains('hidden'), 20000, '图谱窗口')
+    await until(ctx, () => /\d/.test(document.querySelector('#graph-info').textContent), 15000, '图谱统计条')
+    await ctx.wait(2200) // 力导预热铺开：这段静止等待在 10fps 里就是节点自己散开的过程
+    const node = await findGraphNode(ctx)
+    const drop = { x: node.x + 90, y: node.y - 60 }
+    await ctx.drag(node, drop, 1200)
+    await ctx.wait(500)
+    // 松手处就是刚拖过去的那个节点（拖拽把节点坐标钉在指针上）：原位再点一下 = 位移 <3px，
+    // graph-view.js 按点击处理，关窗并跳到那篇文档
+    await ctx.clickPoint(drop, 500)
+    await until(ctx, () => document.querySelector('#graph-modal').classList.contains('hidden'), 10000, '点节点后关窗跳文档')
+    await ctx.wait(1500)
+  },
+}
+
+/**
+ * 图谱画布上探一个可下手的节点：节点坐标只在 canvas 内部，外面读不到。
+ * 悬停命中时 graph-view.js 把 cursor 改成 pointer，据此从中心向外一圈圈找。
+ */
+async function findGraphNode(ctx) {
+  const rect = await ctx.js(() => {
+    const b = document.querySelector('#graph-canvas').getBoundingClientRect()
+    return { x: b.x, y: b.y, w: b.width, h: b.height }
+  })
+  const cx = rect.x + rect.w / 2
+  const cy = rect.y + rect.h / 2
+  for (const ring of [0, 24, 48, 72, 96, 120, 150, 180]) {
+    const steps = ring === 0 ? 1 : 16
+    for (let i = 0; i < steps; i++) {
+      const t = (i / steps) * Math.PI * 2
+      const p = { x: Math.round(cx + ring * Math.cos(t) * 1.5), y: Math.round(cy + ring * Math.sin(t)) }
+      if (p.x < rect.x + 6 || p.x > rect.x + rect.w - 6 || p.y < rect.y + 6 || p.y > rect.y + rect.h - 6) continue
+      await ctx.move(p)
+      if ((await ctx.js(() => document.querySelector('#graph-canvas').style.cursor)) === 'pointer') return p
+    }
+  }
+  throw new Error('图谱画布上没探到节点')
 }
 
 /** 点某条大纲行左侧的伸缩箭头：按标题文字找行，箭头本身没有可用选择器 */

@@ -56,6 +56,14 @@
     <td align="center"><img src="docs/img/demo/daily-capture.gif" alt="今日速记" width="480"><br>今日速记浮层 · Daily capture</td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/img/demo/vault-search.gif" alt="全库搜索" width="480"><br>全库搜索：标题、正文、标签 · Vault search</td>
+    <td align="center"><img src="docs/img/demo/global-tags.gif" alt="全局标签" width="480"><br>全局标签：计数与含该标签的文档 · Global tags</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/demo/backlinks.gif" alt="双向链接" width="480"><br>双向链接：谁引用了这篇 · Backlinks</td>
+    <td align="center"><img src="docs/img/demo/knowledge-graph.gif" alt="知识图谱铺盘" width="480"><br>知识图谱：⌘G 就地铺开 · Graph layout</td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/img/demo/canvas-board.gif" alt="Canvas" width="480"><br>Canvas 便签板拖拽 · Canvas board</td>
     <td align="center"><img src="docs/img/demo/desktop-graph.gif" alt="知识图谱" width="480"><br>知识图谱：拖节点、跳文档 · Knowledge graph</td>
   </tr>
@@ -64,7 +72,7 @@
     <td align="center"><img src="docs/img/demo/desktop-drop.gif" alt="拖入打开" width="480"><br>拖入文件即打开，拖入文件夹即开库 · Drag &amp; drop</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/img/demo/theme-switch.gif" alt="主题" width="480"><br>四套主题轮换 · Themes</td>
+    <td align="center"><img src="docs/img/demo/theme-switch.gif" alt="主题" width="480"><br>三套主题轮换 · Themes</td>
     <td align="center"><img src="docs/img/demo/appearance-settings.gif" alt="外观设置" width="480"><br>外观：主题即时切换 · Appearance</td>
   </tr>
   <tr>
