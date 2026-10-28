@@ -79,6 +79,8 @@
 
 单击块 → 原地换成 textarea（预填 `source`），失焦或 Esc 提交 → 更新 `attrs.source` → 重新净化渲染；改成全空白则删掉该块（不留下空块占位）。不加按钮、不加弹窗（直接按住对象操作）。提交产生事务，脏标记与既有自动保存一致。块内链接不跟随（免得 webview 整页跳走）。
 
+框的高度按源码内容给满：`rows` 取源码行数不封顶，再按实测 `scrollHeight` 加高一次（长行折行时行数不够），`resize: none` + `overflow: hidden`，不留拉伸把手也不出滚动条。
+
 落点在 `<img>` 上是例外：这一击交给全屏查看器放大（`html-block-images.js` 的 `openIslandImage`，data URI / 外链直接用现成 `src`，还没装成的相对路径按当前文档回库读一趟），不把块切成源码；Quarkdown 快照同一口径。
 
 ## 9. 周边一致性

@@ -888,7 +888,15 @@ function htmlBlockView(node, view, getPos, getVault) {
     ta.className = 'nl-html-src'
     ta.spellcheck = false
     ta.value = src
-    ta.rows = Math.min(24, Math.max(2, src.split('\n').length))
+    ta.rows = Math.max(2, src.split('\n').length)
+    // 有多少行给多高：不封顶、不出滚动条。长行会折，只按行数算高度会截掉下半截，
+    // 所以再按实测内容高给一次（拿不到布局高度时留着 rows 兜底）。
+    const grow = () => {
+      ta.style.height = 'auto'
+      const h = ta.scrollHeight
+      if (h > 0) ta.style.height = h + 'px'
+    }
+    ta.addEventListener('input', grow)
     ta.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -898,6 +906,7 @@ function htmlBlockView(node, view, getPos, getVault) {
     })
     ta.addEventListener('blur', () => exitEdit(true))
     dom.appendChild(ta)
+    grow()
     ta.focus()
   }
   dom.addEventListener('click', (e) => {
