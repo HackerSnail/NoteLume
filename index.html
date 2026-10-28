@@ -547,16 +547,16 @@
       scrollTrigger: { trigger: '#features', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
 
-    // 演示墙：区块标题 + 各动图依次从底部淡入上浮
+    // 演示墙：区块标题正常入场；动图绑定滚动进度，滚一段出一张，回滚倒序收回
     gsap.from('#demo .section-head', {
       y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
       scrollTrigger: { trigger: '#demo', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
-    gsap.utils.toArray('.demo-item').forEach(function (item, i) {
-      gsap.from(item, {
-        y: 52, opacity: 0, duration: 0.9, ease: 'power3.out', delay: (i % 2) * 0.12,
-        scrollTrigger: { trigger: item, start: 'top 86%', toggleActions: 'play none none reverse' }
-      });
+    var demoTl = gsap.timeline({
+      scrollTrigger: { trigger: '#demo .demo-grid', start: 'top 78%', end: 'bottom 55%', scrub: 0.5 }
+    });
+    gsap.utils.toArray('.demo-item').forEach(function (item) {
+      demoTl.from(item, { y: 60, opacity: 0, duration: 1, ease: 'power2.out' }, '+=0.3');
     });
 
     // 技术亮点：每屏文字由灰渐显为白
