@@ -214,6 +214,7 @@ Tab 逐格跳转；单元格右键出菜单（插行、插列、删除、四向�
 - 标签查询不带 `#`。索引存的是去掉井号的标签名，搜索按子串匹配（桌面版 Rust 同一行为），`#能力/表格` 只会得到「无匹配」。
 - 图谱节点坐标只在 canvas 内部，外面读不到。定位靠真实悬停：命中时 `graph-view.js` 把 cursor 改成 `pointer`，脚本从画布中心一圈圈探出去；拖拽松手处就是那个节点，原位再点一下（位移 <3px 按点击算）即关窗跳文档。
 - 大纲 tab 在文档没有标题时会被 `syncOutlineTab` 藏掉，切过去也留不住。要先打完标题再点 tab；取不到可见的 `.outline-toolbar button` 就是这个原因。
+- 要真实 ⌘V 的功能（粘贴自动清理）在 headless 里出不来画面：合成按键走 `Input.dispatchKeyEvent`，不经过 Chrome 的菜单 / 加速器通道，按下去正文纹丝不动。页面里 `navigator.clipboard.write` 写 `text/html` 是通的（`clipboard-write` 对 127.0.0.1 直接 granted），但 `clipboard-read` 是 prompt，且 ProseMirror 只听 `paste` 事件——这条路留给桌面版镜头。
 - 网页工作树落后主干时，主干新加的功能不会出现在画面里。录制新一轮之前先把主干合进 `web`（方向允许，见 `docs/SERVER.MD`），重新 `npm run web:build`。
 
 ## 二、桌面版：脚本驱动 + 系统录屏
