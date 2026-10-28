@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="NoteLume（文溯）— 约 6 MB 的本地 Markdown 编辑器。所写即所得，文件夹即知识库，完全本地、零锁定。">
+<title>NoteLume · 文溯 — 本地 Markdown 编辑器</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238a2be2'/%3E%3Cstop offset='1' stop-color='%235b8cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #000000;
+    --text: #f5f5f7;
+    --text-dim: #86868b;
+    --accent-a: #8a2be2;
+    --accent-b: #5b8cff;
+    --card-bg: rgba(255, 255, 255, 0.055);
+    --card-border: rgba(255, 255, 255, 0.09);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  html.lenis { scroll-behavior: auto; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+      "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: rgba(138, 43, 226, 0.45); }
+
+  #scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  main { position: relative; z-index: 1; }
+
+  /* ---------- 导航 ---------- */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 clamp(20px, 4vw, 48px);
+    height: 52px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .brand {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .brand .cn { color: var(--text-dim); font-weight: 400; margin-left: 6px; }
+  .nav-links { display: flex; gap: 28px; }
+  .nav-links a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.2s ease;
+  }
+  .nav-links a:hover, .nav-links a:active { color: var(--text); }
+  .nav-links a:focus-visible, a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent-b);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* ---------- 通用 ---------- */
+  section { position: relative; }
+
+  .gradient-text {
+    display: inline-block; /* 渐变词整体换行，不在词中间断开 */
+    background: linear-gradient(92deg, var(--accent-a) 0%, var(--accent-b) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .eyebrow {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 22px;
+  }
+
+  /* ---------- Hero ---------- */
+  #hero {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 100px 24px 80px;
+  }
+  .hero-inner { max-width: 880px; will-change: transform, opacity; }
+  #hero h1 {
+    font-size: clamp(2.6rem, 7.2vw, 5.4rem);
+    line-height: 1.06;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+  }
+  #hero .sub {
+    margin-top: 26px;
+    font-size: clamp(1.05rem, 2vw, 1.35rem);
+    line-height: 1.55;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+    text-shadow: 0 1px 24px rgba(0, 0, 0, 0.85);
+  }
+  #hero .sub strong { color: var(--text); font-weight: 500; }
+  .cta-row {
+    margin-top: 40px;
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-block;
+    padding: 13px 30px;
+    border-radius: 999px;
+    font-size: 15px;
+    text-decoration: none;
+    transition: transform 0.12s ease-out, background 0.2s ease, border-color 0.2s ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--text);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #e2e2e7; }
+  .btn-ghost {
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.55); }
+  .scroll-hint {
+    position: absolute;
+    bottom: 34px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+  }
+
+  /* ---------- 产品介绍 · 特性卡片 ---------- */
+  #features {
+    padding: 140px clamp(20px, 5vw, 64px) 160px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  #features .section-head {
+    text-align: center;
+    margin-bottom: 64px;
+  }
+  #features .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 22px;
+    padding: 38px 32px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: transform 0.25s ease, border-color 0.25s ease;
+    will-change: transform, opacity;
+  }
+  .card:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.2); }
+  .card .icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 22px;
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.22), rgba(91, 140, 255, 0.22));
+  }
+  .card .icon svg { width: 22px; height: 22px; stroke: #c9b2ff; fill: none; stroke-width: 1.6; }
+  .card h3 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 12px;
+  }
+  .card p {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: var(--text-dim);
+  }
+  .card p code {
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 0.82em;
+    color: #c9b2ff;
+    background: rgba(138, 43, 226, 0.12);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+
+  /* ---------- 技术亮点 · 全屏段落 ---------- */
+  #highlights { padding-bottom: 60px; }
+  .panel {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px clamp(24px, 6vw, 80px);
+  }
+  .panel-inner { max-width: 820px; }
+  .panel-inner .eyebrow { margin-bottom: 18px; }
+  .panel-inner p {
+    font-size: clamp(1.7rem, 4.4vw, 3.1rem);
+    line-height: 1.28;
+    letter-spacing: -0.015em;
+    font-weight: 650;
+    color: #48484f; /* 初始灰，滚动渐显为白 */
+    text-wrap: balance;
+    text-shadow: 0 1px 26px rgba(0, 0, 0, 0.9);
+    will-change: opacity;
+  }
+  .panel-inner p .dim-note {
+    display: block;
+    margin-top: 22px;
+    font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  /* ---------- 页脚 ---------- */
+  footer {
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 44px clamp(20px, 4vw, 48px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: rgba(0, 0, 0, 0.6);
+  }
+  footer .copy { font-size: 13px; color: var(--text-dim); }
+  footer .links { display: flex; gap: 26px; }
+  footer .links a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.2s ease;
+  }
+  footer .links a:hover { color: var(--text); }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 860px) {
+    .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
+    #features { padding-top: 100px; padding-bottom: 110px; }
+    .nav-links { gap: 18px; }
+    .panel-inner p { line-height: 1.35; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .card, .btn { transition: none; }
+    .card:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene" aria-hidden="true"></canvas>
+
+<nav>
+  <a class="brand" href="#hero">NoteLume<span class="cn">文溯</span></a>
+  <div class="nav-links">
+    <a href="#features">特性</a>
+    <a href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">下载</a>
+  </div>
+</nav>
+
+<main>
+  <!-- Hero -->
+  <section id="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">NoteLume · 文溯</div>
+      <h1>轻到只有 6 MB，<br>装得下你的<span class="gradient-text">整个知识库</span>。</h1>
+      <p class="sub">
+        为嫌 Typora 没组织、嫌 Obsidian 太重的人做的本地 Markdown 编辑器。
+        你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">下载安装包</a>
+        <a class="btn btn-ghost" href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub 源码</a>
+      </div>
+    </div>
+    <div class="scroll-hint">向下滚动</div>
+  </section>
+
+  <!-- 产品介绍 -->
+  <section id="features">
+    <div class="section-head">
+      <div class="eyebrow">三个理由</div>
+      <h2>写作的手感，<br>知识库的组织。</h2>
+    </div>
+    <div class="card-grid">
+      <div class="card">
+        <div class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </div>
+        <h3>所写即所得</h3>
+        <p>Markdown 与富文本双向无损往返。KaTeX 公式、Mermaid 图表、合并单元格表格，都在渲染态直接编辑，不用切源码模式。</p>
+      </div>
+      <div class="card">
+        <div class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2Z"/></svg>
+        </div>
+        <h3>文件夹即知识库</h3>
+        <p><code>[[双链]]</code> 输入补全、<code>#标签</code> 全局视图、双向链接、全库搜索、Canvas 知识图谱——都对着你自己的文件夹干活。</p>
+      </div>
+      <div class="card">
+        <div class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h3>完全本地，零锁定</h3>
+        <p>纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。不联网、不上传，删除进系统回收站。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 技术亮点 -->
+  <section id="highlights">
+    <div class="panel">
+      <div class="panel-inner">
+        <div class="eyebrow">轻</div>
+        <p>6 MB 的安装包。秒开，离线，不登录。
+          <span class="dim-note">macOS DMG 约 6 MB，Windows、Linux 同样轻。没有启动页广告，没有强制账号。</span>
+        </p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-inner">
+        <div class="eyebrow">粘贴</div>
+        <p>粘贴即净。从 AI 对话框、飞书、公众号复制的内容，进编辑器前就摘掉杂质。
+          <span class="dim-note">代码块的「复制」按钮、行号装订线、空段落串联，在写入前自动清理，不用粘完再手修第二遍。</span>
+        </p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-inner">
+        <div class="eyebrow">Quarkdown</div>
+        <p>让笔记可编程。.var、.foreach、.if 直接写进 Markdown，约 200 个内置函数。
+          <span class="dim-note">快照式预览，光标移出指令区即出结果，源文件一个字节不动。不用指令的文档仍是纯 GFM。</span>
+        </p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-inner">
+        <div class="eyebrow">Git</div>
+        <p>Git 长在里面。状态、历史、diff、提交、冲突解决，全部内建。
+          <span class="dim-note">git2 引擎，机器上没装 git 也能 fetch 和 pull。Word 导入同样离线直读，落库前可视化校对。</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="copy">© 2026 NoteLume · Apache-2.0 License</div>
+    <div class="links">
+      <a href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://gitee.com/hackerSnail/note-lume" target="_blank" rel="noopener">Gitee</a>
+      <a href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">Releases</a>
+    </div>
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.14/dist/lenis.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var isMobile = window.matchMedia('(max-width: 860px)').matches;
+  var hasGSAP = typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined';
+  var hasThree = typeof THREE !== 'undefined';
+
+  /* ---------------- 平滑滚动（Lenis 可用时启用，失败则回退原生滚动） ---------------- */
+  if (hasGSAP && !reducedMotion) {
+    gsap.registerPlugin(ScrollTrigger);
+    try {
+      if (typeof Lenis !== 'undefined') {
+        var lenis = new Lenis({ duration: 1.05, smoothWheel: true });
+        lenis.on('scroll', ScrollTrigger.update);
+        gsap.ticker.add(function (time) { lenis.raf(time * 1000); });
+        gsap.ticker.lagSmoothing(0);
+      }
+    } catch (e) { /* 无 Lenis 时使用原生滚动 */ }
+  }
+
+  /* ---------------- 文字滚动动画 ---------------- */
+  if (hasGSAP && !reducedMotion) {
+    // Hero 文字随滚动上浮并淡出
+    gsap.to('#hero .hero-inner', {
+      y: -90, opacity: 0, ease: 'none',
+      scrollTrigger: { trigger: '#hero', start: 'top top', end: 'bottom 35%', scrub: true }
+    });
+    gsap.to('#hero .scroll-hint', {
+      opacity: 0, ease: 'none',
+      scrollTrigger: { trigger: '#hero', start: 'top top', end: '25% top', scrub: true }
+    });
+
+    // 特性卡片依次从底部淡入上浮
+    gsap.utils.toArray('.card').forEach(function (card, i) {
+      gsap.from(card, {
+        y: 52, opacity: 0, duration: 0.9, ease: 'power3.out', delay: i * 0.12,
+        scrollTrigger: { trigger: '#features', start: 'top 70%', toggleActions: 'play none none reverse' }
+      });
+    });
+    gsap.from('#features .section-head', {
+      y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
+      scrollTrigger: { trigger: '#features', start: 'top 78%', toggleActions: 'play none none reverse' }
+    });
+
+    // 技术亮点：每屏文字由灰渐显为白
+    gsap.utils.toArray('.panel-inner p').forEach(function (p) {
+      gsap.fromTo(p,
+        { color: '#48484f', opacity: 0.7 },
+        {
+          color: '#f5f5f7', opacity: 1, ease: 'none',
+          scrollTrigger: { trigger: p.closest('.panel'), start: 'top 72%', end: 'center 45%', scrub: true }
+        });
+    });
+  }
+
+  /* ---------------- 3D 场景 ---------------- */
+  if (!hasThree) { document.getElementById('scene').style.display = 'none'; return; }
+
+  var canvas = document.getElementById('scene');
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  var scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000000, 0.03);
+
+  var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 15.5);
+
+  scene.add(new THREE.AmbientLight(0x8a8aa8, 0.55));
+  var keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  keyLight.position.set(6, 10, 8);
+  scene.add(keyLight);
+  var coreGlow = new THREE.PointLight(0x8a2be2, 1.6, 32);
+  coreGlow.position.set(0, 0, 2);
+  scene.add(coreGlow);
+
+  var world = new THREE.Group();
+  scene.add(world);
+
+  // 核心：发光多面体（"Lume" 光核）
+  var core = new THREE.Group();
+  var coreGeo = new THREE.IcosahedronGeometry(1.7, 1);
+  var coreMesh = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({
+    color: 0x16102a, metalness: 0.9, roughness: 0.28,
+    emissive: 0x3b1a6e, emissiveIntensity: 0.25, flatShading: true
+  }));
+  var coreWire = new THREE.LineSegments(
+    new THREE.EdgesGeometry(coreGeo),
+    new THREE.LineBasicMaterial({ color: 0xa06bff, transparent: true, opacity: 0.4 })
+  );
+  core.add(coreMesh);
+  core.add(coreWire);
+  world.add(core);
+
+  // 纸页：环绕光核的薄板几何体（本页签名元素）
+  var pages = [];
+  var pageCount = isMobile ? 10 : 16;
+  var pageGeo = new THREE.BoxGeometry(2.3, 3.1, 0.05);
+  for (var i = 0; i < pageCount; i++) {
+    var t = pageCount > 1 ? i / (pageCount - 1) : 0;
+    var angle = t * Math.PI * 2.2 + 0.6;
+    var radius = 3.4 + (i % 2) * 0.75;
+    var page = new THREE.Group();
+    page.position.set(Math.cos(angle) * radius, (t - 0.5) * 6.4, Math.sin(angle) * radius);
+    page.lookAt(0, page.position.y * 0.55, 0);
+    page.add(new THREE.Mesh(pageGeo, new THREE.MeshStandardMaterial({
+      color: 0xded6ff, transparent: true, opacity: 0.05, metalness: 0.25, roughness: 0.4
+    })));
+    page.add(new THREE.LineSegments(
+      new THREE.EdgesGeometry(pageGeo),
+      new THREE.LineBasicMaterial({ color: 0x8a5cf6, transparent: true, opacity: 0.28 })
+    ));
+    page.userData = {
+      base: page.position.clone(),
+      dir: page.position.clone().normalize(),
+      phase: Math.random() * Math.PI * 2
+    };
+    world.add(page);
+    pages.push(page);
+  }
+
+  // 粒子背景
+  var particleCount = isMobile ? 350 : 900;
+  var positions = new Float32Array(particleCount * 3);
+  for (var j = 0; j < particleCount; j++) {
+    var r = 7 + Math.random() * 13;
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.acos(2 * Math.random() - 1);
+    positions[j * 3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[j * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[j * 3 + 2] = r * Math.cos(phi);
+  }
+  var particleGeo = new THREE.BufferGeometry();
+  particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  var particles = new THREE.Points(particleGeo, new THREE.PointsMaterial({
+    color: 0xb9a0ff, size: 0.05, transparent: true, opacity: 0.45, depthWrite: false
+  }));
+  scene.add(particles);
+
+  // 鼠标视差
+  var mouse = { x: 0, y: 0 }, mouseTarget = { x: 0, y: 0 };
+  if (!reducedMotion) {
+    window.addEventListener('mousemove', function (e) {
+      mouseTarget.x = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouseTarget.y = (e.clientY / window.innerHeight - 0.5) * 2;
+    }, { passive: true });
+  }
+
+  // 滚动进度（0 → 1 贯穿全页），驱动模型旋转与纸页散开
+  var scroll = { v: 0 };
+  if (hasGSAP && !reducedMotion) {
+    gsap.to(scroll, {
+      v: 1, ease: 'none',
+      scrollTrigger: { trigger: document.body, start: 'top top', end: 'bottom bottom', scrub: 0.6 }
+    });
+  }
+
+  var running = true;
+  document.addEventListener('visibilitychange', function () { running = !document.hidden; });
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }, { passive: true });
+
+  var clock = new THREE.Clock();
+  function render() {
+    requestAnimationFrame(render);
+    if (!running) return;
+    var time = clock.getElapsedTime();
+
+    // 滚动：整体旋转 + 纸页沿径向散开 + 光核放大；场景整体位置随滚动从下方升回中心
+    world.rotation.y = (reducedMotion ? 0.4 : time * 0.05) + scroll.v * Math.PI * 1.6;
+    world.rotation.x = -0.05 + scroll.v * 0.22;
+    world.position.y = -1.6 + scroll.v * 1.6;
+    var spread = 1 + scroll.v * 1.7;
+    for (var k = 0; k < pages.length; k++) {
+      var pg = pages[k], ud = pg.userData;
+      pg.position.copy(ud.base).addScaledVector(ud.dir, (spread - 1) * 1.6);
+      pg.position.y += Math.sin(time * 0.7 + ud.phase) * 0.14; // 轻微浮动
+      pg.rotation.z = Math.sin(time * 0.4 + ud.phase) * 0.05;
+    }
+    core.rotation.y = time * 0.15;
+    core.rotation.x = time * 0.08;
+    var coreScale = 1 + Math.sin(time * 0.8) * 0.03 + scroll.v * 0.35;
+    core.scale.setScalar(coreScale);
+    coreGlow.intensity = 2.4 + scroll.v * 1.2;
+    particles.rotation.y = time * 0.012;
+
+    // 鼠标视差：相机轻微跟随（阻尼收敛）
+    if (!reducedMotion) {
+      mouse.x += (mouseTarget.x - mouse.x) * 0.04;
+      mouse.y += (mouseTarget.y - mouse.y) * 0.04;
+    }
+    camera.position.x = mouse.x * 0.9;
+    camera.position.y = -mouse.y * 0.6;
+    camera.position.z = 15.5 + scroll.v * 3;
+    camera.lookAt(0, 0, 0);
+
+    renderer.render(scene, camera);
+  }
+  render();
+})();
+</script>
+</body>
+</html>
