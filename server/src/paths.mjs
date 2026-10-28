@@ -51,7 +51,11 @@ export function jailRoot(sid) {
   if (!isSafeSid(sid)) throw new Error('bad session id')
   const root = path.join(cfg.sessionBase, sid)
   ensureSessionVault(root)
-  return root
+  // 必须跟着符号链接走一遍再交给上层：macOS 的 os.tmpdir() 落在 /var 之下，而 /var 是指向
+  // /private/var 的链接。索引那边（index.mjs）回填的是 realpath 后的规范路径，前端
+  // main.js 的 startIndexPolling 只做大小写与尾斜杠归一、不解链接，两边永远比不齐，
+  // state.indexReady 恒假 → 搜索 / 标签 / 反链 / 图谱全部空面板。
+  return fs.realpathSync(root)
 }
 
 /** 会话工作区里的库：没有就建，空的话从演示库灌一份 */

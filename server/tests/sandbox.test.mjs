@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { configure, cfg, jailRoot, scratchRoot, defaultVaultRoot, pruneSessions, DEMO_VAULT } from '../src/paths.mjs'
 import { browse } from '../src/browse.mjs'
+import { resolveVaultRoot } from '../src/vault.mjs'
 import { dispatch } from '../src/router.mjs'
 
 let pass = 0
@@ -48,6 +49,18 @@ test('首访把演示库灌进会话工作区', () => {
   assert.ok(fs.existsSync(path.join(vault, 'assets', 'demo-light.png')), 'assets 图片没灌进来')
   assert.ok(fs.existsSync(path.join(jail, 'tmp')), 'tmp/ 目录要备着（Ctrl+N 的落点）')
   assert.equal(scratchRoot(A), path.join(jail, 'tmp'))
+})
+
+test('库根与索引回填必须是同一条路径', () => {
+  // macOS 的 os.tmpdir() 在 /var → /private/var 这条链接之下：jailRoot 不跟链接走的话，
+  // 前端 state.vaultRoot 拿到 /var/...，而索引侧 resolveVaultRoot 回填 /private/var/...，
+  // main.js 的 startIndexPolling 只归一大小写与尾斜杠、不解链接，两者永远比不齐 →
+  // state.indexReady 恒假，搜索 / 全局标签 / 反链 / 知识图谱全部空面板。
+  const jail = jailRoot(A)
+  assert.equal(jail, fs.realpathSync(jail), 'jail 里还留着符号链接')
+  const vault = defaultVaultRoot(A)
+  assert.equal(vault, path.join(jail, 'vault'))
+  assert.equal(resolveVaultRoot(vault, jail), vault, '前端库根与索引回填路径不一致')
 })
 
 test('首屏入口是 home.md，不是字母序第一篇示例', () => {
