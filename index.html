@@ -403,9 +403,10 @@
     background: radial-gradient(120% 120% at 50% 50%, rgba(255, 255, 255, 0.9) 45%, rgba(255, 255, 255, 0) 100%);
     border-radius: 40px;
   }
-  .cl-viewport {
-    position: sticky; /* 自然位置在区块尾部，滑到这里时轮播钉在视口底部，直到页脚把它推走 */
-    bottom: 48px;
+  /* 标题 + 轮播整组钉在视口底部，直到页脚把它推走 */
+  .cl-sticky {
+    position: sticky;
+    bottom: 40px;
     margin-top: 42vh; /* 钉住的滚动时长来自这段间距 */
   }
   #changelog .section-head h2 {
@@ -650,11 +651,12 @@
 
   <!-- 更新日志 -->
   <section id="changelog">
-    <div class="section-head">
-      <div class="eyebrow">更新日志</div>
-      <h2>最近在忙这些。</h2>
-    </div>
-    <div class="cl-viewport">
+    <div class="cl-sticky">
+      <div class="section-head">
+        <div class="eyebrow">更新日志</div>
+        <h2>最近在忙这些。</h2>
+      </div>
+      <div class="cl-viewport">
       <div class="cl-track">
         <article class="cl-card">
           <span class="cl-chip chip-feature">功能</span>
@@ -696,6 +698,7 @@
           <h3>Ctrl+Tab 切标签失灵</h3>
           <p>键位校验只认大写 Tab，事件反解产出小写，链路在校验层就断了——现已归一。</p>
         </article>
+      </div>
       </div>
     </div>
   </section>
