@@ -3,18 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#ffffff">
 <meta name="description" content="NoteLume（文溯）— 本地 Markdown 编辑器。所写即所得，文件夹即知识库，完全本地、零锁定。">
 <title>NoteLume · 文溯 — 本地 Markdown 编辑器</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238a2be2'/%3E%3Cstop offset='1' stop-color='%235b8cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #000000;
-    --text: #f5f5f7;
-    --text-dim: #86868b;
+    --bg: #ffffff;
+    --text: #1d1d1f;
+    --text-dim: #6e6e73;
     --accent-a: #8a2be2;
     --accent-b: #5b8cff;
-    --card-bg: rgba(255, 255, 255, 0.055);
-    --card-border: rgba(255, 255, 255, 0.09);
+    --card-bg: rgba(255, 255, 255, 0.65);
+    --card-border: rgba(0, 0, 0, 0.08);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -54,10 +55,10 @@
     justify-content: space-between;
     padding: 0 clamp(20px, 4vw, 48px);
     height: 52px;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(255, 255, 255, 0.65);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   }
   .brand {
     font-size: 15px;
@@ -125,7 +126,6 @@
     max-width: 640px;
     margin-left: auto;
     margin-right: auto;
-    text-shadow: 0 1px 24px rgba(0, 0, 0, 0.85);
   }
   #hero .sub strong { color: var(--text); font-weight: 500; }
   .cta-row {
@@ -146,15 +146,15 @@
   .btn:active { transform: scale(0.97); }
   .btn-primary {
     background: var(--text);
-    color: #000;
+    color: #fff;
     font-weight: 600;
   }
-  .btn-primary:hover { background: #e2e2e7; }
+  .btn-primary:hover { background: #000; }
   .btn-ghost {
     color: var(--text);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(0, 0, 0, 0.3);
   }
-  .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.55); }
+  .btn-ghost:hover { border-color: rgba(0, 0, 0, 0.6); }
   .scroll-hint {
     position: absolute;
     bottom: 34px;
@@ -196,7 +196,7 @@
     transition: transform 0.25s ease, border-color 0.25s ease;
     will-change: transform, opacity;
   }
-  .card:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.2); }
+  .card:hover { transform: translateY(-4px); border-color: rgba(0, 0, 0, 0.22); }
   .card .icon {
     width: 44px;
     height: 44px;
@@ -205,9 +205,9 @@
     align-items: center;
     justify-content: center;
     margin-bottom: 22px;
-    background: linear-gradient(135deg, rgba(138, 43, 226, 0.22), rgba(91, 140, 255, 0.22));
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.16), rgba(91, 140, 255, 0.16));
   }
-  .card .icon svg { width: 22px; height: 22px; stroke: #c9b2ff; fill: none; stroke-width: 1.6; }
+  .card .icon svg { width: 22px; height: 22px; stroke: #6d28d9; fill: none; stroke-width: 1.6; }
   .card h3 {
     font-size: 1.3rem;
     font-weight: 600;
@@ -222,8 +222,8 @@
   .card p code {
     font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
     font-size: 0.82em;
-    color: #c9b2ff;
-    background: rgba(138, 43, 226, 0.12);
+    color: #6d28d9;
+    background: rgba(138, 43, 226, 0.08);
     padding: 1px 5px;
     border-radius: 5px;
   }
@@ -268,11 +268,11 @@
     -webkit-backdrop-filter: blur(14px);
     transition: border-color 0.25s ease;
   }
-  .demo-item:hover { border-color: rgba(255, 255, 255, 0.2); }
+  .demo-item:hover { border-color: rgba(0, 0, 0, 0.22); }
   .demo-item .gif-wrap {
     aspect-ratio: 16 / 10;
     overflow: hidden;
-    background: #0d0d12;
+    background: #f5f5f7;
   }
   .demo-item .gif-wrap img {
     width: 100%;
@@ -311,9 +311,8 @@
     line-height: 1.28;
     letter-spacing: -0.015em;
     font-weight: 650;
-    color: #48484f; /* 初始灰，滚动渐显为白 */
+    color: #c7c7cc; /* 初始浅灰，滚动渐显为深色 */
     text-wrap: balance;
-    text-shadow: 0 1px 26px rgba(0, 0, 0, 0.9);
     will-change: opacity;
   }
   .panel-inner p .dim-note {
@@ -329,14 +328,16 @@
   footer {
     position: relative;
     z-index: 1;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
     padding: 44px clamp(20px, 4vw, 48px);
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 16px;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
   footer .copy { font-size: 13px; color: var(--text-dim); }
   footer .links { display: flex; gap: 26px; }
@@ -581,12 +582,12 @@
     }
     flip.to({}, { duration: 0.5 }); // 末张停留
 
-    // 技术亮点：每屏文字由灰渐显为白
+    // 技术亮点：每屏文字由浅灰渐显为深色
     gsap.utils.toArray('.panel-inner p').forEach(function (p) {
       gsap.fromTo(p,
-        { color: '#48484f', opacity: 0.7 },
+        { color: '#c7c7cc', opacity: 0.7 },
         {
-          color: '#f5f5f7', opacity: 1, ease: 'none',
+          color: '#1d1d1f', opacity: 1, ease: 'none',
           scrollTrigger: { trigger: p.closest('.panel'), start: 'top 72%', end: 'center 45%', scrub: true }
         });
     });
@@ -601,7 +602,7 @@
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   var scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x000000, 0.03);
+  scene.fog = new THREE.FogExp2(0xffffff, 0.03);
 
   var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
   camera.position.set(0, 0, 15.5);
@@ -621,12 +622,12 @@
   var core = new THREE.Group();
   var coreGeo = new THREE.IcosahedronGeometry(1.7, 1);
   var coreMesh = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({
-    color: 0x16102a, metalness: 0.9, roughness: 0.28,
-    emissive: 0x3b1a6e, emissiveIntensity: 0.25, flatShading: true
+    color: 0x8b5cf6, metalness: 0.3, roughness: 0.35,
+    emissive: 0x7b3ff2, emissiveIntensity: 0.18, flatShading: true
   }));
   var coreWire = new THREE.LineSegments(
     new THREE.EdgesGeometry(coreGeo),
-    new THREE.LineBasicMaterial({ color: 0xa06bff, transparent: true, opacity: 0.4 })
+    new THREE.LineBasicMaterial({ color: 0x7b3ff2, transparent: true, opacity: 0.55 })
   );
   core.add(coreMesh);
   core.add(coreWire);
@@ -644,11 +645,11 @@
     page.position.set(Math.cos(angle) * radius, (t - 0.5) * 6.4, Math.sin(angle) * radius);
     page.lookAt(0, page.position.y * 0.55, 0);
     page.add(new THREE.Mesh(pageGeo, new THREE.MeshStandardMaterial({
-      color: 0xded6ff, transparent: true, opacity: 0.05, metalness: 0.25, roughness: 0.4
+      color: 0x6d28d9, transparent: true, opacity: 0.07, metalness: 0.2, roughness: 0.45
     })));
     page.add(new THREE.LineSegments(
       new THREE.EdgesGeometry(pageGeo),
-      new THREE.LineBasicMaterial({ color: 0x8a5cf6, transparent: true, opacity: 0.28 })
+      new THREE.LineBasicMaterial({ color: 0x7b3ff2, transparent: true, opacity: 0.4 })
     ));
     page.userData = {
       base: page.position.clone(),
@@ -673,7 +674,7 @@
   var particleGeo = new THREE.BufferGeometry();
   particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   var particles = new THREE.Points(particleGeo, new THREE.PointsMaterial({
-    color: 0xb9a0ff, size: 0.05, transparent: true, opacity: 0.45, depthWrite: false
+    color: 0x9a6bff, size: 0.05, transparent: true, opacity: 0.4, depthWrite: false
   }));
   scene.add(particles);
 
@@ -713,7 +714,7 @@
     // 滚动：整体旋转 + 纸页沿径向散开 + 光核放大；场景整体位置随滚动从下方升回中心
     world.rotation.y = (reducedMotion ? 0.4 : time * 0.05) + scroll.v * Math.PI * 1.6;
     world.rotation.x = -0.05 + scroll.v * 0.22;
-    world.position.y = -1.6 + scroll.v * 1.6;
+    world.position.y = -4 + scroll.v * 4;
     var spread = 1 + scroll.v * 1.7;
     for (var k = 0; k < pages.length; k++) {
       var pg = pages[k], ud = pg.userData;
