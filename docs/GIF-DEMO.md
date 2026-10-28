@@ -312,6 +312,20 @@ ffmpeg -y -ss 1.0 -to 6.0 -i /tmp/cap.mov \
 
 桌面版收不到 HTML5 的 `dragover` / `drop`：窗口层留着原生拖放接收器，事件只以 `tauri://drag-*` 的形式给到前端，且只带绝对路径。所以前端拿到路径后先问一次后端「这是文件还是目录」，再决定走打开还是另开窗口——mac 问 `probe_external_drop`，Windows / Linux 问 `drop_path_is_dir`。纯网页构建没有接管，仍是拖入即导入。
 
+#### 粘贴自动清理 `paste-clean`
+
+![粘贴自动清理](img/demo/paste-clean.gif)
+
+把一段带噪音的复制内容（代码块头部的语言名与「复制」按钮、行号装订线、工具条、三个空段落）写进系统剪贴板，正文里回车换到新块再 ⌘V，编辑器只剩标题、代码块和两段正文；⌘E 切到源码确认落盘的 Markdown 同样是干净的。
+
+剪贴板要用 `NSPasteboard.setString(_:forType:.html)` 写 HTML，用 `setData` 只落字节，粘贴端按字符串取会拿到空串，静默降级成纯文本粘贴，清理规则一条都触发不了。`pb.string(forType:.html)` 对两种写法都返回 nil，所以 NSPasteboard 自读自验不能当判据，必须走真实的 ⌘V。
+
+#### Quarkdown 模板快照 `qd-snapshot`
+
+![Quarkdown 模板快照](img/demo/qd-snapshot.gif)
+
+正文写一段 `.var` 加缩进代码块的最小模板，⌘qd 生成快照：渲染结果就地出现在文档下方，源文件不改一个字节。
+
 ### 6. 场地与镜头参数
 
 - 常驻浮层（桌面宠物一类）不会随应用隐藏而消失，把演示窗口整体挪到浮层覆盖区之外，裁切框按窗口点坐标乘二取像素。
