@@ -9,13 +9,17 @@
 
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, rmSync, existsSync, statSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 if (process.platform !== 'darwin') process.exit(0)
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const bundle = join(root, 'src-tauri', 'target', 'release', 'bundle')
+// 可选参数：bundle 目录（相对仓库根）。交叉编译时 tauri 把产物放在 target/<triple>/release/bundle，
+// 传那个路径进来收尾；本机架构构建（本地 npm run build 与 CI 各格）走默认的 target/release/bundle。
+const bundle = process.argv[2]
+  ? resolve(root, process.argv[2])
+  : join(root, 'src-tauri', 'target', 'release', 'bundle')
 const app = join(bundle, 'macos', 'NoteLume.app')
 if (!existsSync(app) || !statSync(app).isDirectory()) {
   console.error(`找不到 ${app}，先跑 npm run build`)
@@ -23,7 +27,13 @@ if (!existsSync(app) || !statSync(app).isDirectory()) {
 }
 
 const version = JSON.parse(readFileSync(join(root, 'src-tauri', 'tauri.conf.json'), 'utf8')).version
-const dmg = join(bundle, 'dmg', `NoteLume_${version}_aarch64.dmg`)
+// 卷宗名里的架构段跟着产物走：本地与 CI 的 arm64 包是 aarch64，Intel runner 上打出来的是 x64，
+// 两种都在 CI 的上传 glob 里，名字写死一种会把另一台机器的包覆盖成错的型号
+const arches = execFileSync('lipo', ['-archs', join(app, 'Contents', 'MacOS', 'NoteLume')], { encoding: 'utf8' })
+  .trim().split(/\s+/)
+const arch = arches.length > 1 ? 'universal' : (arches[0] === 'x86_64' ? 'x64' : 'aarch64')
+const dmgDir = join(bundle, 'dmg')
+const dmg = join(dmgDir, `NoteLume_${version}_${arch}.dmg`)
 
 execFileSync('codesign', ['--force', '--deep', '-s', '-', app], { stdio: 'inherit' })
 
@@ -44,6 +54,10 @@ function walk(dir, name) {
   }
   return hits
 }
+
+mkdirSync(dmgDir, { recursive: true })
+// Tauri 那份既没补签名也没带说明，重卷前清掉，卷宗目录里只留这一份（CI 的上传 glob 收 *.dmg）
+for (const stale of readdirSync(dmgDir)) if (/^NoteLume_.*\.dmg$/.test(stale)) rmSync(join(dmgDir, stale), { force: true })
 
 execFileSync('hdiutil', ['create', '-volname', 'NoteLume', '-srcfolder', stage, '-ov', '-format', 'UDZO', dmg], { stdio: 'inherit' })
 console.log(dmg)

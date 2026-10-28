@@ -239,7 +239,7 @@ npm run build
 
 ### 产物位置
 
-macOS（Apple Silicon M1 / M2 / M3 / M4）：
+macOS（分两个型号：Apple Silicon 的 `_aarch64` 卷与 Intel 的 `_x64` 卷。本机 `npm run build` 只出当前芯片那一份，另一份由 CI 在对应架构的 runner 上打）：
 
 ```
 src-tauri/target/release/bundle/
