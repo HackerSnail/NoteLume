@@ -56,7 +56,8 @@ const { closeImage } = await import('../img-viewer.js')
 const MD = ['前言段落。', '', '<table align="center"><tr>', '<td align="center"><img src="img/preview/light.png" alt="浅色主题" width="100%"><br>浅色</td>', '<td align="center"><img src="img/preview/dark.png" alt="暗黑主题" width="100%"><br>暗黑</td>', '</tr></table>', '', '收尾段落。', ''].join('\n')
 
 const mountEl = document.getElementById('root')
-createEditor({ mountEl, getVault: () => CTX, onMetaChange() {}, onDirty() {} }).setMarkdown(MD)
+const ed = createEditor({ mountEl, getVault: () => CTX, onMetaChange() {}, onDirty() {} })
+ed.setMarkdown(MD)
 await new Promise((r) => setTimeout(r, 60))
 
 let pass = 0
@@ -111,6 +112,19 @@ check('单击块内非图片落点（格内文字）：照旧就地改源码，E
 check('块外普通段落单击不弹出查看器', () => {
   click(document.querySelector('.ProseMirror > p'))
   assert.strictEqual(viewer().classList.contains('hidden'), true)
+})
+
+check('几十行的块进源码态：高度按源码行数给满，不封顶（不留滚动条）', () => {
+  const rows = Array.from({ length: 30 }, (_, i) => `<tr><td>第 ${i} 行</td></tr>`).join('\n')
+  ed.setMarkdown('开头。\n\n<table><tbody>\n' + rows + '\n</tbody></table>\n\n结尾。\n')
+  const b = document.querySelector('.nl-html-block')
+  click(b)
+  const ta = b.querySelector('textarea.nl-html-src')
+  assert.ok(ta, '没进源码态')
+  const lines = ta.value.split('\n').length
+  assert.ok(lines > 24, '夹具本身要超过旧的 24 行上限：' + lines)
+  assert.strictEqual(ta.rows, lines, 'rows 要等于源码行数')
+  ta.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
 })
 
 console.log(`\n结果：${pass} passed, ${fail} failed`)
