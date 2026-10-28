@@ -64,7 +64,7 @@
     <td align="center"><img src="docs/img/demo/desktop-drop.gif" alt="拖入打开" width="480"><br>拖入文件即打开，拖入文件夹即开库 · Drag &amp; drop</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/img/demo/theme-switch.gif" alt="主题" width="480"><br>四套主题轮换 · Themes</td>
+    <td align="center"><img src="docs/img/demo/theme-switch.gif" alt="主题" width="480"><br>三套主题轮换 · Themes</td>
     <td align="center"><img src="docs/img/demo/appearance-settings.gif" alt="外观设置" width="480"><br>外观：主题即时切换 · Appearance</td>
   </tr>
   <tr>
