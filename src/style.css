@@ -2700,7 +2700,8 @@ html.nl-dragging * {
   box-sizing: border-box;
   border: 0;
   outline: none;
-  resize: vertical;
+  resize: none; /* 高度由内容给，不留拉伸把手 */
+  overflow: hidden; /* 有多少显示多少，不出滚动条 */
   background: transparent;
   color: var(--fg);
   font-family: var(--font-mono);
