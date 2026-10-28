@@ -3289,9 +3289,12 @@ async function exportHTML() {
 }
 
 // —— 打印（Ctrl+P）：画布直出老打印；普通文档先弹排版选项窗，Paged.js 预分页后再走系统打印，
-// 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）——
+// 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）。
+// mac 不做预分页：Paged.js 一页一帧地排，而 WKWebView 在窗口被遮挡 / 失焦时会几秒才补一帧，
+// 打包版实测同一篇 19 页前台 12.7 秒排完、被打印面板压住的那趟 65 秒只出 12 页然后超时退回直打。
+// 系统打印面板自己会分页，mac 直接走它。——
 async function printViaDialog() {
-  if (state.mode === 'canvas') {
+  if (state.mode === 'canvas' || IS_MAC) {
     window.print()
     return
   }
