@@ -600,8 +600,8 @@
         本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。
       </p>
       <div class="cta-row">
-        <div class="dd">
-          <a class="btn btn-primary dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false">下载安装包<span class="dd-arrow">▾</span></a>
+        <div class="dd" data-api="https://gitee.com/api/v5/repos/hackerSnail/note-lume/releases/latest">
+          <a class="btn btn-primary dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false">Gitee 下载<span class="dd-arrow">▾</span></a>
           <div class="dd-menu" role="menu">
             <div class="dd-ver">v0.1.0 · 最新版</div>
             <a class="dd-item" data-dl="win" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.1.0/NoteLume_0.1.0_x64-setup.exe" target="_blank" rel="noopener">
@@ -617,6 +617,25 @@
               <strong>Linux</strong><span class="dd-ext">.AppImage</span>
             </a>
             <a class="dd-more" href="https://gitee.com/hackerSnail/note-lume/releases" target="_blank" rel="noopener">查看全部版本 →</a>
+          </div>
+        </div>
+        <div class="dd" data-api="https://api.github.com/repos/HackerSnail/NoteLume/releases/latest">
+          <a class="btn btn-ghost dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false">GitHub 下载<span class="dd-arrow">▾</span></a>
+          <div class="dd-menu" role="menu">
+            <div class="dd-ver">v0.1.0 · 最新版</div>
+            <a class="dd-item" data-dl="win" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.1.0/NoteLume_0.1.0_x64-setup.exe" target="_blank" rel="noopener">
+              <strong>Windows</strong><span class="dd-ext">.exe 安装包</span>
+            </a>
+            <a class="dd-item" data-dl="mac-arm" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.1.0/NoteLume_0.1.0_aarch64.dmg" target="_blank" rel="noopener">
+              <strong>macOS（Apple Silicon）</strong><span class="dd-ext">.dmg</span>
+            </a>
+            <div class="dd-item dd-disabled" aria-disabled="true">
+              <strong>macOS（Intel）</strong><span class="dd-ext">打包中</span>
+            </div>
+            <a class="dd-item" data-dl="linux" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.1.0/NoteLume_0.1.0_amd64.AppImage" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.AppImage</span>
+            </a>
+            <a class="dd-more" href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">查看全部版本 →</a>
           </div>
         </div>
         <a class="btn btn-ghost" href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub 源码</a>
@@ -885,44 +904,54 @@ function boot() {
     }
   } catch (e) { /* 轮播失败不影响页面其余部分 */ }
 
-  // 下载下拉菜单：点击开合、点外部/Esc 关闭；自动请求最新 release 改写直链（失败保持静态链接）
+  // 下载下拉菜单（Gitee / GitHub 各一个）：点击开合、点外部/Esc 关闭；自动请求最新 release 改写直链
   try {
-    var dd = document.querySelector('.dd');
-    if (dd) {
+    var dlMap = {
+      'win': /x64-setup\.exe$/,
+      'mac-arm': /aarch64\.dmg$/,
+      'linux': /amd64\.AppImage$/
+    };
+    function closeAllDd(except) {
+      document.querySelectorAll('.dd.open').forEach(function (d) {
+        if (d !== except) { d.classList.remove('open'); d.querySelector('.dd-btn').setAttribute('aria-expanded', 'false'); }
+      });
+    }
+    document.querySelectorAll('.dd').forEach(function (dd) {
       var ddBtn = dd.querySelector('.dd-btn');
       ddBtn.addEventListener('click', function (e) {
         e.preventDefault();
+        closeAllDd(dd);
         var open = dd.classList.toggle('open');
         ddBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
-      document.addEventListener('click', function (e) {
-        if (!dd.contains(e.target)) { dd.classList.remove('open'); ddBtn.setAttribute('aria-expanded', 'false'); }
-      });
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { dd.classList.remove('open'); ddBtn.setAttribute('aria-expanded', 'false'); }
-      });
-      var dlMap = {
-        'win': /x64-setup\.exe$/,
-        'mac-arm': /aarch64\.dmg$/,
-        'linux': /amd64\.AppImage$/
-      };
-      fetch('https://gitee.com/api/v5/repos/hackerSnail/note-lume/releases/latest')
-        .then(function (r) { return r.json(); })
-        .then(function (rel) {
-          if (!rel || !rel.tag_name) return;
-          var ver = dd.querySelector('.dd-ver');
-          if (ver) ver.textContent = rel.tag_name + ' · 最新版';
-          (rel.assets || []).forEach(function (a) {
-            Object.keys(dlMap).forEach(function (key) {
-              if (dlMap[key].test(a.name)) {
-                var link = dd.querySelector('[data-dl="' + key + '"]');
-                if (link) link.href = a.browser_download_url;
-              }
+      var api = dd.getAttribute('data-api');
+      if (api) {
+        fetch(api)
+          .then(function (r) { return r.json(); })
+          .then(function (rel) {
+            if (!rel || !rel.tag_name) return;
+            var ver = dd.querySelector('.dd-ver');
+            if (ver) ver.textContent = rel.tag_name + ' · 最新版';
+            (rel.assets || []).forEach(function (a) {
+              Object.keys(dlMap).forEach(function (key) {
+                if (dlMap[key].test(a.name)) {
+                  var link = dd.querySelector('[data-dl="' + key + '"]');
+                  if (link) link.href = a.browser_download_url;
+                }
+              });
             });
-          });
-        })
-        .catch(function () { /* 静态直链兜底 */ });
-    }
+          })
+          .catch(function () { /* 静态直链兜底 */ });
+      }
+    });
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('.dd.open').forEach(function (d) {
+        if (!d.contains(e.target)) { d.classList.remove('open'); d.querySelector('.dd-btn').setAttribute('aria-expanded', 'false'); }
+      });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAllDd(null);
+    });
   } catch (e) { /* 下拉失败不影响页面 */ }
 
   // 翻页字幕包进悬浮胶囊
