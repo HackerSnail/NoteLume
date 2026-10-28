@@ -1,0 +1,15 @@
+NoteLume · macOS 首次打开
+
+这个包只做 ad-hoc 签名，没有开发者公证，第一次打开会被系统拦下。三种办法任选一种，只需做一次：
+
+1. 把 NoteLume 拖进「应用程序」，在该图标上右键 →「打开」→ 弹窗里再点「打开」。之后双击照常。
+
+2. 若右键也被拦（提示「已损坏，无法打开」），打开「终端」执行，再启动：
+   xattr -dr com.apple.quarantine /Applications/NoteLume.app
+
+3. 或：系统设置 → 隐私与安全性 → 找到「已阻止使用 NoteLume」→ 点「仍要打开」。
+
+机型：本 dmg 为 Apple Silicon（aarch64），M 系列芯片可用。
+
+英文：The app is ad-hoc signed and not notarized. Right-click the app → Open once, or run
+   xattr -dr com.apple.quarantine /Applications/NoteLume.app
