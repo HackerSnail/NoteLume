@@ -24,6 +24,7 @@ export function printOptionsDialog() {
     const h = document.createElement('div')
     h.className = 'nl-prompt-title'
     h.textContent = t('dlg.printTitle')
+    box.appendChild(h)
 
     const checks = ITEMS.map((item) => {
       const label = document.createElement('label')

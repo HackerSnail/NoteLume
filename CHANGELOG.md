@@ -9,6 +9,10 @@
 
 ### Added
 
+* **修复打印排版弹窗没有标题**：`src/print-options-dialog.js` 的 `printOptionsDialog()` 建好 `h`（`nl-prompt-title`，文案 `dlg.printTitle`）后没有 `appendChild`，四个复选项上面空一块、弹窗没有名字。打包版录屏时肉眼核对到，补一行挂载。
+
+* **定位 mac 打包版打印没有分页**：⌘P 勾完四个选项点确定，系统打印面板里仍是 2 页且带屏幕上的编辑器界面，说明走的是 `printPaged` 的普通打印兜底。分段探针钉住失败点：焦点窗格取到了（`.nl-pane.focused .ProseMirror` 命中）、`pagedjs` 已随主块打进来、`Previewer` 是函数，卡在 `previewer.preview()` 这条 promise 上——60 秒后以 `TimeoutError` 结束，`PREVIEW_TIMEOUT_MS` 到点、`teardown` 摘干净、退回普通打印。同一份 `previewPaged` 源码在 headless Chromium 与一个可见的独立 `WKWebView` 里都正常分页（7 个页面盒、约 0.3 秒），所以不是引擎、不是打包裁剪，差异在应用内那份真实编辑器克隆出来的 DOM。这条坑未修，`print-layout` 动图因此暂缓：确定以后要等满 60 秒才出面板，录出来不可用。挂住的这 60 秒里 Paged.js 插进 `head` 的样式会临时套到当前文档上（行距与字号明显变大），超时收尾后自行恢复。
+
 * **修复内置 Quarkdown 模板点了没展开 + 列表体丢块参数缩进**：三个内置模板（周报 / 变量化文档头 / 编号与交叉引用）选了以后快照是空的。两处原因。一是模板文案里指令行紧接着下一行就是缩进体，CommonMark 的 lazy continuation 会把它们并成同一个段落，Rust 侧只认「指令段落 + 后续 4 空格缩进的块级节点」这一块区域，于是区域根本不存在——`src/locales/{zh-CN,zh-Hant,en-US,fr-FR,de-DE}.js` 的 `tpl.qd.weekly.body` / `tpl.qd.vars.body` / `tpl.qd.xref.body` 在指令行之间与指令行 / 块体之间都补上空行（`.var` 逐条各占一段，`.numbering` 与 `.mermaid` 的块体前留空行）。二是从编辑器往回序列化时列表成员没有补缩进：`src/qd/editor.js` 的 `serializeList` 只输出 `- 条目`，`collectQdRegions` 把 `.foreach` 的列表成员归进区域后按顶层正文写回文件，Rust 收不到循环体，`.1` 反倒解析成一个不存在的函数调用；改为每行前缀 4 空格，与 `code_block` 同一口径（区域成员一律还原成块参数）。`src/tests/qd.test.mjs` 补四条：列表体还原缩进、顶格列表成员不被并错、指令行后接正文行会并段（钉住模板文案的约束）、内置模板每条指令行后面不接正文行（直接 lint 五语言词条）。53 个测试文件全过，`vite build` 无错。
 
 * **动图墙补两格：粘贴自动清理、Quarkdown 模板快照**（桌面版真实录屏）。`paste-clean` 把一段带噪音的复制内容（代码块头部语言名与「复制」按钮、行号装订线、工具条、三个空段落）写进系统剪贴板，正文里换到新块再 ⌘V，编辑器只剩标题、代码块与两段正文，⌘E 切源码确认落盘的 Markdown 同样干净。`qd-snapshot` 录最小 `.var` 模板写进正文后 ⌘qd 出快照、源文件不改。两条都收进 `docs/img/demo/`、README 功能演示墙与 `docs/GIF-DEMO.md` 场景表。录制侧修掉三个坑：剪贴板 HTML 必须用 `NSPasteboard.setString(_:forType:.html)`，`setData` 只落字节、粘贴端按字符串取拿到空串会静默降级成纯文本粘贴（`pb.string(forType:.html)` 对两种写法都返回 nil，自读自验不能当判据，只能走真实 ⌘V）；`screencapture -v` 遇到已存在的目标文件直接不写，采集脚本先删旧产物；驱动 `KEYS` 表按 macOS 官方 `kVK_ANSI_*` 映射逐键核对重做（字母区并非连续排列），并让修饰键跟着主键一起 down/up，否则其后敲的字被当作同一快捷键的延续。
