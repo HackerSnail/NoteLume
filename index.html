@@ -254,6 +254,38 @@
     text-decoration: none;
   }
   .dd-more:hover { text-decoration: underline; }
+
+  /* 导航语言切换器 */
+  .lang-dd { margin-left: 6px; }
+  .lang-btn {
+    font-size: 13px;
+    color: var(--text-body);
+    padding: 8px 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: color 0.2s ease, border-color 0.2s ease;
+  }
+  .lang-btn:hover { color: var(--blue); }
+  .lang-dd .dd-menu { min-width: 150px; left: auto; right: 0; transform: translateY(-6px); }
+  .lang-dd.open .dd-menu { transform: translateY(0); }
+  .lang-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-body);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  .lang-item:hover { background: rgba(0, 122, 255, 0.07); }
+  .lang-item .mark { visibility: hidden; color: var(--blue); font-weight: 700; }
+  .lang-item.active { color: var(--blue); font-weight: 600; }
+  .lang-item.active .mark { visibility: visible; }
   .scroll-hint {
     position: absolute;
     bottom: 34px;
@@ -584,9 +616,19 @@
 <nav>
   <a class="brand" href="#hero">NoteLume<span class="cn">文溯</span></a>
   <div class="nav-links">
-    <a href="#features">特性</a>
+    <a id="nav-features" href="#features">特性</a>
     <a href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub</a>
-    <a href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">下载</a>
+    <a id="nav-download" href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">下载</a>
+    <div class="dd lang-dd" id="langDd">
+      <a class="dd-btn lang-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span id="langLabel">简体中文</span><span class="dd-arrow">▾</span></a>
+      <div class="dd-menu" role="menu">
+        <div class="lang-item" data-lang="zh-CN"><span>简体中文</span><span class="mark">✓</span></div>
+        <div class="lang-item" data-lang="zh-TW"><span>繁體中文</span><span class="mark">✓</span></div>
+        <div class="lang-item" data-lang="en"><span>English</span><span class="mark">✓</span></div>
+        <div class="lang-item" data-lang="fr"><span>Français</span><span class="mark">✓</span></div>
+        <div class="lang-item" data-lang="de"><span>Deutsch</span><span class="mark">✓</span></div>
+      </div>
+    </div>
   </div>
 </nav>
 
@@ -601,7 +643,7 @@
       </p>
       <div class="cta-row">
         <div class="dd" data-api="https://api.github.com/repos/HackerSnail/NoteLume/releases/latest">
-          <a class="btn btn-primary dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false">GitHub 下载<span class="dd-arrow">▾</span></a>
+          <a class="btn btn-primary dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span class="dd-label">GitHub 下载</span><span class="dd-arrow">▾</span></a>
           <div class="dd-menu" role="menu">
             <div class="dd-ver">v0.1.0 · 最新版</div>
             <a class="dd-item" data-dl="win" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.1.0/NoteLume_0.1.0_x64-setup.exe" target="_blank" rel="noopener">
@@ -620,7 +662,7 @@
           </div>
         </div>
         <div class="dd" data-api="https://gitee.com/api/v5/repos/hackerSnail/note-lume/releases/latest">
-          <a class="btn btn-ghost dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false">Gitee 下载<span class="dd-arrow">▾</span></a>
+          <a class="btn btn-ghost dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span class="dd-label">Gitee 下载</span><span class="dd-arrow">▾</span></a>
           <div class="dd-menu" role="menu">
             <div class="dd-ver">v0.1.0 · 最新版</div>
             <a class="dd-item" data-dl="win" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.1.0/NoteLume_0.1.0_x64-setup.exe" target="_blank" rel="noopener">
@@ -724,7 +766,7 @@
     <div class="panel">
       <div class="panel-inner">
         <div class="eyebrow">粘贴</div>
-        <p>粘贴即净。从 AI 对话框、飞书、公众号复制的内容，<br>进编辑器前就摘掉杂质。
+        <p><span class="st">粘贴即净。从 AI 对话框、飞书、公众号复制的内容，<br>进编辑器前就摘掉杂质。</span>
           <span class="dim-note">代码块的「复制」按钮、行号装订线、空段落串联，在写入前自动清理，不用粘完再手修第二遍。</span>
         </p>
       </div>
@@ -732,7 +774,7 @@
     <div class="panel">
       <div class="panel-inner">
         <div class="eyebrow">Quarkdown</div>
-        <p>让笔记可编程。.var、.foreach、.if<br>直接写进 Markdown，约 200 个内置函数。
+        <p><span class="st">让笔记可编程。.var、.foreach、.if<br>直接写进 Markdown，约 200 个内置函数。</span>
           <span class="dim-note">快照式预览，光标移出指令区即出结果，源文件一个字节不动。不用指令的文档仍是纯 GFM。</span>
         </p>
       </div>
@@ -740,7 +782,7 @@
     <div class="panel">
       <div class="panel-inner">
         <div class="eyebrow">Git</div>
-        <p>Git 长在里面。状态、历史、diff、提交、冲突解决，<br>全部内建。
+        <p><span class="st">Git 长在里面。状态、历史、diff、提交、冲突解决，<br>全部内建。</span>
           <span class="dim-note">git2 引擎，机器上没装 git 也能 fetch 和 pull。Word 导入同样离线直读，落库前可视化校对。</span>
         </p>
       </div>
@@ -811,6 +853,310 @@
   </footer>
 </main>
 
+<script>
+/* 五语言 i18n（与桌面版一致：简体中文 / 繁體中文 / English / Français / Deutsch）。
+   纯 DOM 文本替换，不依赖任何库；浏览器语言自动匹配，选择存 localStorage（失败则仅本次生效）。 */
+window.__ddTag = 'v0.1.0';
+var I18N = (function () {
+  var zhCN = {
+    title: 'NoteLume · 文溯 — 本地 Markdown 编辑器',
+    navFeatures: '特性', navDownload: '下载',
+    heroH1: 'Typora 的手感，Obsidian 的组织，<span class="gradient-text">不用二选一。</span>',
+    heroSub: '本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。',
+    scrollHint: '向下滚动',
+    btnGithub: 'GitHub 下载', btnGitee: 'Gitee 下载', btnSource: 'GitHub 源码',
+    latest: '· 最新版',
+    extWin: '.exe 安装包', packaging: '打包中', ddMore: '查看全部版本 →',
+    dlMacArm: 'macOS（Apple Silicon）', dlMacIntel: 'macOS（Intel）',
+    featEyebrow: '三个理由', featH2: '该有的都有，<br>不该背的没有。',
+    c1h3: '所写即所得',
+    c1p: 'Markdown 与富文本双向无损往返。KaTeX 公式、Mermaid 图表、合并单元格表格，都在渲染态直接编辑，不用切源码模式。',
+    c2h3: '文件夹即知识库',
+    c2p: '<code>[[双链]]</code> 输入补全、<code>#标签</code> 全局视图、双向链接、全库搜索、Canvas 知识图谱——都对着你自己的文件夹干活。',
+    c3h3: '完全本地，零锁定',
+    c3p: '纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 端口，数据直达你配置的服务。',
+    demoEyebrow: '功能演示', demoH2: '写作时，它长这样。',
+    cap1: '所写即所得', cap2: '斜杠菜单插入块', cap3: '[[ 双链 ]] 输入补全', cap4: '知识图谱',
+    cap5: '命令面板', cap6: '全库搜索', cap7: 'Word 导入校对', cap8: 'Git 面板',
+    p1e: '粘贴', p1: '粘贴即净。从 AI 对话框、飞书、公众号复制的内容，<br>进编辑器前就摘掉杂质。',
+    p1d: '代码块的「复制」按钮、行号装订线、空段落串联，在写入前自动清理，不用粘完再手修第二遍。',
+    p2e: 'Quarkdown', p2: '让笔记可编程。.var、.foreach、.if<br>直接写进 Markdown，约 200 个内置函数。',
+    p2d: '快照式预览，光标移出指令区即出结果，源文件一个字节不动。不用指令的文档仍是纯 GFM。',
+    p3e: 'Git', p3: 'Git 长在里面。状态、历史、diff、提交、冲突解决，<br>全部内建。',
+    p3d: 'git2 引擎，机器上没装 git 也能 fetch 和 pull。Word 导入同样离线直读，落库前可视化校对。',
+    clEyebrow: '更新日志', clH2: '最近在忙这些。',
+    ch: ['功能', '功能', '导出', '导出', '体验', '体验', '兼容', '修复'],
+    clh: ['网页剪藏', 'Quarkdown 引擎收官', '整库幻灯片', '标准 Markdown 副本', '粘贴自动清理', '视觉行号装订线', '块级裸 HTML', 'Ctrl+Tab 切标签失灵'],
+    clp: [
+      '浏览器扩展一键把网页正文存进本地库，图片按内容去重进 assets/，文末自动关联库内相关笔记。',
+      '五阶段做完，Rust 版 stdlib 对 Kotlin 参考实现的函数差集清零，.var、.foreach 直接写进 md。',
+      '库内全部 md 合成一份自包含的 reveal.js 放映件，外层按文档分章、内层上下翻页。',
+      '整库导出时 Obsidian 私有语法自动降级，产物任何编辑器都能打开，目录结构原样保留。',
+      '从 AI 对话框、飞书、公众号复制的内容，进编辑器前就摘掉「复制」按钮和空段落。',
+      'WYSIWYG 模式按折行后的视觉行连续编号，虚拟化渲染，5 万字单段实测流畅。',
+      'WordPress 一类工具导出的 md 原样保住并渲染出排版，不再满屏字面标签。',
+      '键位校验只认大写 Tab，事件反解产出小写，链路在校验层就断了——现已归一。'
+    ]
+  };
+  var zhTW = {
+    title: 'NoteLume · 文溯 — 本地 Markdown 編輯器',
+    navFeatures: '特性', navDownload: '下載',
+    heroH1: 'Typora 的手感，Obsidian 的組織，<span class="gradient-text">不用二選一。</span>',
+    heroSub: '本地 Markdown 編輯器。你的筆記就是一堆<strong>標準 .md 檔案</strong>，躺在自己的資料夾裡——秒開、離線、零格式鎖定。',
+    scrollHint: '向下滾動',
+    btnGithub: 'GitHub 下載', btnGitee: 'Gitee 下載', btnSource: 'GitHub 原始碼',
+    latest: '· 最新版',
+    extWin: '.exe 安裝包', packaging: '打包中', ddMore: '查看全部版本 →',
+    dlMacArm: 'macOS（Apple Silicon）', dlMacIntel: 'macOS（Intel）',
+    featEyebrow: '三個理由', featH2: '該有的都有，<br>不該背的沒有。',
+    c1h3: '所寫即所得',
+    c1p: 'Markdown 與富文本雙向無損往返。KaTeX 公式、Mermaid 圖表、合併儲存格表格，都在渲染態直接編輯，不用切原始碼模式。',
+    c2h3: '資料夾即知識庫',
+    c2p: '<code>[[雙鏈]]</code> 輸入補全、<code>#標籤</code> 全域視圖、雙向連結、全庫搜尋、Canvas 知識圖譜——都對著你自己的資料夾幹活。',
+    c3h3: '完全本地，零鎖定',
+    c3p: '純 GFM 檔案，Typora 和 Obsidian 能直接打開同一份庫。預設不聯網、不上傳，刪除進系統資源回收筒；要接大模型時自己填 API 埠，數據直達你設定的服務。',
+    demoEyebrow: '功能演示', demoH2: '寫作時，它長這樣。',
+    cap1: '所寫即所得', cap2: '斜槓選單插入塊', cap3: '[[ 雙鏈 ]] 輸入補全', cap4: '知識圖譜',
+    cap5: '命令面板', cap6: '全庫搜尋', cap7: 'Word 匯入校對', cap8: 'Git 面板',
+    p1e: '貼上', p1: '貼上即淨。從 AI 對話框、飛書、公眾號複製的內容，<br>進編輯器前就摘掉雜質。',
+    p1d: '程式碼區塊的「複製」按鈕、行號裝訂線、空段落串聯，在寫入前自動清理，不用貼完再手修第二遍。',
+    p2e: 'Quarkdown', p2: '讓筆記可程式化。.var、.foreach、.if<br>直接寫進 Markdown，約 200 個內建函式。',
+    p2d: '快照式預覽，游標移出指令區即出結果，原始檔一個位元組不動。不用指令的文件仍是純 GFM。',
+    p3e: 'Git', p3: 'Git 長在裡面。狀態、歷史、diff、提交、衝突解決，<br>全部內建。',
+    p3d: 'git2 引擎，機器上沒裝 git 也能 fetch 和 pull。Word 匯入同樣離線直讀，落庫前視覺化校對。',
+    clEyebrow: '更新日誌', clH2: '最近在忙這些。',
+    ch: ['功能', '功能', '匯出', '匯出', '體驗', '體驗', '相容', '修復'],
+    clh: ['網頁剪藏', 'Quarkdown 引擎收官', '整庫簡報', '標準 Markdown 副本', '貼上自動清理', '視覺行號裝訂線', '區塊裸 HTML', 'Ctrl+Tab 切換分頁失靈'],
+    clp: [
+      '瀏覽器擴充套件一鍵把網頁正文存進本地庫，圖片按內容去重進 assets/，文末自動關聯庫內相關筆記。',
+      '五階段做完，Rust 版 stdlib 對 Kotlin 參考實作的函式差集清零，.var、.foreach 直接寫進 md。',
+      '庫內全部 md 合成一份自包含的 reveal.js 放映件，外層按文件分章、內層上下翻頁。',
+      '整庫匯出時 Obsidian 私有語法自動降級，產物任何編輯器都能打開，目錄結構原樣保留。',
+      '從 AI 對話框、飛書、公眾號複製的內容，進編輯器前就摘掉「複製」按鈕和空段落。',
+      'WYSIWYG 模式按折行後的視覺行連續編號，虛擬化渲染，5 萬字單段實測流暢。',
+      'WordPress 一類工具匯出的 md 原樣保住並渲染出排版，不再滿屏字面標籤。',
+      '鍵位校驗只認大寫 Tab，事件反解產出小寫，鏈路在校驗層就斷了——現已歸一。'
+    ]
+  };
+  var en = {
+    title: 'NoteLume — Local Markdown Editor',
+    navFeatures: 'Features', navDownload: 'Download',
+    heroH1: 'The feel of Typora, the structure of Obsidian — <span class="gradient-text">no need to choose.</span>',
+    heroSub: 'A local Markdown editor. Your notes are plain <strong>.md files</strong> in your own folder — instant, offline, zero lock-in.',
+    scrollHint: 'Scroll down',
+    btnGithub: 'Download on GitHub', btnGitee: 'Download on Gitee', btnSource: 'Source code',
+    latest: '· latest',
+    extWin: '.exe installer', packaging: 'In packaging…', ddMore: 'View all releases →',
+    dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
+    featEyebrow: 'Three reasons', featH2: 'Everything you need.<br>Nothing you don\'t.',
+    c1h3: 'Live WYSIWYG',
+    c1p: 'Lossless round-trip between Markdown and rich text. KaTeX math, Mermaid diagrams and merged-cell tables are edited right in the rendered view — no source mode.',
+    c2h3: 'Your folder is the vault',
+    c2p: '<code>[[Wikilinks]]</code> with autocomplete, <code>#tag</code> views, backlinks, vault-wide search and a Canvas knowledge graph — all working on your own folder.',
+    c3h3: 'Fully local, zero lock-in',
+    c3p: 'Plain GFM files — Typora and Obsidian open the very same vault. Offline by default, nothing uploaded, deletions go to the system trash; for AI you plug in your own model API endpoint, and data goes straight to the service you configured.',
+    demoEyebrow: 'In action', demoH2: 'This is what writing looks like here.',
+    cap1: 'Live WYSIWYG', cap2: 'Slash menu', cap3: 'Wikilink autocomplete', cap4: 'Knowledge graph',
+    cap5: 'Command palette', cap6: 'Vault search', cap7: 'Word import review', cap8: 'Git panel',
+    p1e: 'Paste', p1: 'Paste it clean. Content from AI chats, Feishu or WeChat articles<br>is stripped of clutter before it reaches the editor.',
+    p1d: 'Copy buttons on code blocks, line-number gutters and chains of empty paragraphs are cleaned before writing — no second manual pass.',
+    p2e: 'Quarkdown', p2: 'Make notes programmable. .var, .foreach, .if<br>written straight into Markdown, with about 200 built-in functions.',
+    p2d: 'Snapshot preview: results appear as your cursor leaves the block, and the source file stays untouched. Documents without directives remain pure GFM.',
+    p3e: 'Git', p3: 'Git is built in. Status, history, diffs, commits and conflict resolution —<br>all included.',
+    p3d: 'The git2 engine fetches and pulls even without git installed. Word import reads OOXML offline too, with visual review before saving.',
+    clEyebrow: 'Changelog', clH2: 'What we\'ve been shipping.',
+    ch: ['Feature', 'Feature', 'Export', 'Export', 'UX', 'UX', 'Compat', 'Fix'],
+    clh: ['Web clipper', 'Quarkdown engine complete', 'Vault-wide slides', 'Standard Markdown copy', 'Paste auto-clean', 'Visual line numbers', 'Raw HTML blocks', 'Ctrl+Tab switching fixed'],
+    clp: [
+      'One click saves a page\'s main content to your local vault; images are deduplicated into assets/ and related notes are linked at the end.',
+      'Five stages done — the Rust stdlib now covers the Kotlin reference function set; .var and .foreach live right in your Markdown.',
+      'Every md file in the vault compiles into one self-contained reveal.js deck — chapters per document, vertical paging inside.',
+      'Exporting the vault downgrades Obsidian-specific syntax automatically — the result opens in any editor, folder structure intact.',
+      'Content copied from AI chats, Feishu or WeChat articles gets stripped of copy buttons and empty paragraphs before it reaches the editor.',
+      'The WYSIWYG mode numbers wrapped visual lines continuously — virtualized rendering, smooth on a 50,000-word single paragraph.',
+      'Markdown exported from WordPress and friends keeps its raw HTML blocks and renders them properly — no more walls of literal tags.',
+      'Key validation only accepted uppercase "Tab" while event decoding produced lowercase — the chain broke at validation. Now normalized.'
+    ]
+  };
+  var fr = {
+    title: 'NoteLume — Éditeur Markdown local',
+    navFeatures: 'Fonctionnalités', navDownload: 'Télécharger',
+    heroH1: 'Le confort de Typora, la structure d\'Obsidian — <span class="gradient-text">sans avoir à choisir.</span>',
+    heroSub: 'Un éditeur Markdown local. Vos notes sont de simples <strong>fichiers .md</strong> dans votre propre dossier — ouverture instantanée, hors ligne, zéro enfermement.',
+    scrollHint: 'Faites défiler',
+    btnGithub: 'Télécharger sur GitHub', btnGitee: 'Télécharger sur Gitee', btnSource: 'Code source',
+    latest: '· dernière version',
+    extWin: '.exe installateur', packaging: 'En préparation…', ddMore: 'Voir toutes les versions →',
+    dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
+    featEyebrow: 'Trois raisons', featH2: 'Tout ce qu\'il faut.<br>Rien de superflu.',
+    c1h3: 'Édition WYSIWYG',
+    c1p: 'Aller-retour sans perte entre Markdown et texte enrichi. Formules KaTeX, diagrammes Mermaid et tableaux à cellules fusionnées s\'éditent directement en rendu — sans mode source.',
+    c2h3: 'Votre dossier est le coffre',
+    c2p: '<code>[[Liens]]</code> avec autocomplétion, vues <code>#étiquettes</code>, rétroliens, recherche globale et graphe de connaissances Canvas — tout travaille sur votre propre dossier.',
+    c3h3: '100 % local, zéro enfermement',
+    c3p: 'Fichiers GFM purs — Typora et Obsidian ouvrent le même coffre. Hors ligne par défaut, rien n\'est envoyé, la suppression passe par la corbeille système ; pour l\'IA, branchez votre propre endpoint d\'API de modèle.',
+    demoEyebrow: 'En action', demoH2: 'Voilà à quoi ressemble l\'écriture ici.',
+    cap1: 'WYSIWYG en direct', cap2: 'Menu slash', cap3: 'Autocomplétion des liens', cap4: 'Graphe de connaissances',
+    cap5: 'Palette de commandes', cap6: 'Recherche globale', cap7: 'Import Word relu', cap8: 'Panneau Git',
+    p1e: 'Collage', p1: 'Collez propre. Le contenu des chats IA, de Feishu ou d\'articles WeChat<br>est débarrassé de ses déchets avant d\'entrer dans l\'éditeur.',
+    p1d: 'Boutons « copier » des blocs de code, gouttières de numéros de ligne et paragraphes vides sont nettoyés avant écriture — pas de seconde passe manuelle.',
+    p2e: 'Quarkdown', p2: 'Rendez vos notes programmables. .var, .foreach, .if<br>écrits directement dans le Markdown, avec environ 200 fonctions intégrées.',
+    p2d: 'Aperçu par instantané : le résultat apparaît dès que le curseur sort du bloc, et le fichier source reste intact. Sans directives, le document reste du GFM pur.',
+    p3e: 'Git', p3: 'Git est intégré. Statut, historique, diffs, commits et résolution de conflits —<br>tout est inclus.',
+    p3d: 'Le moteur git2 fait fetch et pull même sans git installé. L\'import Word lit l\'OOXML hors ligne, avec relecture visuelle avant enregistrement.',
+    clEyebrow: 'Journal des modifications', clH2: 'Ce qu\'on livre en ce moment.',
+    ch: ['Fonctionnalité', 'Fonctionnalité', 'Export', 'Export', 'UX', 'UX', 'Compat.', 'Correctif'],
+    clh: ['Web Clipper', 'Moteur Quarkdown terminé', 'Diaporama de tout le coffre', 'Copie Markdown standard', 'Nettoyage du collage', 'Numéros de ligne visuels', 'Blocs HTML bruts', 'Correction de Ctrl+Tab'],
+    clp: [
+      'Une extension enregistre en un clic le contenu principal d\'une page dans votre coffre local ; les images sont dédoublonnées dans assets/ et les notes liées sont ajoutées à la fin.',
+      'Cinq étapes réalisées — la stdlib Rust couvre l\'ensemble des fonctions de l\'implémentation Kotlin de référence ; .var et .foreach s\'écrivent directement dans le Markdown.',
+      'Tous les fichiers md du coffre deviennent un diaporama reveal.js autonome — chapitres par document, navigation verticale à l\'intérieur.',
+      'L\'export du coffre dégrade automatiquement la syntaxe Obsidian — le résultat s\'ouvre dans n\'importe quel éditeur, arborescence conservée.',
+      'Le contenu copié depuis des chats IA, Feishu ou des articles WeChat est nettoyé (boutons « copier », paragraphes vides) avant d\'arriver dans l\'éditeur.',
+      'Le mode WYSIWYG numérote les lignes visuelles après retour à la ligne — rendu virtualisé, fluide sur un paragraphe de 50 000 mots.',
+      'Le Markdown exporté depuis WordPress conserve ses blocs HTML bruts et les met en forme — fini les étiquettes littérales partout.',
+      'La validation n\'acceptait que « Tab » en majuscule, le décodage produisait des minuscules — la chaîne cassait à la validation. C\'est normalisé.'
+    ]
+  };
+  var de = {
+    title: 'NoteLume — Lokaler Markdown-Editor',
+    navFeatures: 'Funktionen', navDownload: 'Download',
+    heroH1: 'Das Schreibgefühl von Typora, die Struktur von Obsidian — <span class="gradient-text">beides ohne Kompromiss.</span>',
+    heroSub: 'Ein lokaler Markdown-Editor. Ihre Notizen sind einfache <strong>.md-Dateien</strong> in Ihrem eigenen Ordner — sofort startklar, offline, ohne Format-Lock-in.',
+    scrollHint: 'Nach unten scrollen',
+    btnGithub: 'Auf GitHub laden', btnGitee: 'Auf Gitee laden', btnSource: 'Quellcode',
+    latest: '· neueste Version',
+    extWin: '.exe-Installer', packaging: 'In Arbeit…', ddMore: 'Alle Versionen ansehen →',
+    dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
+    featEyebrow: 'Drei Gründe', featH2: 'Alles, was du brauchst.<br>Nichts Überflüssiges.',
+    c1h3: 'Live-WYSIWYG',
+    c1p: 'Verlustfreier Wechsel zwischen Markdown und Rich Text. KaTeX-Formeln, Mermaid-Diagramme und Tabellen mit verbundenen Zellen werden direkt in der Renderansicht bearbeitet — ohne Quelltextmodus.',
+    c2h3: 'Ordner als Wissensspeicher',
+    c2p: '<code>[[Wikilinks]]</code> mit Vervollständigung, <code>#Tags</code>-Ansichten, Rückverweise, Vault-Suche und Canvas-Wissensgraph — alles arbeitet auf Ihrem eigenen Ordner.',
+    c3h3: 'Vollständig lokal, kein Lock-in',
+    c3p: 'Reine GFM-Dateien — Typora und Obsidian öffnen denselben Vault. Standardmäßig offline, nichts wird hochgeladen, Löschen geht in den Papierkorb; für KI tragen Sie Ihren eigenen Modell-API-Endpunkt ein, die Daten gehen direkt an den von Ihnen konfigurierten Dienst.',
+    demoEyebrow: 'In Aktion', demoH2: 'So sieht Schreiben hier aus.',
+    cap1: 'Live-WYSIWYG', cap2: 'Slash-Menü', cap3: 'Wikilink-Vervollständigung', cap4: 'Wissensgraph',
+    cap5: 'Befehlspalette', cap6: 'Vault-Suche', cap7: 'Word-Importprüfung', cap8: 'Git-Panel',
+    p1e: 'Einfügen', p1: 'Sauber einfügen. Inhalte aus KI-Chats, Feishu oder WeChat-Artikeln<br>werden vor dem Editor von Ballast befreit.',
+    p1d: 'Copy-Buttons, Zeilennummern-Leisten und leere Absatzketten werden vor dem Schreiben entfernt — kein zweiter Handlauf nötig.',
+    p2e: 'Quarkdown', p2: 'Notizen programmierbar machen. .var, .foreach, .if<br>direkt ins Markdown geschrieben, mit rund 200 eingebauten Funktionen.',
+    p2d: 'Snapshot-Vorschau: Ergebnisse erscheinen, sobald der Cursor den Block verlässt, die Quelldatei bleibt unangetastet. Ohne Direktiven bleibt das Dokument reines GFM.',
+    p3e: 'Git', p3: 'Git ist eingebaut. Status, Verlauf, Diffs, Commits und Konfliktlösung —<br>alles an Bord.',
+    p3d: 'Die git2-Engine holt und pullt sogar ohne installiertes git. Der Word-Import liest OOXML offline, mit visueller Prüfung vor dem Speichern.',
+    clEyebrow: 'Änderungsprotokoll', clH2: 'Woran wir gerade arbeiten.',
+    ch: ['Funktion', 'Funktion', 'Export', 'Export', 'UX', 'UX', 'Kompat.', 'Fix'],
+    clh: ['Web-Clipper', 'Quarkdown-Engine fertig', 'Slides aus dem ganzen Vault', 'Standard-Markdown-Kopie', 'Automatische Paste-Bereinigung', 'Visuelle Zeilennummern', 'Rohe HTML-Blöcke', 'Ctrl+Tab-Reparatur'],
+    clp: [
+      'Die Browser-Erweiterung speichert den Hauptinhalt einer Seite mit einem Klick in den lokalen Vault; Bilder landen dedupliziert in assets/, verwandte Notizen werden automatisch verknüpft.',
+      'Fünf Phasen fertig — die Rust-stdlib deckt den Funktionsumfang der Kotlin-Referenz ab; .var und .foreach direkt im Markdown.',
+      'Alle md-Dateien des Vaults werden zu einer in sich geschlossenen reveal.js-Präsentation — Kapitel pro Dokument, innen vertikal geblättert.',
+      'Beim Vault-Export wird Obsidian-Syntax automatisch abgestuft — das Ergebnis öffnet in jedem Editor, die Ordnerstruktur bleibt erhalten.',
+      'Aus KI-Chats, Feishu oder WeChat-Artikeln kopierte Inhalte werden vor dem Einfügen von Copy-Buttons und Leerabsätzen befreit.',
+      'Der WYSIWYG-Modus nummeriert umgebrochene Sichtzeilen fortlaufend — virtualisiertes Rendering, getestet flüssig bei 50.000 Wörtern.',
+      'Aus WordPress & Co. exportiertes Markdown behält rohe HTML-Blöcke und rendert sie sauber — keine Buchstabensalz-Tags mehr.',
+      'Die Tastenprüfung akzeptierte nur großes „Tab“, die Dekodierung lieferte Kleinbuchstaben — jetzt vereinheitlicht.'
+    ]
+  };
+  return { 'zh-CN': zhCN, 'zh-TW': zhTW, 'en': en, 'fr': fr, 'de': de };
+})();
+
+(function () {
+  var langs = ['zh-CN', 'zh-TW', 'en', 'fr', 'de'];
+  function detect() {
+    try {
+      var s = localStorage.getItem('nl-promo-lang');
+      if (s && I18N[s]) return s;
+    } catch (e) {}
+    var n = (navigator.language || 'en').toLowerCase();
+    if (n.indexOf('hant') > -1 || n.indexOf('zh-tw') === 0 || n.indexOf('zh-hk') === 0 || n.indexOf('zh-mo') === 0) return 'zh-TW';
+    if (n.indexOf('zh') === 0) return 'zh-CN';
+    if (n.indexOf('fr') === 0) return 'fr';
+    if (n.indexOf('de') === 0) return 'de';
+    if (n.indexOf('en') === 0) return 'en';
+    return 'zh-CN';
+  }
+  window.setPromoLang = function (lang) {
+    var t = I18N[lang] || I18N['zh-CN'];
+    try { localStorage.setItem('nl-promo-lang', lang); } catch (e) {}
+    document.documentElement.lang = lang;
+    document.title = t.title;
+    function put(sel, text, html) {
+      var el = document.querySelector(sel);
+      if (el) { if (html) el.innerHTML = text; else el.textContent = text; }
+    }
+    put('#nav-features', t.navFeatures);
+    put('#nav-download', t.navDownload);
+    put('.cta-row a.btn-ghost:not(.dd-btn)', t.btnSource);
+    put('#hero h1', t.heroH1, true);
+    put('#hero .sub', t.heroSub, true);
+    put('#hero .scroll-hint', t.scrollHint);
+    var dds = document.querySelectorAll('.dd[data-api]');
+    dds.forEach(function (dd, i) {
+      dd.querySelector('.dd-label').textContent = i === 0 ? t.btnGithub : t.btnGitee;
+      var strongs = dd.querySelectorAll('.dd-item strong');
+      if (strongs[1]) strongs[1].textContent = t.dlMacArm;
+      if (strongs[2]) strongs[2].textContent = t.dlMacIntel;
+      var exts = dd.querySelectorAll('.dd-item .dd-ext');
+      if (exts[0]) exts[0].textContent = t.extWin;
+      if (exts[2]) exts[2].textContent = t.packaging;
+      var more = dd.querySelector('.dd-more');
+      if (more) more.textContent = t.ddMore;
+      var ver = dd.querySelector('.dd-ver');
+      if (ver) ver.textContent = window.__ddTag + ' ' + t.latest;
+    });
+    put('#features .section-head .eyebrow', t.featEyebrow);
+    put('#features .section-head h2', t.featH2, true);
+    var cards = document.querySelectorAll('#features .card');
+    var cKeys = [[t.c1h3, t.c1p], [t.c2h3, t.c2p], [t.c3h3, t.c3p]];
+    cards.forEach(function (card, i) {
+      if (!cKeys[i]) return;
+      card.querySelector('h3').textContent = cKeys[i][0];
+      card.querySelector('p').innerHTML = cKeys[i][1];
+    });
+    put('#demo .section-head .eyebrow', t.demoEyebrow);
+    put('#demo .section-head h2', t.demoH2);
+    var caps = document.querySelectorAll('.demo-item figcaption strong');
+    for (var c = 1; c <= 8; c++) if (caps[c - 1]) caps[c - 1].textContent = t['cap' + c];
+    var peb = document.querySelectorAll('.panel-inner .eyebrow');
+    var pst = document.querySelectorAll('.panel-inner .st');
+    var pnote = document.querySelectorAll('.panel-inner .dim-note');
+    [1, 2, 3].forEach(function (n, i) {
+      if (peb[i]) peb[i].textContent = t['p' + n + 'e'];
+      if (pst[i]) pst[i].innerHTML = t['p' + n];
+      if (pnote[i]) pnote[i].textContent = t['p' + n + 'd'];
+    });
+    put('#changelog .section-head .eyebrow', t.clEyebrow);
+    put('#changelog .section-head h2', t.clH2);
+    var chips = document.querySelectorAll('.cl-chip');
+    var clCards = document.querySelectorAll('.cl-card');
+    clCards.forEach(function (card, i) {
+      if (chips[i]) chips[i].textContent = t.ch[i];
+      var h = card.querySelector('h3'), p = card.querySelector('p');
+      if (h) h.textContent = t.clh[i];
+      if (p) p.textContent = t.clp[i];
+    });
+    // 语言菜单勾选态
+    document.querySelectorAll('.lang-item').forEach(function (item) {
+      item.classList.toggle('active', item.getAttribute('data-lang') === lang);
+    });
+    var langLabel = document.getElementById('langLabel');
+    if (langLabel) {
+      var active = document.querySelector('.lang-item[data-lang="' + lang + '"] span');
+      langLabel.textContent = active ? active.textContent : lang;
+    }
+  };
+  var initial = detect();
+  window.setPromoLang(initial);
+  document.querySelectorAll('.lang-item').forEach(function (item) {
+    item.addEventListener('click', function () {
+      window.setPromoLang(item.getAttribute('data-lang'));
+      var langDd = document.getElementById('langDd');
+      if (langDd) langDd.classList.remove('open');
+    });
+  });
+})();
+</script>
 <script>
 /* 依赖加载：每个库同时向多个 CDN 发起请求（jsdelivr / unpkg / cdnjs），先到先用，全部失败也照常降级启动 */
 (function () {
@@ -930,8 +1276,10 @@ function boot() {
           .then(function (r) { return r.json(); })
           .then(function (rel) {
             if (!rel || !rel.tag_name) return;
+            window.__ddTag = rel.tag_name;
             var ver = dd.querySelector('.dd-ver');
-            if (ver) ver.textContent = rel.tag_name + ' · 最新版';
+            var langT = window.I18N ? I18N[document.documentElement.lang] : null;
+            if (ver) ver.textContent = rel.tag_name + ' ' + (langT ? langT.latest : '· 最新版');
             (rel.assets || []).forEach(function (a) {
               Object.keys(dlMap).forEach(function (key) {
                 if (dlMap[key].test(a.name)) {
