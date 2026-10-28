@@ -1,7 +1,7 @@
 {
   "name": "notelume",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "NoteLume 根脚本：代理到 src/ 内本地安装的 @tauri-apps/cli（src-tauri 位于仓库根，tauri 命令需在根目录运行）",
   "scripts": {
