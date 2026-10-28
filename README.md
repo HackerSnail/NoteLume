@@ -124,7 +124,8 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 | 平台      | 文件                              | 安装方式            |
 | ------- | ------------------------------- | --------------- |
 | Windows | `NoteLume_x.y.z_x64-setup.exe`  | 双击安装            |
-| macOS   | `NoteLume_x.y.z_aarch64.dmg`    | 拖入 Applications |
+| macOS   | `NoteLume_x.y.z_aarch64.dmg`（Apple Silicon） | 拖入 Applications |
+| macOS   | `NoteLume_x.y.z_x64.dmg`（Intel） | 拖入 Applications |
 | Linux   | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x` 后运行  |
 
 macOS 包只做了 ad-hoc 签名，没走开发者公证。首次打开被系统拦下时，右键应用选「打开」；或先执行 `xattr -dr com.apple.quarantine /Applications/NoteLume.app` 再启动。同一个卷宗里附了 `打开说明.txt`，三种办法都写在里面（源文件 `docs/macOS打开说明.txt`）。
@@ -310,7 +311,8 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 | Platform | File                            | How                  |
 | -------- | ------------------------------- | -------------------- |
 | Windows  | `NoteLume_x.y.z_x64-setup.exe`  | Run the installer    |
-| macOS    | `NoteLume_x.y.z_aarch64.dmg`    | Drag to Applications |
+| macOS    | `NoteLume_x.y.z_aarch64.dmg` (Apple Silicon) | Drag to Applications |
+| macOS    | `NoteLume_x.y.z_x64.dmg` (Intel) | Drag to Applications |
 | Linux    | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x`, then run |
 
 The macOS build carries an ad-hoc signature only (no developer notarization). If Gatekeeper blocks the first launch, right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/NoteLume.app` first. The same steps ship inside the DMG as `打开说明.txt` (source: `docs/macOS打开说明.txt`).

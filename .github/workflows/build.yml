@@ -102,7 +102,7 @@ jobs:
       - name: cargo test
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  # ── 打包：三平台（Linux AppImage / Windows MSI+NSIS / macOS DMG）──
+  # ── 打包：四个作业（Linux AppImage / Windows NSIS / macOS ARM64 DMG / macOS Intel DMG）──
   # 仅 master push / 手动触发→传 artifact；v* tag→额外发草稿 Release
   package-desktop:
     name: Package (${{ matrix.platform }})
@@ -124,10 +124,18 @@ jobs:
             artifact_name: NoteLume-Windows
             artifact_path: |
               src-tauri/target/release/bundle/nsis/*.exe
-          - platform: macos
-            runs_on: macos-latest   # ARM64 runner，产出 Apple Silicon 包；无开发者证书，走 ad-hoc 签名（Wrap mac dmg 那一步）
-            bundles: app dmg        # 必须连 app 一起要：只要 dmg 时 Tauri 组完卷会把 bundle/macos/NoteLume.app 清掉，收尾脚本就没法按它重卷 dmg
-            artifact_name: NoteLume-macOS
+          # mac 两个型号各起一台对应架构的 runner 原生打：Apple Silicon 出 aarch64 卷，Intel 出 x64 卷。
+          # 不做通用二进制（universal）：那要把 webkit2gtk 那类依赖在两种架构都齐，本机也没有 x86_64 目标库。
+          # 无开发者证书，两种架构都走 ad-hoc 签名（Wrap mac dmg 那一步）。
+          - platform: macos-arm64
+            runs_on: macos-latest      # Apple Silicon runner（=macos-26 arm64）
+            bundles: app dmg           # 必须连 app 一起要：只要 dmg 时 Tauri 组完卷会把 bundle/macos/NoteLume.app 清掉，收尾脚本就没法按它重卷 dmg
+            artifact_name: NoteLume-macOS-ARM64
+            artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
+          - platform: macos-intel
+            runs_on: macos-26-intel    # Intel x64 runner（与 macos-26-large 同一镜像，macOS 的 x64 图只剩这一族）
+            bundles: app dmg
+            artifact_name: NoteLume-macOS-Intel
             artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.runs_on }}
     permissions:
@@ -163,9 +171,10 @@ jobs:
 
       # mac 收尾，与本地 `npm run build` 的 postbuild 同一脚本：先补 ad-hoc 签名（Tauri 出的是
       # linker-signed，直接分发报「已损坏」），再按 stage 重卷 dmg、把 docs/macOS打开说明.txt 装进卷宗。
-      # 前提是本平台 bundles 里带 app，卷宗里那份 .app 才还在。
+      # 卷宗名里的架构段由脚本读 app 二进制的 lipo 结果给，两格 mac 分别落成 _aarch64 / _x64。
+      # 前提是本平台 bundles 里带 app，bundle/macos 那份 .app 才还在。
       - name: Wrap mac dmg
-        if: matrix.platform == 'macos'
+        if: startsWith(matrix.platform, 'macos')
         run: node scripts/wrap-mac-dmg.mjs
 
       - name: Upload artifacts
@@ -175,7 +184,7 @@ jobs:
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
 
-  # ── 发版：三平台打包全部结束后，汇总 artifact 发一个草稿 Release（仅 v* tag）──
+  # ── 发版：各平台打包全部结束后，汇总 artifact 发一个草稿 Release（仅 v* tag）──
   # 单独收口是为了避免 matrix 各作业并发改同一 Release 产生命令/草稿竞态。
   publish:
     name: Publish draft Release
