@@ -500,6 +500,7 @@
       </p>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">下载安装包</a>
+        <a class="btn btn-ghost" href="https://gitee.com/hackerSnail/note-lume/releases" target="_blank" rel="noopener">Gitee 镜像下载</a>
         <a class="btn btn-ghost" href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub 源码</a>
       </div>
     </div>
@@ -979,7 +980,7 @@ function boot() {
     // 滚动：整体旋转 + 纸页沿径向散开 + 光核放大；场景整体位置随滚动从下方升回中心
     world.rotation.y = (reducedMotion ? 0.4 : time * 0.05) + scroll.v * Math.PI * 1.6;
     world.rotation.x = -0.05 + scroll.v * 0.22;
-    world.position.y = -3.8 + scroll.v * 3.8;
+    world.position.y = -4.6 + scroll.v * 4.6;
     var spread = 1 + scroll.v * 1.1; // 散开幅度收小，纸页留在画面内
     for (var k = 0; k < pages.length; k++) {
       var pg = pages[k], ud = pg.userData;
