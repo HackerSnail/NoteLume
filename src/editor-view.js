@@ -24,7 +24,7 @@ import { qdPlugin } from './qd/editor.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
 import { cleanPastedHtml } from './paste-clean.js'
-import { hydrateBlockImages } from './html-block-images.js'
+import { hydrateBlockImages, retryWhenVisible, PENDING_ATTR } from './html-block-images.js'
 import { attachWikiHover } from './wiki-hover.js'
 import { createSuggestPlugin } from './suggest-plugin.js'
 import { tablePlugins, tableKeymap, attachTableContextMenu } from './table-editing.js'
@@ -906,11 +906,15 @@ function htmlBlockView(node, view, getPos, getVault) {
     enterEdit()
   })
   paint(node)
+  const imgWatcher = retryWhenVisible(dom, getVault, imgDataCache, hydrateBlockImages)
   return {
     dom,
     // 块内事件（含编辑时 textarea 的键盘输入）一律交给我们自己，PM 不接管
     stopEvent: () => true,
     ignoreMutation: () => true,
+    destroy() {
+      imgWatcher.disconnect()
+    },
     update(n) {
       if (n.type !== cur.type) return false
       const changed = n.attrs.source !== cur.attrs.source
@@ -938,7 +942,9 @@ function makeImageNodeView(getVault) {
     grip.className = 'nl-img-grip'
     host.appendChild(img)
     host.appendChild(grip)
+    let last = node
     const apply = (n) => {
+      last = n
       if (n.attrs.alt) img.setAttribute('alt', n.attrs.alt)
       else img.removeAttribute('alt')
       if (n.attrs.title) img.setAttribute('title', n.attrs.title)
@@ -955,6 +961,8 @@ function makeImageNodeView(getVault) {
       view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, width: w }))
     }
     apply(node)
+    // 冷启动读图落空（库还没就绪 / 读盘临时失败）时，滚进视口补一趟，不留永久空白
+    const imgWatcher = retryWhenVisible(host, getVault, imgDataCache, () => apply(last))
     grip.addEventListener('pointerdown', (e) => {
       e.preventDefault()
       grip.classList.add('dragging')
@@ -998,6 +1006,9 @@ function makeImageNodeView(getVault) {
         apply(next)
         return true
       },
+      destroy() {
+        imgWatcher.disconnect()
+      },
       selectNode() {
         host.classList.add('ProseMirror-selectednode')
       },
@@ -1019,6 +1030,7 @@ function loadImgSrc(img, host, src, getVault) {
 
   if (!src) {
     img.removeAttribute('src')
+    img.removeAttribute(PENDING_ATTR)
     img.__key = null
     return
   }
@@ -1034,6 +1046,7 @@ function loadImgSrc(img, host, src, getVault) {
   if (!ctx || !ctx.vaultRoot || !ctx.mdRel) {
     img.src = src // 未打开库：无从解析，原样交给浏览器
     img.__key = null
+    img.setAttribute(PENDING_ATTR, src) // 库就绪后滚进视口要能补上
     return
   }
   const key = ctx.vaultRoot + '|' + ctx.mdRel + '|' + src
@@ -1041,16 +1054,21 @@ function loadImgSrc(img, host, src, getVault) {
   const cached = imgDataCache.get(key)
   if (cached) {
     img.src = cached
+    img.removeAttribute(PENDING_ATTR)
     return
   }
   readImageDataUri(ctx.vaultRoot, ctx.mdRel, src)
     .then((uri) => {
       imgDataCache.set(key, uri)
-      if (img.__key === key) img.src = uri
+      if (img.__key === key) {
+        img.src = uri
+        img.removeAttribute(PENDING_ATTR)
+      }
     })
     .catch(() => {
       if (img.__key !== key) return
       img.removeAttribute('src')
+      img.setAttribute(PENDING_ATTR, src) // 保住原路径，滚进视口再补一趟
       img.classList.add('nl-img-missing')
       host.classList.add('is-missing')
       const hint = document.createElement('span')

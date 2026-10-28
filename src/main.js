@@ -3289,12 +3289,9 @@ async function exportHTML() {
 }
 
 // —— 打印（Ctrl+P）：画布直出老打印；普通文档先弹排版选项窗，Paged.js 预分页后再走系统打印，
-// 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）。
-// mac 不做预分页：Paged.js 一页一帧地排，而 WKWebView 在窗口被遮挡 / 失焦时会几秒才补一帧，
-// 打包版实测同一篇 19 页前台 12.7 秒排完、被打印面板压住的那趟 65 秒只出 12 页然后超时退回直打。
-// 系统打印面板自己会分页，mac 直接走它。——
+// 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）——
 async function printViaDialog() {
-  if (state.mode === 'canvas' || IS_MAC) {
+  if (state.mode === 'canvas') {
     window.print()
     return
   }
@@ -3444,13 +3441,13 @@ async function qdInstallPackageDialog() {
   const ref = await promptDialog({
     title: t('dlg.qdPkgTitle'),
     placeholder: t('dlg.qdPkgPh'),
-    defaultValue: '@atoms/',
+    defaultValue: '@atoms/cowsay',
   })
   if (!ref) return
   try {
     setStatus(t('status.qdPkgInstalling', { ref }))
-    const path = await qdPackageInstall(ref)
-    setStatus(t('status.qdPkgInstalled', { path }))
+    const installed = await qdPackageInstall(ref)
+    setStatus(t('status.qdPkgInstalled', { ref: installed }))
   } catch (e) {
     await messageDialog(t('msg.qdPkgFailed', { err: (e && e.message) || e }))
   }
@@ -3848,8 +3845,8 @@ function commandBindingFor(id) {
 
 // —— macOS 原生菜单（系统菜单栏）——
 // 菜单不带第二份文案或快捷键：每次从命令注册表 + 覆盖表现算 spec，一次 IPC 交 Rust 整份重建。
-// 装配失败（纯 web 构建 / 缺能力授权 / 原生侧抛错）时 data-mac 不落地并回显状态栏，
-// 窗口内工具条与既有分发器原样保留——入口不能因为菜单挂不上而消失。
+// 工具条在导入期（titlebar.js）就按 mac 标记藏掉；装配失败（纯 web 构建 / 缺能力授权 /
+// 原生侧抛错）时把这个标记摘回来并回显状态栏——入口不能因为菜单挂不上而消失。
 let macMenuOn = false
 let macChromeTimer = null
 let macMenuSig = ''
@@ -4015,11 +4012,12 @@ async function setupMacMenu() {
     await listen('nl:menu-select', (e) => onMenuSelect(e.payload))
     await pushMacMenu()
   } catch (e) {
+    // 菜单没挂上，窗口内工具条要回来（titlebar.js 在导入期就把它藏了）
+    document.documentElement.toggleAttribute('data-mac', false)
     setStatus(t('msg.macMenuUnavailable', { err: (e && e.message) || e }))
     return
   }
   macMenuOn = true
-  document.documentElement.toggleAttribute('data-mac', true)
   // 词数统计上移到标题条右侧，与三个栏切换图标同组；底部状态条只留状态与主题
   const corner = document.querySelector('.side-corner')
   if (corner && els.docstats) corner.insertBefore(els.docstats, corner.firstChild)
@@ -4721,6 +4719,12 @@ async function boot() {
     if (legacy) ap = normalizeAppearance({ ...ap, theme: legacy })
   }
   initTitlebar()
+  // mac 原生菜单在第一帧之后立刻挂上：命令注册（菜单文案与快捷键的唯一来源）与菜单装配
+  // 提到分栏 / 开库 / 文档恢复之前，否则刚打开那几秒用的还是系统默认菜单。
+  registerAppCommands()
+  registerEditorCommands()
+  setupMacMenu()
+  setupTrayMenu()
   // —— 分栏（P5 §6.1，完整模式）：编辑器区挂 SplitPane 树 ——
   // 首窗格复用静态 HTML 的三个挂载点（#editor / #source-mount / #canvas-mount），
   // 整体搬进 .nl-pane 内容壳；树结构与各窗格标签列从 settings.json 恢复
@@ -5003,8 +5007,6 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
   installGlobalContextMenu()
   bindTreeBgMenu() // 开机即绑：一个文档都没开时右键树区也不漏原生菜单
   setupCloseGuard()
-  setupMacMenu()
-  setupTrayMenu()
 
   // 文件树右键菜单：点击菜单外任意处即关闭
   document.addEventListener('pointerdown', (e) => {
