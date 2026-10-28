@@ -19,7 +19,7 @@
 * schema 新增原子块节点 `html_block`（存原文字符串）。
 * 解析走「占位—还原」两阶段，与既有合并表同一族机制。
 * 序列化原样写回，未编辑的块字节级不变。
-* 渲染层净化 + 主题排版继承；单击原地切源码编辑。
+* 渲染层净化 + 主题排版继承；单击原地切源码编辑（块内图片除外：单击放大查看）。
 * 大纲穿透（HTML 块里的 `h1`–`h6` 计入大纲）。
 
 非目标：
@@ -79,6 +79,8 @@
 
 单击块 → 原地换成 textarea（预填 `source`），失焦或 Esc 提交 → 更新 `attrs.source` → 重新净化渲染；改成全空白则删掉该块（不留下空块占位）。不加按钮、不加弹窗（直接按住对象操作）。提交产生事务，脏标记与既有自动保存一致。块内链接不跟随（免得 webview 整页跳走）。
 
+落点在 `<img>` 上是例外：这一击交给全屏查看器放大（`html-block-images.js` 的 `openIslandImage`，data URI / 外链直接用现成 `src`，还没装成的相对路径按当前文档回库读一趟），不把块切成源码；Quarkdown 快照同一口径。
+
 ## 9. 周边一致性
 
 * 大纲：`emitMeta`（`src/editor-view.js`）在顶层遍历时用 `htmlHeadings(source)`（`src/html-sanitize.js`）抽 `h1`–`h6` 的层级与文本计入；跳转落到块位置——原子块没有可放光标的块内位置，故 `jumpToPos` 走整块 `NodeSelection`，靠 nodeView 的 `selectNode` 描边并滚动。
@@ -105,7 +107,7 @@
 * `src/tests/site-export.test.mjs`：块渲染成元素、脚本与事件属性进不了发布物、块内 `<img>` 镜像到 `assets/`、行内字面 HTML 仍是转义文本、临时开 `html` 不抢 anchor / highlight、渲染完开关复位。
 * `src/tests/docx-export.test.mjs`：`html_block` 降级段落的文本与剥净标签。
 * 回归：`src/tests/roundtrip.test.mjs` 全量、既有合并表两阶段用例不破、`src/tests/` 全部文件按退出码跑一遍。
-* 浏览器侧：无头 Chromium 装载构建产物 + 合成夹具，核对渲染样式、单击切源码、Esc / 失焦提交、空提交删块、大纲计入与整块选中跳转、未编辑块与原文件逐字节一致。
+* 浏览器侧：无头 Chromium 装载构建产物 + 合成夹具，核对渲染样式、单击切源码、点块内图片出全屏查看器、Esc / 失焦提交、空提交删块、大纲计入与整块选中跳转、未编辑块与原文件逐字节一致。
 
 ## 12. 落地分相
 

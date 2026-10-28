@@ -4,7 +4,8 @@
 // 查看某张图不会打断底下正打开的笔记，Esc 关掉即回到原状。
 //
 // 读图复用 read_image_data_uri（Rust 读字节转 data: URL，绕开 asset 协议/scope）。
-// 传 mdRel='' 让 src 直接相对库根解析——文件树给的正是库内相对路径。
+// ctx 不带 mdRel 时 src 按库根解析（文件树给的正是库内相对路径）；带上则按该文档所在
+// 目录解析——正文里相对当前文档的配图走这条路，与 html-block-images 同一口径。
 
 import { readImageDataUri } from './tauri-bridge.js'
 import { setIcon, iconHTML } from './icons.js'
@@ -137,23 +138,17 @@ function setHint(text, icon) {
   }
 }
 
-/**
- * 打开一张库内图片到查看器。
- * @param {string} rel 库内相对路径（文件树给出，`/` 分隔）
- * @param {{vaultRoot:string}} ctx 当前知识库根
- */
-export function openImage(rel, ctx) {
-  const vaultRoot = ctx && ctx.vaultRoot
-  if (!vaultRoot) return
+/** 铺好浮层、起一个竞态令牌；title 只作标题栏文字（库内路径或外链原样） */
+function begin(title) {
   ensureOverlay()
   const my = ++seq
   const img = overlay.querySelector('.nl-imgv-img')
-  const title = overlay.querySelector('.nl-imgv-title')
-  title.textContent = rel
+  const titleEl = overlay.querySelector('.nl-imgv-title')
+  titleEl.textContent = title || ''
   img.removeAttribute('src')
   img.style.width = ''
   img.style.height = ''
-  cur = { rel, vaultRoot, zoom: 1, fitW: 0, natW: 0, natH: 0 }
+  cur = { rel: title, zoom: 1, fitW: 0, natW: 0, natH: 0 }
   overlay.classList.remove('hidden')
   setHint(t('common.loading'))
 
@@ -170,8 +165,19 @@ export function openImage(rel, ctx) {
     if (my !== seq) return
     setHint(t('imgv.cannotShow'), 'warning')
   }
+  return { my, img }
+}
 
-  readImageDataUri(vaultRoot, '', rel)
+/**
+ * 打开一张库内图片到查看器。
+ * @param {string} rel 库内图片路径（`/` 分隔）
+ * @param {{vaultRoot:string, mdRel?:string}} ctx 当前知识库根；mdRel 给出时 rel 按该文档目录解析
+ */
+export function openImage(rel, ctx) {
+  const vaultRoot = ctx && ctx.vaultRoot
+  if (!vaultRoot) return
+  const { my, img } = begin(rel)
+  readImageDataUri(vaultRoot, (ctx && ctx.mdRel) || '', rel)
     .then((uri) => {
       if (my !== seq) return
       img.src = uri
@@ -180,6 +186,12 @@ export function openImage(rel, ctx) {
       if (my !== seq) return
       setHint(t('imgv.readFailed', { err: (e && e.message) || e }), 'warning')
     })
+}
+
+/** 打开一张已经能直接加载的图（data: URI / 外链），不再回库读字节 */
+export function openImageSource(src, title) {
+  if (!src) return
+  begin(title).img.src = src
 }
 
 /** 关闭查看器（若未打开则无操作） */
