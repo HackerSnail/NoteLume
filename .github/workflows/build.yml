@@ -125,8 +125,8 @@ jobs:
             artifact_path: |
               src-tauri/target/release/bundle/nsis/*.exe
           - platform: macos
-            runs_on: macos-latest   # ARM64 runner，产出 Apple Silicon 包；未签名
-            bundles: dmg
+            runs_on: macos-latest   # ARM64 runner，产出 Apple Silicon 包；无开发者证书，走 ad-hoc 签名（Wrap mac dmg 那一步）
+            bundles: app dmg        # 必须连 app 一起要：只要 dmg 时 Tauri 组完卷会把 bundle/macos/NoteLume.app 清掉，收尾脚本就没法按它重卷 dmg
             artifact_name: NoteLume-macOS
             artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.runs_on }}
@@ -160,6 +160,13 @@ jobs:
 
       - name: Build bundles
         run: node src/node_modules/@tauri-apps/cli/tauri.js build --bundles ${{ matrix.bundles }}
+
+      # mac 收尾，与本地 `npm run build` 的 postbuild 同一脚本：先补 ad-hoc 签名（Tauri 出的是
+      # linker-signed，直接分发报「已损坏」），再按 stage 重卷 dmg、把 docs/macOS打开说明.txt 装进卷宗。
+      # 前提是本平台 bundles 里带 app，卷宗里那份 .app 才还在。
+      - name: Wrap mac dmg
+        if: matrix.platform == 'macos'
+        run: node scripts/wrap-mac-dmg.mjs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
