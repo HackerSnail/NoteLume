@@ -204,13 +204,13 @@
 
   /* ---------- 产品介绍 · 特性卡片 ---------- */
   #features {
-    padding: 200px clamp(20px, 5vw, 64px) 220px;
+    padding: 140px clamp(20px, 5vw, 64px) 150px;
     max-width: 1240px;
     margin: 0 auto;
   }
   #features .section-head {
     text-align: center;
-    margin-bottom: 88px;
+    margin-bottom: 72px;
   }
   #features .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -268,13 +268,13 @@
 
   /* ---------- 功能演示 · GIF 墙 ---------- */
   #demo {
-    padding: 60px clamp(20px, 5vw, 64px) 200px;
+    padding: 40px clamp(20px, 5vw, 64px) 150px;
     max-width: 1240px;
     margin: 0 auto;
   }
   #demo .section-head {
     text-align: center;
-    margin-bottom: 80px;
+    margin-bottom: 64px;
   }
   #demo .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -283,7 +283,7 @@
     font-weight: 700;
   }
   /* 苹果式翻页：外层撑出滚动距离，内层 sticky 满屏，8 张叠在同格由滚动驱动交叉翻页 */
-  .demo-stage { position: relative; height: 520vh; /* (8-1)×60vh 翻页 + 100vh 展示 */ }
+  .demo-stage { position: relative; height: 450vh; /* (8-1)×50vh 翻页 + 100vh 展示 */ }
   .demo-pin {
     position: sticky;
     top: 0;
@@ -407,7 +407,7 @@
   .cl-sticky {
     position: sticky;
     bottom: 40px;
-    margin-top: 42vh; /* 钉住的滚动时长来自这段间距 */
+    margin-top: 26vh; /* 钉住的滚动时长来自这段间距 */
   }
   #changelog .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -498,7 +498,7 @@
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
     #demo { padding-bottom: 110px; }
-    .demo-stage { height: 520vh; }
+    .demo-stage { height: 450vh; }
     .demo-pin { padding-top: 60px; padding-bottom: 60px; }
     .cl-card { width: 300px; }
     .nav-links { gap: 18px; }
