@@ -14,7 +14,11 @@ function detectPlatform() {
 }
 
 // 模块加载即打标记，CSS 据此决定是否显示自定义标题；放在导入期，先于 boot() 执行
-document.documentElement.dataset.tauriPlatform = detectPlatform()
+const platform = detectPlatform()
+document.documentElement.dataset.tauriPlatform = platform
+// mac 的窗口内工具条从第一帧就让位给系统菜单栏，不等 set_mac_menu 返回（那一趟要等
+// boot 装配）。菜单真挂不上时 setupMacMenu 摘掉这个标记，工具条原样回来，入口不会消失。
+if (inTauri && platform === 'macos') document.documentElement.toggleAttribute('data-mac', true)
 
 export function initTitlebar() {
   if (!inTauri) return

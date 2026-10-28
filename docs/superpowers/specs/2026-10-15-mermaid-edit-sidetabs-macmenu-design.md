@@ -144,7 +144,7 @@ buildDecorations(doc, editing):
 - `enabled` 三判定：`MENU_NEEDS_DOC`（保存/导出/打印需已打开文档）、`MENU_NEEDS_VAULT`（导出整站/新画布/新模板/图谱需已开库）、`editor.*` 需「已打开 md 文档」（画布与无文档态置灰）。
 
 **接线点**（`main.js`）：
-- `boot()` 末尾 `bindShortcuts(); setupCloseGuard(); setupMacMenu()`。`setupMacMenu()` 首行 `if (!IS_MAC || !window.__TAURI_INTERNALS__) return`（浏览器与 Windows 整段静默跳过），**装配成功后**才 `document.documentElement.toggleAttribute('data-mac', true)`——装配失败即保持窗口内工具条原形态。
+- 装配时机：`setupMacMenu()` 在 `boot()` 里紧跟 `initTitlebar()`，排在分栏装配、开库与文档恢复之前（命令注册表是菜单文案与键位的唯一来源，注册调用一并提前；菜单不必等库开完）。窗口第一帧的形态由 `titlebar.js` 在模块导入期打的 mac 标记决定，不等 `set_mac_menu` 往返；`setupMacMenu()` 首行 `if (!IS_MAC || !window.__TAURI_INTERNALS__) return`（浏览器与 Windows 整段静默跳过），装配失败时把该标记摘回 `false`，窗口内工具条原样回来。Rust 侧在 setup 先装一份只含应用子菜单的原生骨架（全用 macOS 预定义项，文案由系统给），前端第一次 push 整棵换掉——默认那套英文 File / Edit / View 不会在启动瞬间露出。
 - 重建出口收敛为一处：`setStatus()`（所有状态变化的公共出口）、`applyTheme()`、`saveKeymapOverrides()`、`runViaShortcut()`、主题切换 → `scheduleMacChrome()`（150ms 去抖）→ `syncMacChrome()` 内比对 spec 的 JSON 签名，未变即不重建（`setStatus` 触发极频繁，逐次重绘原生菜单不可接受）。
 - 标题栏：`#filename` 由多处直接赋值，故用 `MutationObserver` 观察该节点统一驱动 `syncWindowTitle()`（`getCurrentWindow().setTitle(name)`，仅 mac + Tauri，名字未变即跳过），而非逐个改赋值点。
 - 菜单 `action` 一律 `onMenuSelect(id)` → `runViaShortcut(id)` → `commandRegistry.run(id, commandCtx())`——与键盘、命令面板**同一条执行路径**，不新增第二套；`recent:<i>` / `tpl:<path>` / `theme:<name>` / `nl.noop` 四类合成 id 在 `onMenuSelect` 内分流。
@@ -271,7 +271,7 @@ win   ：mac 专属的两项（菜单栏、工具条沉底）不启用，工具�
 - **菜单 accelerator 与 PM 内建键位抢键**：若实测发现某键（如 `⌘Z`）经菜单路径行为漂移，回退做法是该项**不挂 accelerator**（仅保留可点击），键位仍由 PM 处理——单点回退，不影响其他项。
 - **Mermaid 退出编辑后光标落在隐藏源码内**：仅发生在「该块是文档首块且 `Esc` 无处可搬」，最坏表现是看不见光标直到点别处，不损数据。
 - **大纲收起态按行号存**：在收起的节**之上**新插一个标题会让折叠落到相邻节（最坏表现是多藏/少藏一节，点一下即复原）；换文档已按 `state.currentFile` 清空，不跨文档残留。不选按 `pos` 存：大纲层拿不到 PM 的位置映射，编辑正文即整体失效。
-- **`set_mac_menu` 装配失败**：命令 `Err` 回前端 → `setStatus` 回显中文原因、`data-mac` 不挂 → 窗口内工具条与快捷键分发器原样可用（不会因菜单挂不上而丢入口）。
+- **`set_mac_menu` 装配失败**：命令 `Err` 回前端 → `setStatus` 回显中文原因、导入期挂上的 mac 标记摘回 `false` → 窗口内工具条与快捷键分发器原样可用（不会因菜单挂不上而丢入口）。
 - **图片尺寸往返的三个失效形态**（都已在实现里堵住，改动 `image_size` 规则时须一起保）：① 目的地转义未还原（默认规则的 `parseLinkDestination` 已解 `\(`，自定义规则漏一步就会每次保存多剥一层，实测漂移成 `%5C%5C`）；② 尖括号目的地按空格切（实测被改写成 `%3Cb "c.png>`，属**损数据**）；③ `parserTokens` 未覆盖 `image`（默认实现对无 children 的 token 抛错，图片直接进不了模型）。回退做法：不认外部尺寸语法，只走 `parseDOM` 的 `style.width` —— 代价是 Typora / Obsidian 打开时尺寸丢。
 - **栏收起时残留未达下限的宽**：跨过阈值即 `return`（不写变量），松手再 `applyColWidths()` 回到记住的宽；若留着 `74px` 这类值，下次经 `⌘⇧S` 展开会以低于 `COL_W_MIN` 的宽出现。
 - **拖动过程不落事务**：图片把手与分隔条都只在 `pointerup` 记账，undo 栈一次缩放一条；改成逐帧 dispatch 会让一次 `⌘Z` 只退一像素。

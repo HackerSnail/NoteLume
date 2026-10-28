@@ -342,9 +342,9 @@ fn include_package(ev: &mut Evaluator, reference: &str, sandbox: &str) -> Result
     eval_source(ev, &text, Some(pkg), sandbox, ".include")
 }
 
-/// atom.toml 最小解析：只取 [atom] 表里的 entrypoint（带引号或不带引号都吃）。
-/// Kotlin 的 PackageManifest 是完整 TOML，本引擎只需要这一个字段。
-pub fn parse_atom_entrypoint(text: &str) -> Result<String, String> {
+/// atom.toml 的 [atom] 表里读一个字段（带引号或不带引号都吃）。
+/// Kotlin 的 PackageManifest 是完整 TOML，本引擎只需要 entrypoint / version 两个字段。
+fn atom_field(text: &str, key: &str) -> Option<String> {
     let mut in_atom = false;
     for line in text.lines() {
         let t = line.trim();
@@ -356,16 +356,30 @@ pub fn parse_atom_entrypoint(text: &str) -> Result<String, String> {
             continue;
         }
         if let Some((k, v)) = t.split_once('=') {
-            if k.trim() == "entrypoint" {
-                let v = v.trim().trim_matches('"').trim_matches('\'').trim();
-                if v.is_empty() {
-                    return Err("atom.toml 的 entrypoint 为空".to_string());
-                }
-                return Ok(v.to_string());
+            if k.trim() == key {
+                return Some(v.trim().trim_matches('"').trim_matches('\'').trim().to_string());
             }
         }
     }
-    Err("atom.toml 缺 entrypoint 字段".to_string())
+    None
+}
+
+pub fn parse_atom_entrypoint(text: &str) -> Result<String, String> {
+    match atom_field(text, "entrypoint") {
+        None => Err("atom.toml 缺 entrypoint 字段".to_string()),
+        Some(v) if v.is_empty() => Err("atom.toml 的 entrypoint 为空".to_string()),
+        Some(v) => Ok(v),
+    }
+}
+
+/// 包清单声明的真实版本号：装包时省略版本，落到本地缓存要用它建目录，
+/// 这样 include {@atoms/name:version} 才认得这份缓存。
+pub fn parse_atom_version(text: &str) -> Result<String, String> {
+    match atom_field(text, "version") {
+        None => Err("atom.toml 缺 version 字段".to_string()),
+        Some(v) if v.is_empty() => Err("atom.toml 的 version 为空".to_string()),
+        Some(v) => Ok(v),
+    }
 }
 
 /// 扫 AST 收集 .function 定义名（libfunctions 对 .qd 库的函数清单）
@@ -604,6 +618,14 @@ mod tests {
         );
         assert_eq!(super::parse_atom_entrypoint("[other]\nentrypoint = \"x\"\n[atom]\nentrypoint = main.qd").unwrap(), "main.qd");
         assert!(super::parse_atom_entrypoint("[atom]\nname = \"demo\"").is_err());
+    }
+
+    #[test]
+    fn atom_toml_取version() {
+        assert_eq!(super::parse_atom_version("[atom]\nname = \"cowsay\"\nversion = \"1.0.0\"").unwrap(), "1.0.0");
+        // 未进 [atom] 表前的同名字段不算
+        assert!(super::parse_atom_version("version = \"9.9.9\"\n[atom]\nname = \"cowsay\"").is_err());
+        assert!(super::parse_atom_version("[atom]\nversion = \"\"").is_err());
     }
 
     // —— 阶段 4：.extend ——
