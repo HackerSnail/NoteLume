@@ -33,7 +33,6 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   html { scroll-behavior: smooth; }
-  html.lenis { scroll-behavior: auto; }
 
   body {
     background:
@@ -1178,10 +1177,6 @@ var I18N = (function () {
       'https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js',
       'https://unpkg.com/gsap@3.12.5/dist/ScrollTrigger.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js'
-    ],
-    lenis: [
-      'https://unpkg.com/lenis@1.1.14/dist/lenis.min.js',
-      'https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js'
     ]
   };
   var THREE_URLS = [
@@ -1221,12 +1216,11 @@ var I18N = (function () {
       launch();
     }, 3500);
   }
-  var pending = 4;
+  var pending = 3;
   function settled1() { if (--pending === 0) boot(); }
   loadRace(CDN.gsap, settled1);
   loadRace(CDN.scrollTrigger, settled1);
   importRace(THREE_URLS, settled1);
-  loadRace(CDN.lenis, settled1);
 })();
 </script>
 <script>
@@ -1344,20 +1338,14 @@ function boot() {
     });
   } catch (e) { /* 占位兜底失败不影响页面 */ }
 
-  /* ---------------- 平滑滚动与滚动动画 ---------------- */
+  /* ---------------- 滚动动画 ---------------- */
+  // 滚动一律交给浏览器（滚轮与拖动滚动条都走原生），动画只读滚动位置、不参与滚动本身：
+  // 早先用 Lenis 把滚轮吞进它自己的插值动画，一格滚轮要一秒多才走完，拖动滚动条则整个没反应。
   // 内嵌预览这类后台渲染面 requestAnimationFrame 一次都不回调：GSAP 的 scrub 停在原地
-  // （十张动图叠在钉屏同一格），Lenis 又把滚轮吞给自己（整页滚不动）。所以先探一帧，
-  // 探到了才建动画层，探不到就整层不建、正文与动图按静态可见
+  // （十张动图叠在钉屏同一格）。所以先探一帧，探到了才建动画层，
+  // 探不到就整层不建、正文与动图按静态可见
   if (hasGSAP && !reducedMotion) requestAnimationFrame(function () {
     gsap.registerPlugin(ScrollTrigger);
-    try {
-      if (typeof Lenis !== 'undefined') {
-        var lenis = new Lenis({ duration: 1.05, smoothWheel: true });
-        lenis.on('scroll', ScrollTrigger.update);
-        gsap.ticker.add(function (time) { lenis.raf(time * 1000); });
-        gsap.ticker.lagSmoothing(0);
-      }
-    } catch (e) { /* 无 Lenis 时使用原生滚动 */ }
 
     // Hero 文字随滚动上浮并淡出
     gsap.to('#hero .hero-inner', {
@@ -1393,9 +1381,12 @@ function boot() {
       scrollTrigger: { trigger: '.demo-stage', start: 'top top', end: 'bottom bottom', scrub: true }
     });
     // 第一张默认可见，钉住即有内容
+    // 用 autoAlpha 而不是 opacity：十张叠在同一格，只把透明度压到 0 的那九张仍各占一个合成层，
+    // 每帧照样参与光栅化（实测这一段滚轮要 120–600ms 才被处理）；autoAlpha 到 0 会同时置
+    // visibility:hidden，没轮到的格子直接退出合成，交叉淡入的那一小段最多两张同时在场。
     for (var d = 1; d < demoItems.length; d++) {
-      flip.to(demoItems[d - 1], { opacity: 0, y: -60, scale: 0.97, duration: 0.7, ease: 'power2.inOut' }, '+=0.3')
-          .from(demoItems[d], { opacity: 0, y: 70, scale: 0.97, duration: 0.7, ease: 'power2.inOut' }, '<0.1');
+      flip.to(demoItems[d - 1], { autoAlpha: 0, y: -60, scale: 0.97, duration: 0.7, ease: 'power2.inOut' }, '+=0.3')
+          .from(demoItems[d], { autoAlpha: 0, y: 70, scale: 0.97, duration: 0.7, ease: 'power2.inOut' }, '<0.1');
     }
     flip.to({}, { duration: 0.5 }); // 末张停留
 
@@ -1415,7 +1406,8 @@ function boot() {
 
   var canvas = document.getElementById('scene');
   var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // 像素比封顶 1.5：画布是整屏背景，2.0 时着色量是 1.5 的近两倍，那部分 GPU 本来该留给滚动合成
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   var scene = new THREE.Scene();
@@ -1519,11 +1511,12 @@ function boot() {
   }
 
   // 滚动进度（0 → 1 贯穿全页），驱动模型旋转与纸页散开
+  // scrub 给 true 而不是秒数：数值要靠 rAF 逐帧插值，那些帧本来该留给页面滚动
   var scroll = { v: 0 };
   if (hasGSAP && !reducedMotion) {
     gsap.to(scroll, {
       v: 1, ease: 'none',
-      scrollTrigger: { trigger: document.body, start: 'top top', end: 'bottom bottom', scrub: 0.6 }
+      scrollTrigger: { trigger: document.body, start: 'top top', end: 'bottom bottom', scrub: true }
     });
   }
 
@@ -1537,9 +1530,13 @@ function boot() {
   }, { passive: true });
 
   var clock = new THREE.Clock();
+  var lastDraw = 0;
   function render() {
     requestAnimationFrame(render);
-    if (!running) return;
+    // 背景装饰限到约 30 帧（自转 0.05 弧度/秒、浮动都很慢，肉眼分不出），省下的帧直接给滚动的合成
+    var now = performance.now();
+    if (!running || now - lastDraw < 33) return;
+    lastDraw = now;
     var time = clock.getElapsedTime();
 
     // 滚动：整体旋转 + 纸页沿径向散开 + 光核放大；场景整体位置随滚动从下方升回中心
