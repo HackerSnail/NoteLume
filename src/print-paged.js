@@ -135,10 +135,35 @@ export function printStyles(options, title) {
 // ============ 编排：克隆 → 排版件 → 预分页 → 打印 → 清理 ============
 
 // 分页是一页一帧推出来的：Paged.js 的排版队列 `Queue.tick` 挂在 requestAnimationFrame 上，
-// 窗口被遮挡 / 最小化时 WebKit 不再出帧，队列就停在半路（真实 WebKit 探针复现过：页面盒数
-// 恒定不动，而 setInterval 照跑）。没有上限的话状态栏会一直停在「正在排版…」，
-// 所以到点按排版失败处理——调用方退回普通打印。
-const PREVIEW_TIMEOUT_MS = 60_000
+// 窗口失焦 / 被遮挡时 WebKit 会几秒才补一帧（打包版实测同一篇 19 页：前台 12.7 秒排完，
+// 被打印面板压住的那趟 65 秒才出 12 页，同一时刻挂在 setTimeout 上的计数器也只走 10 次，
+// 换帧源救不了）。所以判卡住不能只看总耗时——按固定秒数砍会把还在慢慢出页的排版误判成失败、
+// 退回没有分页的普通打印。这里改看进度：页面盒数只要还在涨就续命，连续这么久没有新增才收。
+const PREVIEW_STALL_MS = 20_000
+
+/** 排版还在出页就一直等；连续 `PREVIEW_STALL_MS` 没有新增页面盒才按排版失败处理。 */
+function waitWhileProgressing(running, printRoot) {
+  return new Promise((resolve, reject) => {
+    let last = -1
+    let since = Date.now()
+    const timer = setInterval(() => {
+      const boxes = printRoot.querySelectorAll('.pagedjs_page').length
+      if (boxes !== last) {
+        last = boxes
+        since = Date.now()
+        return
+      }
+      if (Date.now() - since < PREVIEW_STALL_MS) return
+      clearInterval(timer)
+      reject(new Error(t('print.timeout')))
+    }, 1000)
+    const settle = (fn) => (value) => {
+      clearInterval(timer)
+      fn(value)
+    }
+    running.then(settle(resolve), settle(reject))
+  })
+}
 
 /**
  * 关掉 Paged.js 挂在每个页面盒上的重排监听（`Page.removeListeners`）。
@@ -223,15 +248,8 @@ async function previewPaged(options, title) {
   const running = previewer.preview(doc, [{ 'notelume-print.css': printStyles(options, title) }], printRoot)
   // 超时只是不再等它，这一路之后还会自己 settle；不接住就是一条无人处理的 rejection
   running.catch(() => {})
-  let timer
   try {
-    await Promise.race([
-      running,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(t('print.timeout'))), PREVIEW_TIMEOUT_MS)
-      }),
-    ])
-    clearTimeout(timer)
+    await waitWhileProgressing(running, printRoot)
     // Paged.js 插进 head 的 @page 同时管着纸面：这里补一条更靠后的，把纸面钉成 A4 零边距，
     // 18mm/20mm 只留在页面盒内当版心，否则每个页面盒会被纸面边距再缩一次、还会被劈成两页
     const paper = document.createElement('style')
@@ -239,7 +257,6 @@ async function previewPaged(options, title) {
     paper.textContent = '@media print { @page { size: 210mm 297mm; margin: 0 } }'
     document.head.appendChild(paper)
   } catch (e) {
-    clearTimeout(timer)
     teardown(printRoot)
     throw e
   }

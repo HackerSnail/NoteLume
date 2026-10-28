@@ -24,7 +24,7 @@ window.__TAURI_INTERNALS__ = {
   },
 }
 
-const { hydrateBlockImages } = await import('../html-block-images.js')
+const { hydrateBlockImages, retryWhenVisible } = await import('../html-block-images.js')
 
 const CTX = { vaultRoot: '/库', mdRel: 'README.md' }
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -226,6 +226,137 @@ await check('同一块里远程与相对混排：只读相对那张', async () =
   const imgs = root.querySelectorAll('img')
   assert.strictEqual(imgs[0].getAttribute('src'), 'https://example.com/a.png')
   assert.ok(imgs[1].getAttribute('src').startsWith('data:image/png;base64,'))
+  unmount(root)
+})
+
+// IntersectionObserver 桩：observe() 记下元素，fire() 按「滚进视口」回调一次
+function stubObserver() {
+  const observers = []
+  global.IntersectionObserver = class {
+    constructor(cb) {
+      this.cb = cb
+      this.el = null
+    }
+    observe(el) {
+      this.el = el
+      observers.push(this)
+    }
+    disconnect() {
+      this.el = null
+    }
+    fire() {
+      this.cb([{ isIntersecting: true, target: this.el }], this)
+    }
+  }
+  return observers
+}
+
+await check('库未就绪：记下原路径，补跑一次即出图并清标记', async () => {
+  const root = mount('<img src="img/preview/light.png">')
+  let ctx = null
+  hydrateBlockImages(root, () => ctx, new Map())
+  await flush()
+  assert.strictEqual(calls.length, 0)
+  const img = root.querySelector('img')
+  assert.strictEqual(img.getAttribute('data-nl-src'), 'img/preview/light.png', '没库也要留下原路径')
+  ctx = CTX
+  hydrateBlockImages(root, () => ctx, new Map())
+  await flush()
+  assert.strictEqual(calls.length, 1)
+  assert.ok(img.getAttribute('src').startsWith('data:image/png;base64,'))
+  assert.strictEqual(img.hasAttribute('data-nl-src'), false, '已出图不该再留待重试标记')
+  unmount(root)
+})
+
+await check('读失败后滚进视口会重试：权限/读盘临时失败不再永久空白', async () => {
+  const observers = stubObserver()
+  let broken = true
+  handler = async (args) => {
+    if (broken) throw new Error('Operation not permitted')
+    return 'data:image/png;base64,' + Buffer.from(args.src).toString('base64')
+  }
+  const root = mount('<img src="img/preview/light.png">')
+  const cache = new Map()
+  hydrateBlockImages(root, () => CTX, cache)
+  await flush()
+  const img = root.querySelector('img')
+  assert.strictEqual(img.hasAttribute('src'), false, '失败先摘破图')
+  assert.strictEqual(img.getAttribute('data-nl-src'), 'img/preview/light.png')
+  const io = retryWhenVisible(root, () => CTX, cache, hydrateBlockImages)
+  assert.strictEqual(observers.length, 1, '块要挂上可见性监听')
+  broken = false
+  io.fire()
+  await flush()
+  assert.strictEqual(calls.length, 2, '滚进视口要再读一次')
+  assert.ok(img.getAttribute('src').startsWith('data:image/png;base64,'), '重试成功要把图装回来')
+  assert.strictEqual(img.classList.contains('nl-img-missing'), false, '成功后要清掉失败占位')
+  unmount(root)
+})
+
+await check('重试有上限：读不到的图不会被反复回源', async () => {
+  stubObserver()
+  handler = async () => {
+    throw new Error('no such file')
+  }
+  const root = mount('<img src="img/none.png">')
+  const cache = new Map()
+  hydrateBlockImages(root, () => CTX, cache)
+  await flush()
+  const io = retryWhenVisible(root, () => CTX, cache, hydrateBlockImages)
+  let fired = 0
+  for (let i = 0; i < 6; i++) {
+    if (!root.querySelector('img[data-nl-src]')) break
+    io.fire()
+    await flush()
+    fired++
+  }
+  assert.strictEqual(fired, 4, '第 4 趟只清标记不再回源：' + fired)
+  assert.strictEqual(calls.length, 4, '首趟 1 次 + 补跑 3 次')
+  assert.strictEqual(root.querySelector('img').hasAttribute('data-nl-src'), false, '放弃后不再留标记')
+  unmount(root)
+})
+
+await check('没有本地图的块：可见性监听不产生任何后端调用', async () => {
+  const observers = stubObserver()
+  const root = mount('<p>纯文本块</p>')
+  hydrateBlockImages(root, () => CTX, new Map())
+  const io = retryWhenVisible(root, () => CTX, new Map(), hydrateBlockImages)
+  io.fire()
+  await flush()
+  assert.strictEqual(observers.length, 1)
+  assert.strictEqual(calls.length, 0)
+  unmount(root)
+})
+
+await check('无 IntersectionObserver 环境：退化成不监听，水合照旧', async () => {
+  global.IntersectionObserver = undefined
+  const root = mount('<img src="img/local.png">')
+  const cache = new Map()
+  hydrateBlockImages(root, () => CTX, cache)
+  await flush()
+  const io = retryWhenVisible(root, () => CTX, cache, hydrateBlockImages)
+  io.disconnect()
+  assert.strictEqual(calls.length, 1)
+  assert.ok(root.querySelector('img').getAttribute('src').startsWith('data:image/png;base64,'))
+  unmount(root)
+})
+
+await check('补跑时上一趟还在路上：同一张图不重复回源', async () => {
+  const observers = stubObserver()
+  let resolveRead
+  handler = () => new Promise((r) => (resolveRead = r))
+  const root = mount('<img src="img/slow.png">')
+  const cache = new Map()
+  hydrateBlockImages(root, () => CTX, cache)
+  const io = retryWhenVisible(root, () => CTX, cache, hydrateBlockImages)
+  io.fire()
+  io.fire()
+  await flush()
+  assert.strictEqual(calls.length, 1, '在途的读不该被补跑重复触发')
+  resolveRead('data:image/png;base64,U0xPVw==')
+  await flush()
+  assert.ok(root.querySelector('img').getAttribute('src').startsWith('data:image/png;base64,'))
+  assert.strictEqual(root.querySelector('img').hasAttribute('data-nl-src'), false)
   unmount(root)
 })
 
