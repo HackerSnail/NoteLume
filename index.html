@@ -377,7 +377,7 @@
     font-weight: 700;
   }
   /* 苹果式翻页：外层撑出滚动距离，内层 sticky 满屏，8 张叠在同格由滚动驱动交叉翻页 */
-  .demo-stage { position: relative; height: 450vh; /* (8-1)×50vh 翻页 + 100vh 展示 */ }
+  .demo-stage { position: relative; height: 550vh; /* (10-1)×50vh 翻页 + 100vh 展示 */ }
   .demo-pin {
     position: sticky;
     top: 0;
@@ -592,7 +592,7 @@
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
     #demo { padding-bottom: 110px; }
-    .demo-stage { height: 450vh; }
+    .demo-stage { height: 550vh; }
     .demo-pin { padding-top: 60px; padding-bottom: 60px; }
     .cl-card { width: 300px; }
     .nav-links { gap: 18px; }
@@ -754,6 +754,14 @@
         <figcaption><strong>Word 导入校对</strong><span class="en">Word import</span></figcaption>
       </figure>
       <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/paste-clean.gif" alt="粘贴自动清理演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>粘贴自动清理</strong><span class="en">Paste cleaning</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/qd-snapshot.gif" alt="Quarkdown 模板快照演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>Quarkdown 模板快照</strong><span class="en">Quarkdown snapshot</span></figcaption>
+      </figure>
+      <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>Git 面板</strong><span class="en">Git panel</span></figcaption>
       </figure>
@@ -877,7 +885,7 @@ var I18N = (function () {
     c3p: '纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 端口，数据直达你配置的服务。',
     demoEyebrow: '功能演示', demoH2: '写作时，它长这样。',
     cap1: '所写即所得', cap2: '斜杠菜单插入块', cap3: '[[ 双链 ]] 输入补全', cap4: '知识图谱',
-    cap5: '命令面板', cap6: '全库搜索', cap7: 'Word 导入校对', cap8: 'Git 面板',
+    cap5: '命令面板', cap6: '全库搜索', cap7: 'Word 导入校对', cap8: '粘贴自动清理', cap9: 'Quarkdown 模板快照', cap10: 'Git 面板',
     p1e: '粘贴', p1: '粘贴即净。从 AI 对话框、飞书、公众号复制的内容，<br>进编辑器前就摘掉杂质。',
     p1d: '代码块的「复制」按钮、行号装订线、空段落串联，在写入前自动清理，不用粘完再手修第二遍。',
     p2e: 'Quarkdown', p2: '让笔记可编程。.var、.foreach、.if<br>直接写进 Markdown，约 200 个内置函数。',
@@ -917,7 +925,7 @@ var I18N = (function () {
     c3p: '純 GFM 檔案，Typora 和 Obsidian 能直接打開同一份庫。預設不聯網、不上傳，刪除進系統資源回收筒；要接大模型時自己填 API 埠，數據直達你設定的服務。',
     demoEyebrow: '功能演示', demoH2: '寫作時，它長這樣。',
     cap1: '所寫即所得', cap2: '斜槓選單插入塊', cap3: '[[ 雙鏈 ]] 輸入補全', cap4: '知識圖譜',
-    cap5: '命令面板', cap6: '全庫搜尋', cap7: 'Word 匯入校對', cap8: 'Git 面板',
+    cap5: '命令面板', cap6: '全庫搜尋', cap7: 'Word 匯入校對', cap8: '貼上自動清理', cap9: 'Quarkdown 範本快照', cap10: 'Git 面板',
     p1e: '貼上', p1: '貼上即淨。從 AI 對話框、飛書、公眾號複製的內容，<br>進編輯器前就摘掉雜質。',
     p1d: '程式碼區塊的「複製」按鈕、行號裝訂線、空段落串聯，在寫入前自動清理，不用貼完再手修第二遍。',
     p2e: 'Quarkdown', p2: '讓筆記可程式化。.var、.foreach、.if<br>直接寫進 Markdown，約 200 個內建函式。',
@@ -957,7 +965,7 @@ var I18N = (function () {
     c3p: 'Plain GFM files — Typora and Obsidian open the very same vault. Offline by default, nothing uploaded, deletions go to the system trash; for AI you plug in your own model API endpoint, and data goes straight to the service you configured.',
     demoEyebrow: 'In action', demoH2: 'This is what writing looks like here.',
     cap1: 'Live WYSIWYG', cap2: 'Slash menu', cap3: 'Wikilink autocomplete', cap4: 'Knowledge graph',
-    cap5: 'Command palette', cap6: 'Vault search', cap7: 'Word import review', cap8: 'Git panel',
+    cap5: 'Command palette', cap6: 'Vault search', cap7: 'Word import review', cap8: 'Paste cleaning', cap9: 'Quarkdown snapshot', cap10: 'Git panel',
     p1e: 'Paste', p1: 'Paste it clean. Content from AI chats, Feishu or WeChat articles<br>is stripped of clutter before it reaches the editor.',
     p1d: 'Copy buttons on code blocks, line-number gutters and chains of empty paragraphs are cleaned before writing — no second manual pass.',
     p2e: 'Quarkdown', p2: 'Make notes programmable. .var, .foreach, .if<br>written straight into Markdown, with about 200 built-in functions.',
@@ -997,7 +1005,7 @@ var I18N = (function () {
     c3p: 'Fichiers GFM purs — Typora et Obsidian ouvrent le même coffre. Hors ligne par défaut, rien n\'est envoyé, la suppression passe par la corbeille système ; pour l\'IA, branchez votre propre endpoint d\'API de modèle.',
     demoEyebrow: 'En action', demoH2: 'Voilà à quoi ressemble l\'écriture ici.',
     cap1: 'WYSIWYG en direct', cap2: 'Menu slash', cap3: 'Autocomplétion des liens', cap4: 'Graphe de connaissances',
-    cap5: 'Palette de commandes', cap6: 'Recherche globale', cap7: 'Import Word relu', cap8: 'Panneau Git',
+    cap5: 'Palette de commandes', cap6: 'Recherche globale', cap7: 'Import Word relu', cap8: 'Nettoyage du collage', cap9: 'Instantané Quarkdown', cap10: 'Panneau Git',
     p1e: 'Collage', p1: 'Collez propre. Le contenu des chats IA, de Feishu ou d\'articles WeChat<br>est débarrassé de ses déchets avant d\'entrer dans l\'éditeur.',
     p1d: 'Boutons « copier » des blocs de code, gouttières de numéros de ligne et paragraphes vides sont nettoyés avant écriture — pas de seconde passe manuelle.',
     p2e: 'Quarkdown', p2: 'Rendez vos notes programmables. .var, .foreach, .if<br>écrits directement dans le Markdown, avec environ 200 fonctions intégrées.',
@@ -1037,7 +1045,7 @@ var I18N = (function () {
     c3p: 'Reine GFM-Dateien — Typora und Obsidian öffnen denselben Vault. Standardmäßig offline, nichts wird hochgeladen, Löschen geht in den Papierkorb; für KI tragen Sie Ihren eigenen Modell-API-Endpunkt ein, die Daten gehen direkt an den von Ihnen konfigurierten Dienst.',
     demoEyebrow: 'In Aktion', demoH2: 'So sieht Schreiben hier aus.',
     cap1: 'Live-WYSIWYG', cap2: 'Slash-Menü', cap3: 'Wikilink-Vervollständigung', cap4: 'Wissensgraph',
-    cap5: 'Befehlspalette', cap6: 'Vault-Suche', cap7: 'Word-Importprüfung', cap8: 'Git-Panel',
+    cap5: 'Befehlspalette', cap6: 'Vault-Suche', cap7: 'Word-Importprüfung', cap8: 'Einfügen bereinigt', cap9: 'Quarkdown-Snapshot', cap10: 'Git-Panel',
     p1e: 'Einfügen', p1: 'Sauber einfügen. Inhalte aus KI-Chats, Feishu oder WeChat-Artikeln<br>werden vor dem Editor von Ballast befreit.',
     p1d: 'Copy-Buttons, Zeilennummern-Leisten und leere Absatzketten werden vor dem Schreiben entfernt — kein zweiter Handlauf nötig.',
     p2e: 'Quarkdown', p2: 'Notizen programmierbar machen. .var, .foreach, .if<br>direkt ins Markdown geschrieben, mit rund 200 eingebauten Funktionen.',
@@ -1117,7 +1125,7 @@ var I18N = (function () {
     put('#demo .section-head .eyebrow', t.demoEyebrow);
     put('#demo .section-head h2', t.demoH2);
     var caps = document.querySelectorAll('.demo-item figcaption strong');
-    for (var c = 1; c <= 8; c++) if (caps[c - 1]) caps[c - 1].textContent = t['cap' + c];
+    for (var c = 1; c <= 10; c++) if (caps[c - 1] && t['cap' + c]) caps[c - 1].textContent = t['cap' + c];
     var peb = document.querySelectorAll('.panel-inner .eyebrow');
     var pst = document.querySelectorAll('.panel-inner .st');
     var pnote = document.querySelectorAll('.panel-inner .dim-note');
