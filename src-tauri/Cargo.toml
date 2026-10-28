@@ -1,6 +1,6 @@
 [package]
 name = "notelume"
-version = "0.1.0"
+version = "0.2.0"
 description = "Markdown 知识库编辑器（Typora 式 WYSIWYG + 精简 Obsidian 知识库能力）"
 authors = ["NoteLume"]
 edition = "2021"

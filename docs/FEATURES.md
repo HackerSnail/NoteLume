@@ -244,7 +244,7 @@ macOS（Apple Silicon M1 / M2 / M3 / M4）：
 ```
 src-tauri/target/release/bundle/
 ├── macos/NoteLume.app               # 可直接双击运行的应用 (≈14.5 MB)
-├── dmg/NoteLume_0.1.0_aarch64.dmg   # DMG 安装包，拖入 Applications 即可 (≈6 MB)
+├── dmg/NoteLume_0.2.0_aarch64.dmg   # DMG 安装包，拖入 Applications 即可 (≈6 MB)
 ```
 
 打包完成后 macOS 会弹出权限请求，允许 VS Code 控制「访达」：
