@@ -228,6 +228,63 @@
     border-radius: 5px;
   }
 
+  /* ---------- 功能演示 · GIF 墙 ---------- */
+  #demo {
+    padding: 40px clamp(20px, 5vw, 64px) 160px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  #demo .section-head {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  #demo .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+  .demo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px;
+  }
+  .demo-item {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 22px;
+    overflow: hidden;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: transform 0.25s ease, border-color 0.25s ease;
+    will-change: transform, opacity;
+  }
+  .demo-item:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.2); }
+  .demo-item .gif-wrap {
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background: #0d0d12;
+  }
+  .demo-item .gif-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+  }
+  .demo-item:hover .gif-wrap img { transform: scale(1.03); }
+  .demo-item figcaption {
+    padding: 16px 22px 18px;
+    font-size: 0.9rem;
+  }
+  .demo-item figcaption strong { font-weight: 600; color: var(--text); }
+  .demo-item figcaption .en {
+    color: var(--text-dim);
+    margin-left: 8px;
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+  }
+
   /* ---------- 技术亮点 · 全屏段落 ---------- */
   #highlights { padding-bottom: 60px; }
   .panel {
@@ -285,7 +342,9 @@
   /* ---------- 响应式 ---------- */
   @media (max-width: 860px) {
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
+    .demo-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
+    #demo { padding-bottom: 110px; }
     .nav-links { gap: 18px; }
     .panel-inner p { line-height: 1.35; }
   }
@@ -359,16 +418,50 @@
     </div>
   </section>
 
+  <!-- 功能演示 -->
+  <section id="demo">
+    <div class="section-head">
+      <div class="eyebrow">功能演示</div>
+      <h2>写作时，它长这样。</h2>
+    </div>
+    <div class="demo-grid">
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/wysiwyg-typing.gif" alt="所写即所得输入演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>所写即所得</strong><span class="en">Live Markdown</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/slash-menu.gif" alt="斜杠菜单插入块演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>斜杠菜单插入块</strong><span class="en">Slash menu</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/wikilink-suggest.gif" alt="双链输入补全演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>[[ 双链 ]] 输入补全</strong><span class="en">Wikilink suggest</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/knowledge-graph.gif" alt="知识图谱铺盘演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>知识图谱</strong><span class="en">Knowledge graph</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/command-palette.gif" alt="命令面板演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>命令面板</strong><span class="en">Command palette</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/vault-search.gif" alt="全库搜索演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>全库搜索</strong><span class="en">Vault search</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/docx-import.gif" alt="Word 导入演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>Word 导入校对</strong><span class="en">Word import</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>Git 面板</strong><span class="en">Git panel</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
   <!-- 技术亮点 -->
   <section id="highlights">
-    <div class="panel">
-      <div class="panel-inner">
-        <div class="eyebrow">轻</div>
-        <p>6 MB 的安装包。秒开，离线，不登录。
-          <span class="dim-note">macOS DMG 约 6 MB，Windows、Linux 同样轻。没有启动页广告，没有强制账号。</span>
-        </p>
-      </div>
-    </div>
     <div class="panel">
       <div class="panel-inner">
         <div class="eyebrow">粘贴</div>
@@ -453,6 +546,18 @@
     gsap.from('#features .section-head', {
       y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
       scrollTrigger: { trigger: '#features', start: 'top 78%', toggleActions: 'play none none reverse' }
+    });
+
+    // 演示墙：区块标题 + 各动图依次从底部淡入上浮
+    gsap.from('#demo .section-head', {
+      y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
+      scrollTrigger: { trigger: '#demo', start: 'top 78%', toggleActions: 'play none none reverse' }
+    });
+    gsap.utils.toArray('.demo-item').forEach(function (item, i) {
+      gsap.from(item, {
+        y: 52, opacity: 0, duration: 0.9, ease: 'power3.out', delay: (i % 2) * 0.12,
+        scrollTrigger: { trigger: item, start: 'top 86%', toggleActions: 'play none none reverse' }
+      });
     });
 
     // 技术亮点：每屏文字由灰渐显为白
