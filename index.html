@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#ffffff">
 <meta name="description" content="NoteLume（文溯）— 本地 Markdown 编辑器。所写即所得，文件夹即知识库，完全本地、零锁定。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="NoteLume · 文溯 — 本地 Markdown 编辑器">
+<meta property="og:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所写即所得，文件夹即知识库，完全本地、零锁定。">
+<meta property="og:image" content="https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/img/preview/dark.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NoteLume · 文溯 — 本地 Markdown 编辑器">
+<meta name="twitter:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所写即所得，文件夹即知识库，完全本地、零锁定。">
 <title>NoteLume · 文溯 — 本地 Markdown 编辑器</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238a2be2'/%3E%3Cstop offset='1' stop-color='%235b8cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
 <style>
@@ -272,7 +279,7 @@
     font-weight: 700;
   }
   /* 苹果式翻页：外层撑出滚动距离，内层 sticky 满屏，8 张叠在同格由滚动驱动交叉翻页 */
-  .demo-stage { position: relative; height: 660vh; /* (8-1)×80vh 翻页 + 100vh 展示 */ }
+  .demo-stage { position: relative; height: 520vh; /* (8-1)×60vh 翻页 + 100vh 展示 */ }
   .demo-pin {
     position: sticky;
     top: 0;
@@ -365,17 +372,19 @@
     font-weight: 700;
   }
   .cl-viewport {
-    overflow: hidden;
+    overflow-x: auto; /* JS 失效时仍可横向滚动看全卡片 */
+    scrollbar-width: none;
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
     mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
   }
+  .cl-viewport.looping { overflow: hidden; }
   .cl-track {
     display: flex;
     gap: 20px;
     width: max-content;
     padding: 4px 0;
   }
-  .cl-track.loop { animation: clScroll 48s linear infinite; }
+  .cl-track.loop { animation: clScroll 26s linear infinite; }
   .cl-viewport:hover .cl-track.loop { animation-play-state: paused; }
   @keyframes clScroll { to { transform: translateX(-50%); } }
   .cl-card {
@@ -442,7 +451,7 @@
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
     #demo { padding-bottom: 110px; }
-    .demo-stage { height: 620vh; }
+    .demo-stage { height: 520vh; }
     .demo-pin { padding-top: 60px; padding-bottom: 60px; }
     .cl-card { width: 300px; }
     .nav-links { gap: 18px; }
@@ -654,7 +663,7 @@
 </main>
 
 <script>
-/* 依赖加载：每个库按 cdnjs → jsdelivr → unpkg 依次回退，全部失败也照常降级启动 */
+/* 依赖加载：每个库同时向多个 CDN 发起请求（jsdelivr / unpkg / cdnjs），先到先用，全部失败也照常降级启动 */
 (function () {
   var CDN = {
     gsap: [
@@ -667,34 +676,54 @@
       'https://unpkg.com/gsap@3.12.5/dist/ScrollTrigger.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js'
     ],
-    three: [
-      'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js',
-      'https://unpkg.com/three@0.128.0/build/three.min.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
-    ],
     lenis: [
       'https://unpkg.com/lenis@1.1.14/dist/lenis.min.js',
       'https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js'
     ]
   };
-  function loadSeq(urls, done) {
-    var i = 0;
-    (function next() {
-      if (i >= urls.length) { done(false); return; }
-      var s = document.createElement('script');
-      s.src = urls[i++];
-      s.onload = function () { done(true); };
-      s.onerror = function () { next(); };
-      document.head.appendChild(s);
-    })();
+  var THREE_URLS = [
+    'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js',
+    'https://unpkg.com/three@0.169.0/build/three.module.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.169.0/three.module.min.js'
+  ];
+  function loadRace(urls, done) {
+    var settled = false, failed = 0;
+    for (var i = 0; i < urls.length; i++) {
+      (function (src) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = function () { if (!settled) { settled = true; done(true); } };
+        s.onerror = function () { if (!settled && ++failed === urls.length) { settled = true; done(false); } };
+        document.head.appendChild(s);
+      })(urls[i]);
+    }
   }
-  loadSeq(CDN.gsap, function () {
-    loadSeq(CDN.scrollTrigger, function () {
-      loadSeq(CDN.three, function () {
-        loadSeq(CDN.lenis, function () { boot(); });
+  // three r150+ 只有 ES 模块构建，动态 import 并挂到 window.THREE；错峰起跑（0/3.5/7s），
+  // 网络慢时提前换源，正常时只有一个源成功、不产生重复实例
+  function importRace(urls, done) {
+    var settled = false, failed = 0, launched = 0;
+    function launch() {
+      if (settled || launched >= urls.length) return;
+      var url = urls[launched++];
+      import(url).then(function (m) {
+        if (!settled) { settled = true; window.THREE = m; done(true); }
+      }).catch(function () {
+        failed++;
+        if (!settled) { launch(); if (failed >= urls.length) { settled = true; done(false); } }
       });
-    });
-  });
+    }
+    launch();
+    var timer = setInterval(function () {
+      if (settled || launched >= urls.length) { clearInterval(timer); return; }
+      launch();
+    }, 3500);
+  }
+  var pending = 4;
+  function settled1() { if (--pending === 0) boot(); }
+  loadRace(CDN.gsap, settled1);
+  loadRace(CDN.scrollTrigger, settled1);
+  importRace(THREE_URLS, settled1);
+  loadRace(CDN.lenis, settled1);
 })();
 </script>
 <script>
@@ -704,7 +733,10 @@ function boot() {
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var isMobile = window.matchMedia('(max-width: 860px)').matches;
   var hasGSAP = typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined';
-  var hasThree = typeof THREE !== 'undefined';
+  // 低端设备直接跳过 3D 场景（保留渐变与网格背景），避免掉帧
+  var lowEndDevice = (navigator.hardwareConcurrency || 8) <= 4 ||
+    (navigator.deviceMemory || 8) <= 4;
+  var hasThree = typeof THREE !== 'undefined' && !lowEndDevice;
 
   // 无 GSAP 或用户偏好减动效时，翻页区退回普通纵向排列
   if (!hasGSAP || reducedMotion) {
@@ -715,11 +747,29 @@ function boot() {
   // 更新日志轮播：复制一份轨道内容做无缝循环；减动效时不复制、保持可横向滚动
   try {
     var clTrack = document.querySelector('.cl-track');
-    if (clTrack && !reducedMotion) {
+    var clViewport = document.querySelector('.cl-viewport');
+    if (clTrack && clViewport && !reducedMotion) {
       clTrack.innerHTML += clTrack.innerHTML;
       clTrack.classList.add('loop');
+      clViewport.classList.add('looping');
     }
   } catch (e) { /* 轮播失败不影响页面其余部分 */ }
+
+  // 演示动图加载失败时退占位色块（动图走仓库内相对路径，单独拷走 index.html 时兜底）
+  try {
+    var ph = 'data:image/svg+xml,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">' +
+      '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+      '<stop offset="0" stop-color="#8a2be2"/><stop offset="1" stop-color="#5b8cff"/>' +
+      '</linearGradient></defs>' +
+      '<rect width="800" height="500" fill="url(#g)" opacity="0.15"/>' +
+      '<text x="50%" y="50%" fill="#6d28d9" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">演示动图未能加载</text></svg>');
+    document.querySelectorAll('.gif-wrap img').forEach(function (img) {
+      var failed = function () { img.onerror = null; img.src = ph; };
+      if (img.complete && img.naturalWidth === 0) { failed(); }
+      else { img.addEventListener('error', failed); }
+    });
+  } catch (e) { /* 占位兜底失败不影响页面 */ }
 
   /* ---------------- 平滑滚动（Lenis 可用时启用，失败则回退原生滚动） ---------------- */
   if (hasGSAP && !reducedMotion) {
@@ -803,7 +853,8 @@ function boot() {
   var keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
   keyLight.position.set(6, 10, 8);
   scene.add(keyLight);
-  var coreGlow = new THREE.PointLight(0x8a2be2, 1.6, 32);
+  // r155+ 物理光照单位：点光强度按 candela，衰减 decay=2
+  var coreGlow = new THREE.PointLight(0x8a2be2, 25, 32);
   coreGlow.position.set(0, 0, 2);
   scene.add(coreGlow);
 
@@ -933,7 +984,7 @@ function boot() {
     rings.rotation.z = time * 0.04;
     var coreScale = 1 + Math.sin(time * 0.8) * 0.03 + scroll.v * 0.35;
     core.scale.setScalar(coreScale);
-    coreGlow.intensity = 2.4 + scroll.v * 1.2;
+    coreGlow.intensity = 30 + scroll.v * 15;
     particles.rotation.y = time * 0.012;
 
     // 鼠标视差：相机轻微跟随（阻尼收敛）
