@@ -14,6 +14,7 @@ import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import MarkdownIt from 'markdown-it'
 import { mountEmojiRenderer } from '../emoji-text.js'
+import { openIslandImage } from '../html-block-images.js'
 import { t } from '../i18n.js'
 
 // 快照渲染：与单篇 HTML 导出同配方的本地实例（不开 html，字面标签按文本显示更安全）
@@ -149,6 +150,8 @@ function makeSnapshotWidget(region, view, getPos, evalQd, idx) {
   wrap.setAttribute('contenteditable', 'false')
   wrap.addEventListener('click', (e) => {
     e.preventDefault()
+    // 快照里的图片：单击只看图，不把光标送进区域源码
+    if (openIslandImage(e.target.closest && e.target.closest('img'))) return
     const state = view.state
     const $at = state.doc.resolve(getPos())
     // 把光标送进区域首段（mermaid 同款：源码可见性由光标位置决定）

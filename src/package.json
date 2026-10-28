@@ -15,6 +15,7 @@
     "test:merged-table": "node tests/merged-table.test.mjs",
     "test:html-block": "node tests/html-block.test.mjs",
     "test:html-block-images": "node tests/html-block-images.test.mjs",
+    "test:html-block-click": "node tests/html-block-click.test.mjs",
     "test:html-sanitize": "node tests/html-sanitize.test.mjs",
     "test:paste-clean": "node tests/paste-clean.test.mjs",
     "test:qd-snippets": "node tests/qd-snippets.test.mjs",

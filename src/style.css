@@ -2674,6 +2674,7 @@ html.nl-dragging * {
 }
 .ProseMirror .nl-html-block img {
   max-width: 100%;
+  cursor: zoom-in; /* 单击只看图，不进源码 */
 }
 /* 块内图片读不到：去掉破图图标，留 alt 文本 */
 .ProseMirror .nl-html-block img.nl-img-missing {

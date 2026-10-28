@@ -24,7 +24,7 @@ window.__TAURI_INTERNALS__ = {
   },
 }
 
-const { hydrateBlockImages, retryWhenVisible } = await import('../html-block-images.js')
+const { hydrateBlockImages, retryWhenVisible, openIslandImage } = await import('../html-block-images.js')
 
 const CTX = { vaultRoot: '/库', mdRel: 'README.md' }
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -357,6 +357,96 @@ await check('补跑时上一趟还在路上：同一张图不重复回源', asyn
   await flush()
   assert.ok(root.querySelector('img').getAttribute('src').startsWith('data:image/png;base64,'))
   assert.strictEqual(root.querySelector('img').hasAttribute('data-nl-src'), false)
+  unmount(root)
+})
+
+const viewer = await import('../img-viewer.js')
+const { closeImage } = viewer
+
+function viewerEl() {
+  return document.querySelector('.nl-imgv')
+}
+function viewerImg() {
+  return viewerEl().querySelector('.nl-imgv-img')
+}
+function viewerTitle() {
+  return viewerEl().querySelector('.nl-imgv-title').textContent
+}
+
+await check('块内图已装成 data URI：单击进全屏查看器，不再回库读', async () => {
+  const root = mount('<img src="img/preview/light.png">')
+  hydrateBlockImages(root, () => CTX, new Map())
+  await flush()
+  const img = root.querySelector('img')
+  calls = []
+  assert.strictEqual(openIslandImage(img, () => CTX), true)
+  assert.ok(!viewerEl().classList.contains('hidden'), '查看器要打开')
+  assert.strictEqual(viewerImg().getAttribute('src'), img.getAttribute('src'), '直接用现成 data URI')
+  assert.strictEqual(calls.length, 0, '不该再读一次盘')
+  assert.strictEqual(viewerTitle(), 'img/preview/light.png', '标题给原路径，不是整串 data URI')
+  closeImage()
+  unmount(root)
+})
+
+await check('读失败的相对图：单击回库读一趟再放大', async () => {
+  handler = async () => {
+    throw new Error('no such file')
+  }
+  const root = mount('<img src="img/preview/none.png">')
+  hydrateBlockImages(root, () => CTX, new Map())
+  await flush()
+  const img = root.querySelector('img')
+  assert.strictEqual(img.hasAttribute('src'), false, '前置：这张还挂着失败态')
+  handler = defaultHandler
+  calls = []
+  assert.strictEqual(openIslandImage(img, () => CTX), true)
+  assert.deepStrictEqual(
+    calls,
+    [{ cmd: 'read_image_data_uri', args: { vaultRoot: '/库', mdRel: 'README.md', src: 'img/preview/none.png' } }],
+    '相对路径要按当前文档目录解析'
+  )
+  await flush()
+  assert.ok(viewerImg().getAttribute('src').startsWith('data:image/png;base64,'), '读到后要装进查看器')
+  closeImage()
+  unmount(root)
+})
+
+await check('外链图：直接用 URL 放大，不走后端', async () => {
+  const root = mount('<img src="https://example.com/a.png">')
+  hydrateBlockImages(root, () => CTX, new Map())
+  await flush()
+  calls = []
+  assert.strictEqual(openIslandImage(root.querySelector('img'), () => CTX), true)
+  assert.strictEqual(calls.length, 0)
+  assert.strictEqual(viewerImg().getAttribute('src'), 'https://example.com/a.png')
+  assert.strictEqual(viewerTitle(), 'https://example.com/a.png')
+  closeImage()
+  unmount(root)
+})
+
+await check('alt 优先作标题；非图片与没有来源的图不吃这一击', async () => {
+  const root = mount('<img src="https://example.com/a.png" alt="示例图"><div id="d">x</div><img id="n">')
+  hydrateBlockImages(root, () => CTX, new Map())
+  await flush()
+  const [ext, div, noSrc] = root.querySelectorAll('img, div')
+  assert.strictEqual(openIslandImage(ext, () => CTX), true)
+  assert.strictEqual(viewerTitle(), '示例图', '有 alt 用 alt')
+  closeImage()
+  assert.strictEqual(openIslandImage(div, () => CTX), false, '非图片交回调用方进源码')
+  assert.strictEqual(openIslandImage(noSrc, () => CTX), false, '没 src 也没待读标记的图不放大')
+  assert.strictEqual(openIslandImage(null, () => CTX), false)
+  unmount(root)
+})
+
+await check('没开库且图没装成：不吃这一击（没有可显示来源）', async () => {
+  const root = mount('<img src="img/preview/light.png">')
+  hydrateBlockImages(root, () => null, new Map())
+  await flush()
+  const img = root.querySelector('img')
+  assert.strictEqual(img.getAttribute('data-nl-src'), 'img/preview/light.png', '前置：留了待读标记')
+  img.removeAttribute('src')
+  assert.strictEqual(openIslandImage(img, () => null), false)
+  assert.strictEqual(viewerEl().classList.contains('hidden'), true, '不该弹出查看器')
   unmount(root)
 })
 
