@@ -7,6 +7,7 @@
 import assert from 'node:assert'
 import { parseMarkdown } from '../editor-schema.js'
 import { collectQdRegions } from '../qd/editor.js'
+import zhCN from '../locales/zh-CN.js'
 
 let pass = 0, fail = 0
 function check(name, fn) {
@@ -32,12 +33,29 @@ check('相邻两条指令（隔空行）切成两个区域', () => {
   assert.strictEqual(regions[1].source, '.var {b} {2}')
 })
 
-check('列表体归入区域并还原 - 行', () => {
+check('列表体归入区域并还原成 4 空格块参数', () => {
   const doc = parseMarkdown('.var {letters}\n\n    - A\n    - B')
   const regions = collectQdRegions(doc)
   assert.strictEqual(regions.length, 1)
-  // 4 空格缩进的列表在 PM 里是 code_block 还是列表取决于解析路径，两种都要还原成 - 行
-  assert.ok(regions[0].source.includes('- A') || regions[0].source.includes('    - A'))
+  // 缩进列表落成 code_block 还是 bullet_list 取决于解析路径，两条分支都得还原出带 4 空格的
+  // `- ` 行：Rust 侧只认缩进体，掉缩进等于把循环体丢成顶层正文。
+  assert.strictEqual(regions[0].source, '.var {letters}\n    - A\n    - B')
+})
+
+check('顶格列表成员补回块参数缩进', () => {
+  const regions = collectQdRegions(parseMarkdown('.foreach {1..3}\n- 条目 .1'))
+  assert.strictEqual(regions.length, 1)
+  assert.strictEqual(regions[0].source, '.foreach {1..3}\n    - 条目 .1')
+})
+
+check('指令行与缩进体之间缺空行会被并成同一段落', () => {
+  // 模板曾经写成 `.foreach {1..3}\n    - 条目 .1`（中间没空行）。CommonMark 的懒惰续行
+  // 把两行并成一个段落，区域源码就成了 `.foreach {1..3} - 条目 .1`，快照里只剩一条不展开的
+  // 条目和「未知函数 .1」。这条锁住模板的正确形态。
+  const merged = collectQdRegions(parseMarkdown('.foreach {1..3}\n    - 条目 .1'))
+  assert.strictEqual(merged[0].source, '.foreach {1..3} - 条目 .1')
+  const spaced = collectQdRegions(parseMarkdown('.foreach {1..3}\n\n    - 条目 .1'))
+  assert.strictEqual(spaced[0].source, '.foreach {1..3}\n    - 条目 .1')
 })
 
 check('无指令的普通文档返回空数组', () => {
@@ -53,6 +71,18 @@ check('区域 from/to 覆盖成员节点', () => {
     if (pos >= regions[0].from && pos < regions[0].to) covered.push(node.type.name)
   })
   assert.ok(covered.length >= 2, '区域应至少覆盖指令段与缩进体两个节点')
+})
+
+check('内置 Quarkdown 模板的指令行后面不接正文行', () => {
+  // CommonMark 的懒惰续行会把「指令行 + 紧随其后的缩进行」并成一个段落，区域源码就成了
+  // `.foreach {1..3} - 条目 .1`，快照里只剩一条不展开的条目。模板里每条指令行后面必须留空行。
+  for (const key of ['tpl.qd.weekly.body', 'tpl.qd.vars.body', 'tpl.qd.xref.body']) {
+    const lines = zhCN[key].split('\n')
+    lines.forEach((l, i) => {
+      if (!/^\.\w/.test(l) || i === lines.length - 1) return
+      assert.strictEqual(lines[i + 1], '', `${key}: 第 ${i + 1} 行指令后面缺空行`)
+    })
+  }
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)
