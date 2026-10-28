@@ -1246,6 +1246,14 @@ function boot() {
     var stage = document.querySelector('.demo-stage');
     if (stage) stage.classList.add('static');
   }
+  // 一帧都探不到的渲染面走同一条降级：上面的动画层不会建立，翻页区也不能留在叠在一格的状态
+  var rafLanded = false;
+  requestAnimationFrame(function () { rafLanded = true; });
+  setTimeout(function () {
+    if (rafLanded) return;
+    var st = document.querySelector('.demo-stage');
+    if (st) st.classList.add('static');
+  }, 600);
 
   // 更新日志轮播：复制一份轨道内容做无缝循环；减动效时不复制、保持可横向滚动
   try {
@@ -1336,8 +1344,11 @@ function boot() {
     });
   } catch (e) { /* 占位兜底失败不影响页面 */ }
 
-  /* ---------------- 平滑滚动（Lenis 可用时启用，失败则回退原生滚动） ---------------- */
-  if (hasGSAP && !reducedMotion) {
+  /* ---------------- 平滑滚动与滚动动画 ---------------- */
+  // 内嵌预览这类后台渲染面 requestAnimationFrame 一次都不回调：GSAP 的 scrub 停在原地
+  // （十张动图叠在钉屏同一格），Lenis 又把滚轮吞给自己（整页滚不动）。所以先探一帧，
+  // 探到了才建动画层，探不到就整层不建、正文与动图按静态可见
+  if (hasGSAP && !reducedMotion) requestAnimationFrame(function () {
     gsap.registerPlugin(ScrollTrigger);
     try {
       if (typeof Lenis !== 'undefined') {
@@ -1347,10 +1358,7 @@ function boot() {
         gsap.ticker.lagSmoothing(0);
       }
     } catch (e) { /* 无 Lenis 时使用原生滚动 */ }
-  }
 
-  /* ---------------- 文字滚动动画 ---------------- */
-  if (hasGSAP && !reducedMotion) {
     // Hero 文字随滚动上浮并淡出
     gsap.to('#hero .hero-inner', {
       y: -90, opacity: 0, ease: 'none',
@@ -1373,14 +1381,16 @@ function boot() {
       scrollTrigger: { trigger: '#features', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
 
-    // 演示墙：钉屏翻页。滚动进度驱动时间线，每段交叉翻页：上一张上移淡出缩小，下一张从下方进入放大归位
+    // 演示墙：钉屏翻页。滚动进度驱动时间线，每段交叉翻页：上一张上移淡出缩小，下一张从下方进入放大归位。
+    // scrub 取 true（按滚动位置直接取值）而不是秒数：给数值时 GSAP 要靠 rAF 逐帧插值，页面拿不到帧的
+    // 场合（内嵌预览面板这类后台渲染面）整面会停在最后一张，看着就是十张叠在一起
     gsap.from('#demo .section-head', {
       y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
       scrollTrigger: { trigger: '#demo', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
     var demoItems = gsap.utils.toArray('.demo-item');
     var flip = gsap.timeline({
-      scrollTrigger: { trigger: '.demo-stage', start: 'top top', end: 'bottom bottom', scrub: 0.5 }
+      scrollTrigger: { trigger: '.demo-stage', start: 'top top', end: 'bottom bottom', scrub: true }
     });
     // 第一张默认可见，钉住即有内容
     for (var d = 1; d < demoItems.length; d++) {
@@ -1398,7 +1408,7 @@ function boot() {
           scrollTrigger: { trigger: p.closest('.panel'), start: 'top 72%', end: 'center 45%', scrub: true }
         });
     });
-  }
+  });
 
   /* ---------------- 3D 场景 ---------------- */
   if (!hasThree) { document.getElementById('scene').style.display = 'none'; return; }
