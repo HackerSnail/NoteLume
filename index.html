@@ -325,9 +325,27 @@
     display: block;
   }
   .demo-item figcaption {
-    padding: 18px 8px 0;
+    padding: 0 8px;
     font-size: 0.9rem;
+    display: flex;
+    justify-content: center;
     text-align: center;
+  }
+  /* 字幕做成悬浮胶囊，叠在窗口下缘，避免压在 3D 场景上看不清 */
+  .demo-item .cap {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: -22px;
+    padding: 8px 18px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid #e5e5ea;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.1);
   }
   .demo-item figcaption strong { font-weight: 600; color: var(--text); }
   .demo-item figcaption .en {
@@ -376,11 +394,19 @@
   }
 
   /* ---------- 更新日志 · 轮播 ---------- */
-  #changelog { padding: 60px 0 180px; }
+  #changelog { padding: 60px 0 60px; }
   #changelog .section-head {
+    display: inline-block;
     text-align: center;
-    margin-bottom: 64px;
-    padding: 0 24px;
+    margin-bottom: 56px;
+    padding: 26px 56px;
+    background: radial-gradient(120% 120% at 50% 50%, rgba(255, 255, 255, 0.9) 45%, rgba(255, 255, 255, 0) 100%);
+    border-radius: 40px;
+  }
+  .cl-viewport {
+    position: sticky; /* 自然位置在区块尾部，滑到这里时轮播钉在视口底部，直到页脚把它推走 */
+    bottom: 48px;
+    margin-top: 42vh; /* 钉住的滚动时长来自这段间距 */
   }
   #changelog .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -776,6 +802,16 @@ function boot() {
       clViewport.classList.add('looping');
     }
   } catch (e) { /* 轮播失败不影响页面其余部分 */ }
+
+  // 翻页字幕包进悬浮胶囊
+  try {
+    document.querySelectorAll('.demo-item figcaption').forEach(function (fc) {
+      var span = document.createElement('span');
+      span.className = 'cap';
+      while (fc.firstChild) span.appendChild(fc.firstChild);
+      fc.appendChild(span);
+    });
+  } catch (e) { /* 失败则字幕保持原样 */ }
 
   // 演示动图加载失败时退占位色块（动图走仓库内相对路径，单独拷走 index.html 时兜底）
   try {
