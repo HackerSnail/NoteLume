@@ -15,6 +15,7 @@
 - Ctrl+P 先弹选项窗：四个勾选——自动目录页、页码 + 页眉标题、H1 起新页、封面页（标题 + 日期居中）。选择存 localStorage（键 `nl-print-options`），下次按上次的勾；首次默认只勾「页码 + 页眉标题」（最接近普通打印）。
 - 预分页完成后再 `window.print()`；取消选项窗则不打印。
 - canvas 模式保持老行为（直接 `window.print()`）。
+- 平台：预分页只在 Windows / Linux 走。mac 上 `printViaDialog` 按 `IS_MAC` 直接 `window.print()` 交系统打印面板分页——Paged.js 一页一帧地排，而 WKWebView 在窗口失焦 / 被遮挡时会几秒才补一帧，同一篇文档打包版实测前台 12.7 秒排完、窗口被面板压住的那趟 65 秒只排到一半并触发超时兜底。
 
 **不包含（YAGNI / 后续）**
 - 设置页配置（选项窗记住上次选择已够用）。
