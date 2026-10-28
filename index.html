@@ -351,6 +351,67 @@
     color: var(--text-dim);
   }
 
+  /* ---------- 更新日志 · 轮播 ---------- */
+  #changelog { padding: 40px 0 120px; }
+  #changelog .section-head {
+    text-align: center;
+    margin-bottom: 48px;
+    padding: 0 24px;
+  }
+  #changelog .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+  .cl-viewport {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  }
+  .cl-track {
+    display: flex;
+    gap: 20px;
+    width: max-content;
+    padding: 4px 0;
+  }
+  .cl-track.loop { animation: clScroll 48s linear infinite; }
+  .cl-viewport:hover .cl-track.loop { animation-play-state: paused; }
+  @keyframes clScroll { to { transform: translateX(-50%); } }
+  .cl-card {
+    width: 360px;
+    flex: none;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 20px;
+    padding: 26px 28px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .cl-card h3 {
+    font-size: 1.12rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 14px 0 10px;
+  }
+  .cl-card p {
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--text-dim);
+  }
+  .cl-chip {
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .chip-feature { background: rgba(138, 43, 226, 0.12); color: #6d28d9; }
+  .chip-export { background: rgba(91, 140, 255, 0.14); color: #2f5fd0; }
+  .chip-ux { background: rgba(16, 163, 127, 0.12); color: #0d8a6c; }
+  .chip-fix { background: rgba(255, 159, 10, 0.14); color: #b25000; }
+
   /* ---------- 页脚 ---------- */
   footer {
     position: relative;
@@ -383,6 +444,7 @@
     #demo { padding-bottom: 110px; }
     .demo-stage { height: 620vh; }
     .demo-pin { padding-top: 60px; padding-bottom: 60px; }
+    .cl-card { width: 300px; }
     .nav-links { gap: 18px; }
     .panel-inner p { line-height: 1.35; }
   }
@@ -391,6 +453,8 @@
     html { scroll-behavior: auto; }
     .card, .btn { transition: none; }
     .card:hover { transform: none; }
+    .cl-viewport { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+    .cl-track.loop { animation: none; }
   }
 </style>
 </head>
@@ -527,6 +591,58 @@
     </div>
   </section>
 
+  <!-- 更新日志 -->
+  <section id="changelog">
+    <div class="section-head">
+      <div class="eyebrow">更新日志</div>
+      <h2>最近在忙这些。</h2>
+    </div>
+    <div class="cl-viewport">
+      <div class="cl-track">
+        <article class="cl-card">
+          <span class="cl-chip chip-feature">功能</span>
+          <h3>网页剪藏</h3>
+          <p>浏览器扩展一键把网页正文存进本地库，图片按内容去重进 assets/，文末自动关联库内相关笔记。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-feature">功能</span>
+          <h3>Quarkdown 引擎收官</h3>
+          <p>五阶段做完，Rust 版 stdlib 对 Kotlin 参考实现的函数差集清零，.var、.foreach 直接写进 md。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-export">导出</span>
+          <h3>整库幻灯片</h3>
+          <p>库内全部 md 合成一份自包含的 reveal.js 放映件，外层按文档分章、内层上下翻页。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-export">导出</span>
+          <h3>标准 Markdown 副本</h3>
+          <p>整库导出时 Obsidian 私有语法自动降级，产物任何编辑器都能打开，目录结构原样保留。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-ux">体验</span>
+          <h3>粘贴自动清理</h3>
+          <p>从 AI 对话框、飞书、公众号复制的内容，进编辑器前就摘掉「复制」按钮和空段落。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-ux">体验</span>
+          <h3>视觉行号装订线</h3>
+          <p>WYSIWYG 模式按折行后的视觉行连续编号，虚拟化渲染，5 万字单段实测流畅。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-feature">兼容</span>
+          <h3>块级裸 HTML</h3>
+          <p>WordPress 一类工具导出的 md 原样保住并渲染出排版，不再满屏字面标签。</p>
+        </article>
+        <article class="cl-card">
+          <span class="cl-chip chip-fix">修复</span>
+          <h3>Ctrl+Tab 切标签失灵</h3>
+          <p>键位校验只认大写 Tab，事件反解产出小写，链路在校验层就断了——现已归一。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <div class="copy">© 2026 NoteLume · Apache-2.0 License</div>
     <div class="links">
@@ -595,6 +711,15 @@ function boot() {
     var stage = document.querySelector('.demo-stage');
     if (stage) stage.classList.add('static');
   }
+
+  // 更新日志轮播：复制一份轨道内容做无缝循环；减动效时不复制、保持可横向滚动
+  try {
+    var clTrack = document.querySelector('.cl-track');
+    if (clTrack && !reducedMotion) {
+      clTrack.innerHTML += clTrack.innerHTML;
+      clTrack.classList.add('loop');
+    }
+  } catch (e) { /* 轮播失败不影响页面其余部分 */ }
 
   /* ---------------- 平滑滚动（Lenis 可用时启用，失败则回退原生滚动） ---------------- */
   if (hasGSAP && !reducedMotion) {
