@@ -375,21 +375,21 @@
      默认形态是普通纵向堆叠（脚本没跑起来、或用户偏好减动效时就是这个样子），
      脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下十张叠在一格的烂摊子 */
   .demo-stage { display: flex; flex-direction: column; align-items: center; gap: 44px; }
+  /* 钉住容器：滚动行程 380vh，期间转盘随页面滚动旋转，滚完才放行页脚方向 */
+  .demo-scroll { position: relative; height: 380vh; }
   .demo-stage.ring {
-    display: block;
-    position: relative;
-    height: min(56vh, 520px);
-    min-height: 340px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     perspective: 1200px;
-    touch-action: pan-y; /* 横向归转盘，竖向仍交给页面滚动 */
-    cursor: grab;
-    user-select: none; /* 拖动过程中别顺手选中十张的字幕 */
+    touch-action: pan-y; /* 触屏竖向仍交给页面滚动 */
+    user-select: none; /* 别顺手选中十张的字幕 */
   }
-  /* 图片自身的原生拖拽要先按住：一按下就起原生拖的话，指针事件会被 pointercancel 掐断，
-     转盘跟着就不跟手了（实测拖到第二下就整个没反应） */
   .demo-stage.ring img { -webkit-user-drag: none; }
-  .demo-stage.ring.dragging { cursor: grabbing; }
-  .demo-stage.ring .demo-track { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.3s ease; }
+  .demo-stage.ring .demo-track { position: relative; width: 100%; height: min(56vh, 520px); transform-style: preserve-3d; }
   .demo-stage.ring .demo-item {
     position: absolute;
     left: 50%;
@@ -398,7 +398,7 @@
     margin: 0;
     backface-visibility: hidden; /* 转到 90° 之后是圈外那张的背面，别让它翻过来露一块镜像 */
     /* 不给 will-change：十张各占一个合成层的话，这段滚动又要变回每帧光栅化十次 */
-    transition: transform 0.62s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.62s ease, visibility 0.62s;
+    transition: visibility 0.62s;
   }
   /* visibility 与 opacity 一起过渡：退场时整段保持可见、末尾才藏（藏得干净），
      进场时立刻可见再淡入。离场的第五张之后不再参与合成 */
@@ -660,7 +660,7 @@
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
     #demo { padding-bottom: 110px; }
-    .demo-stage.ring { height: 46vh; min-height: 300px; }
+    .demo-stage.ring .demo-track { height: 46vh; min-height: 300px; }
     .demo-stage.ring .demo-item { width: var(--ring-w, min(280px, 62vw)); }
     .ring-btn { width: 34px; height: 34px; }
     .cl-card { width: 300px; }
@@ -792,6 +792,7 @@
       <div class="eyebrow">功能演示</div>
       <h2>写作时，它长这样。</h2>
     </div>
+    <div class="demo-scroll">
     <div class="demo-stage">
       <div class="demo-track">
         <figure class="demo-item">
@@ -835,6 +836,7 @@
         <figcaption><strong>Git 面板</strong><span class="en">Git panel</span></figcaption>
       </figure>
       </div>
+    </div>
     </div>
   </section>
 
@@ -1455,13 +1457,13 @@ function boot() {
   } catch (e) { /* 放大建不起来就只看得小图，转盘照常转 */ }
 
   /* ---------------- 演示动图转盘 ---------------- */
-  // 十张动图排成一圈：中心一张，左右各两张侧转退到后面，其余五张 visibility:hidden 退出合成
-  // （同一刻最多五张 GIF 在播，已经是这个形态的代价上限，所以档位表只给到第三档）。
-  // 转向四个入口：定时器自动循环、按住横向拖动、点侧边那张换正、左右箭头；
-  // 指针停在转盘上、拖拽中、整圈滚出视口都停表，看不见的时候不白转。
-  // 减动效偏好下整圈不建，保持 CSS 默认的纵向堆叠形态。
+  // 十张动图排成一圈：中心一张，左右各两张侧转退到后面，其余退出合成。
+  // 旋转完全由页面滚动驱动（滚轮滚 = 转盘转），没有自动轮播：
+  // 区块钉住一屏，滚动行程内转盘从第 0 张转到第 RN 张，滚完才继续往下走页面。
+  // 箭头和点侧边那张都换算成滚动位置；正面那张点开大图。
+  // 减动效偏好或没有 GSAP 时整圈不建，保持 CSS 默认的纵向堆叠形态。
   try {
-    if (!reducedMotion) {
+    if (!reducedMotion && hasGSAP) requestAnimationFrame(function () {
       var ringStage = document.querySelector('.demo-stage');
       var ringTrack = ringStage.querySelector('.demo-track');
       var ringItems = [].slice.call(ringTrack.querySelectorAll('.demo-item'));
@@ -1475,14 +1477,13 @@ function boot() {
       var RING_STEP = 360 / RN;
       var RING_R = 1150; // 初值，ringFit() 立刻按视口宽窄反解
       var RING_SC = [1, 0.92, 0.82]; // 离中心第 0/1/2 张的自身缩放：越外越小才腾得出缝
-      var RING_FADE = [1, 0.95, 0.72]; // 离中心第 0/1/2 张的不透明度，圈外的为 0
       var ringW = 430, ringVis = 2; // 卡宽与露出到第几张，同样由 ringFit() 按视口定
-      var ringActive = 0, ringTimer = 0, ringInView = false, ringHover = false, ringDrag = null, ringSuppressClick = false;
+      var ringPos = 0;
 
-      function ringOffset(i) { // 折到环上最短的一段
-        var k = i - ringActive;
-        if (k > RN / 2) k -= RN;
+      function circOffset(i, pos) { // 折到环上最短的一段（pos 是连续位置）
+        var k = (i - pos) % RN;
         if (k < -RN / 2) k += RN;
+        if (k >= RN / 2) k -= RN;
         return k;
       }
       // 第 a 张卡片某个竖向边投影到屏幕上的横向偏移（相对转盘中心）。
@@ -1516,40 +1517,49 @@ function boot() {
         for (var t = 0; t < 10 && !ringPick(half); t++) ringW = Math.max(140, ringW * 0.88);
         ringStage.style.setProperty('--ring-w', ringW.toFixed(0) + 'px');
       }
-      function ringLayout() {
+      function ringLayout(pos) {
+        ringPos = pos;
         ringItems.forEach(function (el, i) {
-          var k = ringOffset(i), a = Math.abs(k);
+          var k = circOffset(i, pos), a = Math.abs(k);
           var th = k * RING_STEP * Math.PI / 180;
           var show = a <= ringVis;
           el.classList.toggle('is-far', !show);
-          el.classList.toggle('is-front', k === 0);
+          el.classList.toggle('is-front', a < 0.5);
           el.style.transform = 'translate(-50%,-50%) translateX(' + (RING_R * Math.sin(th)).toFixed(1) + 'px)'
             + ' translateZ(' + (RING_R * Math.cos(th) - RING_R).toFixed(1) + 'px)'
             + ' rotateY(' + (k * RING_STEP).toFixed(1) + 'deg)'
-            + ' scale(' + RING_SC[Math.min(a, 2)] + ')';
-          el.style.opacity = show ? RING_FADE[Math.min(a, 2)] : 0;
-          el.style.zIndex = 9 - a;
+            + ' scale(' + (1 - Math.min(a, 2) * 0.09).toFixed(3) + ')';
+          el.style.opacity = show ? (1 - Math.min(a, 2) * 0.14).toFixed(2) : 0;
+          el.style.zIndex = 50 - Math.round(a * 5);
         });
-      }
-      function ringStep(d) { ringActive = (ringActive + d + RN) % RN; ringLayout(); }
-      function ringStop() { if (ringTimer) { clearInterval(ringTimer); ringTimer = 0; } }
-      function ringPlay() {
-        ringStop();
-        if (ringInView && !ringHover && !ringDrag) ringTimer = setInterval(function () { ringStep(1); }, 4200);
       }
 
       ringStage.classList.add('ring');
       ringStage.setAttribute('role', 'group');
       ringStage.setAttribute('aria-label', '功能演示动图');
       ringFit();
-      ringLayout(); // 键盘走两个箭头按钮（真 button，Tab 得到），转盘本身不做成可聚焦的：mousedown 聚焦会把整页滚一下，拖到一半指针就跑出转盘外了
+      ringLayout(0);
 
       // 窗口变窄要重算半径：卡片宽度是 vw 的，视口一窄原来的空隙就变成相互压叠
       var ringResize = 0;
       window.addEventListener('resize', function () {
         clearTimeout(ringResize);
-        ringResize = setTimeout(function () { ringFit(); ringLayout(); }, 160);
+        ringResize = setTimeout(function () { ringFit(); ringLayout(ringPos); }, 160);
       });
+
+      // 页面滚动进度 → 转盘角度：滚轮滚 = 转盘转，没有自动轮播
+      var ringSt = ScrollTrigger.create({
+        trigger: '.demo-scroll',
+        start: 'top top',
+        end: 'bottom bottom',
+        scrub: 0.4,
+        onUpdate: function (self) { ringLayout(self.progress * RN); }
+      });
+      function ringScrollToPos(posTarget) {
+        posTarget = Math.max(0, Math.min(RN, posTarget));
+        var y = ringSt.start + (ringSt.end - ringSt.start) * (posTarget / RN);
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      }
 
       // 箭头由脚本插入：纵向堆叠的降级形态里没有「下一张」这个概念，不能留下两个空转的按钮
       [['prev', -1, '上一张'], ['next', 1, '下一张']].forEach(function (b) {
@@ -1560,78 +1570,25 @@ function boot() {
         btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
           + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="'
           + (b[0] === 'prev' ? '15 18 9 12 15 6' : '9 18 15 12 9 6') + '"/></svg>';
-        btn.addEventListener('click', function (e) { e.stopPropagation(); ringStep(b[1]); ringPlay(); });
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          ringScrollToPos(Math.round(ringPos) + b[1]);
+        });
         ringStage.appendChild(btn);
       });
 
-      if ('IntersectionObserver' in window) {
-        new IntersectionObserver(function (es) {
-          ringInView = es[0].isIntersecting;
-          if (ringInView) ringPlay(); else ringStop();
-        }, { threshold: 0.2 }).observe(ringStage);
-      } else {
-        ringInView = true;
-        ringPlay();
-      }
-
-      ringStage.addEventListener('pointerenter', function () { ringHover = true; ringStop(); });
-      ringStage.addEventListener('pointerleave', function () { ringHover = false; ringPlay(); });
-      ringStage.addEventListener('focusin', ringStop);
-      ringStage.addEventListener('focusout', ringPlay);
-
-      // 转盘接管点击：侧边那张换到正面，正面那张放大；刚拖过的那一下不算点击
-      ringTakesClick = true;
+      // 点卡片：侧边那张滚到正面，正面那张开大图
       ringStage.addEventListener('click', function (e) {
-        if (ringSuppressClick) { ringSuppressClick = false; return; }
         var fig = e.target.closest ? e.target.closest('.demo-item') : null;
         if (!fig) return;
         var i = ringItems.indexOf(fig);
         if (i < 0) return;
-        if (i === ringActive) { lbOpen(i); return; } // 正面那张=正在看的，点开看大图
-        ringActive = i;
-        ringLayout();
-        ringPlay();
+        if (Math.abs(circOffset(i, ringPos)) < 0.5) { lbOpen(i); return; }
+        ringScrollToPos(i);
       });
-      lbHalt = ringStop;  // 大图开着时停表，别在遮罩后面空转
-      lbResume = ringPlay;
-
-      // 按住拖动：整圈跟着指针横向平移做即时反馈，松手按拖动距离转一到两张。
-      // 移动与抬起挂在 window 上而不是转盘上：拖到一半指针滑出转盘边界是常态，
-      // 挂在转盘上就断在半路（setPointerCapture 能办到，但它会把 click 的目标也改到转盘上，
-      // 箭头和侧边那张的点击就全收不到了，实测点箭头毫无反应）
-      ringStage.addEventListener('dragstart', function (e) { e.preventDefault(); });
-      ringStage.addEventListener('pointerdown', function (e) {
-        if (e.pointerType === 'mouse' && e.button !== 0) return;
-        ringDrag = { x: e.clientX, dx: 0, grabbed: false };
-        ringSuppressClick = false;
-        ringStop();
-      });
-      window.addEventListener('pointermove', function (e) {
-        if (!ringDrag) return;
-        ringDrag.dx = e.clientX - ringDrag.x;
-        if (!ringDrag.grabbed) {
-          if (Math.abs(ringDrag.dx) < 8) return;
-          ringDrag.grabbed = true;
-          ringStage.classList.add('dragging');
-        }
-        ringTrack.style.transform = 'translateX(' + (ringDrag.dx * 0.22) + 'px)';
-      });
-      function ringEndDrag() {
-        if (!ringDrag) return;
-        var dx = ringDrag.dx, grabbed = ringDrag.grabbed;
-        ringDrag = null;
-        ringStage.classList.remove('dragging');
-        ringTrack.style.transform = '';
-        if (grabbed) {
-          ringSuppressClick = true;
-          var n = Math.abs(dx) > 160 ? 2 : 1;
-          if (Math.abs(dx) > 44) ringStep(dx < 0 ? n : -n);
-        }
-        ringPlay();
-      }
-      window.addEventListener('pointerup', ringEndDrag);
-      window.addEventListener('pointercancel', ringEndDrag);
-    }
+      lbHalt = function () {};  // 没有自动轮播了，大图开着时无需停表
+      lbResume = function () {};
+    });
   } catch (e) { /* 转盘建不起来就停在 CSS 默认的纵向堆叠 */ }
 
   /* ---------------- 滚动动画 ---------------- */
