@@ -147,7 +147,13 @@
     text-align: center;
     padding: 100px 24px 80px;
   }
-  .hero-inner { max-width: 880px; will-change: transform, opacity; }
+  .hero-inner {
+    max-width: 940px;
+    padding: 56px 64px; /* 白色渐变衬底：光核升上来时标题、副标题、按钮都保持可读 */
+    background: radial-gradient(120% 120% at 50% 50%, rgba(255, 255, 255, 0.9) 45%, rgba(255, 255, 255, 0) 100%);
+    border-radius: 40px;
+    will-change: transform, opacity;
+  }
   #hero h1 {
     font-size: clamp(2.6rem, 7.2vw, 5.4rem);
     line-height: 1.06;
