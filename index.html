@@ -357,7 +357,7 @@
 
   /* ---------- 功能演示 · GIF 墙 ---------- */
   #demo {
-    padding: 40px clamp(20px, 5vw, 64px) 150px;
+    padding: 40px clamp(20px, 5vw, 64px) 40px;
     max-width: 1240px;
     margin: 0 auto;
   }
@@ -376,7 +376,7 @@
      脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下十张叠在一格的烂摊子 */
   .demo-stage { display: flex; flex-direction: column; align-items: center; gap: 44px; }
   /* 钉住容器：滚动行程 380vh，期间转盘随页面滚动旋转，滚完才放行页脚方向 */
-  .demo-scroll { position: relative; height: 380vh; }
+  .demo-scroll { position: relative; height: 320vh; }
   .demo-stage.ring {
     position: sticky;
     top: 0;
