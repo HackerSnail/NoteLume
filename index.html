@@ -398,13 +398,22 @@ try {
   }
   #demo .demo-cta { margin-top: 30px; }
   #demo .demo-note { margin-top: 10px; font-size: 12px; color: var(--text-dim); }
-  /* 演示动图做成一圈转盘：中心一张，左右各两张侧转退到后面，其余五张退出合成。
-     默认形态是普通纵向堆叠（脚本没跑起来、或用户偏好减动效时就是这个样子），
-     脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下十张叠在一格的烂摊子 */
-  .demo-stage { display: flex; flex-direction: column; align-items: center; gap: 44px; }
-  /* 钉住容器：滚动行程 280vh，期间转盘随页面滚动旋转，滚完才放行页脚方向。
+  /* 演示动图做成一圈转盘：中心一张，左右各两张侧转退到后面，圈上其余的先退出合成。
+     默认形态是平铺网格（脚本没跑起来、或用户偏好减动效时就是这个样子），
+     脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下一堆叠在一条竖线上的烂摊子。
+     网格而不是竖排：三十多张竖着排能撑出十几屏，读起来像出错了 */
+  .demo-stage { display: flex; flex-direction: column; align-items: center; }
+  .demo-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+    gap: 36px 24px;
+    width: 100%;
+    max-width: 1180px;
+  }
+  /* 钉住容器：高度不写死——转盘建起来时脚本按张数量好再设（每张约 14vh），
+     减动效／脚本没跑起来时这里是纵向堆叠，得按内容自然撑开，不能按转盘的行程截断。
      overflow: clip 裁掉侧边卡伸出视口的部分（不产生滚动容器，sticky 不受影响） */
-  .demo-scroll { position: relative; height: 280vh; overflow: clip; }
+  .demo-scroll { position: relative; overflow: clip; }
   .demo-stage.ring {
     position: sticky;
     top: 0;
@@ -415,10 +424,10 @@ try {
     justify-content: center;
     perspective: 1200px;
     touch-action: pan-y; /* 触屏竖向仍交给页面滚动 */
-    user-select: none; /* 别顺手选中十张的字幕 */
+    user-select: none; /* 别顺手选中字幕 */
   }
   .demo-stage.ring img { -webkit-user-drag: none; }
-  .demo-stage.ring .demo-track { position: relative; width: 100%; height: min(56vh, 520px); transform-style: preserve-3d; }
+  .demo-stage.ring .demo-track { display: block; position: relative; width: 100%; height: min(56vh, 520px); transform-style: preserve-3d; }
   .demo-stage.ring .demo-item {
     position: absolute;
     left: 50%;
@@ -426,11 +435,11 @@ try {
     width: var(--ring-w, min(520px, 36vw));
     margin: 0;
     backface-visibility: hidden; /* 转到 90° 之后是圈外那张的背面，别让它翻过来露一块镜像 */
-    /* 不给 will-change：十张各占一个合成层的话，这段滚动又要变回每帧光栅化十次 */
+    /* 不给 will-change：每张各占一个合成层的话，这段滚动又要变回每帧光栅化好几次 */
     transition: opacity 0.25s linear, visibility 0.62s; /* opacity 过渡补上退场边界的小跳变 */
   }
   /* visibility 与 opacity 一起过渡：退场时整段保持可见、末尾才藏（藏得干净），
-     进场时立刻可见再淡入。离场的第五张之后不再参与合成 */
+     进场时立刻可见再淡入。转出视野的那几张不再参与合成 */
   .demo-stage.ring .demo-item.is-far { visibility: hidden; pointer-events: none; }
   .demo-stage.ring .demo-item:not(.is-front) { cursor: pointer; }
   .demo-stage.ring .demo-item:not(.is-front) .gif-wrap { cursor: pointer; } /* 侧边那张是换正，不是放大 */
@@ -457,6 +466,8 @@ try {
     max-height: 78vh;
     border-radius: 14px;
     background: #f5f5f7;
+    background-position: center;
+    background-size: cover;
     box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
   }
   .lb figcaption { color: #f5f5f7; font-size: 15px; text-align: center; }
@@ -477,6 +488,7 @@ try {
   .lb-x:hover { background: rgba(255, 255, 255, 0.26); }
   /* GIF 本体做成 Mac 窗口：细描边 + 大扩散投影，融进白底 */
   .demo-item .gif-wrap {
+    position: relative;
     aspect-ratio: 16 / 10;
     overflow: hidden;
     background: #f5f5f7;
@@ -492,11 +504,21 @@ try {
       0 48px 88px -24px rgba(0, 0, 0, 0.2),
       0 16px 32px -12px rgba(0, 0, 0, 0.1);
   }
+  /* 动图往往要几秒才下得完：先在底下铺一张内联的极小首帧放大糊掉，卡片不会是一块白 */
+  .demo-item .gif-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -8%;
+    background: var(--lqip) center / cover no-repeat;
+    filter: blur(16px);
+  }
   .demo-item .gif-wrap img {
+    position: relative;
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+    transition: opacity 0.45s ease;
   }
   .demo-item figcaption {
     padding: 0 8px;
@@ -692,6 +714,7 @@ try {
     #demo { padding-bottom: 110px; }
     .demo-stage.ring .demo-track { height: 46vh; min-height: 300px; }
     .demo-stage.ring .demo-item { width: var(--ring-w, min(280px, 62vw)); }
+    .demo-item figcaption .en { display: none; } /* 窄屏卡片窄，中英两截必然折成一团，字幕只留主标题 */
     .ring-btn { width: 34px; height: 34px; }
     .cl-card { width: 300px; }
     .nav-links { gap: 14px; }
@@ -835,44 +858,132 @@ try {
     <div class="demo-scroll">
     <div class="demo-stage">
       <div class="demo-track">
-        <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/wysiwyg-typing.gif" alt="所写即所得输入演示" loading="lazy" decoding="async"></div>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGUAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAYDAQAAAAAAAAAAAQARAiEx0RLwUWFScYGhosGSE5ERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2uJclLGGUkuqIDSpaMpdG+SFJC1u6iiNBPJIfXFVWAvTXVQUdRgqv5j+63QAY0CXKAGQAqjKgGUQBhdqa8oExFg4B7OiIp2J5vGKUGMbUfYBVkUevH1Qs3E1pYYrTLLS0bLK7uqIBqKgP/9k=')"><img src="docs/img/demo/wysiwyg-typing.gif" alt="所写即所得输入演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>所写即所得</strong><span class="en">Live Markdown</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/slash-menu.gif" alt="斜杠菜单插入块演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGUAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAYDAQAAAAAAAAAAAQARAiEx0RLwUWFScYGhosGSE5ERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2uJclLGGUkuqIDSpaMpdG+SFJC1u6iiNBPJIfXFVWAvTXVQUdRgqv5j+63QAY0CXKAGVQCqMqAZRAGF2prygTEWDgHs6IinYnm8YpQYxtQHYBVBR68fVDzcTWlhiqjLSybLK7uggGoqA//9k=')"><img src="docs/img/demo/rich-render.gif" alt="公式图表代码高亮演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>富文本渲染</strong><span class="en">Rich rendering</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGcAAAMBAQEBAAAAAAAAAAAAAAIDAAQBBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgECAgkFAQAAAAAAAAAAAQARAiExEvBRQVJhcaHRgdLBE6KRkhEBAAAAAAAAAAAAAAAAAAAAAP/AABEIAB4AMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/APa6TJLymjKSZaIG1Wwpqq5R7kNUJjDyxRBAncqH8+pyQBjbTmwUfUgOX4x+6a0AebBHKAIQAWiGgCZABMxbTqprFMCQD4lIAoJ3undEGmnC06gGsitF+P1VZuJvbAd3TLLTVseX2mWiBbNAf//Z')"><img src="docs/img/demo/slash-menu.gif" alt="斜杠菜单插入块演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>斜杠菜单插入块</strong><span class="en">Slash menu</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/wikilink-suggest.gif" alt="双链输入补全演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGUAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAYDAQAAAAAAAAAAAQARAiEx0RLwUWFScYGhosGSE5ERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2uJclLGGUkuqIDSpaMpdG+SFJC1u6iiNBPJIfXFVWAvTXVQUdRgqv5j+63QAY0CXKAGQAqjKgGUQBhdqa8oExFg4B7OiIp2J5vGKUGMbUB2AVZFHrx9ULNxNaWGK0yy0tGyyu7qiAaioD/9k=')"><img src="docs/img/demo/wikilink-suggest.gif" alt="双链输入补全演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>[[ 双链 ]] 输入补全</strong><span class="en">Wikilink suggest</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/knowledge-graph.gif" alt="知识图谱铺盘演示" loading="lazy" decoding="async"></div>
-        <figcaption><strong>知识图谱</strong><span class="en">Knowledge graph</span></figcaption>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAEDBAIABwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAkFAQAAAAAAAAAAAQARAiEx0RLwUVJhoYFxosETkkGREQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XSZJRTRqkmWiBtVsU1VeI9yHVCYx3YoggngqH10sWAM228sFHqQGL8Y/u29AHGwRqgCEAomGgC5AAZi23VTWKYEgHtKQFoJ4umlqDTTi07gGsipF+fpVa3M3tgaXTLLSScIv+mWiBbmgP/Z')"><img src="docs/img/demo/backlinks.gif" alt="双向链接面板演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>双向链接</strong><span class="en">Backlinks</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/command-palette.gif" alt="命令面板演示" loading="lazy" decoding="async"></div>
-        <figcaption><strong>命令面板</strong><span class="en">Command palette</span></figcaption>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAUFAQAAAAAAAAAAAQARAiEx0RLwUWGBoXFiwaITkpFSEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A9riXJSxhlJLqiA0qWjKXZvUhSQtbmoojQT/Eh9cVVYC9Nd1BR1GCq/GP3W6ADGgS5QAyqAVRlQDKIAwu1NdUCYiwcA8nREU7Hy6YpQYxtR9gFWRR68fahZuJrSwxWmWWlo2WV3dUQDUVAf/Z')"><img src="docs/img/demo/global-tags.gif" alt="全局标签视图演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>全局标签</strong><span class="en">Global tags</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/vault-search.gif" alt="全库搜索演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGcAAAIDAQEAAAAAAAAAAAAAAAEDBAIABwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAgHAQAAAAAAAAAAAQARAiExEtHwUlGhcYETYUGiwZJikREBAAAAAAAAAAAAAAAAAAAAAP/AABEIAB4AMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AO10mSUU0aJJlogbVbFNVXSPkh1QmMd2KIIJ3Kh9dbFgDNturBR6kBi+GP7txQBxsEaIAhAKJhoAuQAGYttzU1imBIB7SkBaCd7lrag004tPABrIqRf9e1TpeZvbA1umUVKOEX9TLRAtzQH/2Q==')"><img src="docs/img/demo/vault-search.gif" alt="全库搜索演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>全库搜索</strong><span class="en">Vault search</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/docx-import.gif" alt="Word 导入演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGIAAQEBAQEBAAAAAAAAAAAAAAYFBwMBBAEBAQAAAAAAAAAAAAAAAAAAAAEQAAEDAgUEAwEAAAAAAAAAAAECAAMRBFKxFCGRgRUzYYKyBUIRAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwDUbaCOSJKiKnfMujZ7QI+X2LCK66WHCHXYBJ00OEOuwCTpocAdVgErTQ4A6rAC1zBGiJSgkAimYf33fgX0zDCK9tPAjrmWWivUwoCCkmld6+2BGhMOf00D+FchhQ5YXuaMCuQwByw3c0YFchgDliu4pwK5DALd34F9Mwy8t6mZBQEkVpvX2wI//9k=')"><img src="docs/img/demo/knowledge-graph.gif" alt="知识图谱铺盘演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>知识图谱</strong><span class="en">Knowledge graph</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAHIAAQEAAwEBAQAAAAAAAAAAAAAFBgIBBAMHAQEBAQEBAAAAAAAAAAAAAAAAAgMBBBAAAgIBAgMJAQEAAAAAAAAAAQIAEQMSITFxUQSikdGBUhNB8GEjEQEAAgMAAwEAAAAAAAAAAAAAARECIUFRgRIx/8AAEQgAKAAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A/fogAiACRe0Zvi0ABrc0Couudw2xxu9xFeREzSiuRHLAEErxHSSBiZNRUgkmzsoJ57TKlypxkEgojrkZ6Y6gNi4ochUzXelJXpqJAobRABEAPAceMAA8L+2PnPq1FgpW7s3VgV/esOjiGhIyOAlrsQ2qyT6n9Uv6F9q+AmnP1klaEq5Fytk/0YMK0WtL3pkQAHDaRW7v0t6JyicYx+YuO9l53Z2ACIAIgAiACIAIgAiAH//Z')"><img src="docs/img/demo/desktop-graph.gif" alt="知识图谱拖节点演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>图谱拖节点跳转</strong><span class="en">Graph drag &amp; jump</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGcAAAIDAQEAAAAAAAAAAAAAAAEDBAIABwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAgHAQAAAAAAAAAAAQARAiExEtHwUWFxoYETUkGiwZJCkREBAAAAAAAAAAAAAAAAAAAAAP/AABEIAB4AMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AO10mSUU0aJJlogbVbFNVXKPkh1QxjuxRBBJ/FQ+utiwBm23Ngo9SAxfDH923oA42CNEAQgFEw0AXIADMW26qaxTAkA9pSAtBPm6a2oNNOLTuAayKkX4+1VpcTe2BrdMoqScIv6mWiBbmgP/2Q==')"><img src="docs/img/demo/canvas-board.gif" alt="Canvas 便签板拖拽演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>Canvas 便签板</strong><span class="en">Canvas board</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGcAAAIDAQEAAAAAAAAAAAAAAAEDAgAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgECAwYHAQAAAAAAAAAAAQARAiEx0RLwUWGhcYFiwaITklJBkREBAAAAAAAAAAAAAAAAAAAAAP/AABEIAB4AMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AO10mSUU0aSTLRA2q2FNVXSPMhtQmMO7FEEE/SofHNywBjbbqwUepAcvtj+7b0AcbBGkAQ1AQTDQBagAMxbbmprFMCQD2lIipQfFyzYg004WncA1BT78fSq1cTe2AzajLTV+IvvlCBbWgP/Z')"><img src="docs/img/demo/daily-capture.gif" alt="今日速记浮层演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>今日速记浮层</strong><span class="en">Daily capture</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGgAAAIDAQEAAAAAAAAAAAAAAAIDAQAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCAwYHAQAAAAAAAAAAAQARAiExEvBRYXGhgdHSwaJiE5JSkUERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwDtcS5KiMMJJdUQNlS0ZS3N4kKyFrc1FESCfpIfHuWVgL0zvUFHqMFl9sfudUAONAowgBkACqzKgCVQAJdqZ4pMxFg4B5OiIomPq4dUIMY2o+gCrIp9dvlSsW01pYdVpllpq/iiurqiAFVQH//Z')"><img src="docs/img/demo/source-toggle.gif" alt="正文与源码切换演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>正文与源码互切</strong><span class="en">Source toggle</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAEDBAIABwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAkFAQAAAAAAAAAAAQARAiEx0RLwUVJhoYFxosETkkGREQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XSZJRTRqkmWjKm1WxTVV4j3IdUJjHdigIJ4Kh9dLFgDNtvLAHqQGL8Y/u29AHGwRqgCEAomGgC5AAZi23VTWKYEgHtKQFoJ4umlqDTTi07gGsipF+fpVa3M3tgaXTKKknCL/plogW5oD//Z')"><img src="docs/img/demo/mermaid-edit.gif" alt="图表就地编辑演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>图表就地改码</strong><span class="en">Inline diagram</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGcAAAIDAQEAAAAAAAAAAAAAAAEDBAIABwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAgHAQAAAAAAAAAAAQARAiExEtHwUWFxoYETUkGiwZJCkREBAAAAAAAAAAAAAAAAAAAAAP/AABEIAB4AMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AO10mSUU0aJJlogbVbFNVXKPkh1QmMd2KIIJP4qH11sWAM225sFHqQGL4Y/u29AHGwRogCEAomGgC5AAZi23VTWKYEgHtKQFoJ83TW1BppxadwDWRpIvx9qrS4m9sDW6ZYbSThF/Uy0ZC3NAf//Z')"><img src="docs/img/demo/table-edit.gif" alt="表格右键编辑演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>表格编辑</strong><span class="en">Table editing</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAEDAgAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAUFAQAAAAAAAAAAAQARAiExElHR8GFxoYETUkLBopGSEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XEuShGGEkuqIGypaMpcm+SFZC1u6iiCCT7JD+dVlYC9N81BR6jBZfGP3eaAHGgQwgBkAQRZUAVUAAu1N9UmYiwcA9nRASYn1dNVEGMbUfIBEFPrx+qVi4mtLDVaZRWo2Qrm6oIWqqA//9k=')"><img src="docs/img/demo/image-resize.gif" alt="正文图片拖拽缩放演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>图片拖拽缩放</strong><span class="en">Image resize</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGUAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAYDAQAAAAAAAAAAAQARAiEx0RLwUWFScYGhosGSE5ERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2uJclLGGUkuqIDSpaMpdG+SFJB2t3UURoJ5JD64qqwF6a6qCjqMFV/Mf3W6ADGgS5QAyqAVRlQDKIAwu1NeUCYiwcA9nREU7E83jFKDGNqPsAqyKPXj6oWbia0sMVpllpaNlld3VEA1FQH//Z')"><img src="docs/img/demo/outline-fold.gif" alt="大纲折叠演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>大纲层级折叠</strong><span class="en">Outline folding</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAEDBAIABwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAkFAQAAAAAAAAAAAQARAiEx0RLwUVJhoYFxosETkkGREQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XSZJRTRqkmWiBtVsU1VeI9yHVCYx3YoggngqH10sWAM228sFHqQGL8Y/u29AHGwRqgCEAomGgC5AAZi23VTWKYEgHtKQFoJ4umlqDTTi07gGsipF+fpVa3M3tgaXTLLSScIv+mWiBbmgP/Z')"><img src="docs/img/demo/split-panes.gif" alt="双栏对照演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>双栏对照</strong><span class="en">Split panes</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAMCAQAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAkFAQAAAAAAAAAAAQARAiEx0RLwUVJhoYFxosETkkGREQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XSZJVpo1STLRAaq2KaqvEe5DahMY7sURIJ4Kh9dLlgDNtvLBR6kBy/GP7tvQAxsGNUAQgCNhoBmoBBmLbdUNYECQD2lIBoJ4umlUGmnFp3ANZGmi/P0otbmb2wNLplhtpOGL/ployBtaA//2Q==')"><img src="docs/img/demo/view-modes.gif" alt="专注与打字机模式演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>专注与打字机</strong><span class="en">Focus &amp; typewriter</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAHEAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBgUBAQEBAQEAAAAAAAAAAAAAAAABAgQDEAACAQIEBAcBAAAAAAAAAAABABECIaFhkRMSAzFRk9GBkgQUUmIRAQEAAQUBAQAAAAAAAAAAAAABEgIRYZGSYuH/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwDqgZLgphCC3SJMRUbHoJwS0V7dQqibEaupN/1EVZ2x+eb7C+gPmCm3AdQ9OH1p9RyvHLi9PZQ2x253hl9f7f8AB1D1YfWn1HK8cuL09nOVjh7+og6JebVuVExHTB1ZtWUVSYgGsQCGYsiqi0jCWoBoOeHmqCB0tOSQUa+eCnFng6RFGcQgRiAf/9k=')"><img src="docs/img/demo/command-palette.gif" alt="命令面板演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>命令面板</strong><span class="en">Command palette</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGUAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAYDAQAAAAAAAAAAAQARAiEx0RLwUWFScYGhosGSE5ERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2uJclLGGUkuqIDSpaMpdG+SFJB2t3UURoJ5JD64qqwF6a6qCjqMFV/Mf3W6ADGgS5QAyqAVRlQDKIAwu1NeUCYiwcA9nREU7E83jFKDGNqA7AKsij14+qFm4mtLDFaZZaWjZZXd1RANRUB//Z')"><img src="docs/img/demo/inspector-panel.gif" alt="右侧检查器演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>检查器</strong><span class="en">Inspector</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAMCAAQBBQcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAUFAQAAAAAAAAAAAQARAiEx0RLwUWGBoXFiwaITkpFSEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A9riXJSxhlJLqiA0qWjKXZvUhSQtbmoojQT/Eh9cVVYC9Nd1BR1GCq/GP3W6ADGgS5QAyAFUZUAyiAMLtTXVAmIsHAPJ0RFOx8umKUGMbUfYBVBR68fahZuJrSwxVRlpaNlld3QQDUVAf/9k=')"><img src="docs/img/demo/docx-import.gif" alt="Word 导入演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>Word 导入校对</strong><span class="en">Word import</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/paste-clean.gif" alt="粘贴自动清理演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGIAAQEBAQEBAAAAAAAAAAAAAAMBBAAHBQEBAQEAAAAAAAAAAAAAAAAAAQACEAACAQMEAgMBAAAAAAAAAAABABECEoExYVEhcQORQbEiEQEBAQAAAAAAAAAAAAAAAAAAARH/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2imoSRJcdAIqPCllPqAySJqkbGMHQ4Wtn7PyXKKWN2gRzntkkkbqKEmWroas9mmVQKOaRQOyBlWpLQDgy8HBKbkbnJKMjchSMjchSH7NB5ZV/TIJnB5/QW2jz5dHQn//Z')"><img src="docs/img/demo/paste-clean.gif" alt="粘贴自动清理演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>粘贴自动清理</strong><span class="en">Paste cleaning</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/qd-snapshot.gif" alt="Quarkdown 模板快照演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAQEBAQEBAAAAAAAAAAAAAAMEAQIABwEBAQEAAAAAAAAAAAAAAAAAAAECEAACAQEIAgMBAAAAAAAAAAABABECgUEiEjEhwWGxoVLRcWIRAQADAQAAAAAAAAAAAAAAAAABEUEh/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A+0U1CSJLNRSQSWjIrzgEjHt/NUWbL6VTn2+OGPE+2CjsYhMm0R5UBB0ILUBkdqNQElW17ldzQR5n1GEgWTymorRFLy5FDme9Okpqm6LZ+mChaZvm2OHcyAKlmQAa7nasTRBKBV+e+Au74wy0/9k=')"><img src="docs/img/demo/qd-snapshot.gif" alt="Quarkdown 模板快照演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>Quarkdown 模板快照</strong><span class="en">Quarkdown snapshot</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板演示" loading="lazy" decoding="async"></div>
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAMCAQAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAQcFAQEAAAAAAAAAAQARAiEx0RLwUVJxoYHBomETkkGREQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XSZJVpo2STLRAaq2KaqukepDahMY8sUEgnkqH51csAZtv1YA9SA5frH+78UAMbBjZAEIAjYaAZqAQZi2/dDWBAkA+JSAaCebtqqDTTi08AEg00XHH2otr5N7YGrpllppOGL/wBMtGQNrQH/2Q==')"><img src="docs/img/demo/theme-switch.gif" alt="主题切换演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>三套主题</strong><span class="en">Themes</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGgAAAIDAQEAAAAAAAAAAAAAAAMCAQAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAgHAQEAAAAAAAAAAQARAiEx8BJRodFigXETYUHB0qJSkpERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAeADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwDtdJklWmjVJMtEBqrYpqq7R7kNqExjqxQSCfxUP5+TmgDNtO7AHpwHL4Y/3TagBiIDGqAIQBGw0AzUAgzFtN4Q1gQJAPSUgHg827ioDTTi07AECtF+b6otbzN7YHFrKK0nDF/Uy0QDa0B//9k=')"><img src="docs/img/demo/appearance-settings.gif" alt="外观设置演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>外观设置</strong><span class="en">Appearance</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGYAAAIDAQEAAAAAAAAAAAAAAAMBAgAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAQMCBAUFAQAAAAAAAAAAAQARAiExElHR8GJxgaETYVLBopGSEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAHgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A7XEuSlGGEkuqICypaMpcm+SFZB2t1UURIE+yQ/nVZWAvTfNQUemwWXxj93mgAxoEsIAZAEE2VANVAFLtTfcIExFg4B6OiAmx4u2qgDGNqPkAqyK0V4vqhYvU1pYarTKK1GyVc3VEAlVQH//Z')"><img src="docs/img/demo/language-switch.gif" alt="界面语言切换演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>五语言界面</strong><span class="en">Five languages</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGcAAAIDAQEAAAAAAAAAAAAAAAMCAQAEBwUBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgEDAAkFAQEAAAAAAAAAAQARAiExEvBRUmFxgdGhwdITopKRQREBAAAAAAAAAAAAAAAAAAAAAP/AABEIAB4AMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AO10mSVaaNEky0QGqtimqrlHqQ2oTGOrFBIJ3Kh+fc5YAzbXmwB6kBy/GP7rtQAxsGNEAQgCNhoBmoBBmLa+UNYpgSAekpANBO947qg004tOwBIK0X4/VDpcTe2B3dMorUcMX/0y0QDa0B//2Q==')"><img src="docs/img/demo/shortcuts-settings.gif" alt="快捷键设置演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>快捷键设置</strong><span class="en">Shortcuts</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGsAAAMBAQEAAAAAAAAAAAAAAAcAAwIEAQEBAQEBAAAAAAAAAAAAAAAAAAMBAhAAAQMBBwMCBwEAAAAAAAAAAQARAjEDBRJBIQQTkSJRgeHRsXEjYpIyQhEBAQAAAAAAAAAAAAAAAAAAABH/wAARCAAmADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwDoN3bozE+Kyy7X7ejI24mD+6jFklAQN2bokHjsw2Qlp8kZuWP5frL4KMWSiwOWl3bqbfbsos/8mr+dEbMTjoeqlFUVQXnd26mG4rKOruD7Iz4lKLJqAubr3EgNLOLeH1+qNGJRiycUCCd2W8/82caURfxKUVTiiJxN21XSKIwHKZNUt6rRAK0YIiT5g+uS2w8BACtoAmHzZUQB6yoYiQDowa2KJFEARKStGDKUAKUAKUAdQokUWDof/9k=')"><img src="docs/img/demo/desktop-menu.gif" alt="系统原生菜单演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>系统原生菜单</strong><span class="en">Native menus</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGkAAAIDAQEAAAAAAAAAAAAAAAQAAwEFAgcBAQEBAAAAAAAAAAAAAAAAAAABAhAAAgIBAgUEAwEBAAAAAAAAAQACESGBwVESQfADMdJh0UIz4ZKREQEBAQEAAAAAAAAAAAAAAAAAARFh/8AAEQgAIgAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8A9qByQDo5gzIk0c9WqiNzPFCmISiBKImLwNHIoPzxDhCHhr9UO9EA3qPFA8ZiCahy31Fn/uEAluz6sBJ5j3u0QEFro1AQGPAfKUhUDkHlxtul/ie9ihUACJoWYx/z9Jhia/o9rFURwBBxKJHxWweoxkCPse0MAQmjI4DxPXvQtVB2eawABXXNHQUyR9A6mdYZaDwa8bqlQGq5FFKgC2gCqAUqAf/Z')"><img src="docs/img/demo/desktop-context.gif" alt="文件树右键菜单演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>右键菜单</strong><span class="en">Context menus</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAHMAAQADAQEBAAAAAAAAAAAAAAcEAwYFAggBAAMBAQAAAAAAAAAAAAAAAAMAAQIEEAABAgQFAgQHAQEAAAAAAAABAgARAyEEQXExEiKBUTLwYdGRocFzBUNSFBMRAQEBAQEBAAAAAAAAAAAAAAABETESAv/AABEIABgAMAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AGlKomFdej8pRtMXSyVm8xhtmZwHu4sCSaFwqXQ1EeQzo46RAGkKd2klYDF0jiI1OTqoiClCTHiDrgO+TwtxdrtlKiSBWEB6vAN3WnVPOaSRKRilPno/n61/I3k2YoGeYAE1CemDMxdxysnj/RK/ofNn51Z8dBDb8z5RjzHwLORqc/Z84woZC/7yU/sTXMMunYZ/RgwYQMii7txUzUwNBXFg8zwI+4pgNbQh3c22mJ5jeDuA26+h7vAL8EvzgG2yRyfXCjliWlOjm4MFoSl//9k=')"><img src="docs/img/demo/desktop-drop.gif" alt="拖入文件打开演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>拖入即打开</strong><span class="en">Drag &amp; drop</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAGwAAQEBAQEBAAAAAAAAAAAAAAYDAQACBAEBAQEBAAAAAAAAAAAAAAAAAAECAxAAAgADBwQDAQAAAAAAAAAAAQARAiFSFTEDBNKRQRJCUSIFwrERAQEBAAMBAQAAAAAAAAAAAAABEQIhUUEi/8AAEQgAGAAwAwESAAISAAMSAP/aAAwDAQACEQMRAD8Afn6rTmEZp6UxlH5V8w6kA+qRLjG2MaDLo01rM5G1YAxw/kHnjqzih10aa1mcjatgC8sdUxQq6NNazORtXMC4nVl8aTGgm6tPbzMY+O1ZmWaFKHlnL9W2/VRRO7ckR+c9YdJOhiPBYQLzx0RXo4PHBAIOtEFBV2Vgozsksh+hCiHZLZDdAI9kvoNkA//Z')"><img src="docs/img/demo/desktop-tray.gif" alt="菜单栏托盘演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
+        <figcaption><strong>菜单栏托盘</strong><span class="en">Tray menu</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap" style="--lqip:url('data:image/jpeg;base64,/9j//gAPTGF2YzYzLjEuMTAyAP/bAEMACBgYHBgcISEhISEhJyQnKCgoJycnJygoKCsrKzMzMysrKygoKyswMDMzNzk3NDQzNDk5PDw8SEhFRVRUV2dnfP/EAF8AAAMBAQEAAAAAAAAAAAAAAAMCAQAEBwEBAQEAAAAAAAAAAAAAAAAAAAECEAACAQQCAgMBAAAAAAAAAAABABECURIxkSFxQfHwoYERAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAgADADARIAAhIAAxIA/9oADAMBAAIRAxEAPwD2imqbo6KMTtoyOz+re0gp4P0unzygGgunooAEno9uOuGiCIt6P4lAZWRdgAgiTIpBnzKQ4n5YKHxpsOAwYi3KFRcRYcNkXCFAagALMrII20QcFAXg3TaI/9k=')"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板演示" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>
         <figcaption><strong>Git 面板</strong><span class="en">Git panel</span></figcaption>
       </figure>
       </div>
@@ -995,8 +1106,12 @@ var I18N = (function () {
     c3h3: '完全本地，零锁定',
     c3p: '纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 端口，数据直达你配置的服务。',
     demoEyebrow: '功能演示', demoH2: '写作时，它长这样。', demoCta: '在线沙盒体验', demoNote: '试用版，部分功能以桌面版为准',
-    cap1: '所写即所得', cap2: '斜杠菜单插入块', cap3: '[[ 双链 ]] 输入补全', cap4: '知识图谱',
-    cap5: '命令面板', cap6: '全库搜索', cap7: 'Word 导入校对', cap8: '粘贴自动清理', cap9: 'Quarkdown 模板快照', cap10: 'Git 面板',
+    caps: [
+      '所写即所得', '富文本渲染', '斜杠菜单插入块', '[[ 双链 ]] 输入补全', '双向链接', '全局标签', '全库搜索', '知识图谱',
+      '图谱拖节点跳转', 'Canvas 便签板', '今日速记浮层', '正文与源码互切', '图表就地改码', '表格编辑', '图片拖拽缩放', '大纲层级折叠',
+      '双栏对照', '专注与打字机', '命令面板', '检查器', 'Word 导入校对', '粘贴自动清理', 'Quarkdown 模板快照', '三套主题',
+      '外观设置', '五语言界面', '快捷键设置', '系统原生菜单', '右键菜单', '拖入即打开', '菜单栏托盘', 'Git 面板'
+    ],
     p1e: '粘贴', p1: '粘贴即净。从 AI 对话框、飞书、公众号复制的内容，<br>进编辑器前就摘掉杂质。',
     p1d: '代码块的「复制」按钮、行号装订线、空段落串联，在写入前自动清理，不用粘完再手修第二遍。',
     p2e: 'Quarkdown', p2: '让笔记可编程。.var、.foreach、.if<br>直接写进 Markdown，约 200 个内置函数。',
@@ -1035,8 +1150,12 @@ var I18N = (function () {
     c3h3: '完全本地，零鎖定',
     c3p: '純 GFM 檔案，Typora 和 Obsidian 能直接打開同一份庫。預設不聯網、不上傳，刪除進系統資源回收筒；要接大模型時自己填 API 埠，數據直達你設定的服務。',
     demoEyebrow: '功能演示', demoH2: '寫作時，它長這樣。', demoCta: '線上沙盒體驗', demoNote: '試用版，部分功能以桌面版為準',
-    cap1: '所寫即所得', cap2: '斜槓選單插入塊', cap3: '[[ 雙鏈 ]] 輸入補全', cap4: '知識圖譜',
-    cap5: '命令面板', cap6: '全庫搜尋', cap7: 'Word 匯入校對', cap8: '貼上自動清理', cap9: 'Quarkdown 範本快照', cap10: 'Git 面板',
+    caps: [
+      '所寫即所得', '富文字渲染', '斜槓選單插入塊', '[[ 雙鏈 ]] 輸入補全', '雙向連結', '全域標籤', '全庫搜尋', '知識圖譜',
+      '圖譜拖節點跳轉', 'Canvas 便籤板', '今日速記浮層', '正文與原始碼互切', '圖表就地改碼', '表格編輯', '圖片拖曳縮放', '大綱層級摺疊',
+      '雙欄對照', '專注與打字機', '命令面板', '檢查器', 'Word 匯入校對', '貼上自動清理', 'Quarkdown 範本快照', '三套主題',
+      '外觀設定', '五語言介面', '快速鍵設定', '系統原生選單', '右鍵選單', '拖入即開啟', '選單列托盤', 'Git 面板'
+    ],
     p1e: '貼上', p1: '貼上即淨。從 AI 對話框、飛書、公眾號複製的內容，<br>進編輯器前就摘掉雜質。',
     p1d: '程式碼區塊的「複製」按鈕、行號裝訂線、空段落串聯，在寫入前自動清理，不用貼完再手修第二遍。',
     p2e: 'Quarkdown', p2: '讓筆記可程式化。.var、.foreach、.if<br>直接寫進 Markdown，約 200 個內建函式。',
@@ -1075,8 +1194,12 @@ var I18N = (function () {
     c3h3: 'Fully local, zero lock-in',
     c3p: 'Plain GFM files — Typora and Obsidian open the very same vault. Offline by default, nothing uploaded, deletions go to the system trash; for AI you plug in your own model API endpoint, and data goes straight to the service you configured.',
     demoEyebrow: 'In action', demoH2: 'This is what writing looks like here.', demoCta: 'Try it in your browser', demoNote: 'Web trial — the desktop app has the full feature set',
-    cap1: 'Live WYSIWYG', cap2: 'Slash menu', cap3: 'Wikilink autocomplete', cap4: 'Knowledge graph',
-    cap5: 'Command palette', cap6: 'Vault search', cap7: 'Word import review', cap8: 'Paste cleaning', cap9: 'Quarkdown snapshot', cap10: 'Git panel',
+    caps: [
+      'Live WYSIWYG', 'Rich rendering', 'Slash menu', 'Wikilink autocomplete', 'Backlinks', 'Global tags', 'Vault search', 'Knowledge graph',
+      'Drag nodes in the graph', 'Canvas board', 'Daily capture', 'Source toggle', 'Edit diagram inline', 'Table editing', 'Image resize', 'Outline folding',
+      'Split panes', 'Focus & typewriter', 'Command palette', 'Inspector', 'Word import review', 'Paste cleaning', 'Quarkdown snapshot', 'Themes',
+      'Appearance', 'Five languages', 'Shortcuts', 'Native menus', 'Context menus', 'Drag & drop', 'Tray menu', 'Git panel'
+    ],
     p1e: 'Paste', p1: 'Paste it clean. Content from AI chats, Feishu or WeChat articles <br>is stripped of clutter before it reaches the editor.',
     p1d: 'Copy buttons on code blocks, line-number gutters and chains of empty paragraphs are cleaned before writing — no second manual pass.',
     p2e: 'Quarkdown', p2: 'Make notes programmable. .var, .foreach, .if <br>written straight into Markdown, with about 200 built-in functions.',
@@ -1115,8 +1238,12 @@ var I18N = (function () {
     c3h3: '100 % local, zéro enfermement',
     c3p: 'Fichiers GFM purs — Typora et Obsidian ouvrent le même coffre. Hors ligne par défaut, rien n\'est envoyé, la suppression passe par la corbeille système ; pour l\'IA, branchez votre propre endpoint d\'API de modèle.',
     demoEyebrow: 'En action', demoH2: 'Voilà à quoi ressemble l\'écriture ici.', demoCta: 'Essayer dans le navigateur', demoNote: 'Version web d\'essai — la version bureau reste la référence',
-    cap1: 'WYSIWYG en direct', cap2: 'Menu slash', cap3: 'Autocomplétion des liens', cap4: 'Graphe de connaissances',
-    cap5: 'Palette de commandes', cap6: 'Recherche globale', cap7: 'Import Word relu', cap8: 'Nettoyage du collage', cap9: 'Instantané Quarkdown', cap10: 'Panneau Git',
+    caps: [
+      'WYSIWYG en direct', 'Rendu riche', 'Menu slash', 'Autocomplétion des liens', 'Rétroliens', 'Tags globaux', 'Recherche globale', 'Graphe de connaissances',
+      'Graphe : glisser et ouvrir', 'Tableau de notes', 'Capture du jour', 'Source / rendu', 'Diagramme édité sur place', 'Édition de tableau', 'Redimensionner l’image', 'Plan repliable',
+      'Panneaux scindés', 'Concentration et machine à écrire', 'Palette de commandes', 'Inspecteur', 'Import Word relu', 'Nettoyage du collage', 'Instantané Quarkdown', 'Thèmes',
+      'Apparence', 'Cinq langues', 'Raccourcis', 'Menus natifs', 'Menus contextuels', 'Glisser-déposer', 'Icône de la barre des menus', 'Panneau Git'
+    ],
     p1e: 'Collage', p1: 'Collez propre. Le contenu des chats IA, de Feishu ou d\'articles WeChat <br>est débarrassé de ses déchets avant d\'entrer dans l\'éditeur.',
     p1d: 'Boutons « copier » des blocs de code, gouttières de numéros de ligne et paragraphes vides sont nettoyés avant écriture — pas de seconde passe manuelle.',
     p2e: 'Quarkdown', p2: 'Rendez vos notes programmables. .var, .foreach, .if <br>écrits directement dans le Markdown, avec environ 200 fonctions intégrées.',
@@ -1155,8 +1282,12 @@ var I18N = (function () {
     c3h3: 'Vollständig lokal, kein Lock-in',
     c3p: 'Reine GFM-Dateien — Typora und Obsidian öffnen denselben Vault. Standardmäßig offline, nichts wird hochgeladen, Löschen geht in den Papierkorb; für KI tragen Sie Ihren eigenen Modell-API-Endpunkt ein, die Daten gehen direkt an den von Ihnen konfigurierten Dienst.',
     demoEyebrow: 'In Aktion', demoH2: 'So sieht Schreiben hier aus.', demoCta: 'Im Browser ausprobieren', demoNote: 'Webtest — die Desktop-App bietet den vollen Funktionsumfang',
-    cap1: 'Live-WYSIWYG', cap2: 'Slash-Menü', cap3: 'Wikilink-Vervollständigung', cap4: 'Wissensgraph',
-    cap5: 'Befehlspalette', cap6: 'Vault-Suche', cap7: 'Word-Importprüfung', cap8: 'Einfügen bereinigt', cap9: 'Quarkdown-Snapshot', cap10: 'Git-Panel',
+    caps: [
+      'Live-WYSIWYG', 'Rich-Text-Darstellung', 'Slash-Menü', 'Wikilink-Vervollständigung', 'Backlinks', 'Globale Tags', 'Vault-Suche', 'Wissensgraph',
+      'Graph: ziehen und öffnen', 'Canvas-Board', 'Tagesnotiz', 'Quelle und Ansicht', 'Diagramm direkt bearbeiten', 'Tabelle bearbeiten', 'Bild skalieren', 'Gliederung einklappen',
+      'Geteilte Ansicht', 'Fokus und Schreibmaschine', 'Befehlspalette', 'Inspektor', 'Word-Importprüfung', 'Einfügen bereinigt', 'Quarkdown-Snapshot', 'Designs',
+      'Erscheinungsbild', 'Fünf Sprachen', 'Tastenkürzel', 'Native Menüs', 'Kontextmenüs', 'Ziehen und ablegen', 'Menüleisten-Symbol', 'Git-Panel'
+    ],
     p1e: 'Einfügen', p1: 'Sauber einfügen. Inhalte aus KI-Chats, Feishu oder WeChat-Artikeln <br>werden vor dem Editor von Ballast befreit.',
     p1d: 'Copy-Buttons, Zeilennummern-Leisten und leere Absatzketten werden vor dem Schreiben entfernt — kein zweiter Handlauf nötig.',
     p2e: 'Quarkdown', p2: 'Notizen programmierbar machen. .var, .foreach, .if <br>direkt ins Markdown geschrieben, mit rund 200 eingebauten Funktionen.',
@@ -1235,8 +1366,9 @@ var I18N = (function () {
     put('#demo .section-head h2', t.demoH2);
     put('#demo .demo-cta span', t.demoCta);
     put('#demo .demo-note', t.demoNote);
-    var caps = document.querySelectorAll('.demo-item figcaption strong');
-    for (var c = 1; c <= 10; c++) if (caps[c - 1] && t['cap' + c]) caps[c - 1].textContent = t['cap' + c];
+    document.querySelectorAll('.demo-item figcaption strong').forEach(function (el, i) {
+      if (t.caps && t.caps[i]) el.textContent = t.caps[i];
+    });
     var peb = document.querySelectorAll('.panel-inner .eyebrow');
     var pst = document.querySelectorAll('.panel-inner .st');
     var pnote = document.querySelectorAll('.panel-inner .dim-note');
@@ -1298,12 +1430,21 @@ var I18N = (function () {
   ];
   function loadRace(urls, done) {
     var settled = false, failed = 0;
+    // 卡住不回的源（常见于国内到 jsdelivr/unpkg）不会触发 onerror，等它就等于永远不开机：
+    // 到点按失败收场，页面照常启动，只是少掉那几个库带来的动画
+    var timer = setTimeout(function () { finish(false); }, 4000);
+    function finish(ok) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(ok);
+    }
     for (var i = 0; i < urls.length; i++) {
       (function (src) {
         var s = document.createElement('script');
         s.src = src;
-        s.onload = function () { if (!settled) { settled = true; done(true); } };
-        s.onerror = function () { if (!settled && ++failed === urls.length) { settled = true; done(false); } };
+        s.onload = function () { finish(true); };
+        s.onerror = function () { if (!settled && ++failed === urls.length) finish(false); };
         document.head.appendChild(s);
       })(urls[i]);
     }
@@ -1311,28 +1452,371 @@ var I18N = (function () {
   // three r150+ 只有 ES 模块构建，动态 import 并挂到 window.THREE；错峰起跑（0/3.5/7s），
   // 网络慢时提前换源，正常时只有一个源成功、不产生重复实例
   function importRace(urls, done) {
-    var settled = false, failed = 0, launched = 0;
+    var settled = false, failed = 0, launched = 0, stagger = 0;
+    var cap = setTimeout(function () { finish(false); }, 6000); // 同上：模块下不来也不能拖住开机
+    function finish(ok) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(cap);
+      clearInterval(stagger);
+      done(ok);
+    }
     function launch() {
       if (settled || launched >= urls.length) return;
       var url = urls[launched++];
       import(url).then(function (m) {
-        if (!settled) { settled = true; window.THREE = m; done(true); }
+        if (!settled) { window.THREE = m; finish(true); }
       }).catch(function () {
         failed++;
-        if (!settled) { launch(); if (failed >= urls.length) { settled = true; done(false); } }
+        if (!settled) { launch(); if (failed >= urls.length) finish(false); }
       });
     }
     launch();
-    var timer = setInterval(function () {
-      if (settled || launched >= urls.length) { clearInterval(timer); return; }
+    stagger = setInterval(function () {
+      if (settled || launched >= urls.length) { clearInterval(stagger); return; }
       launch();
     }, 3500);
   }
+  // 依赖到点才开机，这期间用户可能已经往下翻了：只认真实的输入动作，
+  // 回来后没动过才拉回页顶（浏览器自己恢复的滚动位置不算动过）
+  var userMoved = false;
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+    window.addEventListener(ev, function () { userMoved = true; }, { passive: true, once: true });
+  });
+  window.__promoUserMoved = function () { return userMoved; };
+
   var pending = 3;
   function settled1() { if (--pending === 0) boot(); }
   loadRace(CDN.gsap, settled1);
   loadRace(CDN.scrollTrigger, settled1);
   importRace(THREE_URLS, settled1);
+})();
+</script>
+<script>
+/* 演示区自成一体：放大和转盘不依赖任何第三方库，脚本一解析就初始化，不等 CDN。
+   CDN 慢或某个源挂掉时，依赖库的动画/场景会晚一点跑，但演示区不会先平铺几秒再生效。 */
+(function () {
+  'use strict';
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------------- 动图地址 ---------------- */
+  // 一张动图几百 KB，落点选错就是十几秒的白框。首选 Gitee raw（仓库主站，国内最快），
+  // 拿不到再走同目录相对路径（GitHub Pages 部署时就在同一个源上），再退 jsDelivr 两档镜像，
+  // 全挂才换成占位色块。Gitee 对跨站 Referer 不友好，图上一律 no-referrer。
+  // 用捕获阶段的 error 统一接：转盘是转到跟前才挂 src，挂的那一刻这个监听已经在。
+  var GIF_CDN = [
+    function (src) { return 'https://gitee.com/hackerSnail/note-lume/raw/master/' + src.replace(/^\.\//, ''); },
+    function (src) { return src; },
+    function (src) { return 'https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/' + src.replace(/^\.\//, ''); },
+    function (src) { return 'https://fastly.jsdelivr.net/gh/HackerSnail/NoteLume@master/' + src.replace(/^\.\//, ''); }
+  ];
+  var GIF_PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="#007aff"/><stop offset="1" stop-color="#4da3ff"/>' +
+    '</linearGradient></defs>' +
+    '<rect width="800" height="500" fill="url(#g)" opacity="0.15"/>' +
+    '<text x="50%" y="50%" fill="#0066cc" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">演示动图未能加载</text></svg>');
+  document.addEventListener('error', function (e) {
+    var img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.closest) return;
+    if (!img.closest('.gif-wrap') && !img.closest('.lb')) return;
+    if (img.getAttribute('data-dead')) return;
+    var base = img.getAttribute('data-base') || img.getAttribute('data-gif') || img.getAttribute('src') || '';
+    if (!base || base.indexOf('data:') === 0) { img.setAttribute('data-dead', '1'); return; }
+    img.setAttribute('data-base', base);
+    // data-lv 是当前正在用的那一档；挂载时置 0，出错就往下一档走
+    var level = +(img.getAttribute('data-lv') || 0) + 1;
+    if (level < GIF_CDN.length) {
+      img.setAttribute('data-lv', level);
+      img.src = GIF_CDN[level](base);
+    } else {
+      img.setAttribute('data-dead', '1');
+      img.src = GIF_PLACEHOLDER;
+    }
+  }, true);
+  // data-gif 记的一直是仓库里的相对路径（各档 CDN 都从它拼），src 挂的是当前要试的那一档
+  document.querySelectorAll('.gif-wrap img').forEach(function (im) {
+    var path = im.getAttribute('data-gif') || im.getAttribute('src');
+    if (!path) return;
+    im.setAttribute('data-gif', path);
+    im.setAttribute('data-lv', '0');
+    im.referrerPolicy = 'no-referrer';
+    im.src = GIF_CDN[0](path);
+  });
+
+  /* ---------------- 动图放大 ---------------- */
+  // 点动图看大图。转盘形态下这一下只算在正面那张上（侧边那张的点击是换正），
+  // 减动效偏好下没有转盘、按网格平铺着，那每一张点开都是大图。
+  // 放大和转盘要互通三件事：谁接管点击、开大图时停不停表、关掉之后要不要续表。
+  var lbOpen = function () {}, lbHalt = function () {}, lbResume = function () {}, ringTakesClick = false;
+  try {
+    var lbItems = [].slice.call(document.querySelectorAll('#demo .demo-item'));
+    if (lbItems.length) {
+      var lb = document.createElement('div');
+      lb.className = 'lb';
+      lb.setAttribute('role', 'dialog');
+      lb.setAttribute('aria-modal', 'true');
+      lb.setAttribute('aria-label', '演示动图大图');
+      lb.innerHTML = '<button type="button" class="lb-x" aria-label="关闭大图">×</button>'
+        + '<figure><img alt=""><figcaption></figcaption></figure>';
+      document.body.appendChild(lb);
+      var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('figcaption');
+      lbImg.referrerPolicy = 'no-referrer';
+      var lbAt = -1, lbBack = null;
+      function lbShow(i) {
+        lbAt = (i + lbItems.length) % lbItems.length;
+        var src = lbItems[lbAt].querySelector('img'), cap = lbItems[lbAt].querySelector('figcaption');
+        // 卡片那张已经退成占位色块时，大图要拿原始地址重试，别把占位图放大给人看
+        var cur = src.getAttribute('src') || '', orig = src.getAttribute('data-gif') || '';
+        lbImg.removeAttribute('data-base');
+        lbImg.removeAttribute('data-lv');
+        lbImg.removeAttribute('data-dead');
+        if (orig) lbImg.setAttribute('data-gif', orig); else lbImg.removeAttribute('data-gif');
+        var next = (cur && cur.indexOf('data:') !== 0) ? cur : orig;
+        if (next) lbImg.src = next;
+        // 大图也要下几秒：底下先垫卡片那张糊图，不然开出来是一块白
+        var wrap = lbItems[lbAt].querySelector('.gif-wrap');
+        lbImg.style.backgroundImage = (wrap && wrap.style.getPropertyValue('--lqip')) || '';
+        lbImg.alt = src.alt || '';
+        lbCap.textContent = cap ? [cap.querySelector('strong'), cap.querySelector('.en')]
+          .map(function (n) { return n ? n.textContent.replace(/\s+/g, ' ').trim() : '' })
+          .filter(Boolean).join(' · ') : '';
+      }
+      lbOpen = function (i) {
+        lbBack = document.activeElement;
+        lbShow(i);
+        lb.classList.add('open');
+        document.body.style.overflow = 'hidden'; // 大图开着别在背后滚页面
+        lbHalt();
+        lb.querySelector('.lb-x').focus();
+      };
+      function lbClose() {
+        lb.classList.remove('open');
+        lbImg.removeAttribute('src'); // 撤掉 src：那张 GIF 的解码跟着停
+        lbAt = -1;
+        document.body.style.overflow = '';
+        lbResume();
+        if (lbBack && lbBack.focus) lbBack.focus();
+      }
+      lb.addEventListener('click', function (e) {
+        if (e.target === lb || e.target.closest('.lb-x')) lbClose(); // 点图不关，要点背景或叉
+      });
+      document.addEventListener('keydown', function (e) {
+        if (lbAt < 0) return;
+        if (e.key === 'Escape') { e.preventDefault(); lbClose(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(lbAt - 1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(lbAt + 1); }
+      });
+      lbItems.forEach(function (el, i) {
+        el.addEventListener('click', function () {
+          if (!ringTakesClick) lbOpen(i);
+        });
+      });
+    }
+  } catch (e) { /* 放大建不起来就只看得小图，转盘照常转 */ }
+
+  /* ---------------- 演示动图转盘 ---------------- */
+  // 动图排成一圈：中心一张，左右各两张侧转退到后面，其余退出合成。
+  // 旋转完全由页面滚动驱动（滚轮滚 = 转盘转），没有自动轮播：
+  // 区块钉住一屏，滚动行程内转盘从第 0 张转到第 RN 张，滚完才继续往下走页面。
+  // 箭头和点侧边那张都换算成滚动位置；正面那张点开大图。
+  // 减动效偏好下整圈不建，保持 CSS 默认的平铺网格形态。
+  // 转盘不依赖 GSAP：进度直接读滚动位置算（见 ringScrollToPos 上方），
+  // 第三方 CDN 挂掉时页面上最显眼的这块照样是转盘，不会退化成一长条平铺。
+  try {
+    if (!reducedMotion) requestAnimationFrame(function () {
+      var ringStage = document.querySelector('.demo-stage');
+      var ringTrack = ringStage.querySelector('.demo-track');
+      var ringItems = [].slice.call(ringTrack.querySelectorAll('.demo-item'));
+      var RN = ringItems.length;
+      // 真按一个圆摆：相邻两张隔 36° 圆心角。位置取圆周上的点、朝向取该点的切线，
+      // 所以越靠外越接近侧立（±1 转 36°、±2 转 72°），整圈是围过来的而不是平行平移。
+      // 半径不能写死：切线摆放下的相邻卡片在投影上几乎首尾相接（外缘和内缘落在同一条弦上），
+      // 只要弦长小于卡宽就会互相压叠。所以半径按「投影出来的缝够宽」往外反解，
+      // 缝反倒在半径上取够本，卡片之间就一定有空隙，不会紧挨着。
+      var RING_P = 1200; // 与 .demo-stage.ring 的 perspective 保持一致，投影换算要用同一个值
+      // 相邻两张固定隔 36°：圈的疏密只看这一步，张数只决定一圈要转多久。
+      // 早先按 360/张数 分，张数一多每张的圆心角就小到侧边那张整个压上来，半径反解得把卡缩成条。
+      var RING_STEP = 36;
+      var RING_R = 1150; // 初值，ringFit() 立刻按视口宽窄反解
+      var RING_SC = [1, 0.92, 0.82]; // 离中心第 0/1/2 张的自身缩放：越外越小才腾得出缝
+      var ringW = 430, ringVis = 2; // 卡宽与露出到第几张，同样由 ringFit() 按视口定
+      var ringPos = 0;
+
+      function circOffset(i, pos) { // 折到环上最短的一段（pos 是连续位置）
+        var k = (i - pos) % RN;
+        if (k < -RN / 2) k += RN;
+        if (k >= RN / 2) k -= RN;
+        return k;
+      }
+      // 第 a 张卡片某个竖向边投影到屏幕上的横向偏移（相对转盘中心）。
+      // 边点先随自身缩放缩到 d，再沿切线转 θ，最后按它自己的深度做透视缩放——
+      // 一张卡的两个边深度不同，不能用卡片中心一个缩放糊过去。
+      function ringEdge(R, a, d) {
+        var th = a * RING_STEP * Math.PI / 180, s = Math.sin(th), c = Math.cos(th);
+        var e = d * (ringW / 2) * RING_SC[Math.min(a, 2)];
+        return (R * s + e * c) * (RING_P / (RING_P - (R * c - R - e * s)));
+      }
+      function ringPick(half) {
+        var hw = ringW / 2;
+        // 半径取「刚好挤出这条缝」的最小值：再往外缝更宽，但整圈就散了、侧边那张也被推得只剩个角。
+        // 缝本身按卡宽和半屏宽双重上限：宽屏上够松，窄屏上不会把侧边那张整个推出屏。
+        var g1 = Math.max(16, Math.min(ringW * 0.09, half / 8)), g2 = 6;
+        for (var R = 320; R <= 2200; R += 10) {
+          var i1 = ringEdge(R, 1, -1), o1 = ringEdge(R, 1, 1);
+          if (i1 - hw < g1) continue;                             // 正面与 ±1 还没空开
+          if (Math.min(o1, half) - i1 < (o1 - i1) * 0.36) break;  // 再往外 ±1 就只剩个角在屏内了
+          // ±2 就在 ±1 背后：能露出来一点就露（那一条侧影是「这是一圈」的关键），露不出来就藏掉别白合成
+          var i2 = ringEdge(R, 2, -1), o2 = ringEdge(R, 2, 1);
+          RING_R = R;
+          ringVis = Math.min(i2, o2) < half && i2 - o1 >= g2 ? 2 : 1;
+          return true;
+        }
+        return false;
+      }
+      function ringFit() {
+        var half = window.innerWidth / 2;
+        ringW = window.innerWidth <= 860 ? Math.min(280, window.innerWidth * 0.68) : Math.min(600, window.innerWidth * 0.42);
+        for (var t = 0; t < 10 && !ringPick(half); t++) ringW = Math.max(140, ringW * 0.88);
+        ringStage.style.setProperty('--ring-w', ringW.toFixed(0) + 'px');
+      }
+      function ringLayout(pos) {
+        ringPos = pos;
+        var want = [];
+        ringItems.forEach(function (el, i) {
+          var k = circOffset(i, pos), a = Math.abs(k);
+          var th = k * RING_STEP * Math.PI / 180;
+          var show = a <= ringVis;
+          if (show) want.push({ i: i, a: a });
+          el.classList.toggle('is-far', !show);
+          el.classList.toggle('is-front', a < 0.5);
+          el.style.transform = 'translate(-50%,-50%) translateX(' + (RING_R * Math.sin(th)).toFixed(1) + 'px)'
+            + ' translateZ(' + (RING_R * Math.cos(th) - RING_R).toFixed(1) + 'px)'
+            + ' rotateY(' + (k * RING_STEP).toFixed(1) + 'deg)'
+            + ' scale(' + (1 - Math.min(a, 2) * 0.09).toFixed(3) + ')';
+          el.style.opacity = show ? (1 - Math.min(a, 2) * 0.14).toFixed(2) : 0;
+          el.style.zIndex = 50 - Math.round(a * 5);
+        });
+        want.sort(function (x, y) { return x.a - y.a; });
+        ringPending = want.map(function (w) { return w.i; });
+        ringPump();
+      }
+
+      ringStage.classList.add('ring');
+      ringStage.setAttribute('role', 'group');
+      ringStage.setAttribute('aria-label', '功能演示动图');
+
+      // 三十多张动图一起下载会把每张都拖到几秒后：地址先挪进 data-gif，只给当前圈上
+      // 看得见的那几张挂 src（顺序见 ringPump）。图没到之前先看卡片底下那张糊掉的垫底图。
+      // 转盘没建起来时这段不执行，src 原样在标签里，网格形态照常加载。
+      ringItems.forEach(function (el) {
+        var im = el.querySelector('img');
+        if (!im) return;
+        if (im.getAttribute('src') && !im.getAttribute('data-gif')) im.setAttribute('data-gif', im.getAttribute('src'));
+        if (im.getAttribute('data-gif')) {
+          im.removeAttribute('src');
+          im.style.opacity = '0';
+        }
+      });
+
+      // 正面那张先下，下完再补两边：一次只放一两张，带宽不至于摊成五份谁都下不完
+      var ringPending = [], ringInflight = 0;
+      var RING_LOAD_MAX = window.innerWidth <= 860 ? 1 : 2;
+      function ringPump() {
+        while (ringInflight < RING_LOAD_MAX && ringPending.length) {
+          var pick = ringItems[ringPending.shift()];
+          var im = pick && pick.querySelector('img');
+          if (!im || im.getAttribute('src') || !im.getAttribute('data-gif')) continue;
+          ringInflight += 1;
+          (function (im) {
+            var released = false;
+            var timer = setTimeout(release, 9000); // 卡住的源不能一直占着名额
+            function release() {
+              if (released) return;
+              released = true;
+              clearTimeout(timer);
+              im.removeEventListener('load', release);
+              im.removeEventListener('error', release);
+              ringInflight -= 1;
+              ringPump();
+            }
+            im.addEventListener('load', function () { im.style.opacity = '1'; });
+            im.addEventListener('load', release);
+            im.addEventListener('error', release);
+            im.loading = 'eager'; // 这里已经按优先级排过队，再叠一层浏览器懒加载只会更晚
+            im.setAttribute('data-lv', '0');
+            im.src = GIF_CDN[0](im.getAttribute('data-gif'));
+          })(im);
+        }
+      }
+
+      // 每张给一屏里的一小段行程：张数多，钉住的这段就得跟着变长，不然一张只轮到几十像素的滚动
+      var ringScrollEl = ringStage.parentElement;
+      ringScrollEl.style.height = Math.max(280, Math.min(600, RN * 14)) + 'vh';
+
+      ringFit();
+      ringLayout(0);
+
+      // 页面滚动进度 → 转盘角度：滚轮滚 = 转盘转，没有自动轮播。
+      // 直接量 .demo-scroll 的位置算进度，不走 ScrollTrigger——那一路要先等 GSAP 从 CDN 下来，
+      // 网络一卡整块演示就只剩平铺的图；这里只要脚本跑起来就能转。
+      var ringTop = 0, ringTravel = 1;
+      function ringMeasure() {
+        var r = ringScrollEl.getBoundingClientRect();
+        ringTop = r.top + window.pageYOffset;
+        ringTravel = Math.max(1, r.height - window.innerHeight);
+      }
+      function ringOnScroll() {
+        var p = (window.pageYOffset - ringTop) / ringTravel;
+        ringLayout(Math.min(1, Math.max(0, p)) * RN);
+      }
+      ringMeasure();
+      ringOnScroll();
+      window.addEventListener('scroll', ringOnScroll, { passive: true });
+
+      // 窗口变窄要重算半径：卡片宽度是 vw 的，视口一窄原来的空隙就变成相互压叠
+      var ringResize = 0;
+      window.addEventListener('resize', function () {
+        clearTimeout(ringResize);
+        ringResize = setTimeout(function () { ringFit(); ringMeasure(); ringOnScroll(); }, 160);
+      });
+
+      function ringScrollToPos(posTarget) {
+        posTarget = Math.max(0, Math.min(RN, posTarget));
+        window.scrollTo({ top: ringTop + ringTravel * (posTarget / RN), behavior: 'smooth' });
+      }
+
+      // 箭头由脚本插入：纵向堆叠的降级形态里没有「下一张」这个概念，不能留下两个空转的按钮
+      [['prev', -1, '上一张'], ['next', 1, '下一张']].forEach(function (b) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ring-btn ' + b[0];
+        btn.setAttribute('aria-label', b[2]);
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+          + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="'
+          + (b[0] === 'prev' ? '15 18 9 12 15 6' : '9 18 15 12 9 6') + '"/></svg>';
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          ringScrollToPos(Math.round(ringPos) + b[1]);
+        });
+        ringStage.appendChild(btn);
+      });
+
+      // 点卡片：侧边那张滚到正面，正面那张开大图
+      ringStage.addEventListener('click', function (e) {
+        var fig = e.target.closest ? e.target.closest('.demo-item') : null;
+        if (!fig) return;
+        var i = ringItems.indexOf(fig);
+        if (i < 0) return;
+        if (Math.abs(circOffset(i, ringPos)) < 0.5) { lbOpen(i); return; }
+        ringScrollToPos(i);
+      });
+      lbHalt = function () {};  // 没有自动轮播了，大图开着时无需停表
+      lbResume = function () {};
+    });
+  } catch (e) { console.warn('[promo] 演示转盘降级为平铺网格:', e); }
+
 })();
 </script>
 <script>
@@ -1343,7 +1827,7 @@ function boot() {
   // 刷新后场景就停在半路，不是首屏该有的构图
   try {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-    window.scrollTo(0, 0);
+    if (!window.__promoUserMoved || !window.__promoUserMoved()) window.scrollTo(0, 0);
   } catch (e) {}
 
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1429,235 +1913,6 @@ function boot() {
       fc.appendChild(span);
     });
   } catch (e) { /* 失败则字幕保持原样 */ }
-
-  // 演示动图加载：仓库相对路径优先（本地/整仓库部署时可用），
-  // 失败逐级切 jsDelivr GitHub CDN（index.html 单独部署到 GitHub Pages 根目录也能加载真动图），
-  // 全部失败才退 SVG 占位色块
-  try {
-    var gifPlaceholder = 'data:image/svg+xml,' + encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">' +
-      '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
-      '<stop offset="0" stop-color="#007aff"/><stop offset="1" stop-color="#4da3ff"/>' +
-      '</linearGradient></defs>' +
-      '<rect width="800" height="500" fill="url(#g)" opacity="0.15"/>' +
-      '<text x="50%" y="50%" fill="#0066cc" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">演示动图未能加载</text></svg>');
-    var gifCdnLevels = [
-      function (src) { return src; },
-      function (src) { return 'https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/' + src.replace(/^\.\//, ''); },
-      function (src) { return 'https://fastly.jsdelivr.net/gh/HackerSnail/NoteLume@master/' + src.replace(/^\.\//, ''); }
-    ];
-    document.querySelectorAll('.gif-wrap img').forEach(function (img) {
-      var original = img.getAttribute('src');
-      var level = 0;
-      var fail = function () {
-        level += 1;
-        if (level < gifCdnLevels.length) {
-          img.onerror = fail;
-          img.src = gifCdnLevels[level](original);
-        } else {
-          img.onerror = null;
-          img.src = gifPlaceholder;
-        }
-      };
-      img.onerror = fail;
-      if (img.complete && img.naturalWidth === 0) fail();
-    });
-  } catch (e) { console.warn('[promo] 动图回退链设置失败:', e); }
-
-  /* ---------------- 动图放大 ---------------- */
-  // 点动图看大图。转盘形态下这一下只算在正面那张上（侧边那张的点击是换正），
-  // 减动效偏好下没有转盘、十张纵向排着，那每一张点开都是大图。
-  // 放大和转盘要互通三件事：谁接管点击、开大图时停不停表、关掉之后要不要续表。
-  var lbOpen = function () {}, lbHalt = function () {}, lbResume = function () {}, ringTakesClick = false;
-  try {
-    var lbItems = [].slice.call(document.querySelectorAll('#demo .demo-item'));
-    if (lbItems.length) {
-      var lb = document.createElement('div');
-      lb.className = 'lb';
-      lb.setAttribute('role', 'dialog');
-      lb.setAttribute('aria-modal', 'true');
-      lb.setAttribute('aria-label', '演示动图大图');
-      lb.innerHTML = '<button type="button" class="lb-x" aria-label="关闭大图">×</button>'
-        + '<figure><img alt=""><figcaption></figcaption></figure>';
-      document.body.appendChild(lb);
-      var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('figcaption');
-      var lbAt = -1, lbBack = null;
-      function lbShow(i) {
-        lbAt = (i + lbItems.length) % lbItems.length;
-        var src = lbItems[lbAt].querySelector('img'), cap = lbItems[lbAt].querySelector('figcaption');
-        lbImg.src = src.getAttribute('src');
-        lbImg.alt = src.alt || '';
-        lbCap.textContent = cap ? [cap.querySelector('strong'), cap.querySelector('.en')]
-          .map(function (n) { return n ? n.textContent.replace(/\s+/g, ' ').trim() : '' })
-          .filter(Boolean).join(' · ') : '';
-      }
-      lbOpen = function (i) {
-        lbBack = document.activeElement;
-        lbShow(i);
-        lb.classList.add('open');
-        document.body.style.overflow = 'hidden'; // 大图开着别在背后滚页面
-        lbHalt();
-        lb.querySelector('.lb-x').focus();
-      };
-      function lbClose() {
-        lb.classList.remove('open');
-        lbImg.removeAttribute('src'); // 撤掉 src：那张 GIF 的解码跟着停
-        lbAt = -1;
-        document.body.style.overflow = '';
-        lbResume();
-        if (lbBack && lbBack.focus) lbBack.focus();
-      }
-      lb.addEventListener('click', function (e) {
-        if (e.target === lb || e.target.closest('.lb-x')) lbClose(); // 点图不关，要点背景或叉
-      });
-      document.addEventListener('keydown', function (e) {
-        if (lbAt < 0) return;
-        if (e.key === 'Escape') { e.preventDefault(); lbClose(); }
-        else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(lbAt - 1); }
-        else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(lbAt + 1); }
-      });
-      lbItems.forEach(function (el, i) {
-        el.addEventListener('click', function () {
-          if (!ringTakesClick) lbOpen(i);
-        });
-      });
-    }
-  } catch (e) { /* 放大建不起来就只看得小图，转盘照常转 */ }
-
-  /* ---------------- 演示动图转盘 ---------------- */
-  // 十张动图排成一圈：中心一张，左右各两张侧转退到后面，其余退出合成。
-  // 旋转完全由页面滚动驱动（滚轮滚 = 转盘转），没有自动轮播：
-  // 区块钉住一屏，滚动行程内转盘从第 0 张转到第 RN 张，滚完才继续往下走页面。
-  // 箭头和点侧边那张都换算成滚动位置；正面那张点开大图。
-  // 减动效偏好或没有 GSAP 时整圈不建，保持 CSS 默认的纵向堆叠形态。
-  try {
-    if (!reducedMotion && hasGSAP) requestAnimationFrame(function () {
-      var ringStage = document.querySelector('.demo-stage');
-      var ringTrack = ringStage.querySelector('.demo-track');
-      var ringItems = [].slice.call(ringTrack.querySelectorAll('.demo-item'));
-      var RN = ringItems.length;
-      // 真按一个圆摆：十张均分一圈，每张占 36° 圆心角。位置取圆周上的点、朝向取该点的切线，
-      // 所以越靠外越接近侧立（±1 转 36°、±2 转 72°），整圈是围过来的而不是平行平移。
-      // 半径不能写死：切线摆放下的相邻卡片在投影上几乎首尾相接（外缘和内缘落在同一条弦上），
-      // 只要弦长小于卡宽就会互相压叠。所以半径按「投影出来的缝够宽」往外反解，
-      // 缝反倒在半径上取够本，卡片之间就一定有空隙，不会紧挨着。
-      var RING_P = 1200; // 与 .demo-stage.ring 的 perspective 保持一致，投影换算要用同一个值
-      var RING_STEP = 360 / RN;
-      var RING_R = 1150; // 初值，ringFit() 立刻按视口宽窄反解
-      var RING_SC = [1, 0.92, 0.82]; // 离中心第 0/1/2 张的自身缩放：越外越小才腾得出缝
-      var ringW = 430, ringVis = 2; // 卡宽与露出到第几张，同样由 ringFit() 按视口定
-      var ringPos = 0;
-
-      function circOffset(i, pos) { // 折到环上最短的一段（pos 是连续位置）
-        var k = (i - pos) % RN;
-        if (k < -RN / 2) k += RN;
-        if (k >= RN / 2) k -= RN;
-        return k;
-      }
-      // 第 a 张卡片某个竖向边投影到屏幕上的横向偏移（相对转盘中心）。
-      // 边点先随自身缩放缩到 d，再沿切线转 θ，最后按它自己的深度做透视缩放——
-      // 一张卡的两个边深度不同，不能用卡片中心一个缩放糊过去。
-      function ringEdge(R, a, d) {
-        var th = a * RING_STEP * Math.PI / 180, s = Math.sin(th), c = Math.cos(th);
-        var e = d * (ringW / 2) * RING_SC[Math.min(a, 2)];
-        return (R * s + e * c) * (RING_P / (RING_P - (R * c - R - e * s)));
-      }
-      function ringPick(half) {
-        var hw = ringW / 2;
-        // 半径取「刚好挤出这条缝」的最小值：再往外缝更宽，但整圈就散了、侧边那张也被推得只剩个角。
-        // 缝本身按卡宽和半屏宽双重上限：宽屏上够松，窄屏上不会把侧边那张整个推出屏。
-        var g1 = Math.max(16, Math.min(ringW * 0.09, half / 8)), g2 = 6;
-        for (var R = 320; R <= 2200; R += 10) {
-          var i1 = ringEdge(R, 1, -1), o1 = ringEdge(R, 1, 1);
-          if (i1 - hw < g1) continue;                             // 正面与 ±1 还没空开
-          if (Math.min(o1, half) - i1 < (o1 - i1) * 0.36) break;  // 再往外 ±1 就只剩个角在屏内了
-          // ±2 就在 ±1 背后：能露出来一点就露（那一条侧影是「这是一圈」的关键），露不出来就藏掉别白合成
-          var i2 = ringEdge(R, 2, -1), o2 = ringEdge(R, 2, 1);
-          RING_R = R;
-          ringVis = Math.min(i2, o2) < half && i2 - o1 >= g2 ? 2 : 1;
-          return true;
-        }
-        return false;
-      }
-      function ringFit() {
-        var half = window.innerWidth / 2;
-        ringW = window.innerWidth <= 860 ? Math.min(280, window.innerWidth * 0.68) : Math.min(600, window.innerWidth * 0.42);
-        for (var t = 0; t < 10 && !ringPick(half); t++) ringW = Math.max(140, ringW * 0.88);
-        ringStage.style.setProperty('--ring-w', ringW.toFixed(0) + 'px');
-      }
-      function ringLayout(pos) {
-        ringPos = pos;
-        ringItems.forEach(function (el, i) {
-          var k = circOffset(i, pos), a = Math.abs(k);
-          var th = k * RING_STEP * Math.PI / 180;
-          var show = a <= ringVis;
-          el.classList.toggle('is-far', !show);
-          el.classList.toggle('is-front', a < 0.5);
-          el.style.transform = 'translate(-50%,-50%) translateX(' + (RING_R * Math.sin(th)).toFixed(1) + 'px)'
-            + ' translateZ(' + (RING_R * Math.cos(th) - RING_R).toFixed(1) + 'px)'
-            + ' rotateY(' + (k * RING_STEP).toFixed(1) + 'deg)'
-            + ' scale(' + (1 - Math.min(a, 2) * 0.09).toFixed(3) + ')';
-          el.style.opacity = show ? (1 - Math.min(a, 2) * 0.14).toFixed(2) : 0;
-          el.style.zIndex = 50 - Math.round(a * 5);
-        });
-      }
-
-      ringStage.classList.add('ring');
-      ringStage.setAttribute('role', 'group');
-      ringStage.setAttribute('aria-label', '功能演示动图');
-      ringFit();
-      ringLayout(0);
-
-      // 窗口变窄要重算半径：卡片宽度是 vw 的，视口一窄原来的空隙就变成相互压叠
-      var ringResize = 0;
-      window.addEventListener('resize', function () {
-        clearTimeout(ringResize);
-        ringResize = setTimeout(function () { ringFit(); ringLayout(ringPos); }, 160);
-      });
-
-      // 页面滚动进度 → 转盘角度：滚轮滚 = 转盘转，没有自动轮播
-      var ringSt = ScrollTrigger.create({
-        trigger: '.demo-scroll',
-        start: 'top top',
-        end: 'bottom bottom',
-        scrub: 0.4,
-        onUpdate: function (self) { ringLayout(self.progress * RN); }
-      });
-      function ringScrollToPos(posTarget) {
-        posTarget = Math.max(0, Math.min(RN, posTarget));
-        var y = ringSt.start + (ringSt.end - ringSt.start) * (posTarget / RN);
-        window.scrollTo({ top: y, behavior: 'smooth' });
-      }
-
-      // 箭头由脚本插入：纵向堆叠的降级形态里没有「下一张」这个概念，不能留下两个空转的按钮
-      [['prev', -1, '上一张'], ['next', 1, '下一张']].forEach(function (b) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'ring-btn ' + b[0];
-        btn.setAttribute('aria-label', b[2]);
-        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-          + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="'
-          + (b[0] === 'prev' ? '15 18 9 12 15 6' : '9 18 15 12 9 6') + '"/></svg>';
-        btn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          ringScrollToPos(Math.round(ringPos) + b[1]);
-        });
-        ringStage.appendChild(btn);
-      });
-
-      // 点卡片：侧边那张滚到正面，正面那张开大图
-      ringStage.addEventListener('click', function (e) {
-        var fig = e.target.closest ? e.target.closest('.demo-item') : null;
-        if (!fig) return;
-        var i = ringItems.indexOf(fig);
-        if (i < 0) return;
-        if (Math.abs(circOffset(i, ringPos)) < 0.5) { lbOpen(i); return; }
-        ringScrollToPos(i);
-      });
-      lbHalt = function () {};  // 没有自动轮播了，大图开着时无需停表
-      lbResume = function () {};
-    });
-  } catch (e) { console.warn('[promo] 演示转盘降级为纵向堆叠:', e); }
 
   /* ---------------- 滚动动画 ---------------- */
   // 滚动一律交给浏览器（滚轮与拖动滚动条都走原生），动画只读滚动位置、不参与滚动本身：
