@@ -11,6 +11,7 @@
     "tauri": "tauri",
     "test:roundtrip": "node tests/roundtrip.test.mjs",
     "test:inline-input-rules": "node tests/inline-input-rules.test.mjs",
+    "test:block-input-rules": "node tests/block-input-rules.test.mjs",
     "test:footnote": "node tests/footnote.test.mjs",
     "test:merged-table": "node tests/merged-table.test.mjs",
     "test:html-block": "node tests/html-block.test.mjs",
