@@ -224,6 +224,17 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 
 富文本粘贴进编辑器前先过 `src/paste-clean.js` 的 `cleanPastedHtml`（`editor-view.js` 挂 `transformPastedHTML`；纯文本粘贴与 Ctrl+Shift+V 不走这条）。ProseMirror 拿到 text/html 后按 schema 解析，schema 管不住的只有结构垃圾：AI 对话框代码块头部的「复制 / Copy」按钮文字（button 不进 schema，按钮文字会被当正文留下）、行号装订线 span、代码块工具条、空段落串联、长串 `<br>`。清理三步：垃圾节点整棵摘（JUNK_TAGS + class 词元判定 + aria-label / data-testid 认「复制 / copy」）→ 空壳逐轮收缩（p / div / span / 空标题 / 空 li / 空链接，文本为空且子节点只剩 br；表格单元格不摘——空 td 是合法内容）→ 连续 3 个以上 `<br>` 收成 1 个（两个还可能是刻意的段落间隔）。class 按词元（classList 逐 token）匹配而不是属性子串，「copyright」不因含 copy 误杀；pre / code 本体永不按 class 摘——Prism 把 line-numbers 挂在 pre 上。实测 `node tests/paste-clean.test.mjs` 10 条全过。
 
+## 块级输入规则（2026-10-29）
+
+所见即所得里手敲列表标记此前不转换：`- [ ] 待办` 敲完就是字面文本，没有勾选框可点（应用内插入的 Ctrl+Shift+L / 斜杠菜单任务项不受影响，点击勾选一直正常）。新模块 `src/block-input-rules.js` 的 `listInputTr` 挂在 editor-view.js 的 handleTextInput（text === ' '）， Typora 手感：标记敲完空格落定即转换。
+
+- `- ` / `* ` / `+ ` → 无序列表；`1. ` → 有序列表（起始号取输入的数字）；`[ ] ` / `[x] ` / `[X] ` → 任务项，只在无序列表项内生效（GFM 任务语法定义在 bullet list 上，有序列表里留字面量）
+- 替换的是整个段落节点而非内容区间——把列表塞进段落内容里，PM 修补后会多出一个空段落；新建的列表 `tight` 置 true，与解析器对同形态输入的判定一致，否则「敲出来的文档 == 存盘再解析」不成立
+- 已在列表项里时：空项敲标记直接吞掉——回车新项自带标记，`- [x] 事项` 整串输入才不会被搅成嵌套列表或残留字面 `- `；项内有内容（光标后有字）保持字面量
+- 代码块、标题等非段落文本块不转换；容器放不下列表（表格单元格）不转；标记必须在块首（`x- ` 不认）
+
+测试 `node tests/block-input-rules.test.mjs` 16 条：正例断言会话文档与解析产物 `eq`、序列化写回标准 GFM；Playwright 真机路径（合成环境须给 .ProseMirror 补 `white-space: pre-wrap`，缺了 PM 把空格换成 NBSP，码点 160，规则不触发）。
+
 ## 标准 GFM 导出（2026-10-26）
 
 新命令 `app.exportPlain`（Windows / Linux「更多」菜单、命令面板，须开库，按 `MENU_NEEDS_VAULT` 置灰）：把库内全部 md 复制到选定文件夹，Obsidian 私有语法在写出时降级，产物任何编辑器能开——「零锁定」用动作兑现。实现在 `src/plain-export.js`，io 注入与 `exportSite` 同模式（buildGraph / scanTree / readMd / writeFile / copyAssets）。
