@@ -543,7 +543,7 @@
     line-height: 1.28;
     letter-spacing: -0.015em;
     font-weight: 650;
-    color: #c7c7cc; /* 初始浅灰，滚动渐显为深色 */
+    color: #1d1d1f; /* 显隐交给滚动交叉过渡 */
     will-change: opacity;
   }
   .panel-inner p br { display: none; } /* 移动端自然换行 */
@@ -1626,14 +1626,16 @@ function boot() {
       scrollTrigger: { trigger: '#demo', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
 
-    // 技术亮点：每屏文字由浅灰渐显为深色
-    gsap.utils.toArray('.panel-inner p').forEach(function (p) {
-      gsap.fromTo(p,
-        { color: '#c7c7cc', opacity: 0.7 },
-        {
-          color: '#1d1d1f', opacity: 1, ease: 'none',
-          scrollTrigger: { trigger: p.closest('.panel'), start: 'top 72%', end: 'center 45%', scrub: true }
-        });
+    // 技术亮点：上一段渐隐上移、下一段渐显上浮，整组文字随滚动交叉过渡
+    gsap.utils.toArray('.panel').forEach(function (panel) {
+      var txt = panel.querySelector('.panel-inner');
+      if (!txt) return;
+      gsap.timeline({
+        scrollTrigger: { trigger: panel, start: 'top bottom', end: 'bottom top', scrub: 0.5 }
+      })
+        .fromTo(txt, { opacity: 0, y: 46 }, { opacity: 1, y: 0, duration: 0.3, ease: 'none' })
+        .to(txt, { duration: 0.4 })
+        .to(txt, { opacity: 0, y: -46, duration: 0.3, ease: 'none' });
     });
   });
 
