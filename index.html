@@ -398,13 +398,14 @@ try {
   }
   #demo .demo-cta { margin-top: 30px; }
   #demo .demo-note { margin-top: 10px; font-size: 12px; color: var(--text-dim); }
-  /* 演示动图做成一圈转盘：中心一张，左右各两张侧转退到后面，其余五张退出合成。
+  /* 演示动图做成一圈转盘：中心一张，左右各两张侧转退到后面，圈上其余的先退出合成。
      默认形态是普通纵向堆叠（脚本没跑起来、或用户偏好减动效时就是这个样子），
-     脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下十张叠在一格的烂摊子 */
+     脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下一堆叠在一条竖线上的烂摊子 */
   .demo-stage { display: flex; flex-direction: column; align-items: center; gap: 44px; }
-  /* 钉住容器：滚动行程 280vh，期间转盘随页面滚动旋转，滚完才放行页脚方向。
+  /* 钉住容器：高度不写死——转盘建起来时脚本按张数量好再设（每张约 14vh），
+     减动效／脚本没跑起来时这里是纵向堆叠，得按内容自然撑开，不能按转盘的行程截断。
      overflow: clip 裁掉侧边卡伸出视口的部分（不产生滚动容器，sticky 不受影响） */
-  .demo-scroll { position: relative; height: 280vh; overflow: clip; }
+  .demo-scroll { position: relative; overflow: clip; }
   .demo-stage.ring {
     position: sticky;
     top: 0;
@@ -415,7 +416,7 @@ try {
     justify-content: center;
     perspective: 1200px;
     touch-action: pan-y; /* 触屏竖向仍交给页面滚动 */
-    user-select: none; /* 别顺手选中十张的字幕 */
+    user-select: none; /* 别顺手选中字幕 */
   }
   .demo-stage.ring img { -webkit-user-drag: none; }
   .demo-stage.ring .demo-track { position: relative; width: 100%; height: min(56vh, 520px); transform-style: preserve-3d; }
@@ -426,11 +427,11 @@ try {
     width: var(--ring-w, min(520px, 36vw));
     margin: 0;
     backface-visibility: hidden; /* 转到 90° 之后是圈外那张的背面，别让它翻过来露一块镜像 */
-    /* 不给 will-change：十张各占一个合成层的话，这段滚动又要变回每帧光栅化十次 */
+    /* 不给 will-change：每张各占一个合成层的话，这段滚动又要变回每帧光栅化好几次 */
     transition: opacity 0.25s linear, visibility 0.62s; /* opacity 过渡补上退场边界的小跳变 */
   }
   /* visibility 与 opacity 一起过渡：退场时整段保持可见、末尾才藏（藏得干净），
-     进场时立刻可见再淡入。离场的第五张之后不再参与合成 */
+     进场时立刻可见再淡入。转出视野的那几张不再参与合成 */
   .demo-stage.ring .demo-item.is-far { visibility: hidden; pointer-events: none; }
   .demo-stage.ring .demo-item:not(.is-front) { cursor: pointer; }
   .demo-stage.ring .demo-item:not(.is-front) .gif-wrap { cursor: pointer; } /* 侧边那张是换正，不是放大 */
@@ -692,6 +693,7 @@ try {
     #demo { padding-bottom: 110px; }
     .demo-stage.ring .demo-track { height: 46vh; min-height: 300px; }
     .demo-stage.ring .demo-item { width: var(--ring-w, min(280px, 62vw)); }
+    .demo-item figcaption .en { display: none; } /* 窄屏卡片窄，中英两截必然折成一团，字幕只留主标题 */
     .ring-btn { width: 34px; height: 34px; }
     .cl-card { width: 300px; }
     .nav-links { gap: 14px; }
@@ -835,9 +837,13 @@ try {
     <div class="demo-scroll">
     <div class="demo-stage">
       <div class="demo-track">
-        <figure class="demo-item">
+      <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/wysiwyg-typing.gif" alt="所写即所得输入演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>所写即所得</strong><span class="en">Live Markdown</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/rich-render.gif" alt="公式图表代码高亮演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>富文本渲染</strong><span class="en">Rich rendering</span></figcaption>
       </figure>
       <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/slash-menu.gif" alt="斜杠菜单插入块演示" loading="lazy" decoding="async"></div>
@@ -848,16 +854,68 @@ try {
         <figcaption><strong>[[ 双链 ]] 输入补全</strong><span class="en">Wikilink suggest</span></figcaption>
       </figure>
       <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/backlinks.gif" alt="双向链接面板演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>双向链接</strong><span class="en">Backlinks</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/global-tags.gif" alt="全局标签视图演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>全局标签</strong><span class="en">Global tags</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/vault-search.gif" alt="全库搜索演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>全库搜索</strong><span class="en">Vault search</span></figcaption>
+      </figure>
+      <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/knowledge-graph.gif" alt="知识图谱铺盘演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>知识图谱</strong><span class="en">Knowledge graph</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/desktop-graph.gif" alt="知识图谱拖节点演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>图谱拖节点跳转</strong><span class="en">Graph drag &amp; jump</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/canvas-board.gif" alt="Canvas 便签板拖拽演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>Canvas 便签板</strong><span class="en">Canvas board</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/daily-capture.gif" alt="今日速记浮层演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>今日速记浮层</strong><span class="en">Daily capture</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/source-toggle.gif" alt="正文与源码切换演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>正文与源码互切</strong><span class="en">Source toggle</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/mermaid-edit.gif" alt="图表就地编辑演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>图表就地改码</strong><span class="en">Inline diagram</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/table-edit.gif" alt="表格右键编辑演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>表格编辑</strong><span class="en">Table editing</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/image-resize.gif" alt="正文图片拖拽缩放演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>图片拖拽缩放</strong><span class="en">Image resize</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/outline-fold.gif" alt="大纲折叠演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>大纲层级折叠</strong><span class="en">Outline folding</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/split-panes.gif" alt="双栏对照演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>双栏对照</strong><span class="en">Split panes</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/view-modes.gif" alt="专注与打字机模式演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>专注与打字机</strong><span class="en">Focus &amp; typewriter</span></figcaption>
       </figure>
       <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/command-palette.gif" alt="命令面板演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>命令面板</strong><span class="en">Command palette</span></figcaption>
       </figure>
       <figure class="demo-item">
-        <div class="gif-wrap"><img src="docs/img/demo/vault-search.gif" alt="全库搜索演示" loading="lazy" decoding="async"></div>
-        <figcaption><strong>全库搜索</strong><span class="en">Vault search</span></figcaption>
+        <div class="gif-wrap"><img src="docs/img/demo/inspector-panel.gif" alt="右侧检查器演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>检查器</strong><span class="en">Inspector</span></figcaption>
       </figure>
       <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/docx-import.gif" alt="Word 导入演示" loading="lazy" decoding="async"></div>
@@ -870,6 +928,38 @@ try {
       <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/qd-snapshot.gif" alt="Quarkdown 模板快照演示" loading="lazy" decoding="async"></div>
         <figcaption><strong>Quarkdown 模板快照</strong><span class="en">Quarkdown snapshot</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/theme-switch.gif" alt="主题切换演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>三套主题</strong><span class="en">Themes</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/appearance-settings.gif" alt="外观设置演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>外观设置</strong><span class="en">Appearance</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/language-switch.gif" alt="界面语言切换演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>五语言界面</strong><span class="en">Five languages</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/shortcuts-settings.gif" alt="快捷键设置演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>快捷键设置</strong><span class="en">Shortcuts</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/desktop-menu.gif" alt="系统原生菜单演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>系统原生菜单</strong><span class="en">Native menus</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/desktop-context.gif" alt="文件树右键菜单演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>右键菜单</strong><span class="en">Context menus</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/desktop-drop.gif" alt="拖入文件打开演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>拖入即打开</strong><span class="en">Drag &amp; drop</span></figcaption>
+      </figure>
+      <figure class="demo-item">
+        <div class="gif-wrap"><img src="docs/img/demo/desktop-tray.gif" alt="菜单栏托盘演示" loading="lazy" decoding="async"></div>
+        <figcaption><strong>菜单栏托盘</strong><span class="en">Tray menu</span></figcaption>
       </figure>
       <figure class="demo-item">
         <div class="gif-wrap"><img src="docs/img/demo/desktop-git.gif" alt="Git 面板演示" loading="lazy" decoding="async"></div>
@@ -995,8 +1085,12 @@ var I18N = (function () {
     c3h3: '完全本地，零锁定',
     c3p: '纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 端口，数据直达你配置的服务。',
     demoEyebrow: '功能演示', demoH2: '写作时，它长这样。', demoCta: '在线沙盒体验', demoNote: '试用版，部分功能以桌面版为准',
-    cap1: '所写即所得', cap2: '斜杠菜单插入块', cap3: '[[ 双链 ]] 输入补全', cap4: '知识图谱',
-    cap5: '命令面板', cap6: '全库搜索', cap7: 'Word 导入校对', cap8: '粘贴自动清理', cap9: 'Quarkdown 模板快照', cap10: 'Git 面板',
+    caps: [
+      '所写即所得', '富文本渲染', '斜杠菜单插入块', '[[ 双链 ]] 输入补全', '双向链接', '全局标签', '全库搜索', '知识图谱',
+      '图谱拖节点跳转', 'Canvas 便签板', '今日速记浮层', '正文与源码互切', '图表就地改码', '表格编辑', '图片拖拽缩放', '大纲层级折叠',
+      '双栏对照', '专注与打字机', '命令面板', '检查器', 'Word 导入校对', '粘贴自动清理', 'Quarkdown 模板快照', '三套主题',
+      '外观设置', '五语言界面', '快捷键设置', '系统原生菜单', '右键菜单', '拖入即打开', '菜单栏托盘', 'Git 面板'
+    ],
     p1e: '粘贴', p1: '粘贴即净。从 AI 对话框、飞书、公众号复制的内容，<br>进编辑器前就摘掉杂质。',
     p1d: '代码块的「复制」按钮、行号装订线、空段落串联，在写入前自动清理，不用粘完再手修第二遍。',
     p2e: 'Quarkdown', p2: '让笔记可编程。.var、.foreach、.if<br>直接写进 Markdown，约 200 个内置函数。',
@@ -1035,8 +1129,12 @@ var I18N = (function () {
     c3h3: '完全本地，零鎖定',
     c3p: '純 GFM 檔案，Typora 和 Obsidian 能直接打開同一份庫。預設不聯網、不上傳，刪除進系統資源回收筒；要接大模型時自己填 API 埠，數據直達你設定的服務。',
     demoEyebrow: '功能演示', demoH2: '寫作時，它長這樣。', demoCta: '線上沙盒體驗', demoNote: '試用版，部分功能以桌面版為準',
-    cap1: '所寫即所得', cap2: '斜槓選單插入塊', cap3: '[[ 雙鏈 ]] 輸入補全', cap4: '知識圖譜',
-    cap5: '命令面板', cap6: '全庫搜尋', cap7: 'Word 匯入校對', cap8: '貼上自動清理', cap9: 'Quarkdown 範本快照', cap10: 'Git 面板',
+    caps: [
+      '所寫即所得', '富文字渲染', '斜槓選單插入塊', '[[ 雙鏈 ]] 輸入補全', '雙向連結', '全域標籤', '全庫搜尋', '知識圖譜',
+      '圖譜拖節點跳轉', 'Canvas 便籤板', '今日速記浮層', '正文與原始碼互切', '圖表就地改碼', '表格編輯', '圖片拖曳縮放', '大綱層級摺疊',
+      '雙欄對照', '專注與打字機', '命令面板', '檢查器', 'Word 匯入校對', '貼上自動清理', 'Quarkdown 範本快照', '三套主題',
+      '外觀設定', '五語言介面', '快速鍵設定', '系統原生選單', '右鍵選單', '拖入即開啟', '選單列托盤', 'Git 面板'
+    ],
     p1e: '貼上', p1: '貼上即淨。從 AI 對話框、飛書、公眾號複製的內容，<br>進編輯器前就摘掉雜質。',
     p1d: '程式碼區塊的「複製」按鈕、行號裝訂線、空段落串聯，在寫入前自動清理，不用貼完再手修第二遍。',
     p2e: 'Quarkdown', p2: '讓筆記可程式化。.var、.foreach、.if<br>直接寫進 Markdown，約 200 個內建函式。',
@@ -1075,8 +1173,12 @@ var I18N = (function () {
     c3h3: 'Fully local, zero lock-in',
     c3p: 'Plain GFM files — Typora and Obsidian open the very same vault. Offline by default, nothing uploaded, deletions go to the system trash; for AI you plug in your own model API endpoint, and data goes straight to the service you configured.',
     demoEyebrow: 'In action', demoH2: 'This is what writing looks like here.', demoCta: 'Try it in your browser', demoNote: 'Web trial — the desktop app has the full feature set',
-    cap1: 'Live WYSIWYG', cap2: 'Slash menu', cap3: 'Wikilink autocomplete', cap4: 'Knowledge graph',
-    cap5: 'Command palette', cap6: 'Vault search', cap7: 'Word import review', cap8: 'Paste cleaning', cap9: 'Quarkdown snapshot', cap10: 'Git panel',
+    caps: [
+      'Live WYSIWYG', 'Rich rendering', 'Slash menu', 'Wikilink autocomplete', 'Backlinks', 'Global tags', 'Vault search', 'Knowledge graph',
+      'Drag nodes in the graph', 'Canvas board', 'Daily capture', 'Source toggle', 'Edit diagram inline', 'Table editing', 'Image resize', 'Outline folding',
+      'Split panes', 'Focus & typewriter', 'Command palette', 'Inspector', 'Word import review', 'Paste cleaning', 'Quarkdown snapshot', 'Themes',
+      'Appearance', 'Five languages', 'Shortcuts', 'Native menus', 'Context menus', 'Drag & drop', 'Tray menu', 'Git panel'
+    ],
     p1e: 'Paste', p1: 'Paste it clean. Content from AI chats, Feishu or WeChat articles <br>is stripped of clutter before it reaches the editor.',
     p1d: 'Copy buttons on code blocks, line-number gutters and chains of empty paragraphs are cleaned before writing — no second manual pass.',
     p2e: 'Quarkdown', p2: 'Make notes programmable. .var, .foreach, .if <br>written straight into Markdown, with about 200 built-in functions.',
@@ -1115,8 +1217,12 @@ var I18N = (function () {
     c3h3: '100 % local, zéro enfermement',
     c3p: 'Fichiers GFM purs — Typora et Obsidian ouvrent le même coffre. Hors ligne par défaut, rien n\'est envoyé, la suppression passe par la corbeille système ; pour l\'IA, branchez votre propre endpoint d\'API de modèle.',
     demoEyebrow: 'En action', demoH2: 'Voilà à quoi ressemble l\'écriture ici.', demoCta: 'Essayer dans le navigateur', demoNote: 'Version web d\'essai — la version bureau reste la référence',
-    cap1: 'WYSIWYG en direct', cap2: 'Menu slash', cap3: 'Autocomplétion des liens', cap4: 'Graphe de connaissances',
-    cap5: 'Palette de commandes', cap6: 'Recherche globale', cap7: 'Import Word relu', cap8: 'Nettoyage du collage', cap9: 'Instantané Quarkdown', cap10: 'Panneau Git',
+    caps: [
+      'WYSIWYG en direct', 'Rendu riche', 'Menu slash', 'Autocomplétion des liens', 'Rétroliens', 'Tags globaux', 'Recherche globale', 'Graphe de connaissances',
+      'Graphe : glisser et ouvrir', 'Tableau de notes', 'Capture du jour', 'Source / rendu', 'Diagramme édité sur place', 'Édition de tableau', 'Redimensionner l’image', 'Plan repliable',
+      'Panneaux scindés', 'Concentration et machine à écrire', 'Palette de commandes', 'Inspecteur', 'Import Word relu', 'Nettoyage du collage', 'Instantané Quarkdown', 'Thèmes',
+      'Apparence', 'Cinq langues', 'Raccourcis', 'Menus natifs', 'Menus contextuels', 'Glisser-déposer', 'Icône de la barre des menus', 'Panneau Git'
+    ],
     p1e: 'Collage', p1: 'Collez propre. Le contenu des chats IA, de Feishu ou d\'articles WeChat <br>est débarrassé de ses déchets avant d\'entrer dans l\'éditeur.',
     p1d: 'Boutons « copier » des blocs de code, gouttières de numéros de ligne et paragraphes vides sont nettoyés avant écriture — pas de seconde passe manuelle.',
     p2e: 'Quarkdown', p2: 'Rendez vos notes programmables. .var, .foreach, .if <br>écrits directement dans le Markdown, avec environ 200 fonctions intégrées.',
@@ -1155,8 +1261,12 @@ var I18N = (function () {
     c3h3: 'Vollständig lokal, kein Lock-in',
     c3p: 'Reine GFM-Dateien — Typora und Obsidian öffnen denselben Vault. Standardmäßig offline, nichts wird hochgeladen, Löschen geht in den Papierkorb; für KI tragen Sie Ihren eigenen Modell-API-Endpunkt ein, die Daten gehen direkt an den von Ihnen konfigurierten Dienst.',
     demoEyebrow: 'In Aktion', demoH2: 'So sieht Schreiben hier aus.', demoCta: 'Im Browser ausprobieren', demoNote: 'Webtest — die Desktop-App bietet den vollen Funktionsumfang',
-    cap1: 'Live-WYSIWYG', cap2: 'Slash-Menü', cap3: 'Wikilink-Vervollständigung', cap4: 'Wissensgraph',
-    cap5: 'Befehlspalette', cap6: 'Vault-Suche', cap7: 'Word-Importprüfung', cap8: 'Einfügen bereinigt', cap9: 'Quarkdown-Snapshot', cap10: 'Git-Panel',
+    caps: [
+      'Live-WYSIWYG', 'Rich-Text-Darstellung', 'Slash-Menü', 'Wikilink-Vervollständigung', 'Backlinks', 'Globale Tags', 'Vault-Suche', 'Wissensgraph',
+      'Graph: ziehen und öffnen', 'Canvas-Board', 'Tagesnotiz', 'Quelle und Ansicht', 'Diagramm direkt bearbeiten', 'Tabelle bearbeiten', 'Bild skalieren', 'Gliederung einklappen',
+      'Geteilte Ansicht', 'Fokus und Schreibmaschine', 'Befehlspalette', 'Inspektor', 'Word-Importprüfung', 'Einfügen bereinigt', 'Quarkdown-Snapshot', 'Designs',
+      'Erscheinungsbild', 'Fünf Sprachen', 'Tastenkürzel', 'Native Menüs', 'Kontextmenüs', 'Ziehen und ablegen', 'Menüleisten-Symbol', 'Git-Panel'
+    ],
     p1e: 'Einfügen', p1: 'Sauber einfügen. Inhalte aus KI-Chats, Feishu oder WeChat-Artikeln <br>werden vor dem Editor von Ballast befreit.',
     p1d: 'Copy-Buttons, Zeilennummern-Leisten und leere Absatzketten werden vor dem Schreiben entfernt — kein zweiter Handlauf nötig.',
     p2e: 'Quarkdown', p2: 'Notizen programmierbar machen. .var, .foreach, .if <br>direkt ins Markdown geschrieben, mit rund 200 eingebauten Funktionen.',
@@ -1235,8 +1345,9 @@ var I18N = (function () {
     put('#demo .section-head h2', t.demoH2);
     put('#demo .demo-cta span', t.demoCta);
     put('#demo .demo-note', t.demoNote);
-    var caps = document.querySelectorAll('.demo-item figcaption strong');
-    for (var c = 1; c <= 10; c++) if (caps[c - 1] && t['cap' + c]) caps[c - 1].textContent = t['cap' + c];
+    document.querySelectorAll('.demo-item figcaption strong').forEach(function (el, i) {
+      if (t.caps && t.caps[i]) el.textContent = t.caps[i];
+    });
     var peb = document.querySelectorAll('.panel-inner .eyebrow');
     var pst = document.querySelectorAll('.panel-inner .st');
     var pnote = document.querySelectorAll('.panel-inner .dim-note');
@@ -1466,7 +1577,7 @@ function boot() {
 
   /* ---------------- 动图放大 ---------------- */
   // 点动图看大图。转盘形态下这一下只算在正面那张上（侧边那张的点击是换正），
-  // 减动效偏好下没有转盘、十张纵向排着，那每一张点开都是大图。
+  // 减动效偏好下没有转盘、整摞纵向排着，那每一张点开都是大图。
   // 放大和转盘要互通三件事：谁接管点击、开大图时停不停表、关掉之后要不要续表。
   var lbOpen = function () {}, lbHalt = function () {}, lbResume = function () {}, ringTakesClick = false;
   try {
@@ -1485,7 +1596,7 @@ function boot() {
       function lbShow(i) {
         lbAt = (i + lbItems.length) % lbItems.length;
         var src = lbItems[lbAt].querySelector('img'), cap = lbItems[lbAt].querySelector('figcaption');
-        lbImg.src = src.getAttribute('src');
+        lbImg.src = src.getAttribute('src') || src.getAttribute('data-gif') || '';
         lbImg.alt = src.alt || '';
         lbCap.textContent = cap ? [cap.querySelector('strong'), cap.querySelector('.en')]
           .map(function (n) { return n ? n.textContent.replace(/\s+/g, ' ').trim() : '' })
@@ -1525,7 +1636,7 @@ function boot() {
   } catch (e) { /* 放大建不起来就只看得小图，转盘照常转 */ }
 
   /* ---------------- 演示动图转盘 ---------------- */
-  // 十张动图排成一圈：中心一张，左右各两张侧转退到后面，其余退出合成。
+  // 动图排成一圈：中心一张，左右各两张侧转退到后面，其余退出合成。
   // 旋转完全由页面滚动驱动（滚轮滚 = 转盘转），没有自动轮播：
   // 区块钉住一屏，滚动行程内转盘从第 0 张转到第 RN 张，滚完才继续往下走页面。
   // 箭头和点侧边那张都换算成滚动位置；正面那张点开大图。
@@ -1536,13 +1647,15 @@ function boot() {
       var ringTrack = ringStage.querySelector('.demo-track');
       var ringItems = [].slice.call(ringTrack.querySelectorAll('.demo-item'));
       var RN = ringItems.length;
-      // 真按一个圆摆：十张均分一圈，每张占 36° 圆心角。位置取圆周上的点、朝向取该点的切线，
+      // 真按一个圆摆：相邻两张隔 36° 圆心角。位置取圆周上的点、朝向取该点的切线，
       // 所以越靠外越接近侧立（±1 转 36°、±2 转 72°），整圈是围过来的而不是平行平移。
       // 半径不能写死：切线摆放下的相邻卡片在投影上几乎首尾相接（外缘和内缘落在同一条弦上），
       // 只要弦长小于卡宽就会互相压叠。所以半径按「投影出来的缝够宽」往外反解，
       // 缝反倒在半径上取够本，卡片之间就一定有空隙，不会紧挨着。
       var RING_P = 1200; // 与 .demo-stage.ring 的 perspective 保持一致，投影换算要用同一个值
-      var RING_STEP = 360 / RN;
+      // 相邻两张固定隔 36°：圈的疏密只看这一步，张数只决定一圈要转多久。
+      // 早先按 360/张数 分，张数一多每张的圆心角就小到侧边那张整个压上来，半径反解得把卡缩成条。
+      var RING_STEP = 36;
       var RING_R = 1150; // 初值，ringFit() 立刻按视口宽窄反解
       var RING_SC = [1, 0.92, 0.82]; // 离中心第 0/1/2 张的自身缩放：越外越小才腾得出缝
       var ringW = 430, ringVis = 2; // 卡宽与露出到第几张，同样由 ringFit() 按视口定
@@ -1591,6 +1704,12 @@ function boot() {
           var k = circOffset(i, pos), a = Math.abs(k);
           var th = k * RING_STEP * Math.PI / 180;
           var show = a <= ringVis;
+          if (show) {
+            var gif = el.querySelector('img');
+            if (gif && !gif.getAttribute('src') && gif.getAttribute('data-gif')) {
+              gif.src = gif.getAttribute('data-gif');
+            }
+          }
           el.classList.toggle('is-far', !show);
           el.classList.toggle('is-front', a < 0.5);
           el.style.transform = 'translate(-50%,-50%) translateX(' + (RING_R * Math.sin(th)).toFixed(1) + 'px)'
@@ -1605,6 +1724,22 @@ function boot() {
       ringStage.classList.add('ring');
       ringStage.setAttribute('role', 'group');
       ringStage.setAttribute('aria-label', '功能演示动图');
+
+      // 三十多张动图一起解码会把这段滚动的帧吃光：地址先挪进 data-gif，
+      // 只给当前圈上看得见的那几张挂 src，转到跟前再挂（见 ringLayout）。
+      // 转盘没建起来时这段不执行，src 原样在标签里，纵向堆叠形态照常加载。
+      ringItems.forEach(function (el) {
+        var im = el.querySelector('img');
+        if (im && im.getAttribute('src')) {
+          im.setAttribute('data-gif', im.getAttribute('src'));
+          im.removeAttribute('src');
+        }
+      });
+
+      // 每张给一屏里的一小段行程：张数多，钉住的这段就得跟着变长，不然一张只轮到几十像素的滚动
+      var ringScrollEl = ringStage.parentElement;
+      ringScrollEl.style.height = Math.max(280, Math.min(600, RN * 14)) + 'vh';
+
       ringFit();
       ringLayout(0);
 
