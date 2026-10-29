@@ -149,14 +149,14 @@ try {
     min-height: 100vh;
     min-height: 100svh;
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* 内容贴着导航排，首屏顶部不留大空白 */
     justify-content: center;
     text-align: center;
-    padding: 100px 24px 80px;
+    padding: 92px 24px 60px;
   }
   .hero-inner {
     max-width: 940px;
-    padding: 56px 64px; /* 白色渐变衬底：光核升上来时标题、副标题、按钮都保持可读 */
+    padding: 36px 64px 44px; /* 白色渐变衬底：光核升上来时标题、副标题、按钮都保持可读 */
     background: radial-gradient(120% 120% at 50% 50%, rgba(255, 255, 255, 0.9) 45%, rgba(255, 255, 255, 0) 100%);
     border-radius: 40px;
     will-change: transform, opacity;
