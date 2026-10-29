@@ -970,7 +970,7 @@ fn open_external_url(url: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
+        crate::git_builtin::new_command("cmd")
             .args(["/c", "start", "", u])
             .spawn()
             .map_err(|e| e.to_string())?;
