@@ -9,6 +9,13 @@
 try {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   window.scrollTo(0, 0);
+  // 语言先按浏览器偏好落到 <html lang>，读屏器不用等脚本加载完
+  var n = (navigator.language || 'en').toLowerCase();
+  document.documentElement.lang =
+    n.indexOf('hant') > -1 || n.indexOf('zh-tw') === 0 || n.indexOf('zh-hk') === 0 || n.indexOf('zh-mo') === 0 ? 'zh-TW' :
+    n.indexOf('zh') === 0 ? 'zh-CN' :
+    n.indexOf('fr') === 0 ? 'fr' :
+    n.indexOf('de') === 0 ? 'de' : 'en';
 } catch (e) {}
 </script>
 <meta name="description" content="NoteLume（文溯）— 本地 Markdown 编辑器。所写即所得，文件夹即知识库，完全本地、零锁定。">
@@ -122,7 +129,7 @@ try {
   /* ---------- 通用 ---------- */
   section { position: relative; }
 
-  .gradient-text {
+  .accent-text {
     display: inline-block; /* 高亮词整体换行，不在词中间断开 */
     color: var(--blue);
   }
@@ -284,9 +291,14 @@ try {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    width: 100%;
     padding: 9px 12px;
+    border: none;
+    background: none;
     border-radius: 10px;
     font-size: 13px;
+    font-family: inherit;
+    text-align: left;
     color: var(--text-body);
     text-decoration: none;
     cursor: pointer;
@@ -388,12 +400,14 @@ try {
      默认形态是普通纵向堆叠（脚本没跑起来、或用户偏好减动效时就是这个样子），
      脚本挂上 .ring 才切成环形，所以任何一步失败都不会留下十张叠在一格的烂摊子 */
   .demo-stage { display: flex; flex-direction: column; align-items: center; gap: 44px; }
-  /* 钉住容器：滚动行程 380vh，期间转盘随页面滚动旋转，滚完才放行页脚方向 */
-  .demo-scroll { position: relative; height: 280vh; }
+  /* 钉住容器：滚动行程 280vh，期间转盘随页面滚动旋转，滚完才放行页脚方向。
+     overflow: clip 裁掉侧边卡伸出视口的部分（不产生滚动容器，sticky 不受影响） */
+  .demo-scroll { position: relative; height: 280vh; overflow: clip; }
   .demo-stage.ring {
     position: sticky;
     top: 0;
     height: 100vh;
+    height: 100svh; /* 移动端地址栏收展时 100vh 会变，svh 才稳 */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -411,7 +425,7 @@ try {
     margin: 0;
     backface-visibility: hidden; /* 转到 90° 之后是圈外那张的背面，别让它翻过来露一块镜像 */
     /* 不给 will-change：十张各占一个合成层的话，这段滚动又要变回每帧光栅化十次 */
-    transition: visibility 0.62s;
+    transition: opacity 0.25s linear, visibility 0.62s; /* opacity 过渡补上退场边界的小跳变 */
   }
   /* visibility 与 opacity 一起过渡：退场时整段保持可见、末尾才藏（藏得干净），
      进场时立刻可见再淡入。离场的第五张之后不再参与合成 */
@@ -587,6 +601,7 @@ try {
     position: sticky;
     bottom: 40px;
     margin-top: 26vh; /* 钉住的滚动时长来自这段间距 */
+    text-align: center; /* inline-block 的标题需要父级居中 */
   }
   #changelog .section-head h2 {
     font-size: clamp(2rem, 4.6vw, 3.4rem);
@@ -677,7 +692,9 @@ try {
     .demo-stage.ring .demo-item { width: var(--ring-w, min(280px, 62vw)); }
     .ring-btn { width: 34px; height: 34px; }
     .cl-card { width: 300px; }
-    .nav-links { gap: 18px; }
+    .nav-links { gap: 14px; }
+    #nav-features, #nav-download { display: none; } /* 窄屏收起次要入口，防导航溢出 */
+    .hero-inner { padding: 28px 22px; }
     .panel-inner { padding: 32px 24px; }
     .panel-inner p { line-height: 1.35; }
   }
@@ -704,11 +721,11 @@ try {
     <div class="dd lang-dd" id="langDd">
       <a class="dd-btn lang-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span id="langLabel">简体中文</span><span class="dd-arrow">▾</span></a>
       <div class="dd-menu" role="menu">
-        <div class="lang-item" data-lang="zh-CN"><span>简体中文</span><span class="mark">✓</span></div>
-        <div class="lang-item" data-lang="zh-TW"><span>繁體中文</span><span class="mark">✓</span></div>
-        <div class="lang-item" data-lang="en"><span>English</span><span class="mark">✓</span></div>
-        <div class="lang-item" data-lang="fr"><span>Français</span><span class="mark">✓</span></div>
-        <div class="lang-item" data-lang="de"><span>Deutsch</span><span class="mark">✓</span></div>
+        <button type="button" class="lang-item" data-lang="zh-CN"><span>简体中文</span><span class="mark">✓</span></button>
+        <button type="button" class="lang-item" data-lang="zh-TW"><span>繁體中文</span><span class="mark">✓</span></button>
+        <button type="button" class="lang-item" data-lang="en"><span>English</span><span class="mark">✓</span></button>
+        <button type="button" class="lang-item" data-lang="fr"><span>Français</span><span class="mark">✓</span></button>
+        <button type="button" class="lang-item" data-lang="de"><span>Deutsch</span><span class="mark">✓</span></button>
       </div>
     </div>
   </div>
@@ -719,35 +736,13 @@ try {
   <section id="hero">
     <div class="hero-inner">
       <div class="eyebrow">NoteLume · 文溯</div>
-      <h1>Typora 的手感，<br>Obsidian 的组织，<span class="gradient-text">不用二选一</span>。</h1>
+      <h1>Typora 的手感，<br>Obsidian 的组织，<span class="accent-text">不用二选一。</span></h1>
       <p class="sub">
         本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。
       </p>
       <div class="cta-row">
         <div class="dd" data-api="https://api.github.com/repos/HackerSnail/NoteLume/releases/latest">
           <a class="btn btn-primary dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span class="dd-label">GitHub 下载</span><span class="dd-arrow">▾</span></a>
-          <div class="dd-menu" role="menu">
-            <div class="dd-ver">v0.2.0 · 最新版</div>
-            <a class="dd-item" data-dl="win" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64-setup.exe" target="_blank" rel="noopener">
-              <strong>Windows</strong><span class="dd-ext">.exe 安装包</span>
-            </a>
-            <a class="dd-item" data-dl="mac-arm" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_aarch64.dmg" target="_blank" rel="noopener">
-              <strong>macOS（Apple Silicon）</strong><span class="dd-ext">.dmg</span>
-            </a>
-            <a class="dd-item" data-dl="mac-intel" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64.dmg" target="_blank" rel="noopener">
-              <strong>macOS（Intel）</strong><span class="dd-ext">.dmg</span>
-            </a>
-            <a class="dd-item" data-dl="linux" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
-              <strong>Linux</strong><span class="dd-ext">.AppImage</span>
-            </a>
-            <a class="dd-item" data-dl="ext" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-extension.zip" target="_blank" rel="noopener">
-              <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
-            </a>
-            <a class="dd-more" href="https://gitee.com/hackerSnail/note-lume/releases">查看全部版本 →</a>
-          </div>
-        </div>
-        <div class="dd" data-api="https://gitee.com/api/v5/repos/hackerSnail/note-lume/releases/latest">
-          <a class="btn btn-ghost dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span class="dd-label">Gitee 下载</span><span class="dd-arrow">▾</span></a>
           <div class="dd-menu" role="menu">
             <div class="dd-ver">v0.2.0 · 最新版</div>
             <a class="dd-item" data-dl="win" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume_0.2.0_x64-setup.exe" target="_blank" rel="noopener">
@@ -766,6 +761,28 @@ try {
               <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
             </a>
             <a class="dd-more" href="https://github.com/HackerSnail/NoteLume/releases">查看全部版本 →</a>
+          </div>
+        </div>
+        <div class="dd" data-api="https://gitee.com/api/v5/repos/hackerSnail/note-lume/releases/latest">
+          <a class="btn btn-ghost dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span class="dd-label">Gitee 下载</span><span class="dd-arrow">▾</span></a>
+          <div class="dd-menu" role="menu">
+            <div class="dd-ver">v0.2.0 · 最新版</div>
+            <a class="dd-item" data-dl="win" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64-setup.exe" target="_blank" rel="noopener">
+              <strong>Windows</strong><span class="dd-ext">.exe 安装包</span>
+            </a>
+            <a class="dd-item" data-dl="mac-arm" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_aarch64.dmg" target="_blank" rel="noopener">
+              <strong>macOS（Apple Silicon）</strong><span class="dd-ext">.dmg</span>
+            </a>
+            <a class="dd-item" data-dl="mac-intel" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64.dmg" target="_blank" rel="noopener">
+              <strong>macOS（Intel）</strong><span class="dd-ext">.dmg</span>
+            </a>
+            <a class="dd-item" data-dl="linux" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.AppImage</span>
+            </a>
+            <a class="dd-item" data-dl="ext" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-extension.zip" target="_blank" rel="noopener">
+              <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
+            </a>
+            <a class="dd-more" href="https://gitee.com/hackerSnail/note-lume/releases">查看全部版本 →</a>
           </div>
         </div>
         <a class="btn btn-ghost" href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub 源码</a>
@@ -959,7 +976,7 @@ var I18N = (function () {
   var zhCN = {
     title: 'NoteLume · 文溯 — 本地 Markdown 编辑器',
     navFeatures: '特性', navDownload: '下载',
-    heroH1: 'Typora 的手感，Obsidian 的组织，<span class="gradient-text">不用二选一。</span>',
+    heroH1: 'Typora 的手感，Obsidian 的组织，<span class="accent-text">不用二选一。</span>',
     heroSub: '本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。',
     scrollHint: '向下滚动',
     btnGithub: 'GitHub 下载', btnGitee: 'Gitee 下载', btnSource: 'GitHub 源码',
@@ -999,12 +1016,11 @@ var I18N = (function () {
   var zhTW = {
     title: 'NoteLume · 文溯 — 本地 Markdown 編輯器',
     navFeatures: '特性', navDownload: '下載',
-    heroH1: 'Typora 的手感，Obsidian 的組織，<span class="gradient-text">不用二選一。</span>',
+    heroH1: 'Typora 的手感，Obsidian 的組織，<span class="accent-text">不用二選一。</span>',
     heroSub: '本地 Markdown 編輯器。你的筆記就是一堆<strong>標準 .md 檔案</strong>，躺在自己的資料夾裡——秒開、離線、零格式鎖定。',
     scrollHint: '向下滾動',
     btnGithub: 'GitHub 下載', btnGitee: 'Gitee 下載', btnSource: 'GitHub 原始碼',
     latest: '· 最新版', dlExt: '瀏覽器擴充套件',
-    latest: '· 最新版',
     extWin: '.exe 安裝包', packaging: '打包中', ddMore: '查看全部版本 →',
     dlMacArm: 'macOS（Apple Silicon）', dlMacIntel: 'macOS（Intel）',
     featEyebrow: '三個理由', featH2: '該有的都有，<br>不該背的沒有。',
@@ -1040,12 +1056,11 @@ var I18N = (function () {
   var en = {
     title: 'NoteLume — Local Markdown Editor',
     navFeatures: 'Features', navDownload: 'Download',
-    heroH1: 'The feel of Typora, the structure of Obsidian — <span class="gradient-text">no need to choose.</span>',
+    heroH1: 'The feel of Typora, the structure of Obsidian — <span class="accent-text">no need to choose.</span>',
     heroSub: 'A local Markdown editor. Your notes are plain <strong>.md files</strong> in your own folder — instant, offline, zero lock-in.',
     scrollHint: 'Scroll down',
     btnGithub: 'Download on GitHub', btnGitee: 'Download on Gitee', btnSource: 'Source code',
     latest: '· latest', dlExt: 'Browser extension',
-    latest: '· latest',
     extWin: '.exe installer', packaging: 'In packaging…', ddMore: 'View all releases →',
     dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
     featEyebrow: 'Three reasons', featH2: 'Everything you need.<br>Nothing you don\'t.',
@@ -1058,11 +1073,11 @@ var I18N = (function () {
     demoEyebrow: 'In action', demoH2: 'This is what writing looks like here.',
     cap1: 'Live WYSIWYG', cap2: 'Slash menu', cap3: 'Wikilink autocomplete', cap4: 'Knowledge graph',
     cap5: 'Command palette', cap6: 'Vault search', cap7: 'Word import review', cap8: 'Paste cleaning', cap9: 'Quarkdown snapshot', cap10: 'Git panel',
-    p1e: 'Paste', p1: 'Paste it clean. Content from AI chats, Feishu or WeChat articles<br>is stripped of clutter before it reaches the editor.',
+    p1e: 'Paste', p1: 'Paste it clean. Content from AI chats, Feishu or WeChat articles <br>is stripped of clutter before it reaches the editor.',
     p1d: 'Copy buttons on code blocks, line-number gutters and chains of empty paragraphs are cleaned before writing — no second manual pass.',
-    p2e: 'Quarkdown', p2: 'Make notes programmable. .var, .foreach, .if<br>written straight into Markdown, with about 200 built-in functions.',
+    p2e: 'Quarkdown', p2: 'Make notes programmable. .var, .foreach, .if <br>written straight into Markdown, with about 200 built-in functions.',
     p2d: 'Snapshot preview: results appear as your cursor leaves the block, and the source file stays untouched. Documents without directives remain pure GFM.',
-    p3e: 'Git', p3: 'Git is built in. Status, history, diffs, commits and conflict resolution —<br>all included.',
+    p3e: 'Git', p3: 'Git is built in. Status, history, diffs, commits and conflict resolution — <br>all included.',
     p3d: 'The git2 engine fetches and pulls even without git installed. Word import reads OOXML offline too, with visual review before saving.',
     clEyebrow: 'Changelog', clH2: 'What we\'ve been shipping.',
     ch: ['Feature', 'Feature', 'Export', 'Export', 'UX', 'UX', 'Compat', 'Fix'],
@@ -1081,12 +1096,11 @@ var I18N = (function () {
   var fr = {
     title: 'NoteLume — Éditeur Markdown local',
     navFeatures: 'Fonctionnalités', navDownload: 'Télécharger',
-    heroH1: 'Le confort de Typora, la structure d\'Obsidian — <span class="gradient-text">sans avoir à choisir.</span>',
+    heroH1: 'Le confort de Typora, la structure d\'Obsidian — <span class="accent-text">sans avoir à choisir.</span>',
     heroSub: 'Un éditeur Markdown local. Vos notes sont de simples <strong>fichiers .md</strong> dans votre propre dossier — ouverture instantanée, hors ligne, zéro enfermement.',
     scrollHint: 'Faites défiler',
     btnGithub: 'Télécharger sur GitHub', btnGitee: 'Télécharger sur Gitee', btnSource: 'Code source',
     latest: '· dernière version', dlExt: 'Extension navigateur',
-    latest: '· dernière version',
     extWin: '.exe installateur', packaging: 'En préparation…', ddMore: 'Voir toutes les versions →',
     dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
     featEyebrow: 'Trois raisons', featH2: 'Tout ce qu\'il faut.<br>Rien de superflu.',
@@ -1099,11 +1113,11 @@ var I18N = (function () {
     demoEyebrow: 'En action', demoH2: 'Voilà à quoi ressemble l\'écriture ici.',
     cap1: 'WYSIWYG en direct', cap2: 'Menu slash', cap3: 'Autocomplétion des liens', cap4: 'Graphe de connaissances',
     cap5: 'Palette de commandes', cap6: 'Recherche globale', cap7: 'Import Word relu', cap8: 'Nettoyage du collage', cap9: 'Instantané Quarkdown', cap10: 'Panneau Git',
-    p1e: 'Collage', p1: 'Collez propre. Le contenu des chats IA, de Feishu ou d\'articles WeChat<br>est débarrassé de ses déchets avant d\'entrer dans l\'éditeur.',
+    p1e: 'Collage', p1: 'Collez propre. Le contenu des chats IA, de Feishu ou d\'articles WeChat <br>est débarrassé de ses déchets avant d\'entrer dans l\'éditeur.',
     p1d: 'Boutons « copier » des blocs de code, gouttières de numéros de ligne et paragraphes vides sont nettoyés avant écriture — pas de seconde passe manuelle.',
-    p2e: 'Quarkdown', p2: 'Rendez vos notes programmables. .var, .foreach, .if<br>écrits directement dans le Markdown, avec environ 200 fonctions intégrées.',
+    p2e: 'Quarkdown', p2: 'Rendez vos notes programmables. .var, .foreach, .if <br>écrits directement dans le Markdown, avec environ 200 fonctions intégrées.',
     p2d: 'Aperçu par instantané : le résultat apparaît dès que le curseur sort du bloc, et le fichier source reste intact. Sans directives, le document reste du GFM pur.',
-    p3e: 'Git', p3: 'Git est intégré. Statut, historique, diffs, commits et résolution de conflits —<br>tout est inclus.',
+    p3e: 'Git', p3: 'Git est intégré. Statut, historique, diffs, commits et résolution de conflits — <br>tout est inclus.',
     p3d: 'Le moteur git2 fait fetch et pull même sans git installé. L\'import Word lit l\'OOXML hors ligne, avec relecture visuelle avant enregistrement.',
     clEyebrow: 'Journal des modifications', clH2: 'Ce qu\'on livre en ce moment.',
     ch: ['Fonctionnalité', 'Fonctionnalité', 'Export', 'Export', 'UX', 'UX', 'Compat.', 'Correctif'],
@@ -1122,12 +1136,11 @@ var I18N = (function () {
   var de = {
     title: 'NoteLume — Lokaler Markdown-Editor',
     navFeatures: 'Funktionen', navDownload: 'Download',
-    heroH1: 'Das Schreibgefühl von Typora, die Struktur von Obsidian — <span class="gradient-text">beides ohne Kompromiss.</span>',
+    heroH1: 'Das Schreibgefühl von Typora, die Struktur von Obsidian — <span class="accent-text">beides ohne Kompromiss.</span>',
     heroSub: 'Ein lokaler Markdown-Editor. Ihre Notizen sind einfache <strong>.md-Dateien</strong> in Ihrem eigenen Ordner — sofort startklar, offline, ohne Format-Lock-in.',
     scrollHint: 'Nach unten scrollen',
     btnGithub: 'Auf GitHub laden', btnGitee: 'Auf Gitee laden', btnSource: 'Quellcode',
     latest: '· neueste Version', dlExt: 'Browser-Erweiterung',
-    latest: '· neueste Version',
     extWin: '.exe-Installer', packaging: 'In Arbeit…', ddMore: 'Alle Versionen ansehen →',
     dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
     featEyebrow: 'Drei Gründe', featH2: 'Alles, was du brauchst.<br>Nichts Überflüssiges.',
@@ -1140,11 +1153,11 @@ var I18N = (function () {
     demoEyebrow: 'In Aktion', demoH2: 'So sieht Schreiben hier aus.',
     cap1: 'Live-WYSIWYG', cap2: 'Slash-Menü', cap3: 'Wikilink-Vervollständigung', cap4: 'Wissensgraph',
     cap5: 'Befehlspalette', cap6: 'Vault-Suche', cap7: 'Word-Importprüfung', cap8: 'Einfügen bereinigt', cap9: 'Quarkdown-Snapshot', cap10: 'Git-Panel',
-    p1e: 'Einfügen', p1: 'Sauber einfügen. Inhalte aus KI-Chats, Feishu oder WeChat-Artikeln<br>werden vor dem Editor von Ballast befreit.',
+    p1e: 'Einfügen', p1: 'Sauber einfügen. Inhalte aus KI-Chats, Feishu oder WeChat-Artikeln <br>werden vor dem Editor von Ballast befreit.',
     p1d: 'Copy-Buttons, Zeilennummern-Leisten und leere Absatzketten werden vor dem Schreiben entfernt — kein zweiter Handlauf nötig.',
-    p2e: 'Quarkdown', p2: 'Notizen programmierbar machen. .var, .foreach, .if<br>direkt ins Markdown geschrieben, mit rund 200 eingebauten Funktionen.',
+    p2e: 'Quarkdown', p2: 'Notizen programmierbar machen. .var, .foreach, .if <br>direkt ins Markdown geschrieben, mit rund 200 eingebauten Funktionen.',
     p2d: 'Snapshot-Vorschau: Ergebnisse erscheinen, sobald der Cursor den Block verlässt, die Quelldatei bleibt unangetastet. Ohne Direktiven bleibt das Dokument reines GFM.',
-    p3e: 'Git', p3: 'Git ist eingebaut. Status, Verlauf, Diffs, Commits und Konfliktlösung —<br>alles an Bord.',
+    p3e: 'Git', p3: 'Git ist eingebaut. Status, Verlauf, Diffs, Commits und Konfliktlösung — <br>alles an Bord.',
     p3d: 'Die git2-Engine holt und pullt sogar ohne installiertes git. Der Word-Import liest OOXML offline, mit visueller Prüfung vor dem Speichern.',
     clEyebrow: 'Änderungsprotokoll', clH2: 'Woran wir gerade arbeiten.',
     ch: ['Funktion', 'Funktion', 'Export', 'Export', 'UX', 'UX', 'Kompat.', 'Fix'],
@@ -1388,7 +1401,7 @@ function boot() {
               });
             });
           })
-          .catch(function () { /* 静态直链兜底 */ });
+          .catch(function (e) { console.warn('[promo] 最新版直链刷新失败，使用静态直链:', e); });
       }
     });
     document.addEventListener('click', function (e) {
@@ -1620,7 +1633,7 @@ function boot() {
       lbHalt = function () {};  // 没有自动轮播了，大图开着时无需停表
       lbResume = function () {};
     });
-  } catch (e) { /* 转盘建不起来就停在 CSS 默认的纵向堆叠 */ }
+  } catch (e) { console.warn('[promo] 演示转盘降级为纵向堆叠:', e); }
 
   /* ---------------- 滚动动画 ---------------- */
   // 滚动一律交给浏览器（滚轮与拖动滚动条都走原生），动画只读滚动位置、不参与滚动本身：
@@ -1640,15 +1653,16 @@ function boot() {
       scrollTrigger: { trigger: '#hero', start: 'top top', end: '25% top', scrub: true }
     });
 
-    // 特性卡片依次从底部淡入上浮
+    // 特性卡片依次从底部淡入上浮（结束后清掉内联 transform/opacity，CSS hover 才能生效）
     gsap.utils.toArray('.card').forEach(function (card, i) {
       gsap.from(card, {
         y: 52, opacity: 0, duration: 0.9, ease: 'power3.out', delay: i * 0.12,
+        clearProps: 'transform,opacity',
         scrollTrigger: { trigger: '#features', start: 'top 70%', toggleActions: 'play none none reverse' }
       });
     });
     gsap.from('#features .section-head', {
-      y: 36, opacity: 0, duration: 0.8, ease: 'power3.out',
+      y: 36, opacity: 0, duration: 0.8, ease: 'power3.out', clearProps: 'transform,opacity',
       scrollTrigger: { trigger: '#features', start: 'top 78%', toggleActions: 'play none none reverse' }
     });
 
