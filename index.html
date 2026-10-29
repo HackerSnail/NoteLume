@@ -1424,21 +1424,39 @@ function boot() {
     });
   } catch (e) { /* 失败则字幕保持原样 */ }
 
-  // 演示动图加载失败时退占位色块（动图走仓库内相对路径，单独拷走 index.html 时兜底）
+  // 演示动图加载：仓库相对路径优先（本地/整仓库部署时可用），
+  // 失败逐级切 jsDelivr GitHub CDN（index.html 单独部署到 GitHub Pages 根目录也能加载真动图），
+  // 全部失败才退 SVG 占位色块
   try {
-    var ph = 'data:image/svg+xml,' + encodeURIComponent(
+    var gifPlaceholder = 'data:image/svg+xml,' + encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">' +
       '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
       '<stop offset="0" stop-color="#007aff"/><stop offset="1" stop-color="#4da3ff"/>' +
       '</linearGradient></defs>' +
       '<rect width="800" height="500" fill="url(#g)" opacity="0.15"/>' +
       '<text x="50%" y="50%" fill="#0066cc" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">演示动图未能加载</text></svg>');
+    var gifCdnLevels = [
+      function (src) { return src; },
+      function (src) { return 'https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/' + src.replace(/^\.\//, ''); },
+      function (src) { return 'https://fastly.jsdelivr.net/gh/HackerSnail/NoteLume@master/' + src.replace(/^\.\//, ''); }
+    ];
     document.querySelectorAll('.gif-wrap img').forEach(function (img) {
-      var failed = function () { img.onerror = null; img.src = ph; };
-      if (img.complete && img.naturalWidth === 0) { failed(); }
-      else { img.addEventListener('error', failed); }
+      var original = img.getAttribute('src');
+      var level = 0;
+      var fail = function () {
+        level += 1;
+        if (level < gifCdnLevels.length) {
+          img.onerror = fail;
+          img.src = gifCdnLevels[level](original);
+        } else {
+          img.onerror = null;
+          img.src = gifPlaceholder;
+        }
+      };
+      img.onerror = fail;
+      if (img.complete && img.naturalWidth === 0) fail();
     });
-  } catch (e) { /* 占位兜底失败不影响页面 */ }
+  } catch (e) { console.warn('[promo] 动图回退链设置失败:', e); }
 
   /* ---------------- 动图放大 ---------------- */
   // 点动图看大图。转盘形态下这一下只算在正面那张上（侧边那张的点击是换正），
