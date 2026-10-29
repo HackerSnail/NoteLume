@@ -382,6 +382,18 @@ pub enum Engine {
     Builtin,
 }
 
+/// 起子进程的统一入口。GUI 子系统进程（本应用）spawn git / cmd 这类控制台程序时，
+/// Windows 会给每个子进程弹一个控制台窗口，一闪即灭；CREATE_NO_WINDOW 压掉。
+pub fn new_command(program: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 /// 进程内一次性检测并缓存（`std::sync::OnceLock`）。开 `git --version` 失败一律归 Builtin（保守），
 /// 确保 R1-B 内置路径在系统 git 并不可用环境中自动接管。
 /// Phase 4 起额外缓存版本串，供 `git_r_info` 上报前端做徽标展示。
@@ -390,7 +402,7 @@ pub fn cached_engine_and_version() -> (Engine, Option<String>) {
     static CACHE: OnceLock<(Engine, Option<String>)> = OnceLock::new();
     CACHE
         .get_or_init(|| {
-            match std::process::Command::new("git")
+            match new_command("git")
                 .arg("--version")
                 .output()
             {
@@ -444,7 +456,7 @@ pub mod system {
     pub async fn git_run(vault_root: String, args: Vec<String>) -> Result<GitRun, String> {
         tauri::async_runtime::spawn_blocking(move || -> Result<GitRun, String> {
             let ref_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            let out = std::process::Command::new("git")
+            let out = super::new_command("git")
                 .args(&ref_args)
                 .current_dir(&vault_root)
                 .env("GIT_TERMINAL_PROMPT", "0")
@@ -511,7 +523,7 @@ pub mod system {
 
     pub async fn have() -> Option<String> {
         tauri::async_runtime::spawn_blocking(|| -> Option<String> {
-            std::process::Command::new("git")
+            super::new_command("git")
                 .arg("--version")
                 .output()
                 .ok()
