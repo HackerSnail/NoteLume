@@ -1699,7 +1699,7 @@ function boot() {
   for (var i = 0; i < pageCount; i++) {
     var t = pageCount > 1 ? i / (pageCount - 1) : 0;
     var angle = t * Math.PI * 2.2 + 0.6;
-    var radius = 3.4 + (i % 2) * 0.75;
+    var radius = 2.9 + (i % 2) * 0.6;
     var page = new THREE.Group();
     page.position.set(Math.cos(angle) * radius, (t - 0.5) * 6.4, Math.sin(angle) * radius);
     page.lookAt(0, page.position.y * 0.55, 0);
@@ -1779,7 +1779,7 @@ function boot() {
     world.rotation.y = (reducedMotion ? 0.4 : time * 0.05) + scroll.v * Math.PI * 1.6;
     world.rotation.x = -0.05 + scroll.v * 0.22;
     world.position.y = -4.6 + scroll.v * 4.6;
-    var spread = 1 + scroll.v * 1.1; // 散开幅度收小，纸页留在画面内
+    var spread = 1 + scroll.v * 0.45; // 散开幅度收小，纸页聚拢在光核周围
     for (var k = 0; k < pages.length; k++) {
       var pg = pages[k], ud = pg.userData;
       pg.position.copy(ud.base).addScaledVector(ud.dir, (spread - 1) * 1.6);
