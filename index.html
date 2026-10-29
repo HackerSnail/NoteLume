@@ -715,17 +715,20 @@
           <a class="btn btn-primary dd-btn" href="javascript:void(0)" aria-haspopup="true" aria-expanded="false"><span class="dd-label">GitHub 下载</span><span class="dd-arrow">▾</span></a>
           <div class="dd-menu" role="menu">
             <div class="dd-ver">v0.2.0 · 最新版</div>
-            <a class="dd-item" data-dl="win" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-Windows.zip" target="_blank" rel="noopener">
-              <strong>Windows</strong><span class="dd-ext">.zip</span>
+            <a class="dd-item" data-dl="win" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64-setup.exe" target="_blank" rel="noopener">
+              <strong>Windows</strong><span class="dd-ext">.exe 安装包</span>
             </a>
-            <a class="dd-item" data-dl="mac-arm" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-macOS-ARM64.zip" target="_blank" rel="noopener">
-              <strong>macOS（Apple Silicon）</strong><span class="dd-ext">.zip</span>
+            <a class="dd-item" data-dl="mac-arm" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_aarch64.dmg" target="_blank" rel="noopener">
+              <strong>macOS（Apple Silicon）</strong><span class="dd-ext">.dmg</span>
             </a>
-            <a class="dd-item" data-dl="mac-intel" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-macOS-Intel.zip" target="_blank" rel="noopener">
-              <strong>macOS（Intel）</strong><span class="dd-ext">.zip</span>
+            <a class="dd-item" data-dl="mac-intel" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64.dmg" target="_blank" rel="noopener">
+              <strong>macOS（Intel）</strong><span class="dd-ext">.dmg</span>
             </a>
-            <a class="dd-item" data-dl="linux" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-Linux-AppImage.zip" target="_blank" rel="noopener">
-              <strong>Linux</strong><span class="dd-ext">.zip</span>
+            <a class="dd-item" data-dl="linux" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.AppImage</span>
+            </a>
+            <a class="dd-item" data-dl="ext" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-extension.zip" target="_blank" rel="noopener">
+              <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
             </a>
             <a class="dd-more" href="https://gitee.com/hackerSnail/note-lume/releases" target="_blank" rel="noopener">查看全部版本 →</a>
           </div>
@@ -745,6 +748,9 @@
             </a>
             <a class="dd-item" data-dl="linux" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
               <strong>Linux</strong><span class="dd-ext">.AppImage</span>
+            </a>
+            <a class="dd-item" data-dl="ext" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume-extension.zip" target="_blank" rel="noopener">
+              <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
             </a>
             <a class="dd-more" href="https://github.com/HackerSnail/NoteLume/releases" target="_blank" rel="noopener">查看全部版本 →</a>
           </div>
@@ -944,7 +950,7 @@ var I18N = (function () {
     heroSub: '本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。',
     scrollHint: '向下滚动',
     btnGithub: 'GitHub 下载', btnGitee: 'Gitee 下载', btnSource: 'GitHub 源码',
-    latest: '· 最新版',
+    latest: '· 最新版', dlExt: '浏览器扩展',
     extWin: '.exe 安装包', packaging: '打包中', ddMore: '查看全部版本 →',
     dlMacArm: 'macOS（Apple Silicon）', dlMacIntel: 'macOS（Intel）',
     featEyebrow: '三个理由', featH2: '该有的都有，<br>不该背的没有。',
@@ -984,6 +990,7 @@ var I18N = (function () {
     heroSub: '本地 Markdown 編輯器。你的筆記就是一堆<strong>標準 .md 檔案</strong>，躺在自己的資料夾裡——秒開、離線、零格式鎖定。',
     scrollHint: '向下滾動',
     btnGithub: 'GitHub 下載', btnGitee: 'Gitee 下載', btnSource: 'GitHub 原始碼',
+    latest: '· 最新版', dlExt: '瀏覽器擴充套件',
     latest: '· 最新版',
     extWin: '.exe 安裝包', packaging: '打包中', ddMore: '查看全部版本 →',
     dlMacArm: 'macOS（Apple Silicon）', dlMacIntel: 'macOS（Intel）',
@@ -1024,6 +1031,7 @@ var I18N = (function () {
     heroSub: 'A local Markdown editor. Your notes are plain <strong>.md files</strong> in your own folder — instant, offline, zero lock-in.',
     scrollHint: 'Scroll down',
     btnGithub: 'Download on GitHub', btnGitee: 'Download on Gitee', btnSource: 'Source code',
+    latest: '· latest', dlExt: 'Browser extension',
     latest: '· latest',
     extWin: '.exe installer', packaging: 'In packaging…', ddMore: 'View all releases →',
     dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
@@ -1064,6 +1072,7 @@ var I18N = (function () {
     heroSub: 'Un éditeur Markdown local. Vos notes sont de simples <strong>fichiers .md</strong> dans votre propre dossier — ouverture instantanée, hors ligne, zéro enfermement.',
     scrollHint: 'Faites défiler',
     btnGithub: 'Télécharger sur GitHub', btnGitee: 'Télécharger sur Gitee', btnSource: 'Code source',
+    latest: '· dernière version', dlExt: 'Extension navigateur',
     latest: '· dernière version',
     extWin: '.exe installateur', packaging: 'En préparation…', ddMore: 'Voir toutes les versions →',
     dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
@@ -1104,6 +1113,7 @@ var I18N = (function () {
     heroSub: 'Ein lokaler Markdown-Editor. Ihre Notizen sind einfache <strong>.md-Dateien</strong> in Ihrem eigenen Ordner — sofort startklar, offline, ohne Format-Lock-in.',
     scrollHint: 'Nach unten scrollen',
     btnGithub: 'Auf GitHub laden', btnGitee: 'Auf Gitee laden', btnSource: 'Quellcode',
+    latest: '· neueste Version', dlExt: 'Browser-Erweiterung',
     latest: '· neueste Version',
     extWin: '.exe-Installer', packaging: 'In Arbeit…', ddMore: 'Alle Versionen ansehen →',
     dlMacArm: 'macOS (Apple Silicon)', dlMacIntel: 'macOS (Intel)',
@@ -1176,6 +1186,7 @@ var I18N = (function () {
       var strongs = dd.querySelectorAll('.dd-item strong');
       if (strongs[1]) strongs[1].textContent = t.dlMacArm;
       if (strongs[2]) strongs[2].textContent = t.dlMacIntel;
+      if (strongs[4]) strongs[4].textContent = t.dlExt;
       var more = dd.querySelector('.dd-more');
       if (more) more.textContent = t.ddMore;
       var ver = dd.querySelector('.dd-ver');
@@ -1317,19 +1328,12 @@ function boot() {
 
   // 下载下拉菜单（Gitee / GitHub 各一个）：点击开合、点外部/Esc 关闭；自动请求最新 release 改写直链
   try {
-    var dlMaps = {
-      gitee: {
-        'win': /Windows\.zip$/,
-        'mac-arm': /macOS-ARM64\.zip$/,
-        'mac-intel': /macOS-Intel\.zip$/,
-        'linux': /Linux-AppImage\.zip$/
-      },
-      github: {
-        'win': /x64-setup\.exe$/,
-        'mac-arm': /aarch64\.dmg$/,
-        'mac-intel': /x64\.dmg$/,
-        'linux': /amd64\.AppImage$/
-      }
+    var dlMap = { // 两个源的资产命名已统一，共用一套匹配
+      'win': /x64-setup\.exe$/,
+      'mac-arm': /aarch64\.dmg$/,
+      'mac-intel': /x64\.dmg$/,
+      'linux': /amd64\.AppImage$/,
+      'ext': /extension\.zip$/
     };
     function closeAllDd(except) {
       document.querySelectorAll('.dd.open').forEach(function (d) {
@@ -1354,7 +1358,7 @@ function boot() {
             var ver = dd.querySelector('.dd-ver');
             var langT = window.I18N ? I18N[document.documentElement.lang] : null;
             if (ver) ver.textContent = rel.tag_name + ' ' + (langT ? langT.latest : '· 最新版');
-            var map = dlMaps[api.indexOf('gitee') > -1 ? 'gitee' : 'github'];
+            var map = dlMap;
             (rel.assets || []).forEach(function (a) {
               Object.keys(map).forEach(function (key) {
                 if (map[key].test(a.name)) {
