@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#ffffff">
+<script>
+/* 落地页每次打开都从页顶开始：浏览器默认恢复上次滚动位置，刷新后场景会停在半路 */
+try {
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+} catch (e) {}
+</script>
 <meta name="description" content="NoteLume（文溯）— 本地 Markdown 编辑器。所写即所得，文件夹即知识库，完全本地、零锁定。">
 <meta property="og:type" content="website">
 <meta property="og:title" content="NoteLume · 文溯 — 本地 Markdown 编辑器">
@@ -1312,6 +1319,13 @@ var I18N = (function () {
 <script>
 function boot() {
   'use strict';
+
+  // 刚打开时始终回到页顶：浏览器默认会恢复上次的滚动位置，
+  // 刷新后场景就停在半路，不是首屏该有的构图
+  try {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+  } catch (e) {}
 
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var isMobile = window.matchMedia('(max-width: 860px)').matches;
