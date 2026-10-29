@@ -82,61 +82,123 @@ fn qd_packages_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String>
         .map_err(|e| format!("定位应用配置目录失败：{e}"))
 }
 
-/// 包引用 `@scope/name:version` 解析（与 qd::ecosystem 的 include 同一规则）
-fn parse_pkg_ref(reference: &str) -> Result<(String, String, String), String> {
-    let body = reference.trim().strip_prefix('@').ok_or("包引用以 @ 开头：@scope/name:version")?;
-    let (scope, rest) = body.split_once('/').ok_or("包引用格式：@scope/name:version")?;
-    let (name, version) = rest.split_once(':').ok_or("包引用缺版本：@scope/name:version")?;
-    let (scope, name, version) = (scope.trim(), name.trim(), version.trim());
-    if scope.is_empty() || name.is_empty() || version.is_empty() {
-        return Err("包引用的 scope / name / version 不能为空".into());
+/// 包引用 `@scope/name[:version]` 解析（版本判定与 qd::ecosystem 的 include 同一规则）。
+/// 装包这一步允许省掉版本，省掉时按注册表目录取最高版本（见 qd_registry_versions）。
+fn parse_pkg_ref(reference: &str) -> Result<(String, String, Option<String>), String> {
+    let body = reference.trim().strip_prefix('@').ok_or("包引用以 @ 开头：@scope/name[:version]")?;
+    let (scope, rest) = body.split_once('/').ok_or("包引用格式：@scope/name[:version]")?;
+    let (name, version) = match rest.split_once(':') {
+        Some((n, v)) => (n.trim(), Some(v.trim())),
+        None => (rest.trim(), None),
+    };
+    let scope = scope.trim();
+    if scope.is_empty() || name.is_empty() {
+        return Err(format!("包引用 {} 缺 scope 或包名，形态是 @atoms/包名[:版本]", reference.trim()));
     }
-    for part in [name, version] {
+    if let Some(v) = version {
+        if v.is_empty() {
+            return Err(format!("包引用 {} 写了冒号却没给版本；要省掉版本就连冒号一起去掉", reference.trim()));
+        }
+    }
+    for part in [name].into_iter().chain(version) {
         if part.contains("..") || part.contains('\\') || part.contains('/') {
             return Err(format!("包引用段不合法：{part}"));
         }
+        // 这两段直接拼进注册表 URL，只吃文件名里安全的那批字符
+        if !part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+            return Err(format!("包引用的 name / version 只能含字母、数字与 - _ .：{part}"));
+        }
     }
-    Ok((scope.into(), name.into(), version.into()))
+    Ok((scope.into(), name.into(), version.map(Into::into)))
 }
 
-/// 显式安装 Quarkdown 包：从 atoms 源（GitHub 仓库 quarkdown-labs/atoms，与 Kotlin
-/// PackageRepositories 的默认注册一致）拉该精确版本的 atom.toml 与 entrypoint 落进
-/// 本地缓存。include {@scope/name:version} 只读这份缓存——文档求值不触发下载，
-/// 安装只能是用户的显式动作（命令面板「安装 Quarkdown 包…」）。
+/// atoms 源（GitHub 仓库 quarkdown-labs/atoms）按 `name/version/` 目录组织，没有 latest
+/// 通道：省略版本时列该包目录，把版本目录名当版本号，取最高。
+fn qd_registry_versions(name: &str) -> Result<Vec<String>, String> {
+    const API: &str = "https://api.github.com/repos/quarkdown-labs/atoms/contents/";
+    let tmp = std::env::temp_dir().join(format!("nl-qd-versions-{}.json", std::process::id()));
+    let text = download_remote(&format!("{API}{name}"), &tmp)
+        .and_then(|()| fs::read_to_string(&tmp).map_err(|e| e.to_string()))
+        .map_err(|e| format!("列注册表版本失败：{e}"));
+    let _ = fs::remove_file(&tmp);
+    let text = text?;
+    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("注册表版本清单解析失败：{e}"))?;
+    let entries = json.as_array().ok_or_else(|| {
+        let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("返回的不是目录清单");
+        format!("注册表里查不到 @atoms/{name}：{msg}")
+    })?;
+    Ok(entries
+        .iter()
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("dir"))
+        .filter_map(|e| e.get("name").and_then(|n| n.as_str()).map(str::to_string))
+        .collect())
+}
+
+/// 版本号比较：按 `.` 分段，两段都是数字就按数值比（1.10 > 1.9），否则按字面比；
+/// 前缀相同时段数多的更大（1.0.1 > 1.0）。
+fn qd_version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let (pa, pb) = (a.split('.'), b.split('.'));
+    for (x, y) in pa.zip(pb) {
+        let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
+            (Ok(nx), Ok(ny)) => nx.cmp(&ny),
+            _ => x.cmp(y),
+        };
+        if ord != std::cmp::Ordering::Equal {
+            return ord;
+        }
+    }
+    a.matches('.').count().cmp(&b.matches('.').count())
+}
+
+/// 显式安装 Quarkdown 包：从 atoms 源拉所选版本的 atom.toml 与 entrypoint 落进本地缓存。
+/// include {@scope/name:version} 只读这份缓存——文档求值不触发下载，安装只能是用户的
+/// 显式动作（命令面板「安装 Quarkdown 包…」）。返回可直接粘进文档的包引用。
 #[tauri::command]
 fn qd_package_install(app: tauri::AppHandle, reference: String) -> Result<String, String> {
     const REGISTRY: &str = "https://raw.githubusercontent.com/quarkdown-labs/atoms/main/";
-    let (scope, name, version) = parse_pkg_ref(&reference)?;
+    let (scope, name, wanted) = parse_pkg_ref(&reference)?;
     if scope != "atoms" {
         return Err(format!("只支持 atoms 包源，不支持 @{scope}"));
     }
-    let cache = qd_packages_dir(&app)?.join(&name).join(&version);
-    let base = format!("{REGISTRY}{name}/{version}/");
-    fs::create_dir_all(&cache).map_err(|e| format!("创建包缓存目录失败：{e}"))?;
-    // 清单先落盘，入口文件名从清单读（包结构以 atom.toml 为准，不猜 main.qd）
-    let tmp = cache.join(format!(".download-{}", std::process::id()));
+    let dir_version = match wanted {
+        Some(v) => v,
+        None => qd_registry_versions(&name)?
+            .into_iter()
+            .max_by(|a, b| qd_version_cmp(a, b))
+            .ok_or_else(|| format!("注册表里 @atoms/{name} 没有任何版本目录"))?,
+    };
+    let root = qd_packages_dir(&app)?;
+    fs::create_dir_all(&root).map_err(|e| format!("创建包缓存目录失败：{e}"))?;
+    // 清单先落临时文件：入口文件名与真实版本号都从清单读（不猜 main.qd，也不猜目录名）
+    let tmp = root.join(format!(".download-{}", std::process::id()));
+    let base = format!("{REGISTRY}{name}/{dir_version}/");
     let fetch = |url: &str, dest: &std::path::Path| -> Result<(), String> {
         download_remote(url, dest).map_err(|e| format!("下载失败 {url}：{e}"))
     };
-    fetch(&format!("{base}atom.toml"), &tmp)?;
+    if let Err(e) = fetch(&format!("{base}atom.toml"), &tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
     let manifest = fs::read_to_string(&tmp).map_err(|e| format!("读取 atom.toml 失败：{e}"))?;
     let _ = fs::remove_file(&tmp);
+    // 缓存目录按清单声明的版本建：include 引用的就是这个版本号，不是目录名
+    let version = qd::ecosystem::parse_atom_version(&manifest)?;
+    if version.contains("..") || version.contains('/') || version.contains('\\') {
+        return Err(format!("包清单里的版本不合法：{version}"));
+    }
+    let cache = root.join(&name).join(&version);
     let entry = qd::ecosystem::parse_atom_entrypoint(&manifest)?;
     if entry.contains("..") || entry.contains('\\') || entry.starts_with('/') {
-        let _ = fs::remove_file(&tmp);
         return Err(format!("包入口不合法：{entry}"));
     }
     let entry_path = cache.join(&entry);
     if let Some(parent) = entry_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建包目录失败：{e}"))?;
     }
-    if let Err(e) = fetch(&format!("{base}{entry}"), &entry_path) {
-        let _ = fs::remove_file(&tmp);
-        return Err(e);
-    }
+    fetch(&format!("{base}{entry}"), &entry_path)?;
     // 清单留档（include 侧读的就是这份）
     fs::write(cache.join("atom.toml"), &manifest).map_err(|e| format!("写入 atom.toml 失败：{e}"))?;
-    Ok(entry_path.to_string_lossy().to_string())
+    Ok(format!("@{scope}/{name}:{version}"))
 }
 
 // Phase 2：R1 的 Remote/AheadBehind/RemoteArgs 契约型 + 两种后端实现已搬进 git_builtin；
@@ -2808,7 +2870,46 @@ fn install_app_menu(app: &tauri::AppHandle, spec: MenuSpec) -> Result<(), String
         .map(|_| ())
 }
 
-/// 前端在 mac 启动与状态变化时调用；抛错由前端回显到状态栏（不再静默回退窗口内工具条）
+/// mac 启动先把「只有应用菜单」的原生骨架挂上。整棵菜单要等前端算好 spec 再 push，
+/// 中间那一段系统菜单栏显示的是 Tauri 默认那套英文项（File / Edit / View …）。
+/// 骨架全用系统预定义项：文案由 macOS 按系统语言给，一条也不复制前端的菜单文案，
+/// 所以不存在两处口径漂移；前端第一次 push 会把它整棵换掉。
+#[cfg(target_os = "macos")]
+fn install_bootstrap_menu(app: &tauri::AppHandle) -> Result<(), String> {
+    let role = |r: &str| MenuItemSpec {
+        kind: "role".into(),
+        id: None,
+        text: None,
+        role: Some(r.into()),
+        accelerator: None,
+        enabled: None,
+        checked: None,
+        items: vec![],
+    };
+    install_app_menu(
+        app,
+        MenuSpec {
+            groups: vec![MenuGroup {
+                id: "app".into(),
+                // 第一个子菜单由 macOS 用进程名绘制，这个标题只是占位
+                text: app.package_info().name.clone(),
+                items: vec![
+                    role("About"),
+                    role("Separator"),
+                    role("Services"),
+                    role("Separator"),
+                    role("Hide"),
+                    role("HideOthers"),
+                    role("ShowAll"),
+                    role("Separator"),
+                    role("Quit"),
+                ],
+            }],
+        },
+    )
+}
+
+/// 前端在 mac 启动与状态变化时调用；抛错由前端回显到状态栏，并把窗口内工具条摘掉原生标记放回来
 #[tauri::command]
 fn set_mac_menu(app: tauri::AppHandle, spec: MenuSpec) -> Result<(), String> {
     install_app_menu(&app, spec)
@@ -2822,12 +2923,49 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn pkg_ref_parse_rules() {
-        assert_eq!(parse_pkg_ref("@atoms/demo:1.0.0").unwrap(), ("atoms".into(), "demo".into(), "1.0.0".into()));
+        assert_eq!(parse_pkg_ref("@atoms/demo:1.0.0").unwrap(), ("atoms".into(), "demo".into(), Some("1.0.0".into())));
+        // 省掉版本交给注册表挑最高版
+        assert_eq!(parse_pkg_ref("@atoms/demo").unwrap(), ("atoms".into(), "demo".into(), None));
+        assert_eq!(parse_pkg_ref(" @atoms/demo:1.0.0 ").unwrap(), ("atoms".into(), "demo".into(), Some("1.0.0".into())));
         assert!(parse_pkg_ref("atoms/demo:1.0").is_err());
         assert!(parse_pkg_ref("@/demo:1.0").is_err());
-        assert!(parse_pkg_ref("@atoms/demo").is_err());
+        assert!(parse_pkg_ref("@atoms/demo:").is_err());
+        assert!(parse_pkg_ref("@atoms/").is_err());
         assert!(parse_pkg_ref("@atoms/../x:1.0").is_err());
         assert!(parse_pkg_ref("@atoms/demo:1.0/x").is_err());
+        assert!(parse_pkg_ref("@atoms/de mo:1.0").is_err());
+    }
+
+    #[test]
+    fn pkg_version_按段取最高() {
+        use std::cmp::Ordering::*;
+        assert_eq!(qd_version_cmp("1.10.0", "1.9.0"), Greater);
+        assert_eq!(qd_version_cmp("1.0.1", "1.0"), Greater);
+        assert_eq!(qd_version_cmp("2.0", "10.0"), Less);
+        assert_eq!(qd_version_cmp("1.0.0", "1.0.0"), Equal);
+        let vs = ["0.9.0", "1.0.0", "1.9.0", "1.10.0"];
+        assert_eq!(vs.into_iter().max_by(|a, b| qd_version_cmp(a, b)).unwrap(), "1.10.0");
+    }
+
+    /// 真打 atoms 注册表的联网用例：默认不跑，手动 `cargo test -- --ignored` 验证
+    /// 「省略版本 → 列目录取最高 → 清单里的版本号与入口名对得上」这条链路。
+    #[test]
+    #[ignore = "需要 GitHub 网络"]
+    fn pkg_省略版本按注册表取最高() {
+        let vs = qd_registry_versions("cowsay").unwrap();
+        assert!(
+            vs.iter().any(|v| v.starts_with(|c: char| c.is_ascii_digit())),
+            "版本目录名应是版本号：{vs:?}"
+        );
+        let latest = vs.into_iter().max_by(|a, b| qd_version_cmp(a, b)).unwrap();
+        let tmp = std::env::temp_dir().join(format!("nl-qd-atom-{}.toml", std::process::id()));
+        let url = format!("https://raw.githubusercontent.com/quarkdown-labs/atoms/main/cowsay/{latest}/atom.toml");
+        let got = download_remote(&url, &tmp)
+            .and_then(|()| fs::read_to_string(&tmp).map_err(|e| e.to_string()));
+        let _ = fs::remove_file(&tmp);
+        let manifest = got.unwrap();
+        assert_eq!(qd::ecosystem::parse_atom_version(&manifest).unwrap(), latest);
+        assert!(!qd::ecosystem::parse_atom_entrypoint(&manifest).unwrap().is_empty());
     }
 
     #[test]
@@ -4057,6 +4195,10 @@ pub fn run() {
                 // 菜单栏状态图标（NSStatusItem + NSMenu）；创建失败不阻断启动，仅打日志
                 if let Err(e) = build_tray(app.handle()) {
                     eprintln!("NoteLume 菜单栏图标创建失败：{e}");
+                }
+                // 先把原生菜单骨架挂上，别让 Tauri 默认的英文 File/Edit/View 顶在前端 push 之前
+                if let Err(e) = install_bootstrap_menu(app.handle()) {
+                    eprintln!("NoteLume 原生菜单骨架创建失败：{e}");
                 }
             }
             // 网页剪藏：settings.json 的 clip 段启用时起本地 HTTP 服务（只绑 127.0.0.1）。
