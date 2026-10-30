@@ -102,7 +102,127 @@ jobs:
       - name: cargo test
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  # ── 打包：四个作业（Linux AppImage / Windows NSIS / macOS ARM64 DMG / macOS Intel DMG）──
+  # ── 打包（Linux）：AppImage + deb + rpm，在 ubuntu:22.04 容器内构建 ──
+  # 为什么必须用容器、不能用 ubuntu-latest：
+  #   AppImage 目录（appimage.github.io）的自动测试跑在“最老的仍受标准支持的 LTS”上，
+  #   目前是 Ubuntu 22.04（glibc 2.35，标准支持到 2027-04）。而 ubuntu-latest 已指向
+  #   24.04/26.04（glibc 2.41/2.43），在它上面编译出的产物会引用 GLIBC_2.38/2.39/2.42/2.43
+  #   等新符号，在 22.04 上直接起不来——目录测试报的就是这个：
+  #     notelume: libc.so.6: version `GLIBC_2.43' not found
+  #   glibc 只能向低兼容、不能向高，所以必须在最老基线上编译。Tauri 官方文档同样点名
+  #   Ubuntu 22.04 / Debian 12 为合适基线（标准仓库就提供 libwebkit2gtk-4.1-dev）。
+  # 为什么不用 runs-on: ubuntu-22.04：该 runner 镜像自 2026-09-17 起弃用、2026-11-02 退役。
+  #   容器方案同时满足“老 glibc 基线”和“runner 不被回收”。
+  # deb / rpm 与 AppImage 共用同一基线：系统包只声明对 webkit2gtk 等发行版自带库的依赖，
+  #   glibc 基线同样由构建环境决定，在 22.04 上打出的包在更新的发行版上照常可用。
+  package-linux:
+    name: Package (linux, glibc 2.35 base)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')))
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+    env:
+      # 容器内没有 /dev/fuse，appimagetool 无法挂载 AppImage；改用解包方式运行，root 下也可用
+      APPIMAGE_EXTRACT_AND_RUN: 1
+      DEBIAN_FRONTEND: noninteractive
+    permissions:
+      contents: write  # 建/改 Release 需要
+    steps:
+      # 裸 ubuntu:22.04 镜像，构建工具链全部自己装（不用 --no-install-recommends：
+      # Tauri 打 AppImage 需要 libglib2.0-dev / libgtk-3-dev 等被 webkit 依赖拉进来）
+      - name: Install build deps in ubuntu:22.04
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential cmake pkg-config curl wget ca-certificates xz-utils unzip \
+            git file sudo binutils \
+            libwebkit2gtk-4.1-dev librsvg2-dev patchelf libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev libfuse2 \
+            libssh2-1-dev \
+            rpm
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      # tauri CLI 装在 src/ 下，beforeBuildCommand 会先跑 vite 构建
+      - name: Install frontend deps
+        run: npm --prefix src ci
+
+      - name: Build bundles (appimage, deb, rpm)
+        run: node src/node_modules/@tauri-apps/cli/tauri.js build --bundles appimage,deb,rpm
+
+      # 三种格式各上传一次，配 if-no-files-found: error——任一格式没产出就让 CI 红掉，不静默漏包
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoteLume-Linux-AppImage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoteLume-Linux-deb
+          path: src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      - name: Upload rpm
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoteLume-Linux-rpm
+          path: src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+      # glibc 基线自检（防回归闸口）：目录测试报的错大多来自随包携带的 .so
+      #（libgdk-3 / libcairo / libglib-2.0 / libwebkit2gtk-4.1），所以不只查主二进制，
+      # 把 AppImage 内所有 ELF 的最高 GLIBC_ 符号版本都扫一遍，> 2.35 直接失败。
+      # 以后谁把镜像改回新 Ubuntu，CI 会在发包前就红掉，不会再发出一个测试跑不过的包。
+      - name: Verify glibc baseline (max GLIBC_2.35)
+        run: |
+          set -e
+          appimage=$(echo src-tauri/target/release/bundle/appimage/*.AppImage)
+          chmod +x "$appimage"
+          # 容器内无 /dev/fuse，用 APPIMAGE_EXTRACT_AND_RUN 让 runtime 解包而非挂载
+          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --appimage-extract >/dev/null
+
+          # 分两条 find（不用 -o），避免 -maxdepth 与 -o 的优先级导致 usr/lib 漏扫
+          {
+            find squashfs-root -maxdepth 1 -type f -name notelume
+            find squashfs-root/usr/lib -name '*.so*' 2>/dev/null || true
+          } > /tmp/elf-list.txt
+          echo "待检查 ELF 文件数: $(wc -l < /tmp/elf-list.txt)"
+
+          maxsym=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            file "$f" | grep -q ELF || continue   # 跳过符号链接/非 ELF，objdump 对其会报错
+            sym=$(objdump -T "$f" 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -V | tail -1 || true)
+            if [ -n "$sym" ]; then
+              maxsym=$(printf '%s\n%s\n' "$maxsym" "$sym" | grep -v '^$' | sort -V | tail -1)
+            fi
+          done < /tmp/elf-list.txt
+
+          echo "AppImage 内最高 glibc 符号版本: ${maxsym:-未检出}（基线 GLIBC_2.35 / Ubuntu 22.04）"
+          if [ -n "$maxsym" ] && [ "$(printf '%s\nGLIBC_2.35\n' "$maxsym" | sort -V | tail -1)" != "GLIBC_2.35" ]; then
+            echo "::error::检出 $maxsym，超过 GLIBC_2.35，在 Ubuntu 22.04（目录测试机）上无法运行"
+            exit 1
+          fi
+
+  # ── 打包：Windows NSIS / macOS ARM64 DMG / macOS Intel DMG（Linux 已拆到 package-linux 走 22.04 容器）──
   # 仅 master push / 手动触发→传 artifact；v* tag→额外发草稿 Release
   package-desktop:
     name: Package (${{ matrix.platform }})
@@ -113,11 +233,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux
-            runs_on: ubuntu-latest
-            bundles: appimage
-            artifact_name: NoteLume-Linux-AppImage
-            artifact_path: src-tauri/target/release/bundle/appimage/*.AppImage
           - platform: windows
             runs_on: windows-2022   # 不用 windows-latest（=Server 2025）：镜像移除 .NET Framework 3.5 预装，WiX v3 的 light.exe 打 MSI 会无输出直接失败
             bundles: nsis   # Tauri v2 Windows 合法值是 msi/nsis（空格分隔多值；wix 是 v1 旧名）
@@ -142,13 +257,6 @@ jobs:
       contents: write  # 建/改 Release 需要
     steps:
       - uses: actions/checkout@v4
-
-      # Tauri Linux 构建所需的系统库（webkit2gtk 等），仅 Linux 平台安装
-      - name: Install system deps (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -186,9 +294,10 @@ jobs:
 
   # ── 发版：各平台打包全部结束后，汇总 artifact 发一个草稿 Release（仅 v* tag）──
   # 单独收口是为了避免 matrix 各作业并发改同一 Release 产生命令/草稿竞态。
+  # needs 必须同时列 package-linux：它已拆成独立作业，漏写会导致 AppImage/deb/rpm 不进 Release。
   publish:
     name: Publish draft Release
-    needs: package-desktop
+    needs: [package-linux, package-desktop]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
