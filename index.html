@@ -779,8 +779,14 @@ try {
             <a class="dd-item" data-dl="mac-intel" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume_0.2.0_x64.dmg" target="_blank" rel="noopener">
               <strong>macOS（Intel）</strong><span class="dd-ext">.dmg</span>
             </a>
-            <a class="dd-item" data-dl="linux" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
+            <a class="dd-item" data-dl="linux-app" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
               <strong>Linux</strong><span class="dd-ext">.AppImage</span>
+            </a>
+            <a class="dd-item" data-dl="linux-deb" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.deb" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.deb（Debian/Ubuntu）</span>
+            </a>
+            <a class="dd-item" data-dl="linux-rpm" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume-0.2.0-1.x86_64.rpm" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.rpm（Fedora/openSUSE）</span>
             </a>
             <a class="dd-item" data-dl="ext" href="https://github.com/HackerSnail/NoteLume/releases/download/v0.2.0/NoteLume-extension.zip" target="_blank" rel="noopener">
               <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
@@ -801,8 +807,14 @@ try {
             <a class="dd-item" data-dl="mac-intel" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_x64.dmg" target="_blank" rel="noopener">
               <strong>macOS（Intel）</strong><span class="dd-ext">.dmg</span>
             </a>
-            <a class="dd-item" data-dl="linux" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
+            <a class="dd-item" data-dl="linux-app" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.AppImage" target="_blank" rel="noopener">
               <strong>Linux</strong><span class="dd-ext">.AppImage</span>
+            </a>
+            <a class="dd-item" data-dl="linux-deb" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume_0.2.0_amd64.deb" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.deb（Debian/Ubuntu）</span>
+            </a>
+            <a class="dd-item" data-dl="linux-rpm" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-0.2.0-1.x86_64.rpm" target="_blank" rel="noopener">
+              <strong>Linux</strong><span class="dd-ext">.rpm（Fedora/openSUSE）</span>
             </a>
             <a class="dd-item" data-dl="ext" href="https://gitee.com/hackerSnail/note-lume/releases/download/v0.2.0/NoteLume-extension.zip" target="_blank" rel="noopener">
               <strong>浏览器扩展</strong><span class="dd-ext">.zip</span>
@@ -1347,7 +1359,7 @@ var I18N = (function () {
       var strongs = dd.querySelectorAll('.dd-item strong');
       if (strongs[1]) strongs[1].textContent = t.dlMacArm;
       if (strongs[2]) strongs[2].textContent = t.dlMacIntel;
-      if (strongs[4]) strongs[4].textContent = t.dlExt;
+      if (strongs[6]) strongs[6].textContent = t.dlExt; /* 浏览器扩展条目在 Linux 三条之后 */
       var more = dd.querySelector('.dd-more');
       if (more) more.textContent = t.ddMore;
       var ver = dd.querySelector('.dd-ver');
@@ -1855,7 +1867,9 @@ function boot() {
       'win': /x64-setup\.exe$/,
       'mac-arm': /aarch64\.dmg$/,
       'mac-intel': /x64\.dmg$/,
-      'linux': /amd64\.AppImage$/,
+      'linux-app': /amd64\.AppImage$/,
+      'linux-deb': /amd64\.deb$/,
+      'linux-rpm': /x86_64\.rpm$/,
       'ext': /extension\.zip$/
     };
     function closeAllDd(except) {
