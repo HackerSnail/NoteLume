@@ -1976,13 +1976,13 @@ html.nl-dragging * {
   display: flex;
 }
 
-/* 选区高亮浮动工具栏（p5plan §6.4）：贴选区上方，与查找栏同一绝对定位层 */
+/* 选区浮动工具栏（p5plan §6.4 + AI 排）：贴选区上方，两排放置（高亮 / AI），与查找栏同一绝对定位层 */
 .nl-hl-bar {
   display: none;
   position: absolute;
   z-index: 31;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  gap: 5px;
   padding: 5px 7px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1991,6 +1991,41 @@ html.nl-dragging * {
 }
 .nl-hl-bar.show {
   display: flex;
+}
+/* 每一排：高亮色块 + 取色 + 清除（第一排）；AI 任务按钮（第二排） */
+.nl-hl-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* AI 排：文字按钮排开，任务多时可横向滚动（窄选区里浮条宽度由最长一排撑起） */
+.nl-hl-row.nl-hl-ai {
+  gap: 2px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.nl-hl-ai-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nl-hl-ai-btn:hover {
+  background: var(--hover);
+  border-color: var(--border);
+}
+.nl-hl-ai-btn .nl-ico {
+  color: var(--accent);
+  width: 13px;
+  height: 13px;
 }
 .nl-hl-swatch {
   width: 22px;
