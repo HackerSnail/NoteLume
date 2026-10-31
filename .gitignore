@@ -30,5 +30,14 @@ src/app-result.txt
 extension.pem
 extension.crx
 
+# 录屏与视频素材不入库：录制工装与成片放仓库外面，要给人看走 Releases 资产
+# （README 功能演示墙依赖的 docs/img/demo/*.gif 是存量，不在这条规矩里）
+*.mov
+*.mp4
+*.m4a
+*.webm
+*.avi
+vibe_images/
+
 # 站外草稿
 docs/zhihu-notelume-draft.md
