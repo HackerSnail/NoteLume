@@ -1075,7 +1075,6 @@ export default {
   'ai.appliedAtAfter': 'Inséré après « {where} »',
   'ai.appliedAtBefore': 'Inséré avant « {where} »',
   'ai.anchorMiss': '« {where} » introuvable dans le document — inséré au curseur à la place',
-  'ai.attach': 'Ajouter des images',
   'ai.attMax': 'Jusqu\'à 4 images par message',
   'ai.noVision': 'Le modèle actuel ne prend pas en charge les images',
   'ai.removeAtt': 'Retirer l\'image',

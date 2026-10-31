@@ -1076,7 +1076,6 @@ export default {
   'ai.appliedAtAfter': '已插入至「{where}」之後',
   'ai.appliedAtBefore': '已插入至「{where}」之前',
   'ai.anchorMiss': '文件裡沒找到「{where}」，已改插至游標處',
-  'ai.attach': '加入圖片',
   'ai.attMax': '一次最多附 4 張圖片',
   'ai.noVision': '目前模型不支援圖片輸入，無法加入',
   'ai.removeAtt': '移除圖片',

@@ -1077,7 +1077,6 @@ export default {
   'ai.appliedAtAfter': 'Inserted after "{where}"',
   'ai.appliedAtBefore': 'Inserted before "{where}"',
   'ai.anchorMiss': 'Could not find "{where}" in the document — inserted at the cursor instead',
-  'ai.attach': 'Add images',
   'ai.attMax': 'Up to 4 images per message',
   'ai.noVision': 'The current model does not support image input',
   'ai.removeAtt': 'Remove image',
