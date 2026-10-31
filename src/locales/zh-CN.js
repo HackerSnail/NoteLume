@@ -1093,6 +1093,7 @@ export default {
   'ai.skillOn': '已启用技能：{name}',
   'ai.skillOff': '已停用技能',
   'ai.vaultCtxHead': '以下是从知识库检索到的相关片段（可能不完整，供参考）：',
+  'ai.ctxTip': '上下文用量：约 {pct}%（估算 {tokens} / 32K tokens）',
   'ai.modelsFail': '拉取模型列表失败：{err}',
   'ai.modelSet': '已切换模型：{name}',
   'ollama.missingBody': '未检测到本机 Ollama（本地模型运行器）。是否打开官网下载安装？装好并启动后可在 AI 设置里一键填充 Ollama 预设。',

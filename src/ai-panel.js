@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, AI_CTX_WINDOW_TOKENS } from './ai-tasks.js'
 
 let reqSeq = 0
 function nextReqId() {
@@ -197,6 +197,7 @@ export function createAiPanel(deps) {
     attachments = []
     renderAtt()
     autosize()
+    updateCtxRing()
 
     const bot = document.createElement('div')
     bot.className = 'ai-msg ai-bot'
@@ -269,6 +270,7 @@ export function createAiPanel(deps) {
     streaming = null
     setStreamingUi(false)
     syncModelChip()
+    updateCtxRing()
     scrollEnd()
   }
 
@@ -279,6 +281,7 @@ export function createAiPanel(deps) {
     el.querySelector('.ai-err').textContent = t('ai.errRequest', { err: msg || t('ai.errUnknown') })
     streaming = null
     setStreamingUi(false)
+    updateCtxRing()
     scrollEnd()
   }
 
@@ -690,6 +693,34 @@ export function createAiPanel(deps) {
     inputEl.style.height = Math.min(140, Math.max(64, inputEl.scrollHeight)) + 'px'
   }
 
+  // —— 上下文用量圆环：估算 system（文档/技能/库检索）+ 历史 + 输入的 token 占参考窗口比例 ——
+
+  let ctxRing = null // { el, circle } SVG 圆环
+
+  /** 会话将随下一条消息发送的全部文本（估算用） */
+  function ctxText() {
+    let s = ''
+    const ctx = getDocContext ? getDocContext() : ''
+    if (ctx) s += ctx
+    const skill = skillsLoaded ? skills.find((x) => x.path === activeSkillPath) : null
+    if (skill && skill.content) s += skill.content
+    for (const m of history) s += typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    if (inputEl) s += inputEl.value
+    return s
+  }
+
+  function updateCtxRing() {
+    if (!ctxRing || !ctxRing.circle) return
+    const tokens = estimateTokens(ctxText())
+    const pct = Math.min(1, tokens / AI_CTX_WINDOW_TOKENS)
+    const C = 2 * Math.PI * 7 // r=7 的周长
+    ctxRing.circle.setAttribute('stroke-dasharray', C.toFixed(1))
+    ctxRing.circle.setAttribute('stroke-dashoffset', (C * (1 - pct)).toFixed(1))
+    const cls = pct > 0.9 ? 'ai-ctx-hot' : pct > 0.7 ? 'ai-ctx-warm' : 'ai-ctx-ok'
+    ctxRing.circle.setAttribute('class', 'ai-ctx-arc ' + cls)
+    ctxRing.el.title = t('ai.ctxTip', { pct: Math.round(pct * 100), tokens })
+  }
+
   // —— 静态骨架 ——
 
   function buildDom() {
@@ -725,6 +756,7 @@ export function createAiPanel(deps) {
       }
       history = []
       renderHistory()
+      updateCtxRing()
     })
     head.append(title, gear, clear)
 
@@ -745,7 +777,10 @@ export function createAiPanel(deps) {
     inputEl.className = 'ai-input'
     inputEl.rows = 1
     inputEl.placeholder = t('ai.inputPh')
-    inputEl.addEventListener('input', autosize)
+    inputEl.addEventListener('input', () => {
+      autosize()
+      updateCtxRing()
+    })
     inputEl.addEventListener('keydown', (e) => {
       // Enter 发送，Shift+Enter 换行（与主流 AI 面板一致）
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -786,7 +821,7 @@ export function createAiPanel(deps) {
     optBtn.addEventListener('click', toggleOptimize)
     voiceBtn = document.createElement('button')
     voiceBtn.type = 'button'
-    voiceBtn.className = 'ai-icon-btn'
+    voiceBtn.className = 'ai-icon-btn ai-voice'
     voiceBtn.title = t('ai.voice')
     voiceBtn.setAttribute('aria-label', t('ai.voice'))
     setIcon(voiceBtn, 'mic')
@@ -820,13 +855,36 @@ export function createAiPanel(deps) {
       e.stopPropagation()
       toggleModelsMenu()
     })
-    bar.append(buildModeMenu(), optBtn, voiceBtn, skillBtn, modelPill, sendBtn, stopBtn)
+    // 上下文用量圆环：底行右侧（语音与发送之间），环形进度表示估算 token 占参考窗口比例
+    ctxRing = { el: document.createElement('span'), circle: null }
+    ctxRing.el.className = 'ai-ctx-ring'
+    const ringSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    ringSvg.setAttribute('viewBox', '0 0 18 18')
+    ringSvg.setAttribute('width', '16')
+    ringSvg.setAttribute('height', '16')
+    const ringBg = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+    ringBg.setAttribute('cx', '9')
+    ringBg.setAttribute('cy', '9')
+    ringBg.setAttribute('r', '7')
+    ringBg.setAttribute('class', 'ai-ctx-bg')
+    const ringArc = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+    ringArc.setAttribute('cx', '9')
+    ringArc.setAttribute('cy', '9')
+    ringArc.setAttribute('r', '7')
+    ringArc.setAttribute('class', 'ai-ctx-arc ai-ctx-ok')
+    ringArc.setAttribute('transform', 'rotate(-90 9 9)') // 从顶部顺时针
+    ringSvg.append(ringBg, ringArc)
+    ctxRing.circle = ringArc
+    ctxRing.el.appendChild(ringSvg)
+    // 整体排布对齐参考样式：左组（模式 · 优化 · 技能 · 模型）+ 右组（语音 · 圆环 · 发送/停止）
+    bar.append(buildModeMenu(), optBtn, skillBtn, modelPill, voiceBtn, ctxRing.el, sendBtn, stopBtn)
     composer.append(inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)
+    updateCtxRing()
     // 技能无感探测：面板建好就静默扫一次（本地几个目录，毫秒级）
     aiSkillsScan().then((r) => {
       if (Array.isArray(r)) skills = r

@@ -1091,6 +1091,7 @@ export default {
   'ai.skillOn': 'Fähigkeit aktiviert: {name}',
   'ai.skillOff': 'Fähigkeit deaktiviert',
   'ai.vaultCtxHead': 'Relevante Ausschnitte aus der Wissensbasis (möglicherweise unvollständig, zur Orientierung):',
+  'ai.ctxTip': 'Kontextnutzung: ~{pct}% (geschätzt {tokens} / 32K Tokens)',
   'ai.modelsFail': 'Modellliste konnte nicht geladen werden: {err}',
   'ai.modelSet': 'Modell gewechselt: {name}',
   'ollama.missingBody': 'Ollama (lokaler Modell-Runner) wurde auf diesem Rechner nicht erkannt. Website zum Herunterladen und Installieren öffnen? Nach Installation und Start lässt sich die Ollama-Voreinstellung in den KI-Einstellungen per Klick eintragen.',
