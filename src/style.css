@@ -5186,6 +5186,38 @@ html.nl-dragging * {
   font-size: 11px;
   padding: 2px 8px;
 }
+/* Ask / Agent 模式分段：小号 pill，品牌词不翻译；选中用底色 + accent，Apple 分段控件口径 */
+.ai-modes {
+  display: flex;
+  gap: 4px;
+  padding: 4px 2px 2px;
+  flex-shrink: 0;
+}
+.ai-mode {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 80ms ease;
+}
+.ai-mode:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.ai-mode:active {
+  transform: scale(0.96);
+}
+.ai-mode.active {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--accent);
+  font-weight: 600;
+}
 .ai-foot {
   display: flex;
   align-items: flex-end;
