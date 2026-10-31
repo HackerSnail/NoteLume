@@ -5610,8 +5610,8 @@ html.nl-dragging * {
   font-size: 10px;
 }
 
-/* 语音钮右移到发送旁：右组起点（语音 · 圆环 · 发送/停止），与左组之间弹性留白 */
-.ai-composer-bar .ai-voice {
+/* 右组起点（用量圆环 · 优化 · 语音 · 发送/停止），与左组之间弹性留白 */
+.ai-composer-bar .ai-ctx-ring {
   margin-left: auto;
 }
 /* 上下文用量圆环：环形进度，<70% 常色、70-90% 警示、>90% 红 */
