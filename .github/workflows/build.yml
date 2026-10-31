@@ -115,6 +115,9 @@ jobs:
   #   容器方案同时满足“老 glibc 基线”和“runner 不被回收”。
   # deb / rpm 与 AppImage 共用同一基线：系统包只声明对 webkit2gtk 等发行版自带库的依赖，
   #   glibc 基线同样由构建环境决定，在 22.04 上打出的包在更新的发行版上照常可用。
+  # 注意：deb/rpm 里的 webkit2gtk 是运行时从目标机系统取的，24.04 上是 2.44+，
+  #   默认 DMABUF GPU 渲染器在 NVIDIA/XWayland 下会整窗黑屏——lib.rs run() 开头
+  #   已在本进程内设 WEBKIT_DISABLE_DMABUF_RENDERER / WEBKIT_DISABLE_COMPOSITING_MODE 兜住。
   package-linux:
     name: Package (linux, glibc 2.35 base)
     if: >
