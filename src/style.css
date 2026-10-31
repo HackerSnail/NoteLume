@@ -5293,11 +5293,30 @@ html.nl-dragging * {
   font-size: 11px;
   padding: 2px 8px;
 }
-/* Ask / Agent 模式分段：小号 pill，品牌词不翻译；选中用底色 + accent，Apple 分段控件口径 */
+/* CodeBuddy 式输入卡：输入框 + 底部工具行（附图 / 模式分段 / 发送）装进同一张圆角卡 */
+.ai-composer {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  padding: 8px 10px 6px;
+  transition: border-color 120ms ease;
+}
+.ai-composer:focus-within {
+  border-color: var(--accent);
+}
+.ai-composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.ai-composer-bar .ai-send {
+  margin-left: auto;
+}
 .ai-modes {
   display: flex;
   gap: 4px;
-  padding: 4px 2px 2px;
   flex-shrink: 0;
 }
 .ai-mode {
@@ -5390,50 +5409,47 @@ html.nl-dragging * {
   border: 1px solid var(--border);
   margin: 2px 0;
 }
-.ai-foot {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-}
 .ai-input {
   flex: 1;
   min-width: 0;
+  display: block;
+  width: 100%;
   resize: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--fg);
   font: inherit;
   font-size: 13px;
   line-height: 1.45;
-  padding: 7px 10px;
+  padding: 2px 2px 4px;
 }
 .ai-input:focus {
   outline: none;
-  border-color: var(--accent);
 }
 .ai-input:disabled {
   opacity: 0.6;
 }
 .ai-send {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
+  border-radius: 50%;
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+  transition: transform 80ms ease, filter 120ms ease;
 }
 .ai-send:hover { filter: brightness(1.08); }
+.ai-send:active { transform: scale(0.94); }
 .ai-send:disabled { opacity: 0.5; cursor: default; }
-.ai-send .nl-ico { width: 16px; height: 16px; }
+.ai-send .nl-ico { width: 15px; height: 15px; }
 .ai-send.ai-stop {
-  background: var(--bg-panel);
+  background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
   font-size: 10px;
