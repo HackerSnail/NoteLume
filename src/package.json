@@ -50,7 +50,9 @@
     "test:table-enter": "node tests/table-enter.test.mjs",
     "test:gapcursor": "node tests/gapcursor.test.mjs",
     "test:table-picker": "node tests/table-picker.test.mjs",
-    "test:clip-extract": "node tests/clip-extract.test.mjs"
+    "test:clip-extract": "node tests/clip-extract.test.mjs",
+    "test:clip-report": "node tests/clip-report.test.mjs",
+    "test:clip-notice": "node tests/clip-notice.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
