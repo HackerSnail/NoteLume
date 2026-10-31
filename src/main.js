@@ -3926,7 +3926,7 @@ function registerAppCommands() {
     app('app.git.pullMerge', null, () => { if (gitPanel) gitPanel.merge() })
   app('app.git.remote', null, () => { if (gitPanel) gitPanel.setupRemote() })
   // AI：面板开合 / 设置面板 / 选区任务（命令面板 + mac 菜单 + 快捷键设置共用一张表）
-  app('app.aiPanel', null, () => toggleAiPanel())
+  app('app.aiPanel', 'Mod-Shift-a', () => toggleAiPanel())
   app('app.aiSettings', null, () => { if (aiSettings) aiSettings.open() })
   for (const task of AI_TASK_IDS) {
     commandRegistry.register({
