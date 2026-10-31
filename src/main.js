@@ -5168,10 +5168,20 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     openSettings: () => aiSettings.open(),
     getDocContext: aiDocContext,
     insertToDoc: (text) => insertAiMarkdown(editor, text),
-    // Agent 模式收尾：光标定位到文档末尾再插入（同一条 ProseMirror 链路，可撤销）
+    // Agent 模式收尾：智能落点——光标不是停在文档开头（用户动过编辑器）就插到光标处，
+    // 写到哪补到哪；光标在标题 / 代码块里时不往块里塞，插到该块之后；没动过编辑器才退回文档末尾
     appendToDoc: (text) => {
       if (!editor || !editor.view) return false
-      insertAiMarkdown(editor, text, { caret: editor.view.state.doc.content.size })
+      const view = editor.view
+      const { selection } = view.state
+      const atOrigin = selection.head === 0 && selection.anchor === 0
+      if (atOrigin) {
+        insertAiMarkdown(editor, text, { caret: view.state.doc.content.size })
+        return true
+      }
+      const $head = selection.$head
+      const inBlock = $head.parent.type.name === 'heading' || $head.parent.type.name === 'code_block'
+      insertAiMarkdown(editor, text, inBlock ? { caret: $head.after(1) } : {})
       return true
     },
     setStatus,
