@@ -48,7 +48,6 @@ export function createAiPanel(deps) {
   let modelChip = null
   let emptyHint = null
   let attEl = null // 附件预览条（附图 chip 列表，空时隐藏）
-  let fileInput = null // 隐藏的选图 input（点击附图按钮触发）
   let attachments = [] // 待发送图片 [{ dataUrl, name }]，随消息一起发出后清空
   let history = [] // { role:'user'|'assistant', content }（content 为 string 或 OpenAI 多模态数组）
   let streaming = null // { reqId, el, text } 流式中的气泡
@@ -324,45 +323,103 @@ export function createAiPanel(deps) {
     fr.readAsDataURL(file)
   }
 
-  // —— Ask / Agent 模式分段（品牌词不翻译，解释走悬停提示） ——
+  // —— Ask / Agent 模式切换菜单（CodeBuddy 式 pill ▾ 下拉；品牌词不翻译，解释走项悬停提示） ——
 
-  function buildModes() {
-    const wrap = document.createElement('div')
-    wrap.className = 'ai-modes'
-    const mk = (id, tipKey) => {
-      const b = document.createElement('button')
-      b.type = 'button'
-      b.className = 'ai-mode' + (mode === id ? ' active' : '')
-      b.textContent = id === 'ask' ? 'Ask' : 'Agent'
-      b.title = t(tipKey)
-      b.setAttribute('aria-pressed', mode === id ? 'true' : 'false')
-      b.dataset.mode = id
-      b.addEventListener('click', () => {
-        if (mode === id) return
-        mode = id
-        try { localStorage.setItem('nl-ai-mode', id) } catch { /* 隐私模式存不上就只留会话内 */ }
-        for (const p of wrap.children) {
-          const on = p.dataset.mode === id
-          p.classList.toggle('active', on)
-          p.setAttribute('aria-pressed', on ? 'true' : 'false')
-        }
-      })
-      return b
+  let modeMenuEl = null
+  let modePillEl = null
+
+  function closeModeMenu() {
+    if (modeMenuEl) {
+      modeMenuEl.remove()
+      modeMenuEl = null
     }
-    wrap.append(mk('ask', 'ai.modeAskTip'), mk('agent', 'ai.modeAgentTip'))
+    document.removeEventListener('click', onDocClick, true)
+    document.removeEventListener('keydown', onMenuEsc, true)
+  }
+
+  function onDocClick(e) {
+    if (modeMenuEl && !modeMenuEl.contains(e.target) && !(modePillEl && modePillEl.contains(e.target))) closeModeMenu()
+  }
+
+  function onMenuEsc(e) {
+    if (e.key === 'Escape') closeModeMenu()
+  }
+
+  function buildModeMenu() {
+    const wrap = document.createElement('span')
+    wrap.className = 'ai-mode-wrap'
+    const pill = document.createElement('button')
+    pill.type = 'button'
+    pill.className = 'ai-mode-pill'
+    const label = document.createElement('span')
+    const chev = document.createElement('span')
+    chev.className = 'ai-mode-chev'
+    setIcon(chev, 'chevron-down')
+    const syncPill = () => {
+      label.textContent = mode === 'ask' ? 'Ask' : 'Agent'
+      pill.title = t(mode === 'ask' ? 'ai.modeAskTip' : 'ai.modeAgentTip')
+      pill.setAttribute('aria-expanded', modeMenuEl ? 'true' : 'false')
+    }
+    pill.append(label, chev)
+    const openMenu = () => {
+      const menu = document.createElement('div')
+      menu.className = 'ai-mode-menu'
+      const mk = (id, tipKey) => {
+        const item = document.createElement('button')
+        item.type = 'button'
+        item.className = 'ai-mode-item' + (mode === id ? ' active' : '')
+        const mark = document.createElement('span')
+        mark.className = 'ai-mode-mark'
+        if (mode === id) setIcon(mark, 'check')
+        const name = document.createElement('span')
+        name.textContent = id === 'ask' ? 'Ask' : 'Agent'
+        item.title = t(tipKey)
+        item.append(mark, name)
+        item.addEventListener('click', (e) => {
+          e.stopPropagation()
+          if (mode !== id) {
+            mode = id
+            try { localStorage.setItem('nl-ai-mode', id) } catch { /* 存不上就只留会话内 */ }
+          }
+          closeModeMenu()
+          syncPill()
+        })
+        return item
+      }
+      menu.append(mk('ask', 'ai.modeAskTip'), mk('agent', 'ai.modeAgentTip'))
+      // 面板贴底：往上弹
+      const r = pill.getBoundingClientRect()
+      menu.style.left = Math.max(4, r.left) + 'px'
+      menu.style.top = Math.max(4, r.top - 8) + 'px'
+      menu.style.transform = 'translateY(-100%)'
+      document.body.appendChild(menu)
+      modeMenuEl = menu
+      modePillEl = pill
+      syncPill()
+      document.addEventListener('click', onDocClick, true)
+      document.addEventListener('keydown', onMenuEsc, true)
+    }
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (modeMenuEl) closeModeMenu()
+      else openMenu()
+    })
+    syncPill()
+    wrap.append(pill)
     return wrap
   }
 
-  // —— 输入框自适应高度（2~5 行） ——
+  // —— 输入框自适应高度（提示词条完整可见：下限 64px 约两行） ——
 
   function autosize() {
     inputEl.style.height = 'auto'
-    inputEl.style.height = Math.min(120, Math.max(38, inputEl.scrollHeight)) + 'px'
+    inputEl.style.height = Math.min(140, Math.max(64, inputEl.scrollHeight)) + 'px'
   }
 
   // —— 静态骨架 ——
 
   function buildDom() {
+    closeModeMenu() // 语言切换重建 DOM 时清掉可能挂着的模式菜单
     root.innerHTML = ''
     // 显隐归右栏独立开关（syncInspector）管，这里不碰 className——否则切语言会把面板藏掉
 
@@ -401,18 +458,9 @@ export function createAiPanel(deps) {
     emptyHint.textContent = t('ai.emptyHint')
     msgsEl.appendChild(emptyHint)
 
-    // 附件预览条：附图 chip / 面板内提示（模型不支持等），空时隐藏
+    // 附件预览条：附图 chip / 面板内提示（模型不支持等），空时隐藏；只收粘贴上传
     attEl = document.createElement('div')
     attEl.className = 'ai-att hidden'
-    fileInput = document.createElement('input')
-    fileInput.type = 'file'
-    fileInput.accept = 'image/*'
-    fileInput.multiple = true
-    fileInput.hidden = true
-    fileInput.addEventListener('change', () => {
-      for (const f of fileInput.files || []) readFile(f)
-      fileInput.value = ''
-    })
 
     const composer = document.createElement('div')
     composer.className = 'ai-composer'
@@ -437,13 +485,6 @@ export function createAiPanel(deps) {
       e.preventDefault()
       for (const it of imgs) readFile(it.getAsFile())
     })
-    const attachBtn = document.createElement('button')
-    attachBtn.type = 'button'
-    attachBtn.className = 'ai-icon-btn'
-    attachBtn.title = t('ai.attach')
-    attachBtn.setAttribute('aria-label', t('ai.attach'))
-    setIcon(attachBtn, 'image')
-    attachBtn.addEventListener('click', () => fileInput.click())
     sendBtn = document.createElement('button')
     sendBtn.type = 'button'
     sendBtn.className = 'ai-send'
@@ -458,13 +499,13 @@ export function createAiPanel(deps) {
     stopBtn.setAttribute('aria-label', t('ai.stop'))
     stopBtn.textContent = '■'
     stopBtn.addEventListener('click', stop)
-    // CodeBuddy 式输入卡：输入框在上，底行左侧附图 + 模式分段、右侧圆形发送/停止（互斥同位）
+    // CodeBuddy 式输入卡：输入框在上，底行左侧模式切换菜单、右侧圆形发送/停止（互斥同位）；图片只收粘贴
     const bar = document.createElement('div')
     bar.className = 'ai-composer-bar'
-    bar.append(attachBtn, buildModes(), sendBtn, stopBtn)
+    bar.append(buildModeMenu(), sendBtn, stopBtn)
     composer.append(inputEl, bar)
 
-    root.append(head, msgsEl, attEl, fileInput, composer)
+    root.append(head, msgsEl, attEl, composer)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)

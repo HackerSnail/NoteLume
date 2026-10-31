@@ -5314,35 +5314,76 @@ html.nl-dragging * {
 .ai-composer-bar .ai-send {
   margin-left: auto;
 }
-.ai-modes {
-  display: flex;
-  gap: 4px;
+/* Ask / Agent 切换菜单：CodeBuddy 式 pill ▾（品牌词不翻译），菜单卡往上弹 */
+.ai-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   flex-shrink: 0;
-}
-.ai-mode {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--muted);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
   font: inherit;
   font-size: 11px;
   line-height: 1;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, transform 80ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
 }
-.ai-mode:hover {
+.ai-mode-pill:hover {
   background: var(--hover);
+}
+.ai-mode-chev {
+  display: inline-flex;
+  color: var(--muted);
+}
+.ai-mode-chev .nl-ico {
+  width: 12px;
+  height: 12px;
+}
+.ai-mode-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.ai-mode-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
   color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
 }
-.ai-mode:active {
-  transform: scale(0.96);
-}
-.ai-mode.active {
+.ai-mode-item:hover {
   background: var(--hover);
-  border-color: var(--border);
+}
+.ai-mode-item.active {
   color: var(--accent);
-  font-weight: 600;
+}
+.ai-mode-mark {
+  display: inline-flex;
+  width: 14px;
+  justify-content: center;
+}
+.ai-mode-mark .nl-ico {
+  width: 12px;
+  height: 12px;
 }
 /* 附件条：附图 chip / 面板内提示（模型不支持视觉等），空时隐藏 */
 .ai-att {
@@ -5414,6 +5455,7 @@ html.nl-dragging * {
   min-width: 0;
   display: block;
   width: 100%;
+  min-height: 64px; /* 提示词条两行完整可见 */
   resize: none;
   border: none;
   border-radius: 0;
