@@ -578,7 +578,7 @@ export default {
   'git.useTheirs': 'Remote behalten',
   'git.edit': 'Bearbeiten',
   'git.tooManyChanges': 'Zu viele Änderungen; es werden nur die ersten {n} angezeigt',
-  'git.sectionHistory': 'Verlauf',
+  'git.sectionGraph': 'Graph',
   'git.historyEmpty': 'Noch keine Commits',
   'git.noDiff': 'Keine Unterschiede',
   'git.diffReadFailed': 'Diff konnte nicht gelesen werden: {err}',

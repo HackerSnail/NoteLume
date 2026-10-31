@@ -132,15 +132,44 @@ export function createGitPanel(deps) {
     head.append(left, count, actions)
   }
 
+  // —— 折叠分组（VS Code 源代码管理式）：标题行点击开合，状态持久化 nl-git-fold.<key> ——
+  function foldSec(key, titleText, badgeText) {
+    const sec = document.createElement('div')
+    sec.className = 'nl-git-section nl-git-fold'
+    const bar = document.createElement('div')
+    bar.className = 'nl-git-fold-bar'
+    const chev = document.createElement('span')
+    chev.className = 'nl-git-fold-chev'
+    setIcon(chev, 'chevron-down')
+    const ttl = document.createElement('span')
+    ttl.className = 'nl-git-fold-title'
+    ttl.textContent = titleText
+    bar.append(chev, ttl)
+    if (badgeText != null && badgeText !== '') {
+      const b = document.createElement('span')
+      b.className = 'nl-git-fold-badge'
+      b.textContent = badgeText
+      bar.appendChild(b)
+    }
+    const wrap = document.createElement('div')
+    wrap.className = 'nl-git-fold-body'
+    const apply = () => {
+      const c = localStorage.getItem('nl-git-fold.' + key) === '1'
+      sec.classList.toggle('collapsed', c)
+      wrap.classList.toggle('hidden', c)
+    }
+    bar.addEventListener('click', () => {
+      localStorage.setItem('nl-git-fold.' + key, localStorage.getItem('nl-git-fold.' + key) === '1' ? '0' : '1')
+      apply()
+    })
+    apply()
+    sec.append(bar, wrap)
+    return { sec, body: wrap }
+  }
+
   // —— Changes 区 ——
   function renderChanges(items) {
-    const sec = document.createElement('div')
-    sec.className = 'nl-git-section'
-    const title = document.createElement('div')
-    title.className = 'nl-git-section-title'
-    title.textContent = t('git.sectionChanges')
-    sec.appendChild(title)
-
+    const f = foldSec('changes', t('git.sectionChanges'), items.length ? String(items.length) : '')
     const list = document.createElement('div')
     list.className = 'nl-git-list'
     if (!items.length) {
@@ -181,47 +210,114 @@ export function createGitPanel(deps) {
         list.appendChild(more)
       }
     }
-    sec.appendChild(list)
-    return sec
+    f.body.appendChild(list)
+    return f.sec
   }
 
-  // —— History 区 ——
-  function renderHistory(commits) {
-    const sec = document.createElement('div')
-    sec.className = 'nl-git-section'
-    const title = document.createElement('div')
-    title.className = 'nl-git-section-title'
-    title.textContent = t('git.sectionHistory')
-    sec.appendChild(title)
-
-    const list = document.createElement('div')
-    list.className = 'nl-git-list'
+  // —— Graph 区：提交图（lane 分配 + 逐行 SVG 连线，合并分叉可见），点击行看提交详情 ——
+  const GW = 14 // 每条 lane 的水平宽度
+  function renderGraph(commits, branch) {
+    const f = foldSec('graph', t('git.sectionGraph'), commits.length ? String(commits.length) : '')
     if (!commits.length) {
-      list.innerHTML = '<div class="nl-git-empty-inline">' + t('git.historyEmpty') + '</div>'
-    } else {
-      commits.forEach((c) => {
-        const row = document.createElement('div')
-        row.className = 'nl-git-item nl-git-commit'
-        row.title = c.summary
-        const id = document.createElement('span')
-        id.className = 'nl-git-id'
-        id.textContent = c.idShort
-        const wrap = document.createElement('span')
-        wrap.className = 'nl-git-commit-main'
-        const sum = document.createElement('span')
-        sum.className = 'nl-git-summary'
-        sum.textContent = c.summary
-        const meta = document.createElement('span')
-        meta.className = 'nl-git-meta'
-        meta.textContent = `${c.authorName} · ${relTime(c.time)}`
-        wrap.append(sum, meta)
-        row.append(id, wrap)
-        row.addEventListener('click', () => showCommit(c))
-        list.appendChild(row)
-      })
+      f.body.innerHTML = '<div class="nl-git-empty-inline">' + t('git.historyEmpty') + '</div>'
+      return f.sec
     }
-    sec.appendChild(list)
-    return sec
+    const list = document.createElement('div')
+    list.className = 'nl-git-list nl-git-graph'
+    // lane 分配：lanes[i] = 该 lane 顶端待接的 oid。第一个 parent 继承本 lane，
+    // 其余 parent（合并提交）各占一个已有/新开 lane；没有 parent 则本 lane 置空（到头）。
+    const rows = []
+    let lanes = []
+    for (const c of commits) {
+      let idx = lanes.indexOf(c.id)
+      if (idx < 0) {
+        idx = lanes.indexOf(null)
+        if (idx < 0) {
+          lanes.push(null)
+          idx = lanes.length - 1
+        }
+      }
+      const lanesIn = lanes.slice()
+      lanes[idx] = c.parents.length ? c.parents[0] : null
+      for (const p of c.parents.slice(1)) {
+        let pi = lanes.indexOf(p)
+        if (pi < 0) {
+          pi = lanes.indexOf(null)
+          if (pi < 0) {
+            lanes.push(p)
+            pi = lanes.length - 1
+          } else lanes[pi] = p
+        }
+      }
+      rows.push({ c, lane: idx, lanesIn, lanesOut: lanes.slice() })
+    }
+    const headId = commits[0].id
+    let prevOut = null
+    for (const { c, lane, lanesIn, lanesOut } of rows) {
+      const nLane = Math.max(lanesIn.length, lanesOut.length, lane + 1)
+      const x = (i) => i * GW + GW / 2
+      const cx = x(lane)
+      const line = (x1, y1, x2, y2, cls) =>
+        '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="' + cls + '"/>'
+      let s = ''
+      // 上半（0→12）：上一行的每条活动 lane 连到本行对应位置；被本提交取走的 lane 收到节点
+      if (prevOut) {
+        for (let i = 0; i < prevOut.length; i++) {
+          const oid = prevOut[i]
+          if (!oid) continue
+          let xb = null
+          if (oid === c.id) xb = cx
+          else {
+            const j = lanesIn.indexOf(oid)
+            if (j >= 0) xb = x(j)
+          }
+          if (xb == null) continue
+          s += line(x(i), 0, xb, 12, i === 0 ? 'nl-git-lane-main' : 'nl-git-lane')
+        }
+      }
+      // 下半（12→24）：非本提交占用的 lane 竖直下探
+      for (let i = 0; i < lanesIn.length; i++) {
+        const oid = lanesIn[i]
+        if (!oid || oid === c.id) continue
+        s += line(x(i), 12, x(i), 24, i === 0 ? 'nl-git-lane-main' : 'nl-git-lane')
+      }
+      // 下半：节点 → 各 parent 的出口 lane（主 parent 继承本 lane，合并 parent 斜入侧 lane）
+      for (let pi = 0; pi < c.parents.length; pi++) {
+        const j = lanesOut.indexOf(c.parents[pi])
+        if (j < 0) continue
+        s += line(cx, 12, x(j), 24, pi === 0 && lane === 0 ? 'nl-git-lane-main' : 'nl-git-lane')
+      }
+      // 节点（HEAD 描边外圈）
+      s += c.id === headId
+        ? '<circle cx="' + cx + '" cy="12" r="5.5" class="nl-git-node-head"/><circle cx="' + cx + '" cy="12" r="2.5" class="nl-git-node-core"/>'
+        : '<circle cx="' + cx + '" cy="12" r="3.5" class="nl-git-node"/>'
+      const row = document.createElement('div')
+      row.className = 'nl-git-item nl-git-commit'
+      row.title = c.summary + '\n' + c.authorName + ' · ' + relTime(c.time)
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('class', 'nl-git-gsvg')
+      svg.setAttribute('width', String(nLane * GW))
+      svg.setAttribute('height', '24')
+      svg.innerHTML = s
+      const sum = document.createElement('span')
+      sum.className = 'nl-git-summary'
+      sum.textContent = c.summary
+      const author = document.createElement('span')
+      author.className = 'nl-git-meta'
+      author.textContent = c.authorName
+      row.append(svg, sum, author)
+      if (c.id === headId && branch) {
+        const pill = document.createElement('span')
+        pill.className = 'nl-git-branch-pill'
+        pill.textContent = branch
+        row.appendChild(pill)
+      }
+      row.addEventListener('click', () => showCommit(c))
+      list.appendChild(row)
+      prevOut = lanesOut
+    }
+    f.body.appendChild(list)
+    return f.sec
   }
 
   // —— diff / 详情预览区（复用一块，切换内容）——
@@ -287,12 +383,12 @@ export function createGitPanel(deps) {
     showDiffInBox(t('git.commitTitle', { id: c.idShort }), detail)
   }
 
-  function renderBody(items, commits, merging) {
+  function renderBody(items, commits, merging, branch) {
     body.innerHTML = ''
     const sync = buildSyncSection()
     const parts = []
     if (merging) parts.push(renderMergeBar(items))
-    parts.push(renderChanges(items), renderHistory(commits), sync.sec, diffBox)
+    parts.push(renderChanges(items), renderGraph(commits, branch), sync.sec, diffBox)
     body.append(...parts)
     diffBox.classList.add('hidden')
     diffBox.innerHTML = ''
@@ -330,16 +426,12 @@ export function createGitPanel(deps) {
   // ===== R1：同步区 =====
   // buildSyncSection 同步搭一个占位容器，populateSync 异步按「系统 git / 远端 / 领先落后」填充。
   function buildSyncSection() {
-    const sec = document.createElement('div')
-    sec.className = 'nl-git-section nl-git-sync-sec'
-    const title = document.createElement('div')
-    title.className = 'nl-git-section-title'
-    title.textContent = t('git.sectionSync')
+    const f = foldSec('sync', t('git.sectionSync'), '')
     const inner = document.createElement('div')
     inner.className = 'nl-git-sync'
     inner.innerHTML = '<div class="nl-git-empty-inline">' + t('git.syncProbing') + '</div>'
-    sec.append(title, inner)
-    return { sec, inner }
+    f.body.appendChild(inner)
+    return { sec: f.sec, inner }
   }
 
   // 凭据类错误的一句通用引导（命中关键字则附）
@@ -825,7 +917,7 @@ export function createGitPanel(deps) {
         merging = false
       }
       renderHead(info, items.length)
-      renderBody(items, commits, merging)
+      renderBody(items, commits, merging, info.branch || '')
     } catch (e) {
       renderPlaceholder(escapeHtml(t('git.statusReadFailed', { err: errText(e) })))
     }
