@@ -521,11 +521,18 @@ export function createAiPanel(deps) {
 
   function openFloatMenu(anchorEl, menu) {
     closeFloatMenu()
+    document.body.appendChild(menu) // 先挂载才有尺寸可量
+    const mw = menu.offsetWidth
+    const mh = menu.offsetHeight
     const r = anchorEl.getBoundingClientRect()
-    menu.style.left = Math.max(4, r.left) + 'px'
-    menu.style.top = Math.max(4, r.top - 8) + 'px'
-    menu.style.transform = 'translateY(-100%)'
-    document.body.appendChild(menu)
+    // 左对齐锚点，右溢出窗口就改右缘对齐（窄窗口时技能菜单不再伸出屏外）
+    let left = r.left
+    if (left + mw > window.innerWidth - 4) left = Math.max(4, window.innerWidth - mw - 4)
+    // 菜单底边贴锚点上方；上方放不下翻到下方，再放不下就贴窗口底
+    let top = r.top - 8 - mh
+    if (top < 4) top = Math.min(window.innerHeight - mh - 4, r.bottom + 8)
+    menu.style.left = left + 'px'
+    menu.style.top = top + 'px'
     floatMenuEl = menu
     floatAnchorEl = anchorEl
     document.addEventListener('click', onFloatDocClick, true)
