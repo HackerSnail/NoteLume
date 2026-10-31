@@ -4351,6 +4351,16 @@ fn tray_set_recent(app: tauri::AppHandle, paths: Vec<String>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Linux 黑屏修复（2026-10-31）：deb/rpm 只声明对 webkit2gtk-4.1 的依赖，运行时用的是目标机系统的库。
+    // 22.04 基线构建出的包装到 24.04 上，WebKitGTK 涨到 2.44+，默认走 DMABUF GPU 渲染器，
+    // NVIDIA 驱动或 XWayland 会话下合成失败时整窗黑屏且不报错（窗口在、进程在、就是不出画面）。
+    // 两个变量都在本进程内设，桌面图标 / 终端 / 单实例转发等任何启动方式一并生效；
+    // 关掉硬件合成只影响视频播放一类场景，Markdown 编辑器感知不到。
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
     // 启动参数先于窗口装配收好（P5 §6.6）：exe 路径本身已被 launch_targets 剔除
     let launch = launch_targets(std::env::args());
     let app = tauri::Builder::default()
