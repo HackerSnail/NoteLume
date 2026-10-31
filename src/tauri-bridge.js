@@ -3,6 +3,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { open, save, confirm as dialogConfirm, message as dialogMessage } from '@tauri-apps/plugin-dialog'
+import { listen } from '@tauri-apps/api/event'
 import { t } from './i18n.js'
 
 /** 打开文件夹选择器，返回选中的知识库根目录（取消返回 null） */
@@ -534,4 +535,24 @@ export function startVaultWatcher(vaultRoot) {
 /** 文件系统监听：停止监听 */
 export function stopVaultWatcher() {
   return invoke('stop_vault_watcher', {})
+}
+
+// ==================== AI（OpenAI 兼容接口，流式经 Rust 代理） ====================
+
+/** 发起流式对话。args = { reqId, messages:[{role,content}], baseUrl, apiKey, model, temperature? }。
+ *  Rust 连 base_url/chat/completions 解析 SSE，增量经 nl:ai-event 推回；立即返回，事件驱动结果。 */
+export function aiChatStream(args) {
+  return invoke('ai_chat_stream', { args })
+}
+
+/** 中止仍在跑的流式请求（按 reqId）。任务不存在返回 false，无副作用 */
+export function aiChatCancel(reqId) {
+  return invoke('ai_chat_cancel', { reqId: reqId || '' })
+}
+
+/** 订阅 AI 流式事件：payload = { reqId, kind:'chunk'|'done'|'error', delta?, error? }。
+ *  返回退订函数。纯网页预览（无 Tauri）时给空实现。 */
+export function aiChatListen(handler) {
+  if (!window.__TAURI_INTERNALS__) return Promise.resolve(() => {})
+  return listen('nl:ai-event', (e) => handler(e.payload))
 }

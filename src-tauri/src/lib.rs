@@ -34,6 +34,9 @@ mod fs_watcher;
 // 设计与分期见 docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md。
 mod qd;
 
+// 大模型接入（AI）：OpenAI 兼容接口的流式代理（HTTPS + SSE 解析 + 取消在 Rust 侧）。
+mod ai;
+
 /// qd_eval 的返回：展开文本 + 诊断（camelCase 对前端）
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -4315,6 +4318,9 @@ pub fn run() {
             // 网页剪藏：本地 HTTP 服务（只绑 127.0.0.1，令牌闸门）
             clip_server_apply,
             clip_server_status,
+            // 大模型接入（AI）：流式对话 + 取消
+            ai::ai_chat_stream,
+            ai::ai_chat_cancel,
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
             take_launch_paths,
             open_vault_window,

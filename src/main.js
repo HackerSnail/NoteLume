@@ -112,6 +112,13 @@ import {
   THEME_ICON,
 } from './appearance-settings.js'
 import { createClipSettings, normalizeClip } from './clip-settings.js'
+import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS } from './ai-tasks.js'
+import { createAiSettings } from './ai-settings.js'
+import { createAiPanel } from './ai-panel.js'
+import { openAiInline } from './ai-inline.js'
+import { mdParser } from './editor-schema.js'
+import { TextSelection } from 'prosemirror-state'
+import { Slice } from 'prosemirror-model'
 import { createSettingsStore } from './settings-store.js'
 import { t, getLocale, setLocale, applyStaticDom, onLocaleChange, localeName } from './i18n.js'
 import { LOCALES } from './locales/index.js'
@@ -222,6 +229,7 @@ btnReplace: $('btn-replace'),
   sidebar: $('sidebar'),
   inspector: $('inspector'),
   editorPane: $('editor-pane'),
+  aiPanel: $('ai-panel'),
 }
 
 let editor
@@ -231,6 +239,8 @@ let keySettings = null
 let hlBar = null // 选区高亮浮动工具栏（p5plan §6.4）
 let apSettings = null // 「设置-外观」面板（appearance-settings.js）
 let clipSettings = null // 「网页剪藏」设置面板（clip-settings.js）
+let aiSettings = null // 「AI 设置」面板（ai-settings.js）
+let aiPanel = null // 侧栏「AI」对话面板（ai-panel.js）
 let settingsStore = null // settings.json 读写（boot 最开始装配）
 let gitPanel = null
 let snapshotPanel = null
@@ -442,7 +452,8 @@ function sidebarHidden() {
   return localStorage.getItem('nl-sidebar') === 'hidden'
 }
 function currentSideTab() {
-  return localStorage.getItem('nl-side-tab') === 'outline' ? 'outline' : 'files'
+  const v = localStorage.getItem('nl-side-tab')
+  return v === 'outline' || v === 'ai' ? v : 'files'
 }
 function setSidebar(hidden) {
   localStorage.setItem('nl-sidebar', hidden ? 'hidden' : 'shown')
@@ -455,12 +466,12 @@ function toggleSidebar() {
   setStatus(hidden ? t('status.colHidden', { label: t('col.sidebar') }) : t('status.colShown', { label: t('col.sidebar') }))
 }
 
-// —— 侧栏「文件 / 大纲」共用一块区域：两 tab 互斥（Typora 式），tab 态持久化 ——
+// —— 侧栏「文件 / 大纲 / AI」共用一块区域：tab 互斥（Typora 式），tab 态持久化 ——
 // 栏内 tab 与栏外常驻图标对（.side-corner）共用同一套引擎，不各存一份状态
 let sideTabs = []
 let sideCorner = []
 function setSideTab(name) {
-  const tab = name === 'outline' ? 'outline' : 'files'
+  const tab = currentSideTabSafe(name)
   localStorage.setItem('nl-side-tab', tab)
   for (const b of sideTabs) {
     const on = b.getAttribute('data-tab') === tab
@@ -469,7 +480,17 @@ function setSideTab(name) {
   }
   if (els.tree) els.tree.classList.toggle('hidden', tab !== 'files')
   if (els.outline) els.outline.classList.toggle('hidden', tab !== 'outline')
+  if (els.aiPanel) els.aiPanel.classList.toggle('hidden', tab !== 'ai')
+  // 搜索框只属于文件页签：大纲有自己的层级树、AI 有自己的输入区，都不要搜索
+  const searchBox = document.querySelector('.search-box')
+  if (searchBox) searchBox.classList.toggle('hidden', tab !== 'files')
+  if (els.searchResults) els.searchResults.classList.toggle('hidden', tab !== 'files')
+  if (tab === 'ai' && aiPanel) aiPanel.focus()
   syncSideCorner()
+}
+// 页签白名单：AI 页（ai）、大纲（outline），其余一律落回文件（files）
+function currentSideTabSafe(name) {
+  return name === 'outline' || name === 'ai' ? name : 'files'
 }
 function syncSideCorner() {
   const tab = currentSideTab()
@@ -477,7 +498,7 @@ function syncSideCorner() {
 }
 // 栏外图标的三种落点：收起 → 开栏到该 tab；开着但在另一 tab → 切过去；正停在该 tab → 收起整栏
 function openSidebarOn(name) {
-  const tab = name === 'outline' ? 'outline' : 'files'
+  const tab = currentSideTabSafe(name)
   if (!sidebarHidden() && currentSideTab() === tab) {
     toggleSidebar()
     return
@@ -788,6 +809,133 @@ function persistClip(next) {
   const prev = settingsStore.get().clip
   if (JSON.stringify(prev) === JSON.stringify(clip)) return
   settingsStore.update({ clip })
+}
+
+// AI 设置：settings.json 的 ai 段（接口地址 / API Key / 模型名）。Rust 侧不存配置，
+// 每次调用经 IPC 传参；这里的唯一职责是归一化 + 防抖落盘。
+function currentAi() {
+  return normalizeAiConfig(settingsStore ? settingsStore.get().ai : null)
+}
+
+/** 合并改动进 settings.json 的 ai 段（防抖写盘）；内容没变则不写 */
+function persistAi(next) {
+  if (!settingsStore) return
+  const ai = normalizeAiConfig(next)
+  const prev = settingsStore.get().ai
+  if (JSON.stringify(prev) === JSON.stringify(ai)) return
+  settingsStore.update({ ai })
+}
+
+// —— AI：选区任务与写回 ——
+// 模型产出按 markdown 解析成 ProseMirror 文档片段再插入（保结构：列表 / 代码块 /
+// 引用都还原成节点），解析失败退化为纯文本（inst.insertPlainText 已处理换行）。
+function insertAiMarkdown(inst, md, opts = {}) {
+  const text = String(md || '').trim()
+  if (!text || !inst) return
+  const view = inst.view
+  let doc = null
+  try { doc = mdParser.parse(text) } catch { doc = null }
+  view.focus()
+  const tr = view.state.tr
+  if (opts.caret != null) {
+    tr.setSelection(TextSelection.create(view.state.doc, Math.max(0, Math.min(opts.caret, view.state.doc.content.size))))
+  }
+  if (doc && doc.content && doc.content.size) {
+    tr.replaceSelection(new Slice(doc.content, 0, 0))
+    view.dispatch(tr.scrollIntoView())
+  } else {
+    inst.insertPlainText(text) // 解析兜底：退化纯文本
+  }
+}
+
+/** 恢复 [from, to] 选区后写入（「替换」语义：写回原选区位置） */
+function aiReplaceSelection(inst, from, to, md) {
+  const size = inst.view.state.doc.content.size
+  const f = Math.max(0, Math.min(from, size))
+  const tt = Math.max(f, Math.min(to, size))
+  inst.view.dispatch(inst.view.state.tr.setSelection(TextSelection.create(inst.view.state.doc, f, tt)))
+  insertAiMarkdown(inst, md)
+}
+
+/** 在位置 at（原选区结束处）之后插入（「插入」语义：结果追加到选区下方） */
+function aiInsertAfter(inst, at, md) {
+  insertAiMarkdown(inst, md, { caret: at })
+}
+
+/** 侧栏 AI 面板的文档上下文：md 模式下取当前文档正文（截断到上限），canvas / 未打开文档不带 */
+function aiDocContext() {
+  if (!editor || state.mode !== 'md' || !state.currentFile) return ''
+  return buildDocContext(baseName(state.currentFile).replace(/\.md$/i, ''), editor.getText())
+}
+
+/** 当前焦点编辑器实例的非空选区文本 + 锚点矩形（浮层定位用）；无选区返回 null */
+function aiSelection(inst) {
+  const target = inst || editor
+  if (!target || !target.view) return null
+  const { state: st } = target.view
+  const { from, to, empty } = st.selection
+  if (empty) return null
+  const text = st.doc.textBetween(from, to, '\n')
+  if (!text.trim()) return null
+  let rect = null
+  try {
+    const c = target.view.coordsAtPos(to)
+    rect = { x: c.left, y: c.top, bottom: c.bottom }
+  } catch { rect = null }
+  return { text, rect, from, to, inst: target }
+}
+
+/** 选区 AI 入口：未配置先开设置；custom 走提示词输入框；其余直接起浮层流式请求 */
+function runSelectionAi(taskId, inst) {
+  const cfg = currentAi()
+  if (!aiConfigured(cfg)) {
+    setStatus(t('ai.needConfig'))
+    if (aiSettings) aiSettings.open()
+    return
+  }
+  if (taskId === 'custom') {
+    promptDialog({
+      title: t('ai.task.custom'),
+      placeholder: t('ai.customPh'),
+    }).then((p) => {
+      if (!p || !p.trim()) return
+      openSelectionAiInline(taskId, p.trim(), inst)
+    })
+    return
+  }
+  openSelectionAiInline(taskId, '', inst)
+}
+
+function openSelectionAiInline(taskId, customPrompt, inst) {
+  const sel = aiSelection(inst)
+  if (!sel) {
+    setStatus(t('ai.needSelection'))
+    return
+  }
+  const msgs = buildTaskMessages(taskId, sel.text, customPrompt)
+  if (!msgs) return
+  openAiInline({
+    title: t('ai.task.' + taskId),
+    anchorRect: sel.rect,
+    getConfig: currentAi,
+    messages: msgs,
+    setStatus,
+    onReplace: (md) => aiReplaceSelection(sel.inst, sel.from, sel.to, md),
+    onInsert: (md) => aiInsertAfter(sel.inst, sel.to, md),
+  })
+}
+
+/** 侧栏 AI 页签开合：收起→展开并落 AI 页；在别的页→切 AI；正在 AI→收起整栏 */
+function toggleAiPanel() {
+  if (sidebarHidden()) {
+    openSidebarOn('ai')
+    return
+  }
+  if (currentSideTab() !== 'ai') {
+    setSideTab('ai')
+    return
+  }
+  setSidebar(true)
 }
 
 /** 设置面板的每次改动：主题切换 + 全量 CSS 变量 + 侧栏比例 → 像素，然后落盘 */
@@ -1948,6 +2096,13 @@ function attachEditorContextMenu(paneId, inst) {
     menu.appendChild(cmd('editor.block.hr', 'cmd.block.hr'))
     menu.appendChild(cmd('editor.block.callout', 'cmd.block.callout'))
     menu.appendChild(makeMenuItem(t('ctx.qd'), () => openQdInsertMenu(e.clientX, e.clientY, inst), false, false, 'terminal'))
+    menu.appendChild(menuSep())
+    // AI：选区任务（润色 / 续写 / 翻译 / 摘要 / 自定义提示词）。结果浮层流式预览，
+    // 可写回选区 / 追加到选区下方 / 复制；无选区时整组置灰
+    const aiIcon = { polish: 'pen', 'continue': 'arrow-down', translate: 'globe', summarize: 'list-bullet', custom: 'sliders' }
+    for (const task of AI_TASK_IDS) {
+      menu.appendChild(makeMenuItem(t('ai.task.' + task), () => runSelectionAi(task, inst), false, false, aiIcon[task] || 'sparkle', !hasSel))
+    }
     menu.appendChild(menuSep())
     menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), () => {
       selectAll(view.state, view.dispatch)
@@ -3745,6 +3900,19 @@ function registerAppCommands() {
     // 批次 E（R3）：合并拉取（非 ff-only，冲突交面板解决）
     app('app.git.pullMerge', null, () => { if (gitPanel) gitPanel.merge() })
   app('app.git.remote', null, () => { if (gitPanel) gitPanel.setupRemote() })
+  // AI：面板开合 / 设置面板 / 选区任务（命令面板 + mac 菜单 + 快捷键设置共用一张表）
+  app('app.aiPanel', null, () => toggleAiPanel())
+  app('app.aiSettings', null, () => { if (aiSettings) aiSettings.open() })
+  for (const task of AI_TASK_IDS) {
+    commandRegistry.register({
+      id: 'editor.ai.' + task,
+      title: t('cmd.editor.ai.' + task),
+      category: 'editor',
+      when: 'editor',
+      defaultKey: null,
+      run: () => runSelectionAi(task),
+    })
+  }
 }
 
 // 批次 E（R1）· pull 改动磁盘文件后的编辑器集成（spec §6.4）：
@@ -4946,6 +5114,22 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     flush: () => settingsStore.flush(),
     setStatus,
     listTemplates: () => (state.vaultRoot ? listMdInDir(TEMPLATE_DIR()) : []),
+  })
+  // 「AI」：设置写 settings.json 的 ai 段；侧栏 AI 面板针对当前文档问答，
+  // 选区任务（右键 / 命令面板）的结果在浮层里流式预览后写回文档
+  aiSettings = createAiSettings({
+    getAi: currentAi,
+    apply: persistAi,
+    flush: () => settingsStore.flush(),
+    setStatus,
+  })
+  aiPanel = createAiPanel({
+    root: els.aiPanel,
+    getConfig: currentAi,
+    openSettings: () => aiSettings.open(),
+    getDocContext: aiDocContext,
+    insertToDoc: (text) => insertAiMarkdown(editor, text),
+    setStatus,
   })
   // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到
   // Dock 图标，二次唤起）都汇到 handleOpenTargets；启动参数优先于一切，无参数才恢复上次
