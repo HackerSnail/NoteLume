@@ -10,7 +10,7 @@ import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen } from './tauri-bridge.js'
-import { aiConfigured, stripFences } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision } from './ai-tasks.js'
 
 let reqSeq = 0
 function nextReqId() {
@@ -32,7 +32,8 @@ let mode = (() => {
  * @param {() => void} deps.openSettings 打开 AI 设置面板
  * @param {() => string} deps.getDocContext 当前文档上下文文本（ai-tasks.buildDocContext 的产物，'' 表示无文档）
  * @param {(text: string) => void} deps.insertToDoc 把一段文本插入当前文档光标处
- * @param {(text: string) => boolean} [deps.appendToDoc] Agent 模式收尾时把回答追加到当前文档末尾
+ * @param {(text: string, anchor?: {dir:'after'|'before', target:string}|null) => {ok:boolean, where?:string, missed?:boolean}|boolean} [deps.appendToDoc]
+ *   Agent 模式收尾时把回答写进当前文档：有锚点先按 resolveAnchorPos 定位（未命中回退光标落点并标 missed）
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
@@ -46,7 +47,10 @@ export function createAiPanel(deps) {
   let stopBtn = null
   let modelChip = null
   let emptyHint = null
-  let history = [] // { role:'user'|'assistant', content }
+  let attEl = null // 附件预览条（附图 chip 列表，空时隐藏）
+  let fileInput = null // 隐藏的选图 input（点击附图按钮触发）
+  let attachments = [] // 待发送图片 [{ dataUrl, name }]，随消息一起发出后清空
+  let history = [] // { role:'user'|'assistant', content }（content 为 string 或 OpenAI 多模态数组）
   let streaming = null // { reqId, el, text } 流式中的气泡
   let offLocale = null
   let offEvent = null
@@ -56,7 +60,22 @@ export function createAiPanel(deps) {
   function bubble(role, text) {
     const wrap = document.createElement('div')
     wrap.className = 'ai-msg ' + (role === 'user' ? 'ai-user' : 'ai-bot')
-    if (role === 'user') {
+    if (role === 'user' && Array.isArray(text)) {
+      // 多模态消息：图片缩略 + 文本
+      for (const part of text) {
+        if (part && part.type === 'image_url' && part.image_url && part.image_url.url) {
+          const img = document.createElement('img')
+          img.className = 'ai-att-img'
+          img.src = part.image_url.url
+          img.alt = ''
+          wrap.appendChild(img)
+        } else if (part && part.type === 'text' && part.text) {
+          const p = document.createElement('div')
+          p.textContent = part.text
+          wrap.appendChild(p)
+        }
+      }
+    } else if (role === 'user') {
       wrap.textContent = text
     } else {
       wrap.innerHTML = md.render(text)
@@ -101,10 +120,20 @@ export function createAiPanel(deps) {
       openSettings()
       return
     }
-    history.push({ role: 'user', content: text })
+    // 有附件但模型不在视觉名单里：拦下（模型不支持就发不出去，提示在附件条上）
+    if (attachments.length && !modelSupportsVision(cfg.model)) {
+      showAttNote(t('ai.noVision'))
+      return
+    }
+    const userContent = attachments.length
+      ? [{ type: 'text', text }, ...attachments.map((a) => ({ type: 'image_url', image_url: { url: a.dataUrl } }))]
+      : text
+    history.push({ role: 'user', content: userContent })
     emptyHint.classList.add('hidden')
-    msgsEl.appendChild(bubble('user', text))
+    msgsEl.appendChild(bubble('user', userContent))
     inputEl.value = ''
+    attachments = []
+    renderAtt()
     autosize()
 
     const bot = document.createElement('div')
@@ -148,13 +177,15 @@ export function createAiPanel(deps) {
 
   function finishDone(stopped) {
     if (!streaming) return
-    const text = stripFences(streaming.text)
-    history.push({ role: 'assistant', content: text })
+    // Agent 锚点协议在这里统一解析（Ask 模式模型不会输出标记，解析无害）：
+    // 气泡、历史、动作行都用剥掉标记后的正文，锚点只留给自动应用定位
+    const { anchor, body } = parseAgentReply(streaming.text)
+    history.push({ role: 'assistant', content: body })
     const el = streaming.el
-    el.innerHTML = md.render(text)
-    el.appendChild(assistantActions(text))
+    el.innerHTML = md.render(body)
+    el.appendChild(assistantActions(body))
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
-    if (mode === 'agent' && !stopped && text) autoApply(text, el)
+    if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor)
     if (stopped) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -203,16 +234,94 @@ export function createAiPanel(deps) {
     return row
   }
 
-  /** Agent 模式收尾：把回答追加到当前文档末尾，成功/失败都给一条小标签 */
-  function autoApply(text, el) {
+  /** Agent 模式收尾：按锚点（自然语言位置）或光标智能落点写进文档，结果都给一条小标签 */
+  function autoApply(text, el, anchor) {
     if (!appendToDoc) return
-    let ok = false
-    try { ok = appendToDoc(text) !== false } catch { ok = false }
+    let res = null
+    try { res = appendToDoc(text, anchor || null) } catch { res = null }
     const tag = document.createElement('div')
+    const ok = !!(res && res.ok)
     tag.className = 'ai-stopped' + (ok ? ' ai-applied' : ' ai-apply-fail')
-    tag.textContent = t(ok ? 'ai.applied' : 'ai.applyFail')
+    if (ok && anchor && !res.missed) {
+      tag.textContent = t(anchor.dir === 'before' ? 'ai.appliedAtBefore' : 'ai.appliedAtAfter', { where: res.where || anchor.target })
+    } else if (ok && anchor && res.missed) {
+      tag.textContent = t('ai.anchorMiss', { where: anchor.target })
+    } else if (ok) {
+      tag.textContent = t('ai.applied')
+    } else {
+      tag.textContent = t('ai.applyFail')
+    }
     el.appendChild(tag)
     setStatus(tag.textContent)
+  }
+
+  // —— 多模态附件（图片）：选图 / 粘贴 → dataURL，发送时随 content 数组一起走 ——
+
+  function showAttNote(msg) {
+    if (!attEl) return
+    attEl.innerHTML = ''
+    const note = document.createElement('div')
+    note.className = 'ai-att-note'
+    note.textContent = msg
+    attEl.appendChild(note)
+    attEl.classList.remove('hidden')
+    clearTimeout(showAttNote._tm)
+    showAttNote._tm = setTimeout(renderAtt, 4000)
+  }
+
+  function addAttachment(dataUrl, name) {
+    const cfg = getConfig()
+    // 模型不在视觉名单（或未配置）就不让上传，给面板内提示
+    if (!aiConfigured(cfg) || !modelSupportsVision(cfg.model)) {
+      showAttNote(t('ai.noVision'))
+      return
+    }
+    if (attachments.length >= 4) {
+      showAttNote(t('ai.attMax'))
+      return
+    }
+    attachments.push({ dataUrl, name: name || 'image' })
+    renderAtt()
+  }
+
+  function renderAtt() {
+    if (!attEl) return
+    clearTimeout(showAttNote._tm)
+    attEl.innerHTML = ''
+    if (!attachments.length) {
+      attEl.classList.add('hidden')
+      return
+    }
+    attEl.classList.remove('hidden')
+    attachments.forEach((a, i) => {
+      const chip = document.createElement('span')
+      chip.className = 'ai-att-chip'
+      const img = document.createElement('img')
+      img.src = a.dataUrl
+      img.alt = ''
+      const name = document.createElement('span')
+      name.className = 'ai-att-name'
+      name.textContent = a.name
+      const x = document.createElement('button')
+      x.type = 'button'
+      x.className = 'ai-att-x'
+      x.title = t('ai.removeAtt')
+      x.setAttribute('aria-label', t('ai.removeAtt'))
+      x.textContent = '×'
+      x.addEventListener('click', () => {
+        attachments.splice(i, 1)
+        renderAtt()
+      })
+      chip.append(img, name, x)
+      attEl.appendChild(chip)
+    })
+  }
+
+  function readFile(file) {
+    if (!file || !/^image\//.test(file.type)) return
+    const fr = new FileReader()
+    fr.onload = () => addAttachment(String(fr.result), file.name)
+    fr.readAsDataURL(file)
   }
 
   // —— Ask / Agent 模式分段（品牌词不翻译，解释走悬停提示） ——
@@ -292,6 +401,19 @@ export function createAiPanel(deps) {
     emptyHint.textContent = t('ai.emptyHint')
     msgsEl.appendChild(emptyHint)
 
+    // 附件预览条：附图 chip / 面板内提示（模型不支持等），空时隐藏
+    attEl = document.createElement('div')
+    attEl.className = 'ai-att hidden'
+    fileInput = document.createElement('input')
+    fileInput.type = 'file'
+    fileInput.accept = 'image/*'
+    fileInput.multiple = true
+    fileInput.hidden = true
+    fileInput.addEventListener('change', () => {
+      for (const f of fileInput.files || []) readFile(f)
+      fileInput.value = ''
+    })
+
     const foot = document.createElement('div')
     foot.className = 'ai-foot'
     inputEl = document.createElement('textarea')
@@ -306,6 +428,22 @@ export function createAiPanel(deps) {
         send()
       }
     })
+    inputEl.addEventListener('paste', (e) => {
+      // 粘贴截图直上附件（多模态面板惯例），文本粘贴不拦
+      const items = e.clipboardData && e.clipboardData.items
+      if (!items) return
+      const imgs = [...items].filter((it) => it.kind === 'file' && /^image\//.test(it.type))
+      if (!imgs.length) return
+      e.preventDefault()
+      for (const it of imgs) readFile(it.getAsFile())
+    })
+    const attachBtn = document.createElement('button')
+    attachBtn.type = 'button'
+    attachBtn.className = 'ai-icon-btn'
+    attachBtn.title = t('ai.attach')
+    attachBtn.setAttribute('aria-label', t('ai.attach'))
+    setIcon(attachBtn, 'image')
+    attachBtn.addEventListener('click', () => fileInput.click())
     sendBtn = document.createElement('button')
     sendBtn.type = 'button'
     sendBtn.className = 'ai-send'
@@ -320,9 +458,9 @@ export function createAiPanel(deps) {
     stopBtn.setAttribute('aria-label', t('ai.stop'))
     stopBtn.textContent = '■'
     stopBtn.addEventListener('click', stop)
-    foot.append(inputEl, sendBtn, stopBtn)
+    foot.append(attachBtn, inputEl, sendBtn, stopBtn)
 
-    root.append(head, msgsEl, buildModes(), foot)
+    root.append(head, msgsEl, buildModes(), attEl, fileInput, foot)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)
