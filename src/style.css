@@ -4457,6 +4457,113 @@ html.nl-dragging * {
   letter-spacing: 0.04em;
   margin-bottom: 2px;
 }
+/* 折叠分组（VS Code 源代码管理式）：标题行点击开合，chev 旋转，徽章计数量 */
+.nl-git-fold-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.nl-git-fold-bar:hover {
+  color: var(--fg);
+  background: var(--hover);
+}
+.nl-git-fold-chev {
+  display: inline-flex;
+  transition: transform 120ms ease;
+}
+.nl-git-fold.collapsed .nl-git-fold-chev {
+  transform: rotate(-90deg);
+}
+.nl-git-fold-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nl-git-fold-badge {
+  flex: none;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+/* 提交图：行高恒 24 保证竖线跨行连续，lane 0 用 accent、侧 lane 用 border 色 */
+.nl-git-graph {
+  gap: 0;
+}
+.nl-git-graph .nl-git-item {
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+}
+.nl-git-gsvg {
+  flex: none;
+  display: block;
+  overflow: visible;
+}
+.nl-git-lane {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.nl-git-lane-main {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.nl-git-node {
+  fill: var(--muted);
+}
+.nl-git-node-core {
+  fill: var(--accent);
+}
+.nl-git-node-head {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.nl-git-branch-pill {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 图行单行布局：summary 弹性省略、作者右对齐（完整信息在行 title 提示里） */
+.nl-git-graph .nl-git-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1;
+}
+.nl-git-graph .nl-git-meta {
+  flex: none;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .nl-git-list {
   display: flex;
   flex-direction: column;

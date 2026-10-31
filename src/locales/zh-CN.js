@@ -578,7 +578,7 @@ export default {
   'git.useTheirs': '用远端',
   'git.edit': '编辑',
   'git.tooManyChanges': '改动过多，仅显示前 {n} 项',
-  'git.sectionHistory': '历史',
+  'git.sectionGraph': '图形',
   'git.historyEmpty': '尚无提交',
   'git.noDiff': '无差异',
   'git.diffReadFailed': '读取 diff 失败：{err}',

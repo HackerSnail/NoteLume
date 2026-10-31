@@ -2179,6 +2179,8 @@ pub struct GitCommitInfo {
     pub author_email: String,
     /// 提交 Unix 秒
     pub time: i64,
+    /// 父提交 oid（多父 = 合并提交）；前端画提交图分 lane 用
+    pub parents: Vec<String>,
 }
 
 /// 单文件 diff 入参
@@ -2297,6 +2299,7 @@ fn git_log(vault_root: String, limit: Option<usize>) -> Result<Vec<GitCommitInfo
             author_name: author.name().unwrap_or("").to_string(),
             author_email: author.email().unwrap_or("").to_string(),
             time: commit.time().seconds(),
+            parents: commit.parent_ids().map(|o| o.to_string()).collect(),
         });
     }
     Ok(out)
