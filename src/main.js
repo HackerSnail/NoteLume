@@ -4373,6 +4373,17 @@ function ensurePaneHlBar(paneId) {
       const inst = panes.editors.get(paneId)
       if (inst) inst.clearHighlight()
     },
+    // 第二排：选区 AI（豆包式——选中即见，点任务起结果浮层；配置检查在 runSelectionAi 里）
+    aiActions: () => AI_TASK_IDS.map((id) => ({
+      id,
+      label: t('ai.task.' + id),
+      icon: { polish: 'pen', 'continue': 'arrow-down', translate: 'globe', summarize: 'list-bullet', custom: 'sliders' }[id] || 'sparkle',
+    })),
+    onAi: (taskId) => {
+      bar.hide() // 浮层接管：工具条收起，保住编辑器选区（runSelectionAi 里读）
+      const inst = panes.editors.get(paneId)
+      runSelectionAi(taskId, inst)
+    },
   })
   panes.hlBars.set(paneId, bar)
   return bar

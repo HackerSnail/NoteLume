@@ -1,14 +1,18 @@
-// highlight-toolbar.js —— 选区高亮浮动工具栏（p5plan §6.4）
+// highlight-toolbar.js —— 选区浮动工具栏（p5plan §6.4 + AI 排）
 //
-// 选中正文文字后贴在选区上方：四个预设色（走 --highlight-* 变量，跟主题换色）+ 自定义
-// 取色器 + 清除高亮。点预设色块若选区已是该色则取消（toggle 语义，与加粗一致）。
+// 选中正文文字后贴在选区上方，两排放置：第一排高亮（四个预设色走 --highlight-*
+// 变量跟主题换色 + 自定义取色器 + 清除高亮），第二排 AI 任务（润色 / 续写 / 翻译 /
+// 摘要 / 自定义提示词，点开结果浮层）。点预设色块若选区已是该色则取消（toggle 语义，
+// 与加粗一致）。
 //  · 按钮统一 mousedown + preventDefault：点下去不抢编辑器的 DOM 选区，否则一碰就散。
 //  · 定位容器是 .editor-pane（与查找栏同层，position:relative 且是滚动容器），
 //    滚动时按 scrollTop / scrollLeft 补正；上方放不下贴选区下方。
 //  · 取色器是原生 input[type=color]，无法 preventDefault 保住选区，但它点完不改变
 //    PM 的 state 选区，change 时照常对 view.state.selection 生效。
+//  · AI 动作由调用方注入（aiActions / onAi）：本模块不关心模型配置，点了就走。
 
 import { HL_PRESETS } from './editor-schema.js'
+import { setIcon } from './icons.js'
 import { t, onLocaleChange } from './i18n.js'
 
 /**
@@ -17,6 +21,8 @@ import { t, onLocaleChange } from './i18n.js'
  * @param {() => ({rect:DOMRect, has:boolean, color:string|null}|null)} deps.readState 当前选区状态；null = 不显示
  * @param {(color:string) => void} deps.applyColor 应用（或取消）一个高亮色
  * @param {() => void} deps.clear 清除选区内高亮
+ * @param {() => Array<{id:string, label:string, icon:string}>} [deps.aiActions] 第二排 AI 任务清单
+ * @param {(taskId:string) => void} [deps.onAi] 点 AI 任务的回调（调用方负责关浮窗与检查配置）
  */
 export function createHighlightToolbar(deps) {
   const { paneEl, readState, applyColor, clear } = deps
@@ -24,6 +30,7 @@ export function createHighlightToolbar(deps) {
   let swatches = []
   let clearBtn = null
   let customInput = null
+  let aiBtns = []
   let lastRect = null
   let scrolling = false
 
@@ -32,6 +39,10 @@ export function createHighlightToolbar(deps) {
     bar.className = 'nl-hl-bar'
     bar.setAttribute('role', 'toolbar')
     bar.setAttribute('aria-label', t('hl.bar'))
+
+    const row1 = document.createElement('div')
+    row1.className = 'nl-hl-row'
+    bar.appendChild(row1)
 
     swatches = HL_PRESETS.map((name) => {
       const b = document.createElement('button')
@@ -50,13 +61,13 @@ export function createHighlightToolbar(deps) {
         applyColor(name)
         sync()
       })
-      bar.appendChild(b)
+      row1.appendChild(b)
       return b
     })
 
     const sep = document.createElement('span')
     sep.className = 'nl-hl-sep'
-    bar.appendChild(sep)
+    row1.appendChild(sep)
 
     customInput = document.createElement('input')
     customInput.type = 'color'
@@ -68,7 +79,7 @@ export function createHighlightToolbar(deps) {
       applyColor(customInput.value)
       sync()
     })
-    bar.appendChild(customInput)
+    row1.appendChild(customInput)
 
     clearBtn = document.createElement('button')
     clearBtn.type = 'button'
@@ -79,7 +90,27 @@ export function createHighlightToolbar(deps) {
       clear()
       sync()
     })
-    bar.appendChild(clearBtn)
+    row1.appendChild(clearBtn)
+
+    // 第二排：AI 任务（清单由调用方注入；无配置时也渲染，点了让调用方引导去设置）
+    if (typeof deps.aiActions === 'function' && typeof deps.onAi === 'function') {
+      const row2 = document.createElement('div')
+      row2.className = 'nl-hl-row nl-hl-ai'
+      row2.setAttribute('aria-label', t('ai.title'))
+      bar.appendChild(row2)
+      aiBtns = deps.aiActions().map((a) => {
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'nl-hl-ai-btn'
+        b.title = a.label
+        b.setAttribute('aria-label', a.label)
+        setIcon(b, a.icon || 'sparkle', a.label)
+        b.addEventListener('mousedown', (e) => e.preventDefault())
+        b.addEventListener('click', () => deps.onAi(a.id))
+        row2.appendChild(b)
+        return b
+      })
+    }
 
     paneEl.appendChild(bar)
   }
@@ -116,6 +147,16 @@ export function createHighlightToolbar(deps) {
     customInput.title = t('hl.custom')
     customInput.setAttribute('aria-label', t('hl.custom'))
     clearBtn.textContent = t('hl.clear')
+    if (typeof deps.aiActions === 'function') {
+      const acts = deps.aiActions()
+      aiBtns.forEach((b, i) => {
+        const a = acts[i]
+        if (!a) return
+        b.title = a.label
+        b.setAttribute('aria-label', a.label)
+        setIcon(b, a.icon || 'sparkle', a.label)
+      })
+    }
   }
 
   function onScroll() {
