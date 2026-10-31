@@ -12,6 +12,8 @@ import {
   parseAgentReply,
   resolveAnchorPos,
   modelSupportsVision,
+  aiQueryTerms,
+  buildVaultContext,
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
 
@@ -165,6 +167,24 @@ t('modelSupportsVision：已知视觉模型放行，纯文本/空名拦下', () 
   for (const no of ['', 'deepseek-chat', 'deepseek-r1', 'glm-4', 'kimi-k2', 'llama3.1', 'qwen2.5-72b-instruct', 'grok-3']) {
     assert.strictEqual(modelSupportsVision(no), false, no + ' 应视为纯文本')
   }
+})
+
+t('aiQueryTerms：英文词原样、中文 2-gram、去重限 12', () => {
+  const terms = aiQueryTerms('帮我总结 ProseMirror 的 schema 设计，附性能对比')
+  assert.ok(terms.includes('prosemirror'), '英文词原样小写')
+  assert.ok(terms.includes('总结') || terms.includes('结性'), '中文 2-gram 命中')
+  assert.ok(terms.length <= 12)
+  assert.deepStrictEqual(aiQueryTerms(''), [])
+})
+
+t('buildVaultContext：空命中回空串、截 5 篇封 6000 字符', () => {
+  assert.strictEqual(buildVaultContext([], 'HEAD'), '')
+  const many = Array.from({ length: 8 }, (_, i) => ({ path: 'p' + i + '.md', title: 'T' + i, snippet: 's' + i }))
+  const ctx = buildVaultContext(many, 'HEAD')
+  assert.ok(ctx.startsWith('HEAD'))
+  assert.ok(ctx.includes('T4') && !ctx.includes('T5'), '只取前 5 篇')
+  const huge = [{ path: 'big.md', title: 'B', snippet: 'x'.repeat(9000) }]
+  assert.ok(buildVaultContext(huge, 'H').length < 7000, '总量封顶')
 })
 
 console.log((fail ? `\n${pass} passed, ${fail} FAILED` : `all ${pass} passed`))

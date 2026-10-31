@@ -31,13 +31,14 @@ let mode = (() => {
  * @param {() => object} deps.getConfig 当前 AI 设置（main.js 归一化后给出）
  * @param {() => void} deps.openSettings 打开 AI 设置面板
  * @param {() => string} deps.getDocContext 当前文档上下文文本（ai-tasks.buildDocContext 的产物，'' 表示无文档）
+ * @param {(question: string) => Promise<string>} [deps.getVaultContext] 全库检索上下文（有知识库时按问题分词查索引，无库回 ''）
  * @param {(text: string) => void} deps.insertToDoc 把一段文本插入当前文档光标处
  * @param {(text: string, anchor?: {dir:'after'|'before', target:string}|null) => {ok:boolean, where?:string, missed?:boolean}|boolean} [deps.appendToDoc]
  *   Agent 模式收尾时把回答写进当前文档：有锚点先按 resolveAnchorPos 定位（未命中回退光标落点并标 missed）
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, insertToDoc, appendToDoc, persistModel, setStatus } = deps
+  const { root, getConfig, openSettings, getDocContext, getVaultContext, insertToDoc, appendToDoc, persistModel, setStatus } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -215,6 +216,13 @@ export function createAiPanel(deps) {
     }
     // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
     if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
+    // 全库检索：有知识库时按问题分词查索引注入相关片段；无知识库回 ''（只带当前文档上下文）
+    if (typeof getVaultContext === 'function') {
+      try {
+        const vctx = await getVaultContext(text)
+        if (vctx) messages.push({ role: 'system', content: vctx })
+      } catch { /* 检索失败不阻断对话 */ }
+    }
     messages.push(...history)
     try {
       await aiChatStream({

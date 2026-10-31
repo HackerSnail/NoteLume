@@ -1090,6 +1090,7 @@ export default {
   'ai.skillInject': 'Suivez les consignes de la compétence « {name} » pour répondre :',
   'ai.skillOn': 'Compétence activée : {name}',
   'ai.skillOff': 'Compétence désactivée',
+  'ai.vaultCtxHead': 'Extraits pertinents issus de la base de connaissances (possiblement incomplets, à titre de référence) :',
   'ai.modelsFail': 'Échec de la récupération des modèles : {err}',
   'ai.modelSet': 'Modèle changé : {name}',
   'ollama.missingBody': 'Ollama (exécuteur de modèles locaux) n\'a pas été détecté sur cette machine. Ouvrir le site pour l\'installer ? Une fois installé et lancé, le préréglage Ollama se remplit en un clic dans les Réglages IA.',

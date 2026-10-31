@@ -116,6 +116,40 @@ export function parseAgentReply(raw) {
 
 const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 
+// —— AI 全库检索：问题分词 + 检索结果拼装（纯逻辑可单测；searchVault 调用在 main.js）——
+
+export const AI_VAULT_MAX_DOCS = 5
+
+/**
+ * 从用户问题里提取检索词：英文/数字词原样取（≥2 字符），中文段滑窗取相邻 2-gram
+ * （索引是子串匹配，2-gram 覆盖词中组合）；总量限 12 个防请求爆炸。
+ */
+export function aiQueryTerms(question) {
+  const q = String(question || '')
+  const terms = new Set()
+  for (const m of q.matchAll(/[A-Za-z0-9_\-+#./]{2,}/g)) terms.add(m[0].toLowerCase())
+  for (const m of q.matchAll(/[\u4e00-\u9fff]{2,}/g)) {
+    const seg = m[0]
+    for (let i = 0; i < seg.length - 1 && i < 8; i++) terms.add(seg.slice(i, i + 2))
+  }
+  return [...terms].filter((t) => t.length >= 2).slice(0, 12)
+}
+
+/**
+ * 合并去重后的检索命中 → 注入文本。hits: [{path,title,snippet}]；
+ * 超过 AI_VAULT_MAX_DOCS 篇截断，总量约 6000 字符封顶。
+ */
+export function buildVaultContext(hits, headText) {
+  const list = (Array.isArray(hits) ? hits : []).filter((h) => h && h.path)
+  if (!list.length) return ''
+  let out = String(headText || '') + '\n'
+  for (const h of list.slice(0, AI_VAULT_MAX_DOCS)) {
+    if (out.length >= 6000) break
+    out += `- ${h.title || h.path}（${h.path}）\n  ${String(h.snippet || '').slice(0, 400)}\n`
+  }
+  return out
+}
+
 /**
  * 在文档顶层块里解析锚点 → 插入位置（ProseMirror pos）。doc 由调用方给（前端视图 / 测试里 mdParser 造）。
  * 标题优先（全等 / 互相包含即中），其次按段落等文本块的前缀匹配；找不到回 null（调用方回退光标落点）。

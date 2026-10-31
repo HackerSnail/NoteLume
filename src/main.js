@@ -114,7 +114,7 @@ import {
   THEME_ICON,
 } from './appearance-settings.js'
 import { createClipSettings, normalizeClip } from './clip-settings.js'
-import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS, resolveAnchorPos } from './ai-tasks.js'
+import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS, resolveAnchorPos, aiQueryTerms, buildVaultContext } from './ai-tasks.js'
 import { createAiSettings } from './ai-settings.js'
 import { createAiPanel } from './ai-panel.js'
 import { openAiInline } from './ai-inline.js'
@@ -893,6 +893,30 @@ function aiInsertAfter(inst, at, md) {
 function aiDocContext() {
   if (!editor || state.mode !== 'md' || !state.currentFile) return ''
   return buildDocContext(baseName(state.currentFile).replace(/\.md$/i, ''), editor.getText())
+}
+
+/** AI 全库检索：问题分词后逐词查知识库索引（title 命中优先，去重合并每篇取片段）。
+ *  没有知识库（单文件模式 / 草稿）回 ''——AI 只带当前文档上下文，即「只搜本文件」。 */
+async function aiVaultContext(question) {
+  if (!state.vaultRoot || state.singleFile) return ''
+  const terms = aiQueryTerms(question)
+  if (!terms.length) return ''
+  const byPath = new Map() // path → { title, snippet }（首次命中的标题与片段；重复词/同篇去重）
+  for (const term of terms) {
+    let hits = []
+    try {
+      hits = await searchVault(term, 8)
+    } catch {
+      continue
+    }
+    if (!Array.isArray(hits)) continue
+    for (const h of hits) {
+      if (byPath.has(h.path)) continue
+      if (!h.snippet) continue
+      byPath.set(h.path, { title: h.title, snippet: h.snippet })
+    }
+  }
+  return buildVaultContext([...byPath.values()], t('ai.vaultCtxHead'))
 }
 
 /** 当前焦点编辑器实例的非空选区文本 + 锚点矩形（浮层定位用）；无选区返回 null */
@@ -5183,6 +5207,7 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     getConfig: currentAi,
     openSettings: () => aiSettings.open(),
     getDocContext: aiDocContext,
+    getVaultContext: aiVaultContext,
     insertToDoc: (text) => insertAiMarkdown(editor, text),
     // Agent 模式收尾：锚点协议（自然语言位置）优先——模型回答里 <insert after="…"> 引用的
     // 标题/段落能在文档里找到就直接插到那，找不到回退光标落点并标 missed；
