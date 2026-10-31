@@ -6,11 +6,11 @@
 // 渲染用独立 markdown-it 实例：html:false（模型输出里的字面 HTML 一律转义，天然防注入），
 // 开 table / strikethrough 与正文渲染观感一致。
 
-import { t, onLocaleChange } from './i18n.js'
+import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages } from './ai-tasks.js'
 
 let reqSeq = 0
 function nextReqId() {
@@ -45,6 +45,8 @@ export function createAiPanel(deps) {
   let inputEl = null
   let sendBtn = null
   let stopBtn = null
+  let optBtn = null // 「AI 优化输入」按钮（流式润色回填）
+  let voiceBtn = null // 语音输入按钮（Web Speech API，环境不支持则置灰）
   let modelChip = null
   let emptyHint = null
   let attEl = null // 附件预览条（附图 chip 列表，空时隐藏）
@@ -323,6 +325,112 @@ export function createAiPanel(deps) {
     fr.readAsDataURL(file)
   }
 
+  // —— AI 优化输入：把输入框草稿交给模型流式润色，结果实时回填（再点一次取消） ——
+
+  let optStreaming = null // { reqId, base } 流式优化中的状态
+
+  function toggleOptimize() {
+    if (optStreaming) {
+      aiChatCancel(optStreaming.reqId).catch(() => {})
+      inputEl.value = optStreaming.base // 取消恢复原文
+      optStreaming = null
+      optBtn.classList.remove('active')
+      autosize()
+      return
+    }
+    const text = inputEl.value.trim()
+    if (!text) {
+      setStatus(t('ai.optimizeEmpty'))
+      return
+    }
+    const cfg = getConfig()
+    if (!aiConfigured(cfg)) {
+      setStatus(t('ai.needConfig'))
+      openSettings()
+      return
+    }
+    const msgs = buildTaskMessages('polish', text, '') // 复用润色任务的提示词（只回结果、保语言、保结构）
+    optStreaming = { reqId: nextReqId(), base: inputEl.value }
+    inputEl.value = ''
+    optBtn.classList.add('active')
+    autosize()
+    aiChatStream({
+      reqId: optStreaming.reqId,
+      messages: [
+        { role: 'system', content: msgs.system },
+        { role: 'user', content: msgs.user },
+      ],
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      model: cfg.model,
+    }).catch((e) => {
+      if (optStreaming) inputEl.value = optStreaming.base
+      optStreaming = null
+      optBtn.classList.remove('active')
+      setStatus(t('ai.errRequest', { err: (e && e.message) || String(e) }))
+    })
+  }
+
+  // —— 语音输入（Web Speech API）：识别文本实时追加进输入框；环境不支持则按钮置灰 ——
+
+  let rec = null // SpeechRecognition 实例
+  let listening = false
+
+  function voiceSupported() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  }
+
+  function voiceLang() {
+    const loc = getLocale()
+    return loc === 'zh-Hant' ? 'zh-TW' : (loc || 'zh-CN')
+  }
+
+  function toggleVoice() {
+    if (listening) {
+      if (rec) rec.stop() // onend 收尾
+      return
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) {
+      setStatus(t('ai.voiceNo'))
+      return
+    }
+    rec = new SR()
+    rec.lang = voiceLang()
+    rec.interimResults = true
+    rec.continuous = true
+    let committed = inputEl.value // 已定稿文本（final 逐段追加）
+    rec.onresult = (e) => {
+      let final = ''
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const txt = e.results[i][0].transcript
+        if (e.results[i].isFinal) final += txt
+        else interim += txt
+      }
+      if (final) committed = (committed ? committed + ' ' : '') + final.trim()
+      inputEl.value = committed + (interim ? (committed ? ' ' : '') + interim : '')
+      autosize()
+      inputEl.focus()
+    }
+    rec.onend = () => {
+      listening = false
+      rec = null
+      if (voiceBtn) voiceBtn.classList.remove('active')
+    }
+    rec.onerror = (e) => {
+      if (e.error !== 'aborted' && e.error !== 'no-speech') setStatus(t('ai.voiceFail'))
+    }
+    listening = true
+    voiceBtn.classList.add('active')
+    try {
+      rec.start()
+    } catch {
+      listening = false
+      voiceBtn.classList.remove('active')
+    }
+  }
+
   // —— Ask / Agent 模式切换菜单（CodeBuddy 式 pill ▾ 下拉；品牌词不翻译，解释走项悬停提示） ——
 
   let modeMenuEl = null
@@ -446,6 +554,11 @@ export function createAiPanel(deps) {
     setIcon(clear, 'eraser')
     clear.addEventListener('click', () => {
       if (streaming) stop()
+      if (optStreaming) {
+        aiChatCancel(optStreaming.reqId).catch(() => {})
+        optStreaming = null
+        optBtn.classList.remove('active')
+      }
       history = []
       renderHistory()
     })
@@ -499,10 +612,25 @@ export function createAiPanel(deps) {
     stopBtn.setAttribute('aria-label', t('ai.stop'))
     stopBtn.textContent = '■'
     stopBtn.addEventListener('click', stop)
-    // CodeBuddy 式输入卡：输入框在上，底行左侧模式切换菜单、右侧圆形发送/停止（互斥同位）；图片只收粘贴
+    // 底行：左侧模式菜单 + AI 优化输入 + 语音输入，右侧圆形发送/停止（互斥同位）；图片只收粘贴
+    optBtn = document.createElement('button')
+    optBtn.type = 'button'
+    optBtn.className = 'ai-icon-btn'
+    optBtn.title = t('ai.optimize')
+    optBtn.setAttribute('aria-label', t('ai.optimize'))
+    setIcon(optBtn, 'pen')
+    optBtn.addEventListener('click', toggleOptimize)
+    voiceBtn = document.createElement('button')
+    voiceBtn.type = 'button'
+    voiceBtn.className = 'ai-icon-btn'
+    voiceBtn.title = t('ai.voice')
+    voiceBtn.setAttribute('aria-label', t('ai.voice'))
+    setIcon(voiceBtn, 'mic')
+    if (!voiceSupported()) voiceBtn.disabled = true // 无语音引擎的环境（如无头/部分 WebView）置灰
+    voiceBtn.addEventListener('click', toggleVoice)
     const bar = document.createElement('div')
     bar.className = 'ai-composer-bar'
-    bar.append(buildModeMenu(), sendBtn, stopBtn)
+    bar.append(buildModeMenu(), optBtn, voiceBtn, sendBtn, stopBtn)
     composer.append(inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)
@@ -515,6 +643,22 @@ export function createAiPanel(deps) {
     buildDom()
     // 流式事件：全局一路订阅，按 reqId 分发（选区浮层有自己的订阅，互不干扰）
     offEvent = aiChatListen((ev) => {
+      // 输入优化流先分发（独立 reqId，不进对话）
+      if (optStreaming && ev && ev.reqId === optStreaming.reqId) {
+        if (ev.kind === 'chunk' && ev.delta) {
+          inputEl.value += ev.delta
+          autosize()
+        } else if (ev.kind === 'done') {
+          optStreaming = null
+          optBtn.classList.remove('active')
+        } else if (ev.kind === 'error') {
+          inputEl.value = optStreaming.base
+          optStreaming = null
+          optBtn.classList.remove('active')
+          setStatus(t('ai.errRequest', { err: ev.error || t('ai.errUnknown') }))
+        }
+        return
+      }
       if (!streaming || !ev || ev.reqId !== streaming.reqId) return
       if (ev.kind === 'chunk' && ev.delta) {
         if (streaming.text === '') streaming.el.innerHTML = '' // 顶掉「思考中」占位

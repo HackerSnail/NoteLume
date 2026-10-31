@@ -5497,6 +5497,16 @@ html.nl-dragging * {
   font-size: 10px;
 }
 
+/* 语音 / 优化按钮工作态：accent 点亮（录音中 / 流式回填中） */
+.ai-icon-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.ai-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* —— 设置面板：服务预设快捷填充行 —— */
 .nl-ai-presets {
   display: flex;
