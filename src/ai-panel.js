@@ -203,14 +203,13 @@ export function createAiPanel(deps) {
 
   function buildDom() {
     root.innerHTML = ''
-    root.className = 'ai-panel hidden'
+    // 显隐归右栏页签引擎（setInspTab）管，这里不碰 className——否则切语言会把面板藏掉
 
     const head = document.createElement('div')
     head.className = 'ai-head'
     const title = document.createElement('span')
     title.className = 'ai-head-title'
     setIcon(title, 'sparkle', t('ai.title'))
-    title.appendChild(document.createTextNode(t('ai.title')))
     modelChip = document.createElement('span')
     modelChip.className = 'ai-model-chip'
     const gear = document.createElement('button')

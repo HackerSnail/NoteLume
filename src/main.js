@@ -453,7 +453,7 @@ function sidebarHidden() {
 }
 function currentSideTab() {
   const v = localStorage.getItem('nl-side-tab')
-  return v === 'outline' || v === 'ai' ? v : 'files'
+  return v === 'outline' ? v : 'files'
 }
 function setSidebar(hidden) {
   localStorage.setItem('nl-sidebar', hidden ? 'hidden' : 'shown')
@@ -466,7 +466,7 @@ function toggleSidebar() {
   setStatus(hidden ? t('status.colHidden', { label: t('col.sidebar') }) : t('status.colShown', { label: t('col.sidebar') }))
 }
 
-// —— 侧栏「文件 / 大纲 / AI」共用一块区域：tab 互斥（Typora 式），tab 态持久化 ——
+// —— 侧栏「文件 / 大纲」共用一块区域：tab 互斥（Typora 式），tab 态持久化 ——
 // 栏内 tab 与栏外常驻图标对（.side-corner）共用同一套引擎，不各存一份状态
 let sideTabs = []
 let sideCorner = []
@@ -480,17 +480,15 @@ function setSideTab(name) {
   }
   if (els.tree) els.tree.classList.toggle('hidden', tab !== 'files')
   if (els.outline) els.outline.classList.toggle('hidden', tab !== 'outline')
-  if (els.aiPanel) els.aiPanel.classList.toggle('hidden', tab !== 'ai')
-  // 搜索框只属于文件页签：大纲有自己的层级树、AI 有自己的输入区，都不要搜索
+  // 搜索框只属于文件页签：大纲有自己的层级树，不要搜索
   const searchBox = document.querySelector('.search-box')
   if (searchBox) searchBox.classList.toggle('hidden', tab !== 'files')
   if (els.searchResults) els.searchResults.classList.toggle('hidden', tab !== 'files')
-  if (tab === 'ai' && aiPanel) aiPanel.focus()
   syncSideCorner()
 }
-// 页签白名单：AI 页（ai）、大纲（outline），其余一律落回文件（files）
+// 页签白名单：大纲（outline），其余一律落回文件（files）。AI 对话在右栏（见 inspTab 组）
 function currentSideTabSafe(name) {
-  return name === 'outline' || name === 'ai' ? name : 'files'
+  return name === 'outline' ? name : 'files'
 }
 function syncSideCorner() {
   const tab = currentSideTab()
@@ -507,14 +505,60 @@ function openSidebarOn(name) {
   setSideTab(tab)
 }
 function bindSideTabs() {
-  sideTabs = [...document.querySelectorAll('.side-tab')]
+  sideTabs = [...document.querySelectorAll('.side-tab[data-tab]')]
   for (const b of sideTabs) b.addEventListener('click', () => setSideTab(b.getAttribute('data-tab')))
   sideCorner = [...document.querySelectorAll('.side-corner-btn[data-tab]')]
-  for (const b of sideCorner) b.addEventListener('click', () => openSidebarOn(b.getAttribute('data-tab')))
+  // corner 图标分流：ai 归右栏页签组（openInspectorOn），其余归左栏（openSidebarOn）
+  for (const b of sideCorner) {
+    b.addEventListener('click', () => {
+      if (b.getAttribute('data-tab') === 'ai') openInspectorOn('ai')
+      else openSidebarOn(b.getAttribute('data-tab'))
+    })
+  }
   const insp = document.getElementById('btn-inspector')
-  if (insp) insp.addEventListener('click', toggleInspector)
+  if (insp) insp.addEventListener('click', () => openInspectorOn('inspector'))
+  inspTabs = [...document.querySelectorAll('.side-tab[data-insp-tab]')]
+  for (const b of inspTabs) b.addEventListener('click', () => setInspTab(b.getAttribute('data-insp-tab')))
   setSideTab(currentSideTab())
+  setInspTab(currentInspTab())
   syncInspector()
+}
+// —— 右栏「检查器 / AI」页签：与左栏同款 side-tab 条，AI 对话面板挪到右栏不再挤窄栏 ——
+// 栏外 sparkle 图标与栏内页签共用 nl-insp-tab 状态；「单独打开」= app.aiPanel 直接落到 AI 页
+let inspTabs = []
+function currentInspTab() {
+  return localStorage.getItem('nl-insp-tab') === 'ai' ? 'ai' : 'inspector'
+}
+function setInspTab(name) {
+  const tab = name === 'ai' ? 'ai' : 'inspector'
+  localStorage.setItem('nl-insp-tab', tab)
+  for (const b of inspTabs) {
+    const on = b.getAttribute('data-insp-tab') === tab
+    b.classList.toggle('active', on)
+    b.setAttribute('aria-selected', on ? 'true' : 'false')
+  }
+  const body = document.getElementById('insp-body')
+  if (body) body.classList.toggle('hidden', tab !== 'inspector')
+  if (els.inspector) els.inspector.classList.toggle('insp-ai', tab === 'ai')
+  if (els.aiPanel) els.aiPanel.classList.toggle('hidden', tab !== 'ai')
+  if (tab === 'ai' && aiPanel) aiPanel.focus()
+  syncInspCorner()
+}
+// 右栏图标的三种落点（与 openSidebarOn 同构）：收起 → 开栏到该页签；开着但在另一页签 → 切过去；正停在该页签 → 收起整栏
+function openInspectorOn(name) {
+  const tab = name === 'ai' ? 'ai' : 'inspector'
+  if (!inspectorHidden() && currentInspTab() === tab) {
+    setInspector(true)
+    return
+  }
+  if (inspectorHidden()) setInspector(false)
+  setInspTab(tab)
+}
+function syncInspCorner() {
+  const tab = currentInspTab()
+  for (const b of sideCorner) {
+    if (b.getAttribute('data-tab') === 'ai') b.classList.toggle('active', !inspectorHidden() && tab === 'ai')
+  }
 }
 // —— 检查器（右栏）：文档属性 / 标签 / 双向链接 / 历史 / Git / 插件；左栏只留文件与大纲 ——
 function inspectorHidden() {
@@ -526,7 +570,8 @@ function syncInspector() {
   const body = document.querySelector('.body')
   if (body) body.classList.toggle('inspector-on', !hidden)
   const btn = document.getElementById('btn-inspector')
-  if (btn) btn.classList.toggle('active', !hidden)
+  if (btn) btn.classList.toggle('active', !hidden && currentInspTab() === 'inspector')
+  syncInspCorner()
 }
 function setInspector(hidden) {
   localStorage.setItem('nl-inspector', hidden ? 'hidden' : 'shown')
@@ -925,17 +970,9 @@ function openSelectionAiInline(taskId, customPrompt, inst) {
   })
 }
 
-/** 侧栏 AI 页签开合：收起→展开并落 AI 页；在别的页→切 AI；正在 AI→收起整栏 */
+/** AI 对话面板开合（右栏 AI 页签）：收起→展开并落 AI 页；右栏在检查器页→切 AI；正在 AI→收起右栏 */
 function toggleAiPanel() {
-  if (sidebarHidden()) {
-    openSidebarOn('ai')
-    return
-  }
-  if (currentSideTab() !== 'ai') {
-    setSideTab('ai')
-    return
-  }
-  setSidebar(true)
+  openInspectorOn('ai')
 }
 
 /** 设置面板的每次改动：主题切换 + 全量 CSS 变量 + 侧栏比例 → 像素，然后落盘 */
