@@ -393,6 +393,7 @@ export default {
   'stats.goal': ' · Ziel {goal} ({pct}%)',
   'col.sidebar': 'Seitenleiste',
   'col.inspector': 'Inspektor',
+  'col.aiPanel': 'KI-Panel',
   'status.colHidden': '{label} eingeklappt',
   'status.colShown': '{label} ausgeklappt',
   'status.colWidth': '{label}-Breite: {n}px',
@@ -1044,7 +1045,7 @@ export default {
 
   // —— KI-Integration (Seitenleisten-Chat / Auswahl-Aufgaben / Einstellungen; ai-panel.js / ai-inline.js / ai-settings.js) ——
   'ui.sideAi': 'KI',
-  'cmd.app.aiPanel': 'KI-Panel',
+  'cmd.app.aiPanel': 'KI-Panel anzeigen',
   'cmd.app.aiSettings': 'KI-Einstellungen',
   'cmd.editor.ai.polish': 'KI: Auswahl überarbeiten',
   'cmd.editor.ai.continue': 'KI: Text fortsetzen',

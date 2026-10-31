@@ -393,6 +393,7 @@ export default {
   'stats.goal': ' · objectif {goal} ({pct} %)',
   'col.sidebar': 'barre latérale',
   'col.inspector': 'inspecteur',
+  'col.aiPanel': 'panneau IA',
   'status.colHidden': '{label} repliée',
   'status.colShown': '{label} dépliée',
   'status.colWidth': 'Largeur de la {label} : {n} px',
@@ -1044,7 +1045,7 @@ export default {
 
   // —— Intégration IA (chat latéral / tâches sur sélection / réglages ; ai-panel.js / ai-inline.js / ai-settings.js) ——
   'ui.sideAi': 'IA',
-  'cmd.app.aiPanel': 'Panneau IA',
+  'cmd.app.aiPanel': 'Afficher le panneau IA',
   'cmd.app.aiSettings': 'Réglages IA',
   'cmd.editor.ai.polish': 'IA : peaufiner la sélection',
   'cmd.editor.ai.continue': 'IA : poursuivre la rédaction',

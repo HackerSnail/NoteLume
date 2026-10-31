@@ -393,6 +393,7 @@ export default {
   'stats.goal': ' · 目标 {goal}（{pct}%）',
   'col.sidebar': '侧栏',
   'col.inspector': '检查器',
+  'col.aiPanel': 'AI 面板',
   'status.colHidden': '{label}：已收起',
   'status.colShown': '{label}：已展开',
   'status.colWidth': '{label} 宽度：{n}px',
@@ -1046,7 +1047,7 @@ export default {
 
   // —— 大模型接入（AI：侧栏对话 / 选区任务 / 设置，ai-panel.js / ai-inline.js / ai-settings.js） ——
   'ui.sideAi': 'AI',
-  'cmd.app.aiPanel': 'AI 面板',
+  'cmd.app.aiPanel': '显示 AI 面板',
   'cmd.app.aiSettings': 'AI 设置',
   'cmd.editor.ai.polish': 'AI：润色选区',
   'cmd.editor.ai.continue': 'AI：续写选区',

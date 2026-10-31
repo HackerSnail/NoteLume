@@ -153,11 +153,7 @@
 
         <div class="nl-gutter" id="gutter-insp" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterInsp" title="拖拽改变检查器宽度"></div>
         <aside class="inspector" id="inspector">
-          <!-- 右栏页签：检查器 / AI 复用同一栏（nl-insp-tab 持久化），AI 对话面板不再挤左栏 -->
-          <div class="side-tabs" role="tablist">
-            <button type="button" class="side-tab" data-insp-tab="inspector" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-sliders" /></svg><span data-i18n="ui.sideInspector">检查器</span></button>
-            <button type="button" class="side-tab" data-insp-tab="ai" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-sparkle" /></svg><span data-i18n="ui.sideAi">AI</span></button>
-          </div>
+          <!-- 右栏两个独立区块：检查器与 AI 面板可各自开合（nl-inspector / nl-ai-open 持久化），同时开时上下堆叠 -->
           <div id="insp-body">
           <details class="panel">
             <summary><h2 data-i18n="panel.docProps">文档属性</h2></summary>
