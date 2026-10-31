@@ -1093,6 +1093,7 @@ export default {
   'ai.skillOn': 'Skill enabled: {name}',
   'ai.skillOff': 'Skill disabled',
   'ai.vaultCtxHead': 'Relevant excerpts retrieved from the knowledge base (possibly incomplete, for reference):',
+  'ai.ctxTip': 'Context usage: ~{pct}% (estimated {tokens} / 32K tokens)',
   'ai.modelsFail': 'Failed to fetch model list: {err}',
   'ai.modelSet': 'Model switched: {name}',
   'ollama.missingBody': 'Ollama (local model runner) was not detected on this machine. Open the website to download and install it? Once installed and running, you can one-click fill the Ollama preset in AI Settings.',

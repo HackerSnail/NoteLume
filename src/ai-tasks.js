@@ -120,6 +120,20 @@ const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim(
 
 export const AI_VAULT_MAX_DOCS = 5
 
+/** 上下文窗口参考值（估算圆环分母）：各家模型 8K~1M 不等，取保守的 32K 作提示基准 */
+export const AI_CTX_WINDOW_TOKENS = 32768
+
+/** 粗估 token 数：CJK 字符 ≈ 1 token/字，其它按 4 字符 ≈ 1 token（中英混合经验值） */
+export function estimateTokens(text) {
+  let cjk = 0
+  let other = 0
+  for (const ch of String(text || '')) {
+    if (ch.charCodeAt(0) > 0x2e80) cjk++
+    else other++
+  }
+  return Math.ceil(cjk + other / 4)
+}
+
 /**
  * 从用户问题里提取检索词：英文/数字词原样取（≥2 字符），中文段滑窗取相邻 2-gram
  * （索引是子串匹配，2-gram 覆盖词中组合）；总量限 12 个防请求爆炸。

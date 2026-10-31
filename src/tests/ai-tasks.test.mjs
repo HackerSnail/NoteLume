@@ -14,6 +14,7 @@ import {
   modelSupportsVision,
   aiQueryTerms,
   buildVaultContext,
+  estimateTokens,
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
 
@@ -175,6 +176,13 @@ t('aiQueryTerms：英文词原样、中文 2-gram、去重限 12', () => {
   assert.ok(terms.includes('总结') || terms.includes('结性'), '中文 2-gram 命中')
   assert.ok(terms.length <= 12)
   assert.deepStrictEqual(aiQueryTerms(''), [])
+})
+
+t('estimateTokens：CJK 按字、ASCII 按四分之一', () => {
+  assert.strictEqual(estimateTokens(''), 0)
+  assert.strictEqual(estimateTokens('abcd'), 1)
+  assert.strictEqual(estimateTokens('中文'), 2)
+  assert.strictEqual(estimateTokens('中a'), 2)
 })
 
 t('buildVaultContext：空命中回空串、截 5 篇封 6000 字符', () => {
