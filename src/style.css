@@ -1976,31 +1976,58 @@ html.nl-dragging * {
   display: flex;
 }
 
-/* 选区浮动工具栏（p5plan §6.4 + AI 排）：贴选区上方，两排放置（高亮 / AI），与查找栏同一绝对定位层 */
+/* 选区浮动工具栏（p5plan §6.4 + AI 排）：贴选区上方，两排放置（高亮 / AI），与查找栏同一绝对定位层。
+   材质走 Apple 式半透层：半透明面板 + backdrop 模糊提饱和，双层柔和阴影 + 顶边一道高光模拟受光；
+   两排之间 hairline 分层，色点 / 文字按钮各自保持一致的节奏。不支持 color-mix / backdrop 时回退实色面板。 */
 .nl-hl-bar {
   display: none;
   position: absolute;
   z-index: 31;
   flex-direction: column;
-  gap: 5px;
-  padding: 5px 7px;
+  padding: 7px 8px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.22),
+    0 2px 8px rgba(0, 0, 0, 0.12);
+}
+@supports ((backdrop-filter: blur(1px)) and (background: color-mix(in srgb, red 50%, blue))) {
+  .nl-hl-bar {
+    background: color-mix(in srgb, var(--bg-panel) 84%, transparent);
+    backdrop-filter: blur(20px) saturate(160%);
+    border-color: color-mix(in srgb, var(--border) 72%, transparent);
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.22),
+      0 2px 8px rgba(0, 0, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .nl-hl-bar {
+    background: var(--bg-panel);
+    backdrop-filter: none;
+    border-color: var(--border);
+  }
 }
 .nl-hl-bar.show {
   display: flex;
 }
-/* 每一排：高亮色块 + 取色 + 清除（第一排）；AI 任务按钮（第二排） */
+/* 每一排：高亮色点 + 取色 + 清除（第一排）；AI 任务按钮（第二排） */
 .nl-hl-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
-/* AI 排：文字按钮排开，任务多时可横向滚动（窄选区里浮条宽度由最长一排撑起） */
+/* 两排之间的 hairline：分层靠一条细线而不是各自加底色 */
+.nl-hl-row + .nl-hl-row {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+/* AI 排：短标签按钮排开；窄选区里浮条宽度由最长一排撑起 */
 .nl-hl-row.nl-hl-ai {
-  gap: 2px;
+  gap: 1px;
   flex-wrap: nowrap;
   overflow-x: auto;
 }
@@ -2009,24 +2036,54 @@ html.nl-dragging * {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  padding: 4px 9px;
+  border: none;
+  border-radius: 7px;
   background: transparent;
   color: var(--fg);
   font-size: 12px;
+  line-height: 1.5;
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color 0.1s ease-out, transform 0.1s ease-out;
 }
 .nl-hl-ai-btn:hover {
   background: var(--hover);
-  border-color: var(--border);
 }
+.nl-hl-ai-btn:active {
+  transform: scale(0.96);
+}
+/* 图标收在次要色里，悬停才点亮 accent——整排不抢正文视觉 */
 .nl-hl-ai-btn .nl-ico {
-  color: var(--accent);
+  color: var(--muted);
   width: 13px;
   height: 13px;
+  transition: color 0.1s ease-out;
 }
+.nl-hl-ai-btn:hover .nl-ico {
+  color: var(--accent);
+}
+/* 清除高亮：ghost 文本按钮，与色点同排不抢戏 */
+.nl-hl-clear {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.1s ease-out, color 0.1s ease-out;
+}
+.nl-hl-clear:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.nl-hl-clear:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* 高亮色点：圆形、无外框，激活用双层 ring（底色间隔 + accent 圈） */
 .nl-hl-swatch {
   width: 22px;
   height: 22px;
@@ -2035,37 +2092,37 @@ html.nl-dragging * {
   align-items: center;
   justify-content: center;
   background: none;
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  border: none;
+  border-radius: 50%;
   cursor: pointer;
 }
-.nl-hl-swatch:hover {
-  border-color: var(--accent);
+.nl-hl-swatch:hover .nl-hl-dot {
+  transform: scale(1.18);
 }
 .nl-hl-swatch.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 2.5px var(--bg-panel), 0 0 0 4px var(--accent);
 }
 .nl-hl-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
   border: 1px solid rgba(0, 0, 0, 0.15);
+  transition: transform 0.1s ease-out;
 }
 .nl-hl-sep {
   flex: none;
   width: 1px;
   align-self: stretch;
-  margin: 2px 1px;
+  margin: 2px 2px;
   background: var(--border);
 }
 .nl-hl-custom {
   flex: none;
-  width: 28px;
-  height: 22px;
+  width: 26px;
+  height: 20px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   background: none;
   cursor: pointer;
 }

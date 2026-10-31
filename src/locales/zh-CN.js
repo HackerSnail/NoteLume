@@ -1078,6 +1078,12 @@ export default {
   'ai.task.translate': '翻译（中英互译）',
   'ai.task.summarize': '摘要',
   'ai.task.custom': '自定义提示词…',
+  // 选区浮窗第二排的短标签：按钮上只放两字，全名进悬停提示（ai.task.*）
+  'ai.taskShort.polish': '润色',
+  'ai.taskShort.continue': '续写',
+  'ai.taskShort.translate': '翻译',
+  'ai.taskShort.summarize': '摘要',
+  'ai.taskShort.custom': '自定义…',
   'ai.customPh': '告诉 AI 对选中的文字做什么…',
   'ai.set.title': 'AI 设置',
   'ai.set.section': 'OpenAI 兼容接口',

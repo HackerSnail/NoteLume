@@ -83,7 +83,7 @@ export function createHighlightToolbar(deps) {
 
     clearBtn = document.createElement('button')
     clearBtn.type = 'button'
-    clearBtn.className = 'nl-ks-btn'
+    clearBtn.className = 'nl-hl-clear'
     clearBtn.textContent = t('hl.clear')
     clearBtn.addEventListener('mousedown', (e) => e.preventDefault())
     clearBtn.addEventListener('click', () => {
@@ -102,8 +102,8 @@ export function createHighlightToolbar(deps) {
         const b = document.createElement('button')
         b.type = 'button'
         b.className = 'nl-hl-ai-btn'
-        b.title = a.label
-        b.setAttribute('aria-label', a.label)
+        b.title = a.title || a.label
+        b.setAttribute('aria-label', a.title || a.label)
         setIcon(b, a.icon || 'sparkle', a.label)
         b.addEventListener('mousedown', (e) => e.preventDefault())
         b.addEventListener('click', () => deps.onAi(a.id))
@@ -152,8 +152,8 @@ export function createHighlightToolbar(deps) {
       aiBtns.forEach((b, i) => {
         const a = acts[i]
         if (!a) return
-        b.title = a.label
-        b.setAttribute('aria-label', a.label)
+        b.title = a.title || a.label
+        b.setAttribute('aria-label', a.title || a.label)
         setIcon(b, a.icon || 'sparkle', a.label)
       })
     }
