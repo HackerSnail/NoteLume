@@ -5208,6 +5208,8 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     openSettings: () => aiSettings.open(),
     getDocContext: aiDocContext,
     getVaultContext: aiVaultContext,
+    // 会话存档落点：有知识库存 <vault>/.notelume-ai/chats/，无库存系统 temp（Rust 兜底）
+    getVaultRootForChat: () => state.vaultRoot,
     insertToDoc: (text) => insertAiMarkdown(editor, text),
     // Agent 模式收尾：锚点协议（自然语言位置）优先——模型回答里 <insert after="…"> 引用的
     // 标题/段落能在文档里找到就直接插到那，找不到回退光标落点并标 missed；

@@ -2485,7 +2485,8 @@ fn git_init(vault_root: String) -> Result<GitRepoInfo, String> {
         git2::Repository::init(&vault_root).map_err(|e| ui_msg!("gitInitFailed", "err" => e))?;
     let gi = Path::new(&vault_root).join(".gitignore");
     if !gi.exists() {
-        fs::write(&gi, ".notelume-backup/\n").map_err(|e| ui_msg!("gitignoreWriteFailed", "err" => e))?;
+        fs::write(&gi, ".notelume-backup/\n.notelume-ai/\n")
+            .map_err(|e| ui_msg!("gitignoreWriteFailed", "err" => e))?;
     }
     Ok(repo_info(&repo))
 }
@@ -3003,6 +3004,55 @@ fn ai_skills_scan() -> Result<Vec<AiSkillInfo>, String> {
     }
     out.sort_by(|a, b| a.source.cmp(&b.source).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(out)
+}
+
+// ===== AI 会话存档：.notelume-ai/chats/<id>.json（有库）/ 系统 temp（无库） =====
+// 前端「开启新对话」归档旧会话、回答完成自动保存；文件名白名单防路径穿越。
+
+const AI_CHAT_DIR_NAME: &str = ".notelume-ai";
+
+fn ai_chat_dir(vault_root: Option<String>) -> Result<std::path::PathBuf, String> {
+    match vault_root {
+        Some(root) if !root.trim().is_empty() => {
+            let p = std::path::PathBuf::from(root.trim());
+            if !p.is_dir() {
+                return Err("vault root missing".into());
+            }
+            Ok(p.join(AI_CHAT_DIR_NAME).join("chats"))
+        }
+        _ => Ok(std::env::temp_dir().join("notelume-ai-chats")),
+    }
+}
+
+fn valid_chat_name(name: &str) -> bool {
+    let n = name.trim();
+    n.ends_with(".json")
+        && n.len() <= 80
+        && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+/// 保存一个会话（JSON 文本整体覆写）
+#[tauri::command]
+fn ai_chat_save(vault_root: Option<String>, name: String, json: String) -> Result<(), String> {
+    if !valid_chat_name(&name) {
+        return Err("bad chat name".into());
+    }
+    let dir = ai_chat_dir(vault_root)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(name.trim()), json).map_err(|e| e.to_string())
+}
+
+/// 读取一个会话；不存在回 None（前端当新会话）
+#[tauri::command]
+fn ai_chat_read(vault_root: Option<String>, name: String) -> Result<Option<String>, String> {
+    if !valid_chat_name(&name) {
+        return Err("bad chat name".into());
+    }
+    let dir = ai_chat_dir(vault_root)?;
+    match std::fs::read_to_string(dir.join(name.trim())) {
+        Ok(s) => Ok(Some(s)),
+        Err(_) => Ok(None),
+    }
 }
 
 /// 用系统默认浏览器打开 URL（只放行 http/https；Ollama 引导下载页等用）
@@ -4456,6 +4506,8 @@ pub fn run() {
             ai::ai_models_list,
             ai::ollama_probe,
             ai_skills_scan,
+            ai_chat_save,
+            ai_chat_read,
             open_url,
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
             take_launch_paths,
