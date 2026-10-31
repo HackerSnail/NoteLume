@@ -9,7 +9,7 @@
 import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
-import { aiChatStream, aiChatCancel, aiChatListen } from './tauri-bridge.js'
+import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan } from './tauri-bridge.js'
 import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages } from './ai-tasks.js'
 
 let reqSeq = 0
@@ -47,6 +47,12 @@ export function createAiPanel(deps) {
   let stopBtn = null
   let optBtn = null // 「AI 优化输入」按钮（流式润色回填）
   let voiceBtn = null // 语音输入按钮（Web Speech API，环境不支持则置灰）
+  let skillBtn = null // 技能按钮（自动探测本机 AI skills，选中后注入对话）
+  let skills = [] // 探测到的技能 [{id,name,description,source,path,content}]
+  let skillsLoaded = false
+  let activeSkillPath = (() => {
+    try { return localStorage.getItem('nl-ai-skill') || '' } catch { return '' }
+  })()
   let modelChip = null
   let emptyHint = null
   let attEl = null // 附件预览条（附图 chip 列表，空时隐藏）
@@ -148,6 +154,11 @@ export function createAiPanel(deps) {
     const messages = []
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) messages.push({ role: 'system', content: ctx })
+    // 选中的本机技能：SKILL.md 指引作 system 消息注入（扫描未完成时视为无技能，毫秒级一般已完成）
+    const skill = skillsLoaded ? skills.find((s) => s.path === activeSkillPath) : null
+    if (skill && skill.content) {
+      messages.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
+    }
     // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
     if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
     messages.push(...history)
@@ -431,27 +442,43 @@ export function createAiPanel(deps) {
     }
   }
 
-  // —— Ask / Agent 模式切换菜单（CodeBuddy 式 pill ▾ 下拉；品牌词不翻译，解释走项悬停提示） ——
+  // —— 输入卡浮层小菜单（模式切换 / 技能共用）：点外 / Esc 关闭，贴底往上弹 ——
 
-  let modeMenuEl = null
-  let modePillEl = null
+  let floatMenuEl = null
+  let floatAnchorEl = null
 
-  function closeModeMenu() {
-    if (modeMenuEl) {
-      modeMenuEl.remove()
-      modeMenuEl = null
+  function closeFloatMenu() {
+    if (floatMenuEl) {
+      floatMenuEl.remove()
+      floatMenuEl = null
+      floatAnchorEl = null
     }
-    document.removeEventListener('click', onDocClick, true)
-    document.removeEventListener('keydown', onMenuEsc, true)
+    document.removeEventListener('click', onFloatDocClick, true)
+    document.removeEventListener('keydown', onFloatEsc, true)
   }
 
-  function onDocClick(e) {
-    if (modeMenuEl && !modeMenuEl.contains(e.target) && !(modePillEl && modePillEl.contains(e.target))) closeModeMenu()
+  function onFloatDocClick(e) {
+    if (floatMenuEl && !floatMenuEl.contains(e.target) && !(floatAnchorEl && floatAnchorEl.contains(e.target))) closeFloatMenu()
   }
 
-  function onMenuEsc(e) {
-    if (e.key === 'Escape') closeModeMenu()
+  function onFloatEsc(e) {
+    if (e.key === 'Escape') closeFloatMenu()
   }
+
+  function openFloatMenu(anchorEl, menu) {
+    closeFloatMenu()
+    const r = anchorEl.getBoundingClientRect()
+    menu.style.left = Math.max(4, r.left) + 'px'
+    menu.style.top = Math.max(4, r.top - 8) + 'px'
+    menu.style.transform = 'translateY(-100%)'
+    document.body.appendChild(menu)
+    floatMenuEl = menu
+    floatAnchorEl = anchorEl
+    document.addEventListener('click', onFloatDocClick, true)
+    document.addEventListener('keydown', onFloatEsc, true)
+  }
+
+  const floatMenuOpenFor = (anchorEl) => floatMenuEl && floatAnchorEl === anchorEl
 
   function buildModeMenu() {
     const wrap = document.createElement('span')
@@ -466,7 +493,7 @@ export function createAiPanel(deps) {
     const syncPill = () => {
       label.textContent = mode === 'ask' ? 'Ask' : 'Agent'
       pill.title = t(mode === 'ask' ? 'ai.modeAskTip' : 'ai.modeAgentTip')
-      pill.setAttribute('aria-expanded', modeMenuEl ? 'true' : 'false')
+      pill.setAttribute('aria-expanded', floatMenuOpenFor(pill) ? 'true' : 'false')
     }
     pill.append(label, chev)
     const openMenu = () => {
@@ -489,32 +516,102 @@ export function createAiPanel(deps) {
             mode = id
             try { localStorage.setItem('nl-ai-mode', id) } catch { /* 存不上就只留会话内 */ }
           }
-          closeModeMenu()
+          closeFloatMenu()
           syncPill()
         })
         return item
       }
       menu.append(mk('ask', 'ai.modeAskTip'), mk('agent', 'ai.modeAgentTip'))
-      // 面板贴底：往上弹
-      const r = pill.getBoundingClientRect()
-      menu.style.left = Math.max(4, r.left) + 'px'
-      menu.style.top = Math.max(4, r.top - 8) + 'px'
-      menu.style.transform = 'translateY(-100%)'
-      document.body.appendChild(menu)
-      modeMenuEl = menu
-      modePillEl = pill
+      openFloatMenu(pill, menu)
       syncPill()
-      document.addEventListener('click', onDocClick, true)
-      document.addEventListener('keydown', onMenuEsc, true)
     }
     pill.addEventListener('click', (e) => {
       e.stopPropagation()
-      if (modeMenuEl) closeModeMenu()
+      if (floatMenuOpenFor(pill)) closeFloatMenu()
       else openMenu()
     })
     syncPill()
     wrap.append(pill)
     return wrap
+  }
+
+  // —— 技能菜单：自动探测本机其它 AI 软件安装的 skills（~/.claude/skills 等），按来源分组 ——
+
+  async function renderSkills(container, force) {
+    container.innerHTML = '<div class="ai-skill-empty">' + t('ai.skillsProbing') + '</div>'
+    if (force || !skillsLoaded) {
+      const r = await aiSkillsScan().catch(() => null)
+      if (Array.isArray(r)) skills = r // 桥接异常/桩环境返回非数组时保留原值，不让 TypeError 断渲染
+      skillsLoaded = true
+    }
+    if (floatMenuEl && !floatMenuEl.contains(container)) return // 菜单已关，丢弃结果
+    container.innerHTML = ''
+    if (!skills.length) {
+      container.innerHTML = '<div class="ai-skill-empty">' + t('ai.skillsEmpty') + '</div>'
+      return
+    }
+    const groups = {}
+    for (const s of skills) (groups[s.source] = groups[s.source] || []).push(s)
+    for (const src of Object.keys(groups)) {
+      const gh = document.createElement('div')
+      gh.className = 'ai-skill-group'
+      gh.textContent = src
+      container.appendChild(gh)
+      for (const s of groups[src]) {
+        const item = document.createElement('button')
+        item.type = 'button'
+        item.className = 'ai-mode-item ai-skill-item' + (activeSkillPath === s.path ? ' active' : '')
+        const mark = document.createElement('span')
+        mark.className = 'ai-mode-mark'
+        if (activeSkillPath === s.path) setIcon(mark, 'check')
+        const txt = document.createElement('span')
+        txt.className = 'ai-skill-txt'
+        const nm = document.createElement('span')
+        nm.className = 'ai-skill-name'
+        nm.textContent = s.name
+        const de = document.createElement('span')
+        de.className = 'ai-skill-desc'
+        de.textContent = s.description
+        txt.append(nm, de)
+        item.append(mark, txt)
+        item.title = s.description || s.name
+        item.addEventListener('click', (e) => {
+          e.stopPropagation()
+          activeSkillPath = activeSkillPath === s.path ? '' : s.path
+          try { localStorage.setItem('nl-ai-skill', activeSkillPath) } catch { /* 存不上只留会话内 */ }
+          if (skillBtn) skillBtn.classList.toggle('active', !!activeSkillPath)
+          closeFloatMenu()
+          setStatus(activeSkillPath ? t('ai.skillOn', { name: s.name }) : t('ai.skillOff'))
+        })
+        container.appendChild(item)
+      }
+    }
+  }
+
+  function buildSkillsMenu() {
+    const menu = document.createElement('div')
+    menu.className = 'ai-mode-menu ai-skill-menu'
+    const head = document.createElement('div')
+    head.className = 'ai-skill-head'
+    const ttl = document.createElement('span')
+    ttl.textContent = t('ai.skills')
+    const refresh = document.createElement('button')
+    refresh.type = 'button'
+    refresh.className = 'ai-icon-btn'
+    refresh.title = t('ai.skillsRefresh')
+    refresh.setAttribute('aria-label', t('ai.skillsRefresh'))
+    setIcon(refresh, 'reload')
+    refresh.addEventListener('click', (e) => {
+      e.stopPropagation()
+      skillsLoaded = false
+      renderSkills(menu.querySelector('.ai-skill-body'), true)
+    })
+    head.append(ttl, refresh)
+    const body = document.createElement('div')
+    body.className = 'ai-skill-body'
+    menu.append(head, body)
+    renderSkills(body, false)
+    return menu
   }
 
   // —— 输入框自适应高度（提示词条完整可见：下限 64px 约两行） ——
@@ -527,7 +624,7 @@ export function createAiPanel(deps) {
   // —— 静态骨架 ——
 
   function buildDom() {
-    closeModeMenu() // 语言切换重建 DOM 时清掉可能挂着的模式菜单
+    closeFloatMenu() // 语言切换重建 DOM 时清掉可能挂着的浮层菜单
     root.innerHTML = ''
     // 显隐归右栏独立开关（syncInspector）管，这里不碰 className——否则切语言会把面板藏掉
 
@@ -628,15 +725,34 @@ export function createAiPanel(deps) {
     setIcon(voiceBtn, 'mic')
     if (!voiceSupported()) voiceBtn.disabled = true // 无语音引擎的环境（如无头/部分 WebView）置灰
     voiceBtn.addEventListener('click', toggleVoice)
+    skillBtn = document.createElement('button')
+    skillBtn.type = 'button'
+    skillBtn.className = 'ai-icon-btn'
+    skillBtn.title = t('ai.skills')
+    skillBtn.setAttribute('aria-label', t('ai.skills'))
+    setIcon(skillBtn, 'box')
+    skillBtn.classList.toggle('active', !!activeSkillPath)
+    skillBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (floatMenuOpenFor(skillBtn)) closeFloatMenu()
+      else openFloatMenu(skillBtn, buildSkillsMenu())
+    })
     const bar = document.createElement('div')
     bar.className = 'ai-composer-bar'
-    bar.append(buildModeMenu(), optBtn, voiceBtn, sendBtn, stopBtn)
+    bar.append(buildModeMenu(), optBtn, voiceBtn, skillBtn, sendBtn, stopBtn)
     composer.append(inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)
+    // 技能无感探测：面板建好就静默扫一次（本地几个目录，毫秒级）
+    aiSkillsScan().then((r) => {
+      if (Array.isArray(r)) skills = r
+      skillsLoaded = true
+    }).catch(() => {
+      skillsLoaded = true
+    })
   }
 
   function mount() {

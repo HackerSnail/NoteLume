@@ -5385,6 +5385,69 @@ html.nl-dragging * {
   width: 12px;
   height: 12px;
 }
+/* 技能菜单：宽一点、内容区可滚；条目两行（名称 + 描述省略），按来源软件分组 */
+.ai-skill-menu {
+  width: 280px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+.ai-skill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ai-skill-body {
+  overflow-y: auto;
+  min-height: 0;
+  padding-top: 2px;
+}
+.ai-skill-group {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 5px 8px 2px;
+}
+.ai-skill-item {
+  align-items: flex-start;
+  padding: 5px 8px;
+}
+.ai-skill-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ai-skill-name {
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-skill-desc {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ai-skill-empty {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 10px 8px;
+  line-height: 1.5;
+}
 /* 附件条：附图 chip / 面板内提示（模型不支持视觉等），空时隐藏 */
 .ai-att {
   display: flex;

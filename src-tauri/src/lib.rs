@@ -2921,9 +2921,107 @@ fn set_mac_menu(app: tauri::AppHandle, spec: MenuSpec) -> Result<(), String> {
     install_app_menu(&app, spec)
 }
 
+// ===== AI 技能（Skills）：自动探测本机其它 AI 软件安装的 SKILL.md，无感纳入对话 =====
+
+/// 技能条目（skill 目录含 SKILL.md；frontmatter 提取 name/description，正文截断注入）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSkillInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// 来源软件（claude / trae / trae-cn）
+    pub source: String,
+    /// SKILL.md 绝对路径（前端选中态持久化键）
+    pub path: String,
+    /// 正文（去 frontmatter；截断注入）
+    pub content: String,
+}
+
+const SKILL_CONTENT_MAX_CHARS: usize = 8000;
+
+/// 解析 SKILL.md：`---` frontmatter 里的 name/description 单行取值 + 其余正文（截断）
+fn parse_skill_md(text: &str) -> (String, String, String) {
+    let mut name = String::new();
+    let mut desc = String::new();
+    let mut body = text.trim_start();
+    if let Some(rest) = body.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            for line in rest[..end].lines() {
+                let line = line.trim();
+                if let Some(v) = line.strip_prefix("name:") {
+                    name = v.trim().trim_matches('"').trim_matches('\'').to_string();
+                } else if let Some(v) = line.strip_prefix("description:") {
+                    desc = v.trim().trim_matches('"').trim_matches('\'').to_string();
+                }
+            }
+            body = &rest[end + 4..];
+        }
+    }
+    (name, desc, body.chars().take(SKILL_CONTENT_MAX_CHARS).collect())
+}
+
+/// 扫描常见 AI 软件的用户级 skills 目录（~/.claude/skills、~/.trae/skills、~/.trae-cn/skills）。
+/// 目录缺失静默跳过（无感探测）；子目录无 SKILL.md 不算技能。
+#[tauri::command]
+fn ai_skills_scan() -> Result<Vec<AiSkillInfo>, String> {
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(std::path::PathBuf::from)
+        .map_err(|_| "home dir not found".to_string())?;
+    let sources: [(&str, &str); 3] = [
+        ("claude", ".claude/skills"),
+        ("trae", ".trae/skills"),
+        ("trae-cn", ".trae-cn/skills"),
+    ];
+    let mut out = Vec::new();
+    for (source, rel) in sources {
+        let rd = match std::fs::read_dir(home.join(rel)) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        let mut dirs: Vec<std::path::PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        dirs.sort();
+        for p in dirs {
+            let md = p.join("SKILL.md");
+            let text = match std::fs::read_to_string(&md) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let id = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let (fm_name, desc, content) = parse_skill_md(&text);
+            let name = if fm_name.is_empty() { id.clone() } else { fm_name };
+            out.push(AiSkillInfo {
+                id,
+                name,
+                description: desc,
+                source: source.to_string(),
+                path: md.to_string_lossy().to_string(),
+                content,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.source.cmp(&b.source).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_skill_md_frontmatter_and_body() {
+        let (name, desc, body) = parse_skill_md("---\nname: 动态图表\ndescription: \"生成 SVG 图表\"\n---\n\n# 用法\n\n第一步。");
+        assert_eq!(name, "动态图表");
+        assert_eq!(desc, "生成 SVG 图表");
+        assert!(body.contains("# 用法") && body.contains("第一步。"));
+        // 无 frontmatter：name/desc 空，全文即正文
+        let (name2, desc2, body2) = parse_skill_md("直接正文");
+        assert!(name2.is_empty() && desc2.is_empty() && body2.contains("直接正文"));
+        // 正文截断到上限
+        let long = "x".repeat(SKILL_CONTENT_MAX_CHARS + 100);
+        assert_eq!(parse_skill_md(&long).2.chars().count(), SKILL_CONTENT_MAX_CHARS);
+    }
 
     // 非 Windows 的远程图下载走系统 curl：用 file:// 起一个本地源，验证真把字节落到了目标路径
     #[cfg(not(windows))]
@@ -4321,9 +4419,10 @@ pub fn run() {
             // 网页剪藏：本地 HTTP 服务（只绑 127.0.0.1，令牌闸门）
             clip_server_apply,
             clip_server_status,
-            // 大模型接入（AI）：流式对话 + 取消
+            // 大模型接入（AI）：流式对话 + 取消；本机 AI 技能自动探测
             ai::ai_chat_stream,
             ai::ai_chat_cancel,
+            ai_skills_scan,
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
             take_launch_paths,
             open_vault_window,
