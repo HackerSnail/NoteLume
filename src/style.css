@@ -29,8 +29,11 @@
   --text-list: #24292e;
   /* 选区高亮预设色（p5plan §6.4）：半透明底，文字保持可读；荧光笔观感 */
   --highlight-yellow: rgba(255, 205, 0, 0.38);
+  --highlight-orange: rgba(255, 145, 0, 0.38);
   --highlight-green: rgba(64, 192, 87, 0.32);
+  --highlight-teal: rgba(0, 191, 188, 0.34);
   --highlight-blue: rgba(51, 154, 240, 0.32);
+  --highlight-violet: rgba(171, 104, 255, 0.32);
   --highlight-pink: rgba(240, 101, 149, 0.32);
 }
 :root[data-theme='dark'] {
@@ -57,8 +60,11 @@
   --text-quote: #7b828d;
   --text-list: #d8dee6;
   --highlight-yellow: rgba(255, 205, 0, 0.26);
+  --highlight-orange: rgba(255, 145, 0, 0.26);
   --highlight-green: rgba(64, 192, 87, 0.26);
+  --highlight-teal: rgba(0, 191, 188, 0.25);
   --highlight-blue: rgba(51, 154, 240, 0.28);
+  --highlight-violet: rgba(171, 104, 255, 0.27);
   --highlight-pink: rgba(240, 101, 149, 0.28);
 }
 /* 吸血鬼主题 = Dracula 官方配色 */
@@ -87,8 +93,11 @@
   --text-list: #f8f8f2;
   /* Dracula 调色板同色系压透明度：与主题整体气质对齐 */
   --highlight-yellow: rgba(241, 250, 140, 0.3);
+  --highlight-orange: rgba(255, 184, 108, 0.3);
   --highlight-green: rgba(80, 250, 123, 0.26);
+  --highlight-teal: rgba(38, 220, 200, 0.26);
   --highlight-blue: rgba(139, 233, 253, 0.28);
+  --highlight-violet: rgba(189, 147, 249, 0.3);
   --highlight-pink: rgba(255, 121, 198, 0.28);
 }
 /* 吸血鬼：Dracula 选中色 */
@@ -3294,7 +3303,7 @@ html.nl-dragging * {
 .ProseMirror a {
   color: var(--text-link);
 }
-/* 选区高亮（p5plan §6.4）：预设四色按 data-color 取 --highlight-* 变量（跟主题换色），
+/* 选区高亮（p5plan §6.4）：预设七色按 data-color 取 --highlight-* 变量（跟主题换色），
    自定义色由 schema toDOM 写的行内背景承载。上下留一点内边距，观感接近荧光笔 */
 .ProseMirror mark.nl-hl {
   border-radius: 2px;
@@ -3303,11 +3312,20 @@ html.nl-dragging * {
 .ProseMirror mark.nl-hl[data-color='yellow'] {
   background-color: var(--highlight-yellow);
 }
+.ProseMirror mark.nl-hl[data-color='orange'] {
+  background-color: var(--highlight-orange);
+}
 .ProseMirror mark.nl-hl[data-color='green'] {
   background-color: var(--highlight-green);
 }
+.ProseMirror mark.nl-hl[data-color='teal'] {
+  background-color: var(--highlight-teal);
+}
 .ProseMirror mark.nl-hl[data-color='blue'] {
   background-color: var(--highlight-blue);
+}
+.ProseMirror mark.nl-hl[data-color='violet'] {
+  background-color: var(--highlight-violet);
 }
 .ProseMirror mark.nl-hl[data-color='pink'] {
   background-color: var(--highlight-pink);

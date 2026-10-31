@@ -391,13 +391,13 @@ const extendedNodes = baseSchema.spec.nodes
     ],
   })
 
-// 选区高亮（p5plan §6.4）：颜色存 attrs——四个预设名走 --highlight-* 变量（跟主题换色），
-// 自定义色是六位 hex，toDOM 直接写行内背景。inclusive: false：在标记边界接着打字不会
+// 选区高亮（p5plan §6.4）：颜色存 attrs——七个预设名（光谱序）走 --highlight-* 变量（跟主题
+// 换色），自定义色是六位 hex，toDOM 直接写行内背景。inclusive: false：在标记边界接着打字不会
 // 把新高亮文字吞进来（Notion 式选区操作，不是连续输入格式）。
 // 用 addBefore('code', …) 而不是 addToEnd：序列化按 rank 顺序包标签，排在 code 之后
 // 会把 <mark> 写进行内代码的反引号里（`<mark>x</mark>` 在反引号内），重载时整段变成
 // 代码文本，高亮丢失还污染内容。排在 code 之前写出来是 <mark>`x`</mark>，能正常回吃。
-export const HL_PRESETS = ['yellow', 'green', 'blue', 'pink']
+export const HL_PRESETS = ['yellow', 'orange', 'green', 'teal', 'blue', 'violet', 'pink']
 
 /** 颜色入站校验：预设名或六位 hex 原样收（hex 转小写），其余回落 yellow */
 export function normalizeHlColor(v) {

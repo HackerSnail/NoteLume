@@ -27,8 +27,8 @@ function firstTextMarks(doc) {
   return out || []
 }
 
-test('预设四色与颜色归一：预设名 / 六位 hex 收（hex 转小写），垃圾值回落 yellow', () => {
-  assert.deepStrictEqual(HL_PRESETS, ['yellow', 'green', 'blue', 'pink'])
+test('预设七色与颜色归一：预设名 / 六位 hex 收（hex 转小写），垃圾值回落 yellow', () => {
+  assert.deepStrictEqual(HL_PRESETS, ['yellow', 'orange', 'green', 'teal', 'blue', 'violet', 'pink'])
   assert.strictEqual(normalizeHlColor('green'), 'green')
   assert.strictEqual(normalizeHlColor('#AbCdEf'), '#abcdef')
   assert.strictEqual(normalizeHlColor('#abc'), 'yellow') // 三位 hex 不要
