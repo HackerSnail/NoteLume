@@ -1657,7 +1657,11 @@ function placeMenu(menu, clientX, clientY) {
   // 原生菜单有的关闭行为这里补齐：点外面、Esc、滚轮、改窗口大小
   const onDocDown = (e) => { if (treeMenuEl === menu && !menu.contains(e.target)) closeTreeMenu() }
   const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTreeMenu() } }
-  const onDismiss = () => closeTreeMenu()
+  const onDismiss = (e) => {
+    // 菜单自身出滚动条后，在菜单里的滚轮是滚动不是「外面滚了」——不能把菜单关掉
+    if (e && e.type === 'wheel' && e.target && menu.contains(e.target)) return
+    closeTreeMenu()
+  }
   document.addEventListener('mousedown', onDocDown, true)
   window.addEventListener('keydown', onKey, true)
   window.addEventListener('wheel', onDismiss, true)

@@ -2382,6 +2382,10 @@ html.nl-dragging * {
   position: fixed;
   z-index: 40;
   min-width: 132px;
+  /* 菜单比窗口还长时（「更多」菜单 20 多项）就地出滚动条，不再整块溢出屏幕底部、底下的项点不到 */
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cv-menu-item {
   display: flex;

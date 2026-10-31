@@ -29,6 +29,8 @@
 
 * **AI 面板挪到右栏，与检查器页签复用同一栏**：AI 对话从左栏第三个页签迁出——左栏只留「文件 · 大纲」，右栏检查器顶部加页签头（检查器 / AI 两条，`data-insp-tab`，`nl-insp-tab` 持久化互斥），检查器 details 组包进 `#insp-body` 独立滚动（`.inspector` 改 flex 列布局，滚动从整栏下沉到内容区，AI 页签时由面板消息区自滚）；corner 的 sparkle 图标改归右栏页签组（右栏没开先开、开在检查器页签就切到 AI、已在 AI 则收起右栏），命令 `app.aiPanel` 同走 `openInspectorOn('ai')`。顺带修 AI 面板头部两处挤压：标题「AI AI」重复渲染（`setIcon` 第三参已带文本又 `appendChild` 一次）与切语言重建 DOM 时强设 `hidden` 把显示中的面板藏掉；设置 / 清空 / 发送三个定宽图标钮改纯图标（`setIcon` 第三参是可见文案，传进 22px 钮里被压成竖排字，悬停提示与 aria-label 保留），选区结果浮层同款修复（标题重复渲染两遍 + 关闭钮挤字）；`.ai-head` 不折行、模型名超宽走省略号，空态提示加呼吸留白。无头 CDP 验证 16 项全过（原 9 项 + 右栏页签结构 / 默认检查器页签 / corner 唤起 / 标题唯一 / 控件齐全 / 图标钮无可见文字 / 双向互斥切回）。
 
+* **修复「更多」菜单长过窗口时底部项点不到**：工具条「更多」下拉 20 多项（AI 面板搬右栏后又加了 Quarkdown / Git 等条目），菜单没有高度上限，`placeMenu` 的防溢出只会把菜单往上挪，高过窗口时底部照样整块伸出屏幕外。`.tree-menu` 限高 `calc(100vh - 12px)` 出滚动条（`overscroll-behavior: contain` 防滚穿到页面）；`placeMenu` 的滚轮关闭监听豁免菜单内部滚动——原先在菜单里滚一下就等于「外面滚了」，菜单直接被关掉，滚动条根本用不了。所有走 `placeMenu` 的下拉（最近打开 / 导出子菜单 / Git / 语言 / 段落）一并受益。无头 CDP 验证 18 项全过（新增限高滚动可达底部、菜单内滚轮不关菜单两条）。
+
 * **修复打印排版弹窗没有标题**：`src/print-options-dialog.js` 的 `printOptionsDialog()` 建好 `h`（`nl-prompt-title`，文案 `dlg.printTitle`）后没有 `appendChild`，四个复选项上面空一块、弹窗没有名字。打包版录屏时肉眼核对到，补一行挂载。
 
 * **修复 mac 打包版 ⌘P 有时退回没有分页的普通打印**：此前 mac 上勾完四个选项点确定，面板里仍是没分页的屏幕界面，按 `previewer.preview()` 永不返回定位。在打包版里给排版链路挂上页面盒计数与两种帧源计数器后读数推翻了这个判断：同一篇 README 前台跑 12.7 秒排出 19 个页面盒、系统面板正常出 21 页分页预览；窗口被打印面板压住的那趟同样代码 65 秒只排到 12 个盒，`PREVIEW_TIMEOUT_MS` 到点按排版失败退回普通打印。真实机制是 Paged.js 的排版队列挂在 `requestAnimationFrame` 上，而 WKWebView 在失焦 / 被遮挡时几秒才补一帧（同一时刻挂在 `setTimeout` 上的计数器也只走 10 次，把帧源换成定时器救不了），所以按固定秒数砍总耗时会把还在慢慢出页的排版误判成失败。改成按进度判定：`src/print-paged.js` 的 `waitWhileProgressing()` 每秒看一次 `.pagedjs_page` 计数，只要还在涨就续命，连续 `PREVIEW_STALL_MS`（20 秒）没有新增页面盒才按排版失败处理、由调用方退回普通打印。mac 预分页保留，排版选项窗两端都用。
