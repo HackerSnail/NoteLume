@@ -5311,9 +5311,6 @@ html.nl-dragging * {
   gap: 6px;
   margin-top: 2px;
 }
-.ai-composer-bar .ai-send {
-  margin-left: auto;
-}
 /* Ask / Agent 切换菜单：CodeBuddy 式 pill ▾（品牌词不翻译），菜单卡往上弹 */
 .ai-mode-pill {
   display: inline-flex;
@@ -5560,6 +5557,57 @@ html.nl-dragging * {
   font-size: 10px;
 }
 
+.ai-composer-bar .ai-model-pill {
+  margin-left: auto;
+}
+/* 底行模型选择器：多模型 pill+▾ 可切换，单模型只显示名称；宽不够时名称省略 */
+.ai-model-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 150px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.ai-model-pill:hover {
+  background: var(--hover);
+}
+.ai-model-pill .ai-model-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-model-pill .ai-model-chev {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+}
+.ai-model-pill .ai-model-chev .nl-ico {
+  width: 12px;
+  height: 12px;
+}
+.ai-model-pill .ai-model-chev.hidden {
+  display: none;
+}
+.ai-model-pill.off {
+  color: var(--muted);
+}
+.ai-model-menu {
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+}
 /* 语音 / 优化按钮工作态：accent 点亮（录音中 / 流式回填中） */
 .ai-icon-btn.active {
   color: var(--accent);

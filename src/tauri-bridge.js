@@ -561,3 +561,18 @@ export function aiChatListen(handler) {
 export function aiSkillsScan() {
   return invoke('ai_skills_scan', {})
 }
+
+/** 拉取 OpenAI 兼容服务的模型列表（GET /models）：string[]（按名称升序） */
+export function aiModelsList(baseUrl, apiKey) {
+  return invoke('ai_models_list', { baseUrl, apiKey: apiKey || null })
+}
+
+/** 探测本机 Ollama（127.0.0.1:11434）：true = 已安装并运行 */
+export function ollamaProbe() {
+  return invoke('ollama_probe', {})
+}
+
+/** 用系统默认浏览器打开 http(s) 链接 */
+export function openUrl(url) {
+  return invoke('open_url', { url })
+}

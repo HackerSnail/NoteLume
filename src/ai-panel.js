@@ -9,7 +9,7 @@
 import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
-import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan } from './tauri-bridge.js'
+import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList } from './tauri-bridge.js'
 import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages } from './ai-tasks.js'
 
 let reqSeq = 0
@@ -37,7 +37,7 @@ let mode = (() => {
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, insertToDoc, appendToDoc, setStatus } = deps
+  const { root, getConfig, openSettings, getDocContext, insertToDoc, appendToDoc, persistModel, setStatus } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -53,7 +53,8 @@ export function createAiPanel(deps) {
   let activeSkillPath = (() => {
     try { return localStorage.getItem('nl-ai-skill') || '' } catch { return '' }
   })()
-  let modelChip = null
+  let modelPill = null // 底行模型选择器：多模型可下拉切换，单模型/未拉到列表只显示名称
+  let modelsCache = { key: '', items: [] } // /models 拉取缓存（key = baseUrl）
   let emptyHint = null
   let attEl = null // 附件预览条（附图 chip 列表，空时隐藏）
   let attachments = [] // 待发送图片 [{ dataUrl, name }]，随消息一起发出后清空
@@ -106,8 +107,61 @@ export function createAiPanel(deps) {
   function syncModelChip() {
     const cfg = getConfig()
     const on = aiConfigured(cfg)
-    modelChip.textContent = on ? cfg.model : t('ai.notConfigured')
-    modelChip.classList.toggle('off', !on)
+    if (!modelPill) return
+    modelPill.classList.toggle('off', !on)
+    const label = modelPill.querySelector('.ai-model-label')
+    if (label) label.textContent = on ? cfg.model : t('ai.notConfigured')
+    const multi = modelsCache.key === cfg.baseUrl && modelsCache.items.length > 1
+    const chev = modelPill.querySelector('.ai-model-chev')
+    if (chev) chev.classList.toggle('hidden', !multi)
+  }
+
+  /** 模型选择菜单：首次点击拉 /models（按 baseUrl 缓存）；≤1 个模型不出菜单 */
+  async function toggleModelsMenu() {
+    if (floatMenuOpenFor(modelPill)) {
+      closeFloatMenu()
+      return
+    }
+    const cfg = getConfig()
+    if (!aiConfigured(cfg)) {
+      setStatus(t('ai.needConfig'))
+      openSettings()
+      return
+    }
+    if (modelsCache.key !== cfg.baseUrl) {
+      try {
+        const r = await aiModelsList(cfg.baseUrl, cfg.apiKey)
+        modelsCache = { key: cfg.baseUrl, items: Array.isArray(r) ? r : [] }
+      } catch (e) {
+        setStatus(t('ai.modelsFail', { err: (e && e.message) || String(e) }))
+        return
+      }
+    }
+    syncModelChip()
+    if (modelsCache.items.length <= 1) return // 单模型：只显示名称，无可切
+    const menu = document.createElement('div')
+    menu.className = 'ai-mode-menu ai-model-menu'
+    for (const id of modelsCache.items) {
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'ai-mode-item' + (id === cfg.model ? ' active' : '')
+      const mark = document.createElement('span')
+      mark.className = 'ai-mode-mark'
+      if (id === cfg.model) setIcon(mark, 'check')
+      const name = document.createElement('span')
+      name.textContent = id
+      item.append(mark, name)
+      item.title = id
+      item.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (typeof persistModel === 'function') persistModel(id)
+        closeFloatMenu()
+        syncModelChip()
+        setStatus(t('ai.modelSet', { name: id }))
+      })
+      menu.appendChild(item)
+    }
+    openFloatMenu(modelPill, menu)
   }
 
   // —— 发送 / 接收 ——
@@ -633,8 +687,6 @@ export function createAiPanel(deps) {
     const title = document.createElement('span')
     title.className = 'ai-head-title'
     setIcon(title, 'sparkle', t('ai.title'))
-    modelChip = document.createElement('span')
-    modelChip.className = 'ai-model-chip'
     const gear = document.createElement('button')
     gear.type = 'button'
     gear.className = 'ai-icon-btn'
@@ -659,7 +711,7 @@ export function createAiPanel(deps) {
       history = []
       renderHistory()
     })
-    head.append(title, modelChip, gear, clear)
+    head.append(title, gear, clear)
 
     msgsEl = document.createElement('div')
     msgsEl.className = 'ai-msgs'
@@ -739,7 +791,21 @@ export function createAiPanel(deps) {
     })
     const bar = document.createElement('div')
     bar.className = 'ai-composer-bar'
-    bar.append(buildModeMenu(), optBtn, voiceBtn, skillBtn, sendBtn, stopBtn)
+    // 底行模型选择器（红框样式）：多模型 pill+▾ 可切换，单模型只显示名称
+    modelPill = document.createElement('button')
+    modelPill.type = 'button'
+    modelPill.className = 'ai-model-pill'
+    const mLabel = document.createElement('span')
+    mLabel.className = 'ai-model-label'
+    const mChev = document.createElement('span')
+    mChev.className = 'ai-model-chev'
+    setIcon(mChev, 'chevron-down')
+    modelPill.append(mLabel, mChev)
+    modelPill.addEventListener('click', (e) => {
+      e.stopPropagation()
+      toggleModelsMenu()
+    })
+    bar.append(buildModeMenu(), optBtn, voiceBtn, skillBtn, modelPill, sendBtn, stopBtn)
     composer.append(inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)

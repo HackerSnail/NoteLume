@@ -3005,6 +3005,37 @@ fn ai_skills_scan() -> Result<Vec<AiSkillInfo>, String> {
     Ok(out)
 }
 
+/// 用系统默认浏览器打开 URL（只放行 http/https；Ollama 引导下载页等用）
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let u = url.trim();
+    if !u.starts_with("http://") && !u.starts_with("https://") {
+        return Err("only http(s) urls are allowed".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", u])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(u)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(u)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4419,10 +4450,13 @@ pub fn run() {
             // 网页剪藏：本地 HTTP 服务（只绑 127.0.0.1，令牌闸门）
             clip_server_apply,
             clip_server_status,
-            // 大模型接入（AI）：流式对话 + 取消；本机 AI 技能自动探测
+            // 大模型接入（AI）：流式对话 + 取消；模型列表 / Ollama 探测 / 本机技能自动探测
             ai::ai_chat_stream,
             ai::ai_chat_cancel,
+            ai::ai_models_list,
+            ai::ollama_probe,
             ai_skills_scan,
+            open_url,
             // P5 §6.6：启动参数（双击 / 命令行打开的文件或目录）
             take_launch_paths,
             open_vault_window,

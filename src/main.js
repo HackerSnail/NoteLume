@@ -23,6 +23,8 @@ import {
   importVaultFileFrom,
   probeExternalDrop,
   revealInFolder,
+  openUrl,
+  ollamaProbe,
   confirmDialog,
   messageDialog,
   rebuildIndex,
@@ -4913,6 +4915,20 @@ async function boot() {
   applyStaticDom(document)
   // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
   if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
+  // —— Ollama 首启探测（主窗口只做一次）：没装则问一次是否打开下载页；拒绝就记住，
+  // 之后不再主动打扰，等用户在 AI 设置里主动选 Ollama 时再提示一次 ——
+  if (IS_PRIMARY_WINDOW && window.__TAURI_INTERNALS__ && !localStorage.getItem('nl-ollama-probed')) {
+    localStorage.setItem('nl-ollama-probed', '1')
+    ollamaProbe().then(async (ok) => {
+      if (ok) return
+      const yes = await confirmDialog(t('ollama.missingBody'), t('ollama.installBtn'))
+      if (yes) {
+        openUrl('https://ollama.com/download').catch(() => {})
+      } else {
+        localStorage.setItem('nl-ollama-skip', '1')
+      }
+    }).catch(() => {})
+  }
   // 应用设置（settings.json）：先读回再装配界面。外观状态（主题 / 颜色 / 字体 /
   // 字号 / 行高 / 自动换行 / 侧栏比例）恢复到上次保存的样子；文件不存在或损坏
   // 时（load 内部静默处理）normalizeAppearance 给代码里的默认值。
@@ -5193,6 +5209,8 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
       insertAiMarkdown(editor, text, inBlock ? { caret: $head.after(1) } : {})
       return { ok: true, where: missed ? anchor.target : undefined, missed }
     },
+    // 底行模型选择器切模型：写回 settings.json 的 ai 段
+    persistModel: (name) => persistAi({ ...currentAi(), model: String(name || '').trim().slice(0, 120) }),
     setStatus,
   })
   // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到

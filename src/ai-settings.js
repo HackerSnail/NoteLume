@@ -7,6 +7,7 @@
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
 import { normalizeAiConfig, AI_PRESETS } from './ai-tasks.js'
+import { ollamaProbe, openUrl, confirmDialog } from './tauri-bridge.js'
 
 /**
  * 「AI 设置」面板。
@@ -76,7 +77,20 @@ export function createAiSettings(deps) {
       b.type = 'button'
       b.className = 'nl-ks-btn'
       b.textContent = t('ai.set.preset.' + p.id)
-      b.addEventListener('click', () => {
+      b.addEventListener('click', async () => {
+        // 选 Ollama 预设且此前拒绝过安装：再探一次并提示（刚装好的用户探测通过就不再烦）
+        if (p.id === 'ollama' && localStorage.getItem('nl-ollama-skip') === '1') {
+          localStorage.removeItem('nl-ollama-skip')
+          let ok = false
+          try { ok = await ollamaProbe() } catch { ok = false }
+          if (!ok) {
+            const yes = await confirmDialog(t('ollama.retryBody'), t('ollama.installBtn'))
+            if (yes) {
+              openUrl('https://ollama.com/download').catch(() => {})
+              return
+            }
+          }
+        }
         draft.baseUrl = p.baseUrl
         draft.model = p.model
         render()
