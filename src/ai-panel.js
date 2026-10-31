@@ -1000,8 +1000,8 @@ export function createAiPanel(deps) {
     ringSvg.append(ringBg, ringArc)
     ctxRing.circle = ringArc
     ctxRing.el.appendChild(ringSvg)
-    // 整体排布对齐参考样式：左组（模式 · 优化 · 技能 · 模型）+ 右组（语音 · 圆环 · 发送/停止）
-    bar.append(buildModeMenu(), optBtn, skillBtn, modelPill, voiceBtn, ctxRing.el, sendBtn, stopBtn)
+    // 整体排布：左组（模式 · 技能 · 模型）+ 右组（用量圆环 · 优化 · 语音 · 发送/停止）
+    bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, optBtn, voiceBtn, sendBtn, stopBtn)
     composer.append(skillChips, inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)
