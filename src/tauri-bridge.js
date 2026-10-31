@@ -556,3 +556,8 @@ export function aiChatListen(handler) {
   if (!window.__TAURI_INTERNALS__) return Promise.resolve(() => {})
   return listen('nl:ai-event', (e) => handler(e.payload))
 }
+
+/** 扫描本机其它 AI 软件安装的技能（~/.claude/skills 等）：[{id,name,description,source,path,content}] */
+export function aiSkillsScan() {
+  return invoke('ai_skills_scan', {})
+}
