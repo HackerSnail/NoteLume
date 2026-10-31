@@ -342,9 +342,9 @@ fn include_package(ev: &mut Evaluator, reference: &str, sandbox: &str) -> Result
     eval_source(ev, &text, Some(pkg), sandbox, ".include")
 }
 
-/// atom.toml 最小解析：只取 [atom] 表里的 entrypoint（带引号或不带引号都吃）。
-/// Kotlin 的 PackageManifest 是完整 TOML，本引擎只需要这一个字段。
-pub fn parse_atom_entrypoint(text: &str) -> Result<String, String> {
+/// atom.toml 最小解析：只取 [atom] 表里的单个字符串字段（带引号或不带引号都吃）。
+/// Kotlin 的 PackageManifest 是完整 TOML，本引擎只需要 entrypoint / version 两个字段。
+fn atom_field(text: &str, field: &str, err_empty: &str, err_missing: &str) -> Result<String, String> {
     let mut in_atom = false;
     for line in text.lines() {
         let t = line.trim();
@@ -356,16 +356,26 @@ pub fn parse_atom_entrypoint(text: &str) -> Result<String, String> {
             continue;
         }
         if let Some((k, v)) = t.split_once('=') {
-            if k.trim() == "entrypoint" {
+            if k.trim() == field {
                 let v = v.trim().trim_matches('"').trim_matches('\'').trim();
                 if v.is_empty() {
-                    return Err("atom.toml 的 entrypoint 为空".to_string());
+                    return Err(err_empty.to_string());
                 }
                 return Ok(v.to_string());
             }
         }
     }
-    Err("atom.toml 缺 entrypoint 字段".to_string())
+    Err(err_missing.to_string())
+}
+
+/// atom.toml → [atom] entrypoint（包入口文件名）
+pub fn parse_atom_entrypoint(text: &str) -> Result<String, String> {
+    atom_field(text, "entrypoint", "atom.toml 的 entrypoint 为空", "atom.toml 缺 entrypoint 字段")
+}
+
+/// atom.toml → [atom] version（lib.rs 的包安装用它建缓存目录，include 侧按它解析）
+pub fn parse_atom_version(text: &str) -> Result<String, String> {
+    atom_field(text, "version", "atom.toml 的 version 为空", "atom.toml 缺 version 字段")
 }
 
 /// 扫 AST 收集 .function 定义名（libfunctions 对 .qd 库的函数清单）
