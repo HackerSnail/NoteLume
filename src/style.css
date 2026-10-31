@@ -674,11 +674,16 @@ body {
   padding: 10px;
   flex-shrink: 0;
 }
-/* 检查器页签的内容滚动区：details 组整体在这里滚；AI 页签时整块隐藏，由 AI 面板自滚 */
+/* 检查器区块滚动区：details 组整体在这里滚；只开 AI 时整块隐藏，右栏由 AI 面板独占 */
 #insp-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+/* 两区块同时开：上下各半，AI 面板顶一条 hairline 分界 */
+.inspector.duo #ai-panel {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
 }
 .body.inspector-on .side-corner {
   right: calc(var(--nl-insp-w, 280px) + 10px);
@@ -5031,7 +5036,7 @@ html.nl-dragging * {
 
 /* ==================== AI（侧栏对话 + 选区浮层） ==================== */
 
-/* —— AI 对话面板：挂在右栏（与检查器页签复用同一栏），填满页签条以下的空间 —— */
+/* —— AI 对话面板：右栏独立区块（可与检查器同时显示），填满所在区域 —— */
 #ai-panel.ai-panel {
   flex: 1;
   min-height: 0;

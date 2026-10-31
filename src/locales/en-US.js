@@ -394,6 +394,7 @@ export default {
   'stats.goal': ' · goal {goal} ({pct}%)',
   'col.sidebar': 'sidebar',
   'col.inspector': 'inspector',
+  'col.aiPanel': 'AI panel',
   'status.colHidden': '{label} collapsed',
   'status.colShown': '{label} expanded',
   'status.colWidth': '{label} width: {n}px',
@@ -1046,7 +1047,7 @@ export default {
 
   // —— AI integration (sidebar chat / selection tasks / settings; ai-panel.js / ai-inline.js / ai-settings.js) ——
   'ui.sideAi': 'AI',
-  'cmd.app.aiPanel': 'AI Panel',
+  'cmd.app.aiPanel': 'Show AI Panel',
   'cmd.app.aiSettings': 'AI Settings',
   'cmd.editor.ai.polish': 'AI: Polish Selection',
   'cmd.editor.ai.continue': 'AI: Continue Writing',
