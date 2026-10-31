@@ -112,7 +112,7 @@ import {
   THEME_ICON,
 } from './appearance-settings.js'
 import { createClipSettings, normalizeClip } from './clip-settings.js'
-import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS } from './ai-tasks.js'
+import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS, resolveAnchorPos } from './ai-tasks.js'
 import { createAiSettings } from './ai-settings.js'
 import { createAiPanel } from './ai-panel.js'
 import { openAiInline } from './ai-inline.js'
@@ -5168,21 +5168,30 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     openSettings: () => aiSettings.open(),
     getDocContext: aiDocContext,
     insertToDoc: (text) => insertAiMarkdown(editor, text),
-    // Agent 模式收尾：智能落点——光标不是停在文档开头（用户动过编辑器）就插到光标处，
-    // 写到哪补到哪；光标在标题 / 代码块里时不往块里塞，插到该块之后；没动过编辑器才退回文档末尾
-    appendToDoc: (text) => {
+    // Agent 模式收尾：锚点协议（自然语言位置）优先——模型回答里 <insert after="…"> 引用的
+    // 标题/段落能在文档里找到就直接插到那，找不到回退光标落点并标 missed；
+    // 无锚点时按光标智能落位（写到哪补到哪），光标在标题/代码块里插到该块之后，没动过编辑器才落文末
+    appendToDoc: (text, anchor) => {
       if (!editor || !editor.view) return false
       const view = editor.view
+      const missed = !!(anchor && anchor.target)
+      if (anchor && anchor.target) {
+        const pos = resolveAnchorPos(view.state.doc, anchor)
+        if (pos != null) {
+          insertAiMarkdown(editor, text, { caret: pos })
+          return { ok: true, where: anchor.target, missed: false }
+        }
+      }
       const { selection } = view.state
       const atOrigin = selection.head === 0 && selection.anchor === 0
       if (atOrigin) {
         insertAiMarkdown(editor, text, { caret: view.state.doc.content.size })
-        return true
+        return { ok: true, where: missed ? anchor.target : undefined, missed }
       }
       const $head = selection.$head
       const inBlock = $head.parent.type.name === 'heading' || $head.parent.type.name === 'code_block'
       insertAiMarkdown(editor, text, inBlock ? { caret: $head.after(1) } : {})
-      return true
+      return { ok: true, where: missed ? anchor.target : undefined, missed }
     },
     setStatus,
   })

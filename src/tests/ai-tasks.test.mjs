@@ -9,7 +9,11 @@ import {
   normalizeAiConfig,
   aiConfigured,
   AI_PRESETS,
+  parseAgentReply,
+  resolveAnchorPos,
+  modelSupportsVision,
 } from '../ai-tasks.js'
+import { mdParser } from '../editor-schema.js'
 
 let pass = 0
 let fail = 0
@@ -107,6 +111,59 @@ t('AI_PRESETS：五条，baseUrl 无尾斜杠且含版本段', () => {
   for (const p of AI_PRESETS) {
     assert.ok(p.baseUrl && p.model)
     assert.ok(!p.baseUrl.endsWith('/'), p.id + ' baseUrl 不应以 / 结尾')
+  }
+})
+
+// —— Agent 锚点协议：parseAgentReply / resolveAnchorPos ——
+
+t('parseAgentReply：无标记时只走 stripFences', () => {
+  const r = parseAgentReply('```md\n## 结论\n\n正文\n```')
+  assert.strictEqual(r.anchor, null)
+  assert.ok(r.body.includes('正文'))
+})
+
+t('parseAgentReply：after 标记 + 闭合标签剥干净', () => {
+  const r = parseAgentReply('<insert after="引言">\n\n## 补充\n\n一段说明文字。\n\n</insert>')
+  assert.deepStrictEqual(r.anchor, { dir: 'after', target: '引言' })
+  assert.strictEqual(r.body, '## 补充\n\n一段说明文字。')
+})
+
+t('parseAgentReply：before 标记无闭合也认，标记前的客套全剥', () => {
+  const r = parseAgentReply('好的，下面是要插入的内容：\n<insert before="结论">\n内容本体')
+  assert.deepStrictEqual(r.anchor, { dir: 'before', target: '结论' })
+  assert.strictEqual(r.body, '内容本体')
+})
+
+t('resolveAnchorPos：标题命中，after 在标题块之后、before 在标题块之前', () => {
+  const doc = mdParser.parse('# 引言\n\n开头一段。\n\n## 结论\n\n收尾。')
+  const after = resolveAnchorPos(doc, { dir: 'after', target: '引言' })
+  const before = resolveAnchorPos(doc, { dir: 'before', target: '结论' })
+  assert.ok(after != null && before != null)
+  assert.ok(after > 1 && after < before, '引言之后应落在结论之前')
+  // before「结论」= 其标题块起点，正好是 after「开头一段。」段落的末尾位置
+  const para = resolveAnchorPos(doc, { dir: 'after', target: '开头一段' })
+  assert.strictEqual(before, para)
+})
+
+t('resolveAnchorPos：正文段落前缀命中、大小写与空白不敏感', () => {
+  const doc = mdParser.parse('# T\n\nThe Quick  Brown Fox\n\n尾段。')
+  const pos = resolveAnchorPos(doc, { dir: 'after', target: 'the quick brown' })
+  assert.ok(pos != null && pos > 3)
+})
+
+t('resolveAnchorPos：找不到回 null', () => {
+  const doc = mdParser.parse('# 引言\n\n正文。')
+  assert.strictEqual(resolveAnchorPos(doc, { dir: 'after', target: '不存在的段落' }), null)
+  assert.strictEqual(resolveAnchorPos(doc, null), null)
+  assert.strictEqual(resolveAnchorPos(doc, { dir: 'after', target: '  ' }), null)
+})
+
+t('modelSupportsVision：已知视觉模型放行，纯文本/空名拦下', () => {
+  for (const yes of ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'o3-mini', 'claude-3-5-sonnet', 'claude-sonnet-4', 'gemini-2.0-flash', 'qwen2.5-vl-72b', 'qwen-vl-max', 'glm-4v', 'glm-4.5v', 'doubao-seed-1.6', 'moonshot-v1-8k-vision', 'llava:13b', 'grok-4']) {
+    assert.strictEqual(modelSupportsVision(yes), true, yes + ' 应视为支持视觉')
+  }
+  for (const no of ['', 'deepseek-chat', 'deepseek-r1', 'glm-4', 'kimi-k2', 'llama3.1', 'qwen2.5-72b-instruct', 'grok-3']) {
+    assert.strictEqual(modelSupportsVision(no), false, no + ' 应视为纯文本')
   }
 })
 

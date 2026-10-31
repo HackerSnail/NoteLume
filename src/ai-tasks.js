@@ -97,3 +97,69 @@ export const AI_PRESETS = [
   { id: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   { id: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: 'llama3.1' },
 ]
+
+// —— Agent 模式：回答落点协议（自然语言锚点） ——
+
+/**
+ * Agent 回答落点协议：模型在内容开头放 <insert after="位置"> 或 <insert before="位置">，
+ * 「位置」引用文档中已有的标题或段落原文；正文跟在标记后（闭合 </insert> 可省）。
+ * 标记前的文字一律视为客套引导剥掉。无标记时 anchor 为 null，body 走 stripFences。
+ */
+export function parseAgentReply(raw) {
+  const s = String(raw || '')
+  const m = s.match(/<insert\s+(after|before)="([^"]{1,120})"\s*>/i)
+  if (!m) return { anchor: null, body: stripFences(s) }
+  let body = s.slice(m.index + m[0].length)
+  body = body.replace(/<\/insert>\s*$/i, '')
+  return { anchor: { dir: m[1].toLowerCase(), target: m[2].trim() }, body: stripFences(body) }
+}
+
+const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+/**
+ * 在文档顶层块里解析锚点 → 插入位置（ProseMirror pos）。doc 由调用方给（前端视图 / 测试里 mdParser 造）。
+ * 标题优先（全等 / 互相包含即中），其次按段落等文本块的前缀匹配；找不到回 null（调用方回退光标落点）。
+ */
+export function resolveAnchorPos(doc, anchor) {
+  if (!doc || !anchor || typeof anchor.target !== 'string') return null
+  const target = normText(anchor.target)
+  if (!target) return null
+  let headingHit = null
+  let textHit = null
+  doc.forEach((node, offset) => {
+    if (headingHit) return
+    const text = normText(node.textContent)
+    if (!text) return
+    if (node.type && node.type.name === 'heading') {
+      if (!headingHit && (text === target || text.includes(target) || target.includes(text))) headingHit = { offset, node }
+      return
+    }
+    if (!textHit && (text.startsWith(target) || target.startsWith(text.slice(0, 40)))) textHit = { offset, node }
+  })
+  const hit = headingHit || textHit
+  if (!hit) return null
+  const start = hit.offset + 1 // forEach 的 offset 是该块在 doc 内容中的起始偏移，doc 开口占 1
+  return anchor.dir === 'before' ? start : start + hit.node.nodeSize
+}
+
+// —— 多模态（图片输入）支持判定 ——
+
+// 服务端不会先告知模型能力，本地按模型名启发式：命中已知视觉模型才放行上传，
+// 其余一律当纯文本拦下（宁可误拦，也不把图片塞给不支持的服务端炸请求）。
+const VISION_PATTERNS = [
+  /gpt-4\.?o/, /gpt-4\.1/, /gpt-4-turbo/, /chatgpt-4o/, /(^|\W)o[134](\W|$)/,
+  /claude-?[3-9]/, /claude-(sonnet|opus|haiku)/,
+  /gemini/,
+  /qwen[\w.-]*vl|qvq/, /glm-[\d.]*v/,
+  /doubao[\w.-]*vision|doubao-?seed-?1\.?6/,
+  /moonshot[\w.-]*vision|kimi[\w.-]*vision/,
+  /pixtral/, /llava/, /llama[\w.-]*vision/, /internvl/, /minicpm-?v/,
+  /grok-?[4-9]|grok-?vision/, /step-?1v/, /hunyuan-?vision/,
+]
+
+/** 模型名命中已知视觉模型名单才算支持图片输入；空名 / 未知名一律 false */
+export function modelSupportsVision(model) {
+  const m = String(model || '').toLowerCase()
+  if (!m.trim()) return false
+  return VISION_PATTERNS.some((re) => re.test(m))
+}

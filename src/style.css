@@ -5218,6 +5218,71 @@ html.nl-dragging * {
   color: var(--accent);
   font-weight: 600;
 }
+/* 附件条：附图 chip / 面板内提示（模型不支持视觉等），空时隐藏 */
+.ai-att {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+.ai-att.hidden {
+  display: none;
+}
+.ai-att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 6px 2px 2px;
+  background: var(--bg-panel);
+  max-width: 100%;
+}
+.ai-att-chip img {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.ai-att-name {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-att-x {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ai-att-x:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.ai-att-note {
+  font-size: 11px;
+  color: var(--text-code);
+  padding: 0 2px;
+}
+/* 用户气泡里的附图缩略 */
+.ai-user img.ai-att-img {
+  display: block;
+  max-width: 180px;
+  max-height: 140px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin: 2px 0;
+}
 .ai-foot {
   display: flex;
   align-items: flex-end;
