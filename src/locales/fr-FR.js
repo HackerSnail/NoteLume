@@ -319,6 +319,9 @@ export default {
   'hl.green': 'Surlignage vert',
   'hl.blue': 'Surlignage bleu',
   'hl.pink': 'Surlignage rose',
+  'hl.orange': 'Surlignage orange',
+  'hl.teal': 'Surlignage turquoise',
+  'hl.violet': 'Surlignage violet',
   'hl.custom': 'Couleur de surlignage personnalisée',
   'hl.clear': 'Effacer le surlignage',
 
