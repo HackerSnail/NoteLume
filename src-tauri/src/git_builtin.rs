@@ -385,6 +385,9 @@ pub enum Engine {
 /// 起子进程的统一入口。GUI 子系统进程（本应用）spawn git / cmd 这类控制台程序时，
 /// Windows 会给每个子进程弹一个控制台窗口，一闪即灭；CREATE_NO_WINDOW 压掉。
 pub fn new_command(program: &str) -> std::process::Command {
+    // mut 只在 Windows 用得上（creation_flags 要 &mut）；非 Windows 下那段 #[cfg(windows)]
+    // 代码被编译掉，cmd 不再变更，故仅在非 Windows 豁免 unused_mut，避免每次编译刷警告。
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut cmd = std::process::Command::new(program);
     #[cfg(windows)]
     {
