@@ -4374,9 +4374,11 @@ function ensurePaneHlBar(paneId) {
       if (inst) inst.clearHighlight()
     },
     // 第二排：选区 AI（豆包式——选中即见，点任务起结果浮层；配置检查在 runSelectionAi 里）
+    // 按钮用短标签（ai.taskShort.*），全名放悬停提示（ai.task.*）
     aiActions: () => AI_TASK_IDS.map((id) => ({
       id,
-      label: t('ai.task.' + id),
+      label: t('ai.taskShort.' + id),
+      title: t('ai.task.' + id),
       icon: { polish: 'pen', 'continue': 'arrow-down', translate: 'globe', summarize: 'list-bullet', custom: 'sliders' }[id] || 'sparkle',
     })),
     onAi: (taskId) => {

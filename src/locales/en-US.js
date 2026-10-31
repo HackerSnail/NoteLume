@@ -1078,6 +1078,12 @@ export default {
   'ai.task.translate': 'Translate (CN↔EN)',
   'ai.task.summarize': 'Summarize',
   'ai.task.custom': 'Custom prompt…',
+  // Short labels for the second row of the selection popover: two-word buttons, full names in tooltips (ai.task.*)
+  'ai.taskShort.polish': 'Polish',
+  'ai.taskShort.continue': 'Continue',
+  'ai.taskShort.translate': 'Translate',
+  'ai.taskShort.summarize': 'Summarize',
+  'ai.taskShort.custom': 'Custom…',
   'ai.customPh': 'Tell the AI what to do with the selected text…',
   'ai.set.title': 'AI Settings',
   'ai.set.section': 'OpenAI-compatible endpoint',
