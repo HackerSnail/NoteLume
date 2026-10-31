@@ -1077,6 +1077,12 @@ export default {
   'ai.task.translate': '翻譯（中英互譯）',
   'ai.task.summarize': '摘要',
   'ai.task.custom': '自訂提示詞…',
+  // 選區浮窗第二排的短標籤：按鈕上只放兩字，全名進懸停提示（ai.task.*）
+  'ai.taskShort.polish': '潤色',
+  'ai.taskShort.continue': '續寫',
+  'ai.taskShort.translate': '翻譯',
+  'ai.taskShort.summarize': '摘要',
+  'ai.taskShort.custom': '自訂…',
   'ai.customPh': '告訴 AI 要對選取的文字做什麼…',
   'ai.set.title': 'AI 設定',
   'ai.set.section': 'OpenAI 相容介面',

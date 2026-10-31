@@ -1076,6 +1076,12 @@ export default {
   'ai.task.translate': 'Traduire (CN↔FR)',
   'ai.task.summarize': 'Résumer',
   'ai.task.custom': 'Invite personnalisée…',
+  // Raccourcis pour la deuxième rangée de la fenêtre de sélection : boutons courts, noms complets en infobulle (ai.task.*)
+  'ai.taskShort.polish': 'Polir',
+  'ai.taskShort.continue': 'Continuer',
+  'ai.taskShort.translate': 'Traduire',
+  'ai.taskShort.summarize': 'Résumer',
+  'ai.taskShort.custom': 'Perso…',
   'ai.customPh': 'Dites à l’IA quoi faire du texte sélectionné…',
   'ai.set.title': 'Réglages IA',
   'ai.set.section': 'Point d’accès compatible OpenAI',

@@ -1076,6 +1076,12 @@ export default {
   'ai.task.translate': 'Übersetzen (CN↔DE)',
   'ai.task.summarize': 'Zusammenfassen',
   'ai.task.custom': 'Eigener Prompt…',
+  // Kurztitel für die zweite Reihe der Auswahl-Popover: kurze Buttons, volle Namen im Tooltip (ai.task.*)
+  'ai.taskShort.polish': 'Polieren',
+  'ai.taskShort.continue': 'Fortsetzen',
+  'ai.taskShort.translate': 'Übersetzen',
+  'ai.taskShort.summarize': 'Zusammenf.',
+  'ai.taskShort.custom': 'Eigene…',
   'ai.customPh': 'Sagen Sie der KI, was sie mit dem ausgewählten Text tun soll…',
   'ai.set.title': 'KI-Einstellungen',
   'ai.set.section': 'OpenAI-kompatibler Endpunkt',
