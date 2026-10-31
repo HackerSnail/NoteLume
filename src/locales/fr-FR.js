@@ -1091,6 +1091,7 @@ export default {
   'ai.skillInject': 'Suivez les consignes de la compétence « {name} » pour répondre :',
   'ai.skillOn': 'Compétence activée : {name}',
   'ai.skillOff': 'Compétence désactivée',
+  'ai.removeSkill': 'Retirer la compétence',
   'ai.vaultCtxHead': 'Extraits pertinents issus de la base de connaissances (possiblement incomplets, à titre de référence) :',
   'ai.ctxTip': 'Utilisation du contexte : ~{pct}% (estimation {tokens} / 32K tokens)',
   'ai.modelsFail': 'Échec de la récupération des modèles : {err}',
