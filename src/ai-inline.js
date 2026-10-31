@@ -46,13 +46,13 @@ export function openAiInline(opts) {
   const head = document.createElement('div')
   head.className = 'nl-ai-pop-head'
   const headTitle = document.createElement('span')
-  setIcon(headTitle, 'sparkle', title)
-  headTitle.appendChild(document.createTextNode(title))
+  setIcon(headTitle, 'sparkle', title) // setIcon 第三参已放标题，不再 appendChild 一遍（会重复渲染）
   const closeBtn = document.createElement('button')
   closeBtn.type = 'button'
   closeBtn.className = 'ai-icon-btn'
   closeBtn.title = t('common.close')
-  setIcon(closeBtn, 'close', t('common.close'))
+  closeBtn.setAttribute('aria-label', t('common.close'))
+  setIcon(closeBtn, 'close')
   head.append(headTitle, closeBtn)
   const body = document.createElement('div')
   body.className = 'nl-ai-pop-body'

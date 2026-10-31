@@ -218,14 +218,14 @@ export function createAiPanel(deps) {
     gear.setAttribute('data-i18n-title', 'ai.settings')
     gear.title = t('ai.settings')
     gear.setAttribute('aria-label', t('ai.settings'))
-    setIcon(gear, 'sliders', t('ai.settings'))
+    setIcon(gear, 'sliders') // 图标钮不传第三参：setIcon 的 label 是可见文本，塞进 22px 钮里会被压成竖排字
     gear.addEventListener('click', () => openSettings())
     const clear = document.createElement('button')
     clear.type = 'button'
     clear.className = 'ai-icon-btn'
     clear.title = t('ai.clear')
     clear.setAttribute('aria-label', t('ai.clear'))
-    setIcon(clear, 'eraser', t('ai.clear'))
+    setIcon(clear, 'eraser')
     clear.addEventListener('click', () => {
       if (streaming) stop()
       history = []
@@ -259,7 +259,7 @@ export function createAiPanel(deps) {
     sendBtn.className = 'ai-send'
     sendBtn.title = t('ai.send')
     sendBtn.setAttribute('aria-label', t('ai.send'))
-    setIcon(sendBtn, 'arrow-up', t('ai.send'))
+    setIcon(sendBtn, 'arrow-up')
     sendBtn.addEventListener('click', send)
     stopBtn = document.createElement('button')
     stopBtn.type = 'button'
