@@ -579,7 +579,7 @@ export default {
   'git.useTheirs': 'Use Theirs',
   'git.edit': 'Edit',
   'git.tooManyChanges': 'Too many changes; showing the first {n}',
-  'git.sectionHistory': 'History',
+  'git.sectionGraph': 'Graph',
   'git.historyEmpty': 'No commits yet',
   'git.noDiff': 'No differences',
   'git.diffReadFailed': 'Failed to read diff: {err}',
