@@ -13,10 +13,14 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 // —— 数据形状（camelCase 对前端） ——
 
+// AiMessage.content 见结构体注释：serde_json::Value 透传（纯文本 String / 多模态数组都收）
+
 #[derive(Deserialize)]
 pub struct AiMessage {
     pub role: String,
-    pub content: String,
+    // 纯文本对话是 String；多模态对话是 OpenAI 数组（[{type:'text'},{type:'image_url',…}]）。
+    // 前端构造什么就透传什么，这里不做结构校验——能力判定在前端 modelSupportsVision。
+    pub content: serde_json::Value,
 }
 
 #[derive(Deserialize)]
@@ -80,7 +84,7 @@ pub fn ai_chat_stream(app: tauri::AppHandle, args: AiChatArgs) -> Result<(), Str
     let url = chat_url(&base_url);
     let api_key = args.api_key.trim().to_string();
     let temperature = args.temperature;
-    let messages: Vec<(String, String)> = args
+    let messages: Vec<(String, serde_json::Value)> = args
         .messages
         .into_iter()
         .map(|m| (m.role, m.content))
@@ -197,7 +201,7 @@ async fn run_stream(
     api_key: &str,
     model: &str,
     temperature: Option<f64>,
-    messages: &[(String, String)],
+    messages: &[(String, serde_json::Value)],
     emit: &EmitFn<'_>,
 ) -> Result<(), String> {
     let mut body = serde_json::json!({
