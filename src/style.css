@@ -5557,9 +5557,30 @@ html.nl-dragging * {
   font-size: 10px;
 }
 
-.ai-composer-bar .ai-model-pill {
+/* 语音钮右移到发送旁：右组起点（语音 · 圆环 · 发送/停止），与左组之间弹性留白 */
+.ai-composer-bar .ai-voice {
   margin-left: auto;
 }
+/* 上下文用量圆环：环形进度，<70% 常色、70-90% 警示、>90% 红 */
+.ai-ctx-ring {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+.ai-ctx-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2.5;
+}
+.ai-ctx-arc {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 200ms ease, stroke 200ms ease;
+}
+.ai-ctx-ok { stroke: var(--muted); }
+.ai-ctx-warm { stroke: #d69e2e; }
+.ai-ctx-hot { stroke: #e53e3e; }
 /* 底行模型选择器：多模型 pill+▾ 可切换，单模型只显示名称；宽不够时名称省略 */
 .ai-model-pill {
   display: inline-flex;
