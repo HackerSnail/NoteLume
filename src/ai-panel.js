@@ -676,15 +676,13 @@ export function createAiPanel(deps) {
         item.title = s.description || s.name
         item.addEventListener('click', (e) => {
           e.stopPropagation()
-          // 多选：点选只切换勾选态，菜单保持开着方便连续加载多个；chips 同步回显
+          // 多选：点一次选中即收起菜单（要再加 skills 再点技能钮）；chips 同步回显
           if (on()) activeSkillPaths = activeSkillPaths.filter((q) => q !== s.path)
           else activeSkillPaths.push(s.path)
           saveActiveSkills()
-          item.classList.toggle('active', on())
-          if (on()) setIcon(mark, 'check')
-          else mark.replaceChildren()
           syncSkillBtn()
           renderSkillChips()
+          closeFloatMenu()
           setStatus(on() ? t('ai.skillOn', { name: s.name }) : t('ai.skillOff'))
         })
         container.appendChild(item)
