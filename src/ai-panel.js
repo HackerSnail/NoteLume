@@ -9,7 +9,7 @@
 import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
-import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList } from './tauri-bridge.js'
+import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
 import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, AI_CTX_WINDOW_TOKENS } from './ai-tasks.js'
 
 let reqSeq = 0
@@ -38,7 +38,7 @@ let mode = (() => {
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, getVaultContext, insertToDoc, appendToDoc, persistModel, setStatus } = deps
+  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -271,6 +271,7 @@ export function createAiPanel(deps) {
     setStreamingUi(false)
     syncModelChip()
     updateCtxRing()
+    saveChat() // 回答结束自动存档（fire and forget）
     scrollEnd()
   }
 
@@ -282,6 +283,7 @@ export function createAiPanel(deps) {
     streaming = null
     setStreamingUi(false)
     updateCtxRing()
+    saveChat() // 半截回答（出错前已流入的）也归档
     scrollEnd()
   }
 
@@ -721,6 +723,60 @@ export function createAiPanel(deps) {
     ctxRing.el.title = t('ai.ctxTip', { pct: Math.round(pct * 100), tokens })
   }
 
+  // —— 会话存档：有知识库存 <vault>/.notelume-ai/chats/<id>.json，无库存系统 temp；
+  // 「开启新对话」归档当前会话再开新，回答结束自动保存，重开面板恢复最近会话 ——
+
+  let chatId = (() => {
+    try { return localStorage.getItem('nl-ai-chat-id') || '' } catch { return '' }
+  })()
+
+  function genChatId() {
+    return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  }
+
+  async function saveChat() {
+    if (!history.length) return
+    if (!chatId) {
+      chatId = genChatId()
+      try { localStorage.setItem('nl-ai-chat-id', chatId) } catch { /* 存不上只留会话内 */ }
+    }
+    const firstUser = history.find((m) => m.role === 'user')
+    const title = (typeof firstUser?.content === 'string' ? firstUser.content : '') || t('ai.title')
+    const doc = { v: 1, id: chatId, title: title.slice(0, 40), messages: history }
+    try {
+      await aiChatSave(getVaultRootForChat ? getVaultRootForChat() : null, chatId + '.json', JSON.stringify(doc))
+    } catch { /* 存档失败不打断对话 */ }
+  }
+
+  /** 恢复最近会话（nl-ai-chat-id 指向的存档；读不到/坏档就当新会话） */
+  async function restoreChat() {
+    if (!chatId) return
+    let raw = null
+    try {
+      raw = await aiChatRead(getVaultRootForChat ? getVaultRootForChat() : null, chatId + '.json')
+    } catch { raw = null }
+    if (!raw) return
+    try {
+      const doc = JSON.parse(raw)
+      if (doc && Array.isArray(doc.messages) && doc.messages.length) {
+        history = doc.messages
+        renderHistory()
+        updateCtxRing()
+      }
+    } catch { /* 坏档当新会话 */ }
+  }
+
+  /** 开启新对话：归档当前会话，然后清空重来 */
+  async function newChat() {
+    await saveChat()
+    history = []
+    chatId = ''
+    try { localStorage.removeItem('nl-ai-chat-id') } catch { /* 无 localStorage 就只留会话内 */ }
+    renderHistory()
+    updateCtxRing()
+    setStatus(t('ai.newChatStarted'))
+  }
+
   // —— 静态骨架 ——
 
   function buildDom() {
@@ -744,9 +800,9 @@ export function createAiPanel(deps) {
     const clear = document.createElement('button')
     clear.type = 'button'
     clear.className = 'ai-icon-btn'
-    clear.title = t('ai.clear')
-    clear.setAttribute('aria-label', t('ai.clear'))
-    setIcon(clear, 'eraser')
+    clear.title = t('ai.newChat')
+    clear.setAttribute('aria-label', t('ai.newChat'))
+    setIcon(clear, 'pen') // ChatGPT 式「开启新对话」：归档当前会话再开新（存档见 saveChat）
     clear.addEventListener('click', () => {
       if (streaming) stop()
       if (optStreaming) {
@@ -754,9 +810,7 @@ export function createAiPanel(deps) {
         optStreaming = null
         optBtn.classList.remove('active')
       }
-      history = []
-      renderHistory()
-      updateCtxRing()
+      newChat()
     })
     head.append(title, gear, clear)
 
@@ -892,6 +946,8 @@ export function createAiPanel(deps) {
     }).catch(() => {
       skillsLoaded = true
     })
+    // 恢复最近会话（nl-ai-chat-id 指向的存档；无/坏档即新会话）
+    restoreChat()
   }
 
   function mount() {
