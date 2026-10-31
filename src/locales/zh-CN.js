@@ -319,6 +319,9 @@ export default {
   'hl.green': '绿色高亮',
   'hl.blue': '蓝色高亮',
   'hl.pink': '粉色高亮',
+  'hl.orange': '橙色高亮',
+  'hl.teal': '青色高亮',
+  'hl.violet': '紫色高亮',
   'hl.custom': '自定义高亮色',
   'hl.clear': '清除高亮',
 

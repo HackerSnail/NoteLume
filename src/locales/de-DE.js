@@ -319,6 +319,9 @@ export default {
   'hl.green': 'Grüne Markierung',
   'hl.blue': 'Blaue Markierung',
   'hl.pink': 'Rosa Markierung',
+  'hl.orange': 'Orange Markierung',
+  'hl.teal': 'Türkise Markierung',
+  'hl.violet': 'Violette Markierung',
   'hl.custom': 'Eigene Markierungsfarbe',
   'hl.clear': 'Markierung entfernen',
 

@@ -320,6 +320,9 @@ export default {
   'hl.green': 'Green highlight',
   'hl.blue': 'Blue highlight',
   'hl.pink': 'Pink highlight',
+  'hl.orange': 'Orange highlight',
+  'hl.teal': 'Teal highlight',
+  'hl.violet': 'Violet highlight',
   'hl.custom': 'Custom highlight color',
   'hl.clear': 'Clear highlight',
 
