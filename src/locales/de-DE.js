@@ -1075,7 +1075,6 @@ export default {
   'ai.appliedAtAfter': 'Nach „{where}“ eingefügt',
   'ai.appliedAtBefore': 'Vor „{where}“ eingefügt',
   'ai.anchorMiss': '„{where}“ im Dokument nicht gefunden – stattdessen am Cursor eingefügt',
-  'ai.attach': 'Bilder hinzufügen',
   'ai.attMax': 'Maximal 4 Bilder pro Nachricht',
   'ai.noVision': 'Das aktuelle Modell unterstützt keine Bildeingabe',
   'ai.removeAtt': 'Bild entfernen',
