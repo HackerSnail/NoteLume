@@ -237,6 +237,8 @@ npm run test:roundtrip
 npm run build
 ```
 
+mac 的签名这一步已经串在 `postbuild` 上（`scripts/wrap-mac-dmg.mjs`：先 `codesign --force --deep -s -` 补 ad-hoc 签名，再放进「打开说明.txt」重卷 dmg），手动走这一趟的两条命令列在 README「mac 打包并签名」一节。
+
 ### 产物位置
 
 macOS（分两个型号：Apple Silicon 的 `_aarch64` 卷与 Intel 的 `_x64` 卷。本机 `npm run build` 只出当前芯片那一份，另一份由 CI 在对应架构的 runner 上打）：
