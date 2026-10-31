@@ -152,6 +152,66 @@ pub fn chat_url(base_url: &str) -> String {
     format!("{b}/chat/completions")
 }
 
+/// 模型列表 URL：与 chat_url 同口径（剥尾斜杠；用户填到 /models 就不重复追加）
+pub fn models_url(base_url: &str) -> String {
+    let b = base_url.trim().trim_end_matches('/');
+    if b.ends_with("/models") {
+        return b.to_string();
+    }
+    format!("{b}/models")
+}
+
+/// 拉取 OpenAI 兼容服务的模型列表（GET /models，data[].id 升序）。地址 / Key 与对话同源。
+#[tauri::command]
+pub async fn ai_models_list(base_url: String, api_key: Option<String>) -> Result<Vec<String>, String> {
+    let base = base_url.trim().to_string();
+    if base.is_empty() {
+        return Err("base_url is empty".into());
+    }
+    let url = models_url(&base);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| format!("HTTP client: {e}"))?;
+    let mut req = client.get(&url);
+    let key = api_key.unwrap_or_default();
+    if !key.trim().is_empty() {
+        req = req.bearer_auth(key.trim());
+    }
+    let resp = req.send().await.map_err(|e| format!("连接失败: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("HTTP {status}: {}", truncate_utf8(text.trim(), 200)));
+    }
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("响应解析失败: {e}"))?;
+    let mut ids: Vec<String> = v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    ids.sort_by_key(|a| a.to_lowercase());
+    Ok(ids)
+}
+
+/// 探测本机 Ollama（127.0.0.1:11434 /api/tags，1.2s 超时）。可达即视为已安装并运行。
+#[tauri::command]
+pub async fn ollama_probe() -> Result<bool, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(1200))
+        .build()
+        .map_err(|e| format!("HTTP client: {e}"))?;
+    let resp = client
+        .get("http://127.0.0.1:11434/api/tags")
+        .send()
+        .await;
+    Ok(resp.map(|r| r.status().is_success()).unwrap_or(false))
+}
+
 /// SSE 行 → data 载荷。非 data: 行（空行 / 注释 / event: 等字段）回 None；
 /// "data: [DONE]" 回 Some("[DONE]")；载荷与冒号间的单个空格按规范剥掉。
 pub fn sse_data_payload(line: &str) -> Option<&str> {
@@ -312,6 +372,14 @@ mod tests {
         // 用户直接填到端点：不重复追加
         assert_eq!(chat_url("https://x/v1/chat/completions"), "https://x/v1/chat/completions");
         assert_eq!(chat_url("http://127.0.0.1:11434/v1"), "http://127.0.0.1:11434/v1/chat/completions");
+    }
+
+    #[test]
+    fn models_url_variants() {
+        assert_eq!(models_url("https://api.deepseek.com/v1"), "https://api.deepseek.com/v1/models");
+        assert_eq!(models_url(" https://api.deepseek.com/v1/ "), "https://api.deepseek.com/v1/models");
+        // 用户直接填到端点：不重复追加
+        assert_eq!(models_url("https://x/v1/models"), "https://x/v1/models");
     }
 
     #[test]
