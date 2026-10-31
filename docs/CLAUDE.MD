@@ -58,6 +58,7 @@
 3. 插件基础钩子系统（简单自定义JS插件接口）
 4. 画布/白板卡片（可选，复杂度高，放最后）
 5. 移动端适配（低优先级）
+6. 大模型接入：选区 AI（润色 / 续写 / 翻译 / 摘要 / 自定义提示词）+ 侧栏对话面板，OpenAI 兼容协议（2026-10-31 完成，见「大模型接入」一节）
 
 ## 快捷键规范
 
@@ -264,6 +265,17 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - **CSV 表格渲染**：`src/csv-preview.js`，mermaid 同构（光标出块隐源码挂表格 widget、点表进块），`parseCsv` 为 RFC4180 口径纯函数，短行补齐；导出件保留代码块（同 mermaid 先例）。
 - **标题自动编号**：`src/heading-numbering.js` 的 CSS counter，只编 H1/H2（1、1.1），覆盖单篇 HTML / 整站（site.css `article` 前缀）/ 打印（`.nl-pbody`）/ 幻灯片（`.reveal .slides`，counter 跨 section 连续）四个输出点；编辑器与源文件不编。
 - **Emoji 短代码**：见上节，`emoji` 开关关掉即不换脸。
+
+## 大模型接入（2026-10-31）
+
+OpenAI 兼容 `/chat/completions` 协议（DeepSeek / 智谱 GLM / Kimi / OpenAI / 本地 Ollama 通吃）。HTTP 与 SSE 全在 Rust 侧（WebView 里发跨域请求有 CORS 限制），前端经 IPC 传参、事件收流，可随时取消。
+
+- **Rust 代理**（`src-tauri/src/ai.rs`）：命令 `ai_chat_stream`（`tauri::async_runtime::spawn` 起流式任务，`JoinHandle::abort()` 取消，`ai_chat_cancel` 对外）与运行表登记（`OnceLock<Mutex<HashMap>>` + finished 标记，插入新任务时顺手清已结束的）；流式事件 `app.emit("nl:ai-event", …)` 广播，载荷 `{reqId, kind: 'chunk'|'done'|'error', delta?, error?}`，前端按 reqId 过滤分发。HTTP 用 reqwest 0.13（`default-features = false` + `native-tls`：Windows 走 Schannel、mac 走 Security.framework，都不引 openssl；0.13 的 rustls 默认绑 aws-lc-rs，要 NASM/CMake 构建链故不用）。SSE 解析是字节缓冲逐行再 lossy 转码（防跨 chunk 切坏多字节字符），`chat_url`（剥尾斜杠、不重复追加路径）/ `handle_line` / `extract_delta_content`（delta.content 与 message.content 兜底，null content 按 ""）等纯函数配单测；300s 超时，非 2xx 取 error.message 或截断 300 字符报错。
+- **任务与提示词**（`src/ai-tasks.js`，纯逻辑可 Node 单测）：选区任务五件套 `polish / continue / translate / summarize / custom`，system 指令约束「只回结果 / 保原语言 / 保 Markdown 结构」；前端 `stripFences` 剥 ``` 围栏与「以下是…：/ Here is…：」式客套行双保险；侧栏对话上下文 `buildDocContext`（文档标题 + 正文截 6000 字符，空文档不加系统消息）。
+- **选区 AI**（`src/ai-inline.js`）：编辑器右键菜单五项（无选区整组置灰）与命令面板 `editor.ai.*` 两个入口；结果浮层锚在选区下方（放不下翻上方），流式预览，可「替换选区」（`mdParser` 把产物解析成文档片段经 `Slice` 写回，保列表 / 代码块 / 引用结构；解析失败退化 `insertPlainText`）/「插入到下方」（写回原选区末尾）/复制；Esc / 点外 / 切语言关闭并取消请求，失败可原地重试。
+- **侧栏 AI 面板**（`src/ai-panel.js`）：侧栏第三个页签（`ui.sideAi`，与文件 / 大纲共用 sideTabs / sideCorner 引擎与 `nl-side-tab` 持久化），针对当前文档问答（文档内容作系统消息，每轮全量历史重发；历史只存内存），流式渲染 markdown-it（`html:false`，模型输出里的字面 HTML 一律转义），回答可「插入到文档」（写回光标处，同样走 mdParser 保结构）/复制；流式中可停止（半截回答保留可继续追问），命令 `app.aiPanel` 开合。
+- **设置**（`src/ai-settings.js`）：模态面板（clip-settings 同款壳），接口地址 / API Key / 模型名三项 + 五个预设一键填充（DeepSeek / 智谱 GLM / Kimi / OpenAI / Ollama 本机），存 settings.json 的 `ai` 段（`normalizeAiConfig` trim + 限长，main.js 的 `currentAi` / `persistAi` 读写）；地址 + 模型齐才算配置好，Key 可空（本地 Ollama）。Rust 侧不存任何配置，每次调用经 IPC 传参。
+- 词条五语言补齐（`ui.sideAi`、`ai.*` 全组、`cmd.editor.ai.*` 五条、`cmd.app.aiPanel|aiSettings`）；`node tests/ai-tasks.test.mjs` 13 条 + Rust 新增 7 条全过；无头 CDP 验证 13 项（页签切换 / 面板 DOM / 设置面板 / 命令面板 / 右键菜单五项）。
 
 ## Quarkdown 引擎（2026-10-25 起，分期实施）
 

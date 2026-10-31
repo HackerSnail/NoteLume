@@ -36,3 +36,10 @@ sha2 = "0.10"
 docx-rs = "0.4"
 # 文件系统监听：检测外部对库文件的增删改，自动刷新树
 notify = { version = "6", features = ["crossbeam-channel"] }
+
+# 大模型接入（AI）：OpenAI 兼容 /chat/completions 的流式代理。HTTP 必须在 Rust 侧做
+# （WebView 里的 fetch 撞 CORS）。TLS 用 native-tls：Windows 走系统 Schannel、mac 走
+# Security.framework，都不引 openssl（reqwest 0.13 的 rustls feature 默认绑 aws-lc-rs，
+# Windows 构建要 NASM/CMake，故不用）。json 只为 .json(&body)；流式读用 Response::chunk()，
+# 不需要 stream feature。若未来 Linux 打包嫌 openssl，再换 rustls-no-provider + ring。
+reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }

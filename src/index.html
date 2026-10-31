@@ -71,6 +71,7 @@
       <symbol id="i-hr" viewBox="0 0 24 24"><path d="M4 12h16" /><path d="M7 7.5h10M7 16.5h10" opacity=".35" /></symbol>
       <symbol id="i-table" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4z" /><path d="M4 10.5h16M12 5.5v13" /></symbol>
       <symbol id="i-lightbulb" viewBox="0 0 24 24"><path d="M9.5 18.5h5M10.5 21.5h3" /><path d="M12 3a6.5 6.5 0 0 1 3.5 12v2.5h-7V15A6.5 6.5 0 0 1 12 3z" /></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 4.5 13.7 9.8 19 11.5l-5.3 1.7L12 18.5l-1.7-5.3L5 11.5l5.3-1.7z" /><path d="M18.6 15.4l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></symbol>
       <symbol id="i-math" viewBox="0 0 24 24"><path d="M17.5 5h-10l5.5 7-5.5 7h10" /></symbol>
       <symbol id="i-diagram" viewBox="0 0 24 24"><path d="M4.5 4.5h6v5h-6z" /><path d="M13.5 14.5h6v5h-6z" /><path d="M7.5 9.5v3a2 2 0 0 0 2 2h4" /></symbol>
       <symbol id="i-pen" viewBox="0 0 24 24"><path d="M16.5 4.5 19.5 7.5 8.5 18.5l-4 1z" /><path d="M14 7l3 3" /></symbol>
@@ -124,6 +125,7 @@
         <div class="side-corner" role="group">
           <button type="button" class="side-corner-btn" data-tab="files" data-i18n-title="ui.sideFiles" title="文件"><svg class="nl-ico"><use href="#i-folder" /></svg></button>
           <button type="button" class="side-corner-btn" data-tab="outline" data-i18n-title="ui.sideOutline" title="大纲"><svg class="nl-ico"><use href="#i-list-bullet" /></svg></button>
+          <button type="button" class="side-corner-btn" data-tab="ai" data-i18n-title="ui.sideAi" title="AI"><svg class="nl-ico"><use href="#i-sparkle" /></svg></button>
           <button type="button" class="side-corner-btn" id="btn-inspector" data-i18n-title="ui.sideInspector" title="检查器"><svg class="nl-ico"><use href="#i-sliders" /></svg></button>
         </div>
         <aside class="sidebar" id="sidebar">
@@ -131,6 +133,7 @@
             <div class="side-tabs" role="tablist">
               <button type="button" class="side-tab" data-tab="files" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-folder" /></svg><span data-i18n="ui.sideFiles">文件</span></button>
               <button type="button" class="side-tab" data-tab="outline" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-list-bullet" /></svg><span data-i18n="ui.sideOutline">大纲</span></button>
+              <button type="button" class="side-tab" data-tab="ai" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-sparkle" /></svg><span data-i18n="ui.sideAi">AI</span></button>
             </div>
             <div class="search-box">
               <svg class="nl-ico"><use href="#i-search" /></svg>
@@ -139,6 +142,7 @@
             <div id="search-results" class="search-results"></div>
             <div id="filetree" class="filetree"></div>
             <nav id="outline" class="outline hidden"></nav>
+            <div id="ai-panel" class="ai-panel hidden"></div>
           </section>
         </aside>
         <div class="nl-gutter" id="gutter-side" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterSide" title="拖拽改变侧栏宽度"></div>
