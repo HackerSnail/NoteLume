@@ -576,3 +576,13 @@ export function ollamaProbe() {
 export function openUrl(url) {
   return invoke('open_url', { url })
 }
+
+/** AI 会话存档：有知识库存 <vault>/.notelume-ai/chats/，无库存系统 temp/notelume-ai-chats/ */
+export function aiChatSave(vaultRoot, name, json) {
+  return invoke('ai_chat_save', { vaultRoot: vaultRoot || null, name, json })
+}
+
+/** 读取 AI 会话存档；不存在回 null */
+export function aiChatRead(vaultRoot, name) {
+  return invoke('ai_chat_read', { vaultRoot: vaultRoot || null, name })
+}
