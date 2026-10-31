@@ -127,8 +127,12 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 | macOS   | `NoteLume_x.y.z_aarch64.dmg`（Apple Silicon） | 拖入 Applications |
 | macOS   | `NoteLume_x.y.z_x64.dmg`（Intel） | 拖入 Applications |
 | Linux   | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x` 后运行  |
+| Linux   | `NoteLume_x.y.z_amd64.deb`      | `sudo apt install ./NoteLume_x.y.z_amd64.deb` |
+| Linux   | `NoteLume-x.y.z-1.x86_64.rpm`   | `sudo dnf install NoteLume-x.y.z-1.x86_64.rpm` |
 
 Windows 版只支持 Windows 10 及以上，Win7 / Win8 装不上也起不来：Tauri v2 与 Rust 1.78 起的官方最低要求都是 Windows 10，WebView2 运行时也不再给 Win7 发新版本（最后一个可用的是 109，2023 年已停止支持），三层缺一层都打不开。
+
+Linux 的 deb / rpm 依赖发行版自带的 **webkit2gtk-4.1**（包只声明依赖、运行时从系统取）：Ubuntu 22.04+ / Debian 12+ / Fedora / openSUSE 可直接装；**RHEL / Rocky 9 默认只有 webkit 4.0**，装 deb/rpm 会报依赖缺失，这类系统请改用 AppImage（自带全套运行库，不依赖系统 webkit）。
 
 macOS 包只做了 ad-hoc 签名，没走开发者公证。首次打开被系统拦下时，右键应用选「打开」；或先执行 `xattr -dr com.apple.quarantine /Applications/NoteLume.app` 再启动。同一个卷宗里附了 `打开说明.txt`，三种办法都写在里面（源文件 `docs/macOS打开说明.txt`）。
 
@@ -327,8 +331,12 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 | macOS    | `NoteLume_x.y.z_aarch64.dmg` (Apple Silicon) | Drag to Applications |
 | macOS    | `NoteLume_x.y.z_x64.dmg` (Intel) | Drag to Applications |
 | Linux    | `NoteLume_x.y.z_amd64.AppImage` | `chmod +x`, then run |
+| Linux    | `NoteLume_x.y.z_amd64.deb`      | `sudo apt install ./NoteLume_x.y.z_amd64.deb` |
+| Linux    | `NoteLume-x.y.z-1.x86_64.rpm`   | `sudo dnf install NoteLume-x.y.z-1.x86_64.rpm` |
 
 The Windows build requires Windows 10 or later. Windows 7 / 8 cannot run it: Tauri v2 and Rust (1.78+) both require Windows 10, and WebView2 no longer ships versions that install on Windows 7 (the last one, 109, went out of support in January 2023).
+
+The Linux deb / rpm packages depend on the distro's own **webkit2gtk-4.1** (they only declare the dependency and load it from the system at runtime): Ubuntu 22.04+ / Debian 12+ / Fedora / openSUSE install directly. **RHEL / Rocky 9 ship only webkit 4.0 by default**, so the deb/rpm fail with a missing dependency there — use the AppImage on those systems instead (it bundles the full runtime and does not rely on the system webkit).
 
 The macOS build carries an ad-hoc signature only (no developer notarization). If Gatekeeper blocks the first launch, right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/NoteLume.app` first. The same steps ship inside the DMG as `打开说明.txt` (source: `docs/macOS打开说明.txt`).
 
