@@ -49,6 +49,17 @@ const SHOT_CSS = `
 .nl-shot-hint{position:absolute;left:50%;top:24px;transform:translateX(-50%);padding:6px 12px;border-radius:6px;background:rgba(20,20,20,.88);color:#fff;font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none}
 `
 
+// 剪藏结果确认条的样式，同样走 insertCSS（见 SHOT_CSS 上面那段注释）。定位右下角、
+// 不吃鼠标事件、不改页面布局；进出场靠 .nl-clip-on 这一个类的开关。
+const NOTICE_CSS = `
+#nl-clip-notice{position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:min(360px,80vw);padding:10px 14px;border-radius:8px;border-left:3px solid #8b5cf6;background:rgba(20,20,20,.92);color:#fff;font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .2s ease}
+#nl-clip-notice.nl-clip-on{opacity:1;transform:none}
+#nl-clip-notice.nl-clip-bad{border-left-color:#e5484d}
+#nl-clip-notice.nl-clip-info{border-left-color:#8a8a8f}
+.nl-clip-notice-title{font-weight:600}
+.nl-clip-notice-body{margin-top:2px;opacity:.82;word-break:break-word}
+`
+
 // /health 读不到时的开关默认值：不取图（剪藏快）、提取失败不退化整页（噪声最多）。
 // NoteLume 没起来时按默认值继续，后面的 POST 会以「连不上」报错，提示一致。
 const SWITCH_DEFAULTS = { localizeImages: false, fullPageFallback: false }
@@ -96,6 +107,39 @@ function notify(title, message) {
       priority: 2,
     })
     .catch(() => {})
+}
+
+// 结果提示走两条通道：系统通知 + 被剪页面右下角的确认条（content/notice.js）。
+// mac 上系统通知会被系统设置与专注模式静默挡掉（扩展读不到被挡的反馈，成功和失败
+// 看起来一模一样），页面那一条不吃任何系统权限；Windows 上两条都到，重复但不冲突。
+// 没有可注入文档的路径（浏览器内置页面）只剩系统通知那一条。
+async function report(tab, title, body, kind) {
+  await notify(title, body)
+  if (!tab || !tab.id) return
+  try {
+    await chrome.scripting.insertCSS({ target: { tabId: tab.id }, css: NOTICE_CSS })
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content/notice.js'],
+    })
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (o) => (window.__NL_NOTICE ? window.__NL_NOTICE.show(o) : false),
+      args: [{ title, body, kind, ms: kind === 'bad' ? 8000 : 4000 }],
+    })
+  } catch (e) {
+    /* 注入失败（frame 已销毁、扩展自己的页面等）：系统通知那条已经发过 */
+  }
+}
+
+// 落盘成功后的那一行正文：标题 → 库内相对路径（关联篇数与图片数有才算）
+function savedBody(out, fallbackTitle, extra) {
+  const parts = [out.title || fallbackTitle, out.rel].filter(Boolean)
+  const tail = []
+  if (out.imagesSaved) tail.push(out.imagesSaved + ' 张图')
+  if (out.linked) tail.push('关联 ' + out.linked + ' 篇')
+  if (extra) tail.push(extra)
+  return parts.join('　→　') + (tail.length ? '（' + tail.join('，') + '）' : '')
 }
 
 function blobToDataUri(blob) {
@@ -228,17 +272,10 @@ async function clipActiveTab(mode, selectionText) {
     const payload = await buildPayload(extracted, wantSelection, cfg, sw)
     const out = await postClip(payload, cfg)
     await setBadge('')
-    const parts = [out.title || payload.title, out.rel].filter(Boolean)
-    const tail = []
-    if (out.imagesSaved) tail.push(out.imagesSaved + ' 张图')
-    if (out.linked) tail.push('关联 ' + out.linked + ' 篇')
-    await notify(
-      '已剪藏到 NoteLume',
-      parts.join('　→　') + (tail.length ? '（' + tail.join('，') + '）' : '')
-    )
+    await report(tab, '已剪藏到 NoteLume', savedBody(out, payload.title), 'ok')
   } catch (e) {
     await setBadge('!')
-    await notify('剪藏失败', errMessage(e))
+    await report(tab, '剪藏失败', errMessage(e), 'bad')
   }
 }
 
@@ -318,7 +355,7 @@ async function activeTab() {
     /* 查询失败按下面无 tab 分支处理 */
   }
   if (!tab || !tab.id || !/^https?:/i.test(tab.url || '')) {
-    await notify('无法剪藏', '只支持 http/https 页面（浏览器内置页面不行）')
+    await report(tab, '无法剪藏', '只支持 http/https 页面（浏览器内置页面不行）', 'bad')
     return null
   }
   return tab
@@ -360,15 +397,8 @@ async function clipShotPrep(tab, cfg, prep, meta) {
   if (cfg.template) payload.template = cfg.template
   const out = await postClip(payload, cfg)
   await setBadge('')
-  const parts = [out.title || payload.title, out.rel].filter(Boolean)
-  const tail = []
-  if (out.imagesSaved) tail.push(out.imagesSaved + ' 张图')
-  if (out.linked) tail.push('关联 ' + out.linked + ' 篇')
-  if (shot.clipped || prep.clipped) tail.push('选区比视口大，只截到看得见的那部分')
-  await notify(
-    '已截取并剪藏到 NoteLume',
-    parts.join('　→　') + (tail.length ? '（' + tail.join('，') + '）' : '')
-  )
+  const cutNote = shot.clipped || prep.clipped ? '选区比视口大，只截到看得见的那部分' : ''
+  await report(tab, '已截取并剪藏到 NoteLume', savedBody(out, payload.title, cutNote), 'ok')
 }
 
 // 选区截图：浏览器给的选区（文字、图片都算）→ 画面 → 一篇带图的笔记
@@ -394,7 +424,7 @@ async function clipShot() {
     await clipShotPrep(tab, cfg, prep, meta)
   } catch (e) {
     await setBadge('!')
-    await notify('剪藏失败', errMessage(e))
+    await report(tab, '剪藏失败', errMessage(e), 'bad')
   }
 }
 
@@ -423,7 +453,7 @@ async function clipShotBox() {
     if (!pick) {
       // 用户自己取消的（Esc 或误点），不算失败
       await setBadge('')
-      await notify('已取消', '没有框选区域，剪藏未执行')
+      await report(tab, '已取消', '没有框选区域，剪藏未执行', 'info')
       return
     }
     const meta = await pageMeta(tab.id)
@@ -435,7 +465,7 @@ async function clipShotBox() {
     )
   } catch (e) {
     await setBadge('!')
-    await notify('剪藏失败', errMessage(e))
+    await report(tab, '剪藏失败', errMessage(e), 'bad')
   }
 }
 
