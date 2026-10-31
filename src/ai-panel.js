@@ -18,6 +18,12 @@ function nextReqId() {
   return 'chat-' + Date.now().toString(36) + '-' + reqSeq
 }
 
+// Ask / Agent 模式：Ask 只问答（现状）；Agent 在回答完整结束后自动把内容写进当前文档末尾
+// （走 insertToDoc 同一条 ProseMirror 链路，可撤销）。模式持久化 nl-ai-mode。
+let mode = (() => {
+  try { return localStorage.getItem('nl-ai-mode') === 'agent' ? 'agent' : 'ask' } catch { return 'ask' }
+})()
+
 /**
  * 侧栏 AI 对话面板。
  * @param {object} deps
@@ -26,10 +32,11 @@ function nextReqId() {
  * @param {() => void} deps.openSettings 打开 AI 设置面板
  * @param {() => string} deps.getDocContext 当前文档上下文文本（ai-tasks.buildDocContext 的产物，'' 表示无文档）
  * @param {(text: string) => void} deps.insertToDoc 把一段文本插入当前文档光标处
+ * @param {(text: string) => boolean} [deps.appendToDoc] Agent 模式收尾时把回答追加到当前文档末尾
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, insertToDoc, setStatus } = deps
+  const { root, getConfig, openSettings, getDocContext, insertToDoc, appendToDoc, setStatus } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -111,6 +118,8 @@ export function createAiPanel(deps) {
     const messages = []
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) messages.push({ role: 'system', content: ctx })
+    // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
+    if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
     messages.push(...history)
     try {
       await aiChatStream({
@@ -144,6 +153,8 @@ export function createAiPanel(deps) {
     const el = streaming.el
     el.innerHTML = md.render(text)
     el.appendChild(assistantActions(text))
+    // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
+    if (mode === 'agent' && !stopped && text) autoApply(text, el)
     if (stopped) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -190,6 +201,47 @@ export function createAiPanel(deps) {
     })
     row.append(ins, copy)
     return row
+  }
+
+  /** Agent 模式收尾：把回答追加到当前文档末尾，成功/失败都给一条小标签 */
+  function autoApply(text, el) {
+    if (!appendToDoc) return
+    let ok = false
+    try { ok = appendToDoc(text) !== false } catch { ok = false }
+    const tag = document.createElement('div')
+    tag.className = 'ai-stopped' + (ok ? ' ai-applied' : ' ai-apply-fail')
+    tag.textContent = t(ok ? 'ai.applied' : 'ai.applyFail')
+    el.appendChild(tag)
+    setStatus(tag.textContent)
+  }
+
+  // —— Ask / Agent 模式分段（品牌词不翻译，解释走悬停提示） ——
+
+  function buildModes() {
+    const wrap = document.createElement('div')
+    wrap.className = 'ai-modes'
+    const mk = (id, tipKey) => {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'ai-mode' + (mode === id ? ' active' : '')
+      b.textContent = id === 'ask' ? 'Ask' : 'Agent'
+      b.title = t(tipKey)
+      b.setAttribute('aria-pressed', mode === id ? 'true' : 'false')
+      b.dataset.mode = id
+      b.addEventListener('click', () => {
+        if (mode === id) return
+        mode = id
+        try { localStorage.setItem('nl-ai-mode', id) } catch { /* 隐私模式存不上就只留会话内 */ }
+        for (const p of wrap.children) {
+          const on = p.dataset.mode === id
+          p.classList.toggle('active', on)
+          p.setAttribute('aria-pressed', on ? 'true' : 'false')
+        }
+      })
+      return b
+    }
+    wrap.append(mk('ask', 'ai.modeAskTip'), mk('agent', 'ai.modeAgentTip'))
+    return wrap
   }
 
   // —— 输入框自适应高度（2~5 行） ——
@@ -270,7 +322,7 @@ export function createAiPanel(deps) {
     stopBtn.addEventListener('click', stop)
     foot.append(inputEl, sendBtn, stopBtn)
 
-    root.append(head, msgsEl, foot)
+    root.append(head, msgsEl, buildModes(), foot)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)

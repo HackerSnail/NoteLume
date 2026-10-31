@@ -5168,6 +5168,12 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     openSettings: () => aiSettings.open(),
     getDocContext: aiDocContext,
     insertToDoc: (text) => insertAiMarkdown(editor, text),
+    // Agent 模式收尾：光标定位到文档末尾再插入（同一条 ProseMirror 链路，可撤销）
+    appendToDoc: (text) => {
+      if (!editor || !editor.view) return false
+      insertAiMarkdown(editor, text, { caret: editor.view.state.doc.content.size })
+      return true
+    },
     setStatus,
   })
   // P5 §6.6 文件打开链路：拖入打开（主区域）与原生侧唤起（macOS「打开方式」/ 双击 / 拖到
