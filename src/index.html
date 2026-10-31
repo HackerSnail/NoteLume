@@ -133,7 +133,6 @@
             <div class="side-tabs" role="tablist">
               <button type="button" class="side-tab" data-tab="files" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-folder" /></svg><span data-i18n="ui.sideFiles">文件</span></button>
               <button type="button" class="side-tab" data-tab="outline" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-list-bullet" /></svg><span data-i18n="ui.sideOutline">大纲</span></button>
-              <button type="button" class="side-tab" data-tab="ai" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-sparkle" /></svg><span data-i18n="ui.sideAi">AI</span></button>
             </div>
             <div class="search-box">
               <svg class="nl-ico"><use href="#i-search" /></svg>
@@ -142,7 +141,6 @@
             <div id="search-results" class="search-results"></div>
             <div id="filetree" class="filetree"></div>
             <nav id="outline" class="outline hidden"></nav>
-            <div id="ai-panel" class="ai-panel hidden"></div>
           </section>
         </aside>
         <div class="nl-gutter" id="gutter-side" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterSide" title="拖拽改变侧栏宽度"></div>
@@ -155,6 +153,12 @@
 
         <div class="nl-gutter" id="gutter-insp" role="separator" aria-orientation="vertical" data-i18n-title="ui.gutterInsp" title="拖拽改变检查器宽度"></div>
         <aside class="inspector" id="inspector">
+          <!-- 右栏页签：检查器 / AI 复用同一栏（nl-insp-tab 持久化），AI 对话面板不再挤左栏 -->
+          <div class="side-tabs" role="tablist">
+            <button type="button" class="side-tab" data-insp-tab="inspector" role="tab" aria-selected="true"><svg class="nl-ico"><use href="#i-sliders" /></svg><span data-i18n="ui.sideInspector">检查器</span></button>
+            <button type="button" class="side-tab" data-insp-tab="ai" role="tab" aria-selected="false"><svg class="nl-ico"><use href="#i-sparkle" /></svg><span data-i18n="ui.sideAi">AI</span></button>
+          </div>
+          <div id="insp-body">
           <details class="panel">
             <summary><h2 data-i18n="panel.docProps">文档属性</h2></summary>
             <div class="panel-body">
@@ -191,6 +195,8 @@
             <h2><svg class="nl-ico"><use href="#i-plug" /></svg><span data-i18n="panel.plugins">插件</span></h2>
             <div id="plugins" class="plugins"></div>
           </section>
+          </div>
+          <div id="ai-panel" class="ai-panel hidden"></div>
         </aside>
       </div>
     </div>

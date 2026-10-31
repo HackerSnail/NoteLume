@@ -662,14 +662,23 @@ body {
   user-select: none;
 }
 /* 检查器（Typora 的 Inspector）：文档属性 / 标签 / 双向链接 / 历史 / Git / 插件都在这一栏，
-   左栏只留「文件 · 大纲」。栏外图标组靠右缘定位，故展开时整体让开一栏宽度 */
+   左栏只留「文件 · 大纲」。栏外图标组靠右缘定位，故展开时整体让开一栏宽度。
+   右栏整体 flex 列布局：页签头条固定，内容区（检查器 details 组 / AI 面板）各自滚动 */
 .inspector {
   width: var(--nl-insp-w, 280px);
   /* 同侧栏：底色差分层级，去掉左边框 */
   background: var(--bg-panel);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 10px;
   flex-shrink: 0;
+}
+/* 检查器页签的内容滚动区：details 组整体在这里滚；AI 页签时整块隐藏，由 AI 面板自滚 */
+#insp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .body.inspector-on .side-corner {
   right: calc(var(--nl-insp-w, 280px) + 10px);
@@ -5018,14 +5027,14 @@ html.nl-dragging * {
 
 /* ==================== AI（侧栏对话 + 选区浮层） ==================== */
 
-/* —— 侧栏 AI 页签：与文件树 / 大纲同一块区域，三 tab 互斥 —— */
+/* —— AI 对话面板：挂在右栏（与检查器页签复用同一栏），填满页签条以下的空间 —— */
 #ai-panel.ai-panel {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 4px 8px;
+  gap: 8px;
+  padding: 2px 2px 0;
 }
 .ai-head {
   display: flex;
@@ -5033,6 +5042,10 @@ html.nl-dragging * {
   gap: 6px;
   padding: 2px 2px 0;
   flex-shrink: 0;
+  flex-wrap: nowrap; /* 标题 / 模型名 / 操作钮一行排开，模型名超宽走省略号而不是挤换行 */
+}
+.ai-head .ai-head-title {
+  flex: none;
 }
 .ai-head-title {
   display: inline-flex;
@@ -5095,7 +5108,7 @@ html.nl-dragging * {
 .ai-empty {
   color: var(--muted);
   font-size: 12px;
-  padding: 10px 4px;
+  padding: 16px 6px;
   line-height: 1.7;
 }
 .ai-msg {
