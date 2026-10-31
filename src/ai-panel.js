@@ -49,11 +49,31 @@ export function createAiPanel(deps) {
   let optBtn = null // 「AI 优化输入」按钮（流式润色回填）
   let voiceBtn = null // 语音输入按钮（Web Speech API，环境不支持则置灰）
   let skillBtn = null // 技能按钮（自动探测本机 AI skills，选中后注入对话）
+  let skillChips = null // 选中技能的回显 chip 行（composer 内 textarea 上方，可多个、可删）
   let skills = [] // 探测到的技能 [{id,name,description,source,path,content}]
   let skillsLoaded = false
-  let activeSkillPath = (() => {
-    try { return localStorage.getItem('nl-ai-skill') || '' } catch { return '' }
+  // 选中的技能（多选）：nl-ai-skill 兼容旧单值字符串——数组存新档，字符串视为单元素
+  let activeSkillPaths = (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('nl-ai-skill'))
+      if (Array.isArray(v)) return v.filter((x) => typeof x === 'string')
+      if (typeof v === 'string' && v) return [v]
+    } catch {
+      try {
+        const v0 = localStorage.getItem('nl-ai-skill')
+        if (v0) return [v0]
+      } catch { /* 无 localStorage 就只留会话内 */ }
+    }
+    return []
   })()
+
+  function saveActiveSkills() {
+    try { localStorage.setItem('nl-ai-skill', JSON.stringify(activeSkillPaths)) } catch { /* 存不上只留会话内 */ }
+  }
+
+  function syncSkillBtn() {
+    if (skillBtn) skillBtn.classList.toggle('active', activeSkillPaths.length > 0)
+  }
   let modelPill = null // 底行模型选择器：多模型可下拉切换，单模型/未拉到列表只显示名称
   let modelsCache = { key: '', items: [] } // /models 拉取缓存（key = baseUrl）
   let emptyHint = null
@@ -210,10 +230,14 @@ export function createAiPanel(deps) {
     const messages = []
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) messages.push({ role: 'system', content: ctx })
-    // 选中的本机技能：SKILL.md 指引作 system 消息注入（扫描未完成时视为无技能，毫秒级一般已完成）
-    const skill = skillsLoaded ? skills.find((s) => s.path === activeSkillPath) : null
-    if (skill && skill.content) {
-      messages.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
+    // 选中的本机技能（可多个）：每条 SKILL.md 指引各作一条 system 消息（扫描未完成时视为无）
+    if (skillsLoaded) {
+      for (const p of activeSkillPaths) {
+        const skill = skills.find((s) => s.path === p)
+        if (skill && skill.content) {
+          messages.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
+        }
+      }
     }
     // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
     if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
@@ -632,12 +656,13 @@ export function createAiPanel(deps) {
       gh.textContent = src
       container.appendChild(gh)
       for (const s of groups[src]) {
+        const on = () => activeSkillPaths.includes(s.path)
         const item = document.createElement('button')
         item.type = 'button'
-        item.className = 'ai-mode-item ai-skill-item' + (activeSkillPath === s.path ? ' active' : '')
+        item.className = 'ai-mode-item ai-skill-item' + (on() ? ' active' : '')
         const mark = document.createElement('span')
         mark.className = 'ai-mode-mark'
-        if (activeSkillPath === s.path) setIcon(mark, 'check')
+        if (on()) setIcon(mark, 'check')
         const txt = document.createElement('span')
         txt.className = 'ai-skill-txt'
         const nm = document.createElement('span')
@@ -651,15 +676,55 @@ export function createAiPanel(deps) {
         item.title = s.description || s.name
         item.addEventListener('click', (e) => {
           e.stopPropagation()
-          activeSkillPath = activeSkillPath === s.path ? '' : s.path
-          try { localStorage.setItem('nl-ai-skill', activeSkillPath) } catch { /* 存不上只留会话内 */ }
-          if (skillBtn) skillBtn.classList.toggle('active', !!activeSkillPath)
-          closeFloatMenu()
-          setStatus(activeSkillPath ? t('ai.skillOn', { name: s.name }) : t('ai.skillOff'))
+          // 多选：点选只切换勾选态，菜单保持开着方便连续加载多个；chips 同步回显
+          if (on()) activeSkillPaths = activeSkillPaths.filter((q) => q !== s.path)
+          else activeSkillPaths.push(s.path)
+          saveActiveSkills()
+          item.classList.toggle('active', on())
+          if (on()) setIcon(mark, 'check')
+          else mark.replaceChildren()
+          syncSkillBtn()
+          renderSkillChips()
+          setStatus(on() ? t('ai.skillOn', { name: s.name }) : t('ai.skillOff'))
         })
         container.appendChild(item)
       }
     }
+  }
+
+  /** 选中技能的回显 chips（输入框内顶部一行，对齐参考样式：[图标 名称 ×]，可多个可删） */
+  function renderSkillChips() {
+    if (!skillChips) return
+    skillChips.innerHTML = ''
+    skillChips.classList.toggle('hidden', !activeSkillPaths.length)
+    for (const p of activeSkillPaths) {
+      const s = skills.find((x) => x.path === p)
+      const chip = document.createElement('span')
+      chip.className = 'ai-skill-chip'
+      const ic = document.createElement('span')
+      ic.className = 'ai-skill-chip-ic'
+      setIcon(ic, 'box')
+      const nm = document.createElement('span')
+      nm.className = 'ai-skill-chip-name'
+      nm.textContent = s ? s.name : (p.split(/[\\/]/).slice(-2, -1)[0] || p)
+      const x = document.createElement('button')
+      x.type = 'button'
+      x.className = 'ai-skill-chip-x'
+      x.title = t('ai.removeSkill')
+      x.setAttribute('aria-label', t('ai.removeSkill'))
+      x.textContent = '×'
+      x.addEventListener('click', (e) => {
+        e.stopPropagation()
+        activeSkillPaths = activeSkillPaths.filter((q) => q !== p)
+        saveActiveSkills()
+        syncSkillBtn()
+        renderSkillChips()
+        updateCtxRing()
+      })
+      chip.append(ic, nm, x)
+      skillChips.appendChild(chip)
+    }
+    updateCtxRing()
   }
 
   function buildSkillsMenu() {
@@ -704,8 +769,12 @@ export function createAiPanel(deps) {
     let s = ''
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) s += ctx
-    const skill = skillsLoaded ? skills.find((x) => x.path === activeSkillPath) : null
-    if (skill && skill.content) s += skill.content
+    if (skillsLoaded) {
+      for (const p of activeSkillPaths) {
+        const sk = skills.find((x) => x.path === p)
+        if (sk && sk.content) s += sk.content
+      }
+    }
     for (const m of history) s += typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
     if (inputEl) s += inputEl.value
     return s
@@ -824,6 +893,9 @@ export function createAiPanel(deps) {
     // 附件预览条：附图 chip / 面板内提示（模型不支持等），空时隐藏；只收粘贴上传
     attEl = document.createElement('div')
     attEl.className = 'ai-att hidden'
+    // 选中技能回显 chips（textarea 上方一行，多选可删）
+    skillChips = document.createElement('div')
+    skillChips.className = 'ai-skill-chips hidden'
 
     const composer = document.createElement('div')
     composer.className = 'ai-composer'
@@ -887,7 +959,7 @@ export function createAiPanel(deps) {
     skillBtn.title = t('ai.skills')
     skillBtn.setAttribute('aria-label', t('ai.skills'))
     setIcon(skillBtn, 'box')
-    skillBtn.classList.toggle('active', !!activeSkillPath)
+    skillBtn.classList.toggle('active', activeSkillPaths.length > 0)
     skillBtn.addEventListener('click', (e) => {
       e.stopPropagation()
       if (floatMenuOpenFor(skillBtn)) closeFloatMenu()
@@ -932,13 +1004,14 @@ export function createAiPanel(deps) {
     ctxRing.el.appendChild(ringSvg)
     // 整体排布对齐参考样式：左组（模式 · 优化 · 技能 · 模型）+ 右组（语音 · 圆环 · 发送/停止）
     bar.append(buildModeMenu(), optBtn, skillBtn, modelPill, voiceBtn, ctxRing.el, sendBtn, stopBtn)
-    composer.append(inputEl, bar)
+    composer.append(skillChips, inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)
     updateCtxRing()
+    renderSkillChips()
     // 技能无感探测：面板建好就静默扫一次（本地几个目录，毫秒级）
     aiSkillsScan().then((r) => {
       if (Array.isArray(r)) skills = r

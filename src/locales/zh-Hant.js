@@ -1092,6 +1092,7 @@ export default {
   'ai.skillInject': '請遵循以下技能「{name}」的指引作答：',
   'ai.skillOn': '已啟用技能：{name}',
   'ai.skillOff': '已停用技能',
+  'ai.removeSkill': '移除技能',
   'ai.vaultCtxHead': '以下是從知識庫擷取到的相關片段（可能不完整，供參考）：',
   'ai.ctxTip': '上下文用量：約 {pct}%（估算 {tokens} / 32K tokens）',
   'ai.modelsFail': '擷取模型清單失敗：{err}',

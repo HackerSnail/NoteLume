@@ -1091,6 +1091,7 @@ export default {
   'ai.skillInject': 'Folge bei der Antwort den Hinweisen der Fähigkeit „{name}“:',
   'ai.skillOn': 'Fähigkeit aktiviert: {name}',
   'ai.skillOff': 'Fähigkeit deaktiviert',
+  'ai.removeSkill': 'Fähigkeit entfernen',
   'ai.vaultCtxHead': 'Relevante Ausschnitte aus der Wissensbasis (möglicherweise unvollständig, zur Orientierung):',
   'ai.ctxTip': 'Kontextnutzung: ~{pct}% (geschätzt {tokens} / 32K Tokens)',
   'ai.modelsFail': 'Modellliste konnte nicht geladen werden: {err}',
