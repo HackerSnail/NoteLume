@@ -414,8 +414,8 @@ export function createAiPanel(deps) {
       fileInput.value = ''
     })
 
-    const foot = document.createElement('div')
-    foot.className = 'ai-foot'
+    const composer = document.createElement('div')
+    composer.className = 'ai-composer'
     inputEl = document.createElement('textarea')
     inputEl.className = 'ai-input'
     inputEl.rows = 1
@@ -458,9 +458,13 @@ export function createAiPanel(deps) {
     stopBtn.setAttribute('aria-label', t('ai.stop'))
     stopBtn.textContent = '■'
     stopBtn.addEventListener('click', stop)
-    foot.append(attachBtn, inputEl, sendBtn, stopBtn)
+    // CodeBuddy 式输入卡：输入框在上，底行左侧附图 + 模式分段、右侧圆形发送/停止（互斥同位）
+    const bar = document.createElement('div')
+    bar.className = 'ai-composer-bar'
+    bar.append(attachBtn, buildModes(), sendBtn, stopBtn)
+    composer.append(inputEl, bar)
 
-    root.append(head, msgsEl, buildModes(), attEl, fileInput, foot)
+    root.append(head, msgsEl, attEl, fileInput, composer)
     syncModelChip()
     renderHistory()
     setStreamingUi(false)
