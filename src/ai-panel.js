@@ -203,7 +203,7 @@ export function createAiPanel(deps) {
 
   function buildDom() {
     root.innerHTML = ''
-    // 显隐归右栏页签引擎（setInspTab）管，这里不碰 className——否则切语言会把面板藏掉
+    // 显隐归右栏独立开关（syncInspector）管，这里不碰 className——否则切语言会把面板藏掉
 
     const head = document.createElement('div')
     head.className = 'ai-head'

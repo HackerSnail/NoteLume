@@ -29,6 +29,8 @@
 
 * **AI 面板挪到右栏，与检查器页签复用同一栏**：AI 对话从左栏第三个页签迁出——左栏只留「文件 · 大纲」，右栏检查器顶部加页签头（检查器 / AI 两条，`data-insp-tab`，`nl-insp-tab` 持久化互斥），检查器 details 组包进 `#insp-body` 独立滚动（`.inspector` 改 flex 列布局，滚动从整栏下沉到内容区，AI 页签时由面板消息区自滚）；corner 的 sparkle 图标改归右栏页签组（右栏没开先开、开在检查器页签就切到 AI、已在 AI 则收起右栏），命令 `app.aiPanel` 同走 `openInspectorOn('ai')`。顺带修 AI 面板头部两处挤压：标题「AI AI」重复渲染（`setIcon` 第三参已带文本又 `appendChild` 一次）与切语言重建 DOM 时强设 `hidden` 把显示中的面板藏掉；设置 / 清空 / 发送三个定宽图标钮改纯图标（`setIcon` 第三参是可见文案，传进 22px 钮里被压成竖排字，悬停提示与 aria-label 保留），选区结果浮层同款修复（标题重复渲染两遍 + 关闭钮挤字）；`.ai-head` 不折行、模型名超宽走省略号，空态提示加呼吸留白。无头 CDP 验证 16 项全过（原 9 项 + 右栏页签结构 / 默认检查器页签 / corner 唤起 / 标题唯一 / 控件齐全 / 图标钮无可见文字 / 双向互斥切回）。
 
+* **检查器与 AI 面板各自独立开合，可同时在右栏显示**：AI 面板搬进右栏后仍与检查器互斥页签（切到 AI 就看不见检查器），且「更多」菜单里没有 AI 面板的开关项。改为右栏两个独立区块：检查器（`nl-inspector`）与 AI 面板（`nl-ai-open`）各自持久化、互不影响，同时开时上下堆叠各占一半（`.inspector.duo` 给 AI 面板顶一条 hairline 分界），只开其一则独占整栏；旧版 `nl-insp-tab` 页签记忆自动迁移（曾停在 AI 页则 AI 面板默认展开）。入口三处对齐：corner 的 sparkle 图标独立开合 AI 面板、`btn-inspector` 只动检查器；「更多」菜单与 mac「视图」菜单在「显示检查器」旁新增「显示 AI 面板」（`app.aiPanel`，勾选态随显隐，五语言词条 `cmd.app.aiPanel` 改「显示 AI 面板」并新增 `col.aiPanel`）；命令 `app.aiPanel` 由「落到 AI 页签」改为独立开合。无头 CDP 验证 19 项全过（默认态 / duo 堆叠 / corner 只收 AI / btn-inspector 只收检查器 / 菜单含开关项等）。
+
 * **修复「更多」菜单长过窗口时底部项点不到**：工具条「更多」下拉 20 多项（AI 面板搬右栏后又加了 Quarkdown / Git 等条目），菜单没有高度上限，`placeMenu` 的防溢出只会把菜单往上挪，高过窗口时底部照样整块伸出屏幕外。`.tree-menu` 限高 `calc(100vh - 12px)` 出滚动条（`overscroll-behavior: contain` 防滚穿到页面）；`placeMenu` 的滚轮关闭监听豁免菜单内部滚动——原先在菜单里滚一下就等于「外面滚了」，菜单直接被关掉，滚动条根本用不了。所有走 `placeMenu` 的下拉（最近打开 / 导出子菜单 / Git / 语言 / 段落）一并受益。无头 CDP 验证 18 项全过（新增限高滚动可达底部、菜单内滚轮不关菜单两条）。
 
 * **修复打印排版弹窗没有标题**：`src/print-options-dialog.js` 的 `printOptionsDialog()` 建好 `h`（`nl-prompt-title`，文案 `dlg.printTitle`）后没有 `appendChild`，四个复选项上面空一块、弹窗没有名字。打包版录屏时肉眼核对到，补一行挂载。

@@ -258,6 +258,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'sep',
       'app.toggleSidebar',
       'app.toggleInspector',
+      'app.aiPanel',
       'sep',
       'app.graph',
       'app.palette',

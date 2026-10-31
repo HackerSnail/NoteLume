@@ -508,57 +508,25 @@ function bindSideTabs() {
   sideTabs = [...document.querySelectorAll('.side-tab[data-tab]')]
   for (const b of sideTabs) b.addEventListener('click', () => setSideTab(b.getAttribute('data-tab')))
   sideCorner = [...document.querySelectorAll('.side-corner-btn[data-tab]')]
-  // corner 图标分流：ai 归右栏页签组（openInspectorOn），其余归左栏（openSidebarOn）
+  // corner 图标分流：sparkle 独立开合 AI 面板，其余归左栏（openSidebarOn）
   for (const b of sideCorner) {
     b.addEventListener('click', () => {
-      if (b.getAttribute('data-tab') === 'ai') openInspectorOn('ai')
+      if (b.getAttribute('data-tab') === 'ai') toggleAiPanel()
       else openSidebarOn(b.getAttribute('data-tab'))
     })
   }
   const insp = document.getElementById('btn-inspector')
-  if (insp) insp.addEventListener('click', () => openInspectorOn('inspector'))
-  inspTabs = [...document.querySelectorAll('.side-tab[data-insp-tab]')]
-  for (const b of inspTabs) b.addEventListener('click', () => setInspTab(b.getAttribute('data-insp-tab')))
+  if (insp) insp.addEventListener('click', () => toggleInspector())
   setSideTab(currentSideTab())
-  setInspTab(currentInspTab())
   syncInspector()
 }
-// —— 右栏「检查器 / AI」页签：与左栏同款 side-tab 条，AI 对话面板挪到右栏不再挤窄栏 ——
-// 栏外 sparkle 图标与栏内页签共用 nl-insp-tab 状态；「单独打开」= app.aiPanel 直接落到 AI 页
-let inspTabs = []
-function currentInspTab() {
-  return localStorage.getItem('nl-insp-tab') === 'ai' ? 'ai' : 'inspector'
-}
-function setInspTab(name) {
-  const tab = name === 'ai' ? 'ai' : 'inspector'
-  localStorage.setItem('nl-insp-tab', tab)
-  for (const b of inspTabs) {
-    const on = b.getAttribute('data-insp-tab') === tab
-    b.classList.toggle('active', on)
-    b.setAttribute('aria-selected', on ? 'true' : 'false')
-  }
-  const body = document.getElementById('insp-body')
-  if (body) body.classList.toggle('hidden', tab !== 'inspector')
-  if (els.inspector) els.inspector.classList.toggle('insp-ai', tab === 'ai')
-  if (els.aiPanel) els.aiPanel.classList.toggle('hidden', tab !== 'ai')
-  if (tab === 'ai' && aiPanel) aiPanel.focus()
-  syncInspCorner()
-}
-// 右栏图标的三种落点（与 openSidebarOn 同构）：收起 → 开栏到该页签；开着但在另一页签 → 切过去；正停在该页签 → 收起整栏
-function openInspectorOn(name) {
-  const tab = name === 'ai' ? 'ai' : 'inspector'
-  if (!inspectorHidden() && currentInspTab() === tab) {
-    setInspector(true)
-    return
-  }
-  if (inspectorHidden()) setInspector(false)
-  setInspTab(tab)
-}
-function syncInspCorner() {
-  const tab = currentInspTab()
-  for (const b of sideCorner) {
-    if (b.getAttribute('data-tab') === 'ai') b.classList.toggle('active', !inspectorHidden() && tab === 'ai')
-  }
+// —— 右栏：检查器与 AI 面板是两个独立区块，可单独显示也可同时显示（上下堆叠，各自滚动） ——
+// 持久化：nl-inspector（检查器）/ nl-ai-open（AI 面板）。nl-ai-open 缺省时看旧版页签记忆迁移。
+function aiPanelHidden() {
+  const v = localStorage.getItem('nl-ai-open')
+  if (v === '1') return false
+  if (v === '0') return true
+  return localStorage.getItem('nl-insp-tab') !== 'ai'
 }
 // —— 检查器（右栏）：文档属性 / 标签 / 双向链接 / 历史 / Git / 插件；左栏只留文件与大纲 ——
 function inspectorHidden() {
@@ -566,12 +534,20 @@ function inspectorHidden() {
 }
 function syncInspector() {
   const hidden = inspectorHidden()
-  if (els.inspector) els.inspector.classList.toggle('hidden', hidden)
+  const aiHidden = aiPanelHidden()
+  // aside 有任意一个区块可见就得显示；两个区块各自独立显隐
+  if (els.inspector) els.inspector.classList.toggle('hidden', hidden && aiHidden)
+  if (els.inspector) els.inspector.classList.toggle('duo', !hidden && !aiHidden)
+  const inspBody = document.getElementById('insp-body')
+  if (inspBody) inspBody.classList.toggle('hidden', hidden)
+  if (els.aiPanel) els.aiPanel.classList.toggle('hidden', aiHidden)
   const body = document.querySelector('.body')
-  if (body) body.classList.toggle('inspector-on', !hidden)
+  if (body) body.classList.toggle('inspector-on', !hidden || !aiHidden) // corner 图标组随右栏整体让位
   const btn = document.getElementById('btn-inspector')
-  if (btn) btn.classList.toggle('active', !hidden && currentInspTab() === 'inspector')
-  syncInspCorner()
+  if (btn) btn.classList.toggle('active', !hidden)
+  for (const b of sideCorner) {
+    if (b.getAttribute('data-tab') === 'ai') b.classList.toggle('active', !aiHidden)
+  }
 }
 function setInspector(hidden) {
   localStorage.setItem('nl-inspector', hidden ? 'hidden' : 'shown')
@@ -581,6 +557,10 @@ function toggleInspector() {
   const hidden = !inspectorHidden()
   setInspector(hidden)
   setStatus(hidden ? t('status.colHidden', { label: t('col.inspector') }) : t('status.colShown', { label: t('col.inspector') }))
+}
+function setAiPanel(hidden) {
+  localStorage.setItem('nl-ai-open', hidden ? '0' : '1')
+  syncInspector()
 }
 
 // —— 左右栏宽度：按住分隔条直接拖；拖到不足 COL_W_COLLAPSE 就整栏收起，反向再拖回来（Typora 式）。
@@ -970,9 +950,12 @@ function openSelectionAiInline(taskId, customPrompt, inst) {
   })
 }
 
-/** AI 对话面板开合（右栏 AI 页签）：收起→展开并落 AI 页；右栏在检查器页→切 AI；正在 AI→收起右栏 */
+/** AI 对话面板开合（右栏独立区块，与检查器互不影响）：收起→展开；展开→收起 */
 function toggleAiPanel() {
-  openInspectorOn('ai')
+  const hidden = !aiPanelHidden()
+  setAiPanel(hidden)
+  if (!hidden && aiPanel) aiPanel.focus()
+  setStatus(hidden ? t('status.colHidden', { label: t('col.aiPanel') }) : t('status.colShown', { label: t('col.aiPanel') }))
 }
 
 /** 设置面板的每次改动：主题切换 + 全量 CSS 变量 + 侧栏比例 → 像素，然后落盘 */
@@ -2025,6 +2008,7 @@ function openMoreMenu(anchorEl) {
   addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
   addMenuCmd(menu, 'app.toggleSidebar', 'sidebar')
   addMenuCmd(menu, 'app.toggleInspector', 'sliders')
+  addMenuCmd(menu, 'app.aiPanel', 'sparkle')
   const r = anchorEl.getBoundingClientRect()
   placeMenu(menu, r.left, r.bottom + 4)
 }
@@ -4071,6 +4055,7 @@ const MENU_CHECKED = {
   'app.typewriterMode': () => localStorage.getItem('nl-typewriter') === '1',
   'app.toggleSidebar': () => localStorage.getItem('nl-sidebar') !== 'hidden',
   'app.toggleInspector': () => !inspectorHidden(),
+  'app.aiPanel': () => !aiPanelHidden(),
   'app.autosave': () => state.autosave.enabled,
   'app.sourceMode': () => !!(editor && editor.isSourceMode()),
   'app.qdToggleEval': () => getFeatures(settingsStore).quarkdown,
