@@ -142,6 +142,17 @@ npm run dev      # 开发模式（首次约 5–10 分钟编译 Rust 依赖）
 npm run build    # 生产打包（产物在 src-tauri/target/release/bundle/）
 ```
 
+**mac 打包并签名**：`npm run build` 的 `postbuild` 已经挂在收尾脚本 `scripts/wrap-mac-dmg.mjs` 上——先给 `.app` 补 ad-hoc 签名（Tauri 直接出的是 linker-signed，拿去分发报「已损坏」），再带着一份 `打开说明.txt` 重卷成 dmg。手动走这一趟只要两条命令：
+
+```bash
+node src/node_modules/@tauri-apps/cli/tauri.js build --bundles app,dmg   # 必须带 app：只要 dmg 时组完卷会把 .app 删掉，收尾脚本没得重卷
+node scripts/wrap-mac-dmg.mjs                                           # 补 ad-hoc 签名，重卷出带 .app 与「打开说明.txt」的 dmg
+```
+
+卷宗里的 `打开说明.txt` 源文件是 `docs/macOS打开说明.txt`，收尾脚本在补签之后把它放进卷宗根、不参与签名校验，要改收件人看到的内容就改这个文件；改完重跑一次 `node scripts/wrap-mac-dmg.mjs` 即按新内容重卷。卷宗根另有 `NoteLume.app` 与 `Applications` 软链两项，`.DS_Store` 会被脚本清掉。
+
+卷宗名里的架构段由收尾脚本读二进制得出，Apple Silicon 落 `_aarch64`、Intel 落 `_x64`。Intel 包默认由 CI 在 Intel runner 上原生打；要在 Apple Silicon 上交叉打，先 `rustup target add x86_64-apple-darwin`，构建加 `--target x86_64-apple-darwin`，产物落在 `src-tauri/target/x86_64-apple-darwin/release/bundle`，收尾脚本把该目录整体作为参数传进去。补签后的包仍未公证，`spctl -a -t exec` 照旧 rejected，收件人侧的处理办法见上面的「打开说明」。
+
 ### 进阶：用 Quarkdown 让笔记可编程
 
 这是 NoteLume 区别于 Typora / Obsidian 的一张王牌：md 里可以直接写 `.var` / `.foreach` / `.if` 这类指令，编辑器出求值结果——快照式预览，光标移出指令区即渲染，源文件一个字节不动；导出 HTML / 幻灯片 / 整站 / PDF 时同样展开。
@@ -330,6 +341,17 @@ cd src && npm install && cd ..
 npm run dev      # dev mode (first Rust build takes ~5–10 min)
 npm run build    # release bundles, output under src-tauri/target/release/bundle/
 ```
+
+**Building and signing on macOS**: the `postbuild` hook of `npm run build` runs `scripts/wrap-mac-dmg.mjs`, which adds an ad-hoc signature to the `.app` (Tauri's own output is linker-signed and gets reported as "damaged" once distributed) and re-rolls the DMG with a copy of `打开说明.txt` inside. Two commands do the same by hand:
+
+```bash
+node src/node_modules/@tauri-apps/cli/tauri.js build --bundles app,dmg   # app must be listed: dmg-only builds delete bundle/macos/NoteLume.app, leaving nothing to re-roll
+node scripts/wrap-mac-dmg.mjs                                           # ad-hoc sign, then re-roll the DMG with the app and 打开说明.txt
+```
+
+`打开说明.txt` inside the DMG comes from `docs/macOS打开说明.txt`: the wrap script stages it after signing, so it is outside signature verification — edit that file to change what recipients see, then rerun `node scripts/wrap-mac-dmg.mjs` to re-roll. The volume root also holds `NoteLume.app` and an `Applications` symlink, and any `.DS_Store` is stripped before rolling.
+
+The architecture suffix in the DMG name (`_aarch64` for Apple Silicon, `_x64` for Intel) comes from reading the binary itself. Intel builds are produced natively on an Intel CI runner; to cross-build one on Apple Silicon, run `rustup target add x86_64-apple-darwin` first, add `--target x86_64-apple-darwin` to the build, and pass `src-tauri/target/x86_64-apple-darwin/release/bundle` to the wrap script. Re-signing does not mean notarization, so `spctl -a -t exec` still rejects the bundle — recipients follow the steps listed above.
 
 ### Advanced: Programmable Notes with Quarkdown
 
