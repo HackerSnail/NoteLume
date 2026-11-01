@@ -308,6 +308,7 @@ export default {
   'feature.headingNumbering': 'Automatische Überschriftennummerierung (Export / Druck)',
   'feature.quarkdown': 'Quarkdown-Auswertung',
   'feature.lineNumbers': 'Zeilennummern',
+  'feature.virtualLargeMd': 'Fensterweise Bearbeitung sehr großer Dateien (experimentell; gilt ab dem nächsten Öffnen)',
   'ap.split': 'Seitenleistenbreite',
   'ap.splitValue': '{n} % (ca. {px} px)',
   'ap.splitHint': 'Verhältnis von Seitenleiste zu Editor; das Ziehen des Trenners im Fenster aktualisiert diesen Wert ebenfalls',

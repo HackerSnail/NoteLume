@@ -434,6 +434,7 @@ export function createAppearanceSettings(deps) {
     { key: 'headingNumbering', labelKey: 'feature.headingNumbering' },
     { key: 'quarkdown', labelKey: 'feature.quarkdown' },
     { key: 'lineNumbers', labelKey: 'feature.lineNumbers' },
+    { key: 'virtualLargeMd', labelKey: 'feature.virtualLargeMd' },
   ]
   function renderFeatures() {
     if (!getFeatures) return

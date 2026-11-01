@@ -308,6 +308,7 @@ export default {
   'feature.headingNumbering': '标题自动编号（导出 / 打印）',
   'feature.quarkdown': 'Quarkdown 指令求值',
   'feature.lineNumbers': '左侧行号',
+  'feature.virtualLargeMd': '超大文件窗口化编辑（实验，下次打开生效）',
   'ap.split': '侧栏宽度',
   'ap.splitValue': '{n}%（约 {px} px）',
   'ap.splitHint': '设置侧栏与编辑区的宽度比例；直接拖动窗口里的分隔条也会更新这里',
