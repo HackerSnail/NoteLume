@@ -96,16 +96,50 @@ const inst = createEditor({
   console.log('ok jumpToPos master 坐标')
 }
 
-// 5. setMarkdown 退回常规模式
+// 5. Phase 3：查找钩子——全篇命中（master 坐标）、窗外 toWin null、替换经 master 事务
 {
   inst.setMarkdown('# 新文档\n\n普通内容\n')
-  assert.ok(!inst.isVirtual(), '应退出虚拟模式')
-  const kids = inst.view.dom.children
-  assert.strictEqual(kids[0].className, '', '常规模式无 spacer')
-  assert.ok(!inst.view.dom.querySelector('.nl-spacer'), '常规模式不应有 spacer')
+  // 重新进入虚拟（90 块 > windowSize 60，保证有窗口外块）
+  inst.enterVirtualJson(makeJson(90), makeMd(90))
+  const hooksFactory = inst.getFindHooks()
+  const h = hooksFactory()
+  assert.ok(h, '虚拟模式应给查找钩子')
+  const { findMatches, buildReplaceTr } = await import('../find-in-doc.js')
+  const matches = findMatches(h.getDoc(), '内容')
+  assert.ok(matches.length >= 25, `全篇命中应覆盖窗口外（${matches.length}）`)
+  assert.ok(h.toWin(matches[0].from) != null, '首个命中应在窗口内')
+  const last = matches[matches.length - 1]
+  assert.strictEqual(h.toWin(last.from), null, '窗口外命中 toWin 应为 null')
+  // 替换全部命中走 master 事务：一步进历史、窗口同步
+  const tr = buildReplaceTr(h.getMasterState(), matches, 'X')
+  h.applyMasterTr(tr)
   const md = inst.getMarkdown()
-  assert.ok(md.includes('新文档') && md.includes('普通内容'))
-  console.log('ok 退出虚拟模式')
+  assert.ok(!md.includes('内容'), '全篇替换后 master 不应再有原词')
+  assert.ok(md.includes('X'), '替换文本应进 master')
+  assert.ok(!inst.view.dom.textContent.includes('内容'), '窗口 DOM 应同步替换')
+  assert.ok(inst.runEditorCommand('editor.undo') === true, '替换应进 master 历史')
+  assert.ok(inst.getMarkdown().includes('内容'), 'undo 后应还原')
+  console.log('ok 查找/替换走 master')
+}
+
+// 6. Phase 3：折叠跨窗口——集合存 master 坐标，跳转前展开
+{
+  const { toggleFold, foldKey } = await import('../fold-plugin.js')
+  const { buildBlockIndex } = await import('../virtual/blocks.js')
+  // 折叠首标题「大标题」（窗口 pos 1：top spacer 占 [0,1)）：正文块藏进装饰
+  assert.ok(toggleFold(inst.view.state, inst.view.dispatch, 1), '首标题应可折')
+  const folded = foldKey.getState(inst.view.state)
+  assert.strictEqual(folded.length, 1, '折叠集合应有一条')
+  assert.strictEqual(folded[0], 0, '应存 master 坐标（标题是 master 首块，pos 0）')
+  assert.ok(inst.view.dom.querySelector('.nl-fold-hidden'), '折叠装饰应生效')
+  // 跳到被折叠节内的正文（master 坐标）：先展开再落位，光标可见
+  const blocks = buildBlockIndex(inst.getFindHooks()().getDoc())
+  const bodyPos = blocks[1].offset
+  inst.jumpToPos(bodyPos)
+  assert.ok(!inst.view.dom.querySelector('.nl-fold-hidden'), '跳转应展开覆盖折叠')
+  // 收起还原（展开后折叠集合应清空该节）
+  toggleFold(inst.view.state, inst.view.dispatch, 1)
+  console.log('ok 折叠跨窗口（master 坐标）')
 }
 
 console.log('editor-virtual: all ok')

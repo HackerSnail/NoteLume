@@ -77,7 +77,15 @@ function marksOfTextAt(doc, pos) {
   return doc.resolve(Math.min(pos + 1, doc.content.size)).marks()
 }
 
-export function findPlugin() {
+/**
+ * @param {() => object|null} [hooksRef] 虚拟模式钩子（编辑器装配层注入，普通模式不传）：
+ *   getDoc()        查找范围 doc（master doc，命中即 master 坐标）
+ *   toWin(pos)      master pos → 窗口 pos，窗外返回 null（装饰只铺窗口内命中）
+ *   平移语义：matches 存 master 坐标，窗口 tr 的 mapping 是窗口坐标不能直接用——
+ *   虚拟模式下 docChanged 时不平移（保持 stale），step/输入时由控制器重算。
+ */
+export function findPlugin(hooksRef) {
+  const hooks = hooksRef || null
   return new Plugin({
     key: findKey,
     state: {
@@ -88,6 +96,7 @@ export function findPlugin() {
         const meta = tr.getMeta(findKey)
         if (meta) return { ...old, ...meta } // 控制器算好命中后整体覆盖
         if (!tr.docChanged) return old
+        if (hooks && hooks()) return old // 虚拟模式：master 坐标命中不随窗口平移（stale 容忍）
         // 文档被编辑：用 mapping 平移既有命中，删除导致的空命中丢弃（下次输入会重算）
         const mapped = []
         for (const m of old.matches) {
@@ -104,11 +113,26 @@ export function findPlugin() {
       decorations(state) {
         const st = findKey.getState(state)
         if (!st || !st.matches.length) return null
-        const decos = st.matches.map((m, i) =>
-          Decoration.inline(m.from, m.to, {
-            class: 'nl-find-match' + (i === st.activeIndex ? ' nl-find-match-active' : ''),
-          })
-        )
+        const h = hooks && hooks()
+        const decos = []
+        st.matches.forEach((m, i) => {
+          // 虚拟模式：master 坐标 → 窗口坐标，窗外命中不铺装饰（滚动到时由 reveal 移窗）
+          let from = m.from
+          let to = m.to
+          if (h) {
+            const f = h.toWin(from)
+            const t = h.toWin(to)
+            if (f == null || t == null || t <= f) return
+            from = f
+            to = t
+          }
+          decos.push(
+            Decoration.inline(from, to, {
+              class: 'nl-find-match' + (i === st.activeIndex ? ' nl-find-match-active' : ''),
+            })
+          )
+        })
+        if (!decos.length) return null
         return DecorationSet.create(state.doc, decos)
       },
     },
@@ -117,10 +141,17 @@ export function findPlugin() {
 
 /**
  * 创建查找栏控制器。
- * @param {{view:import('prosemirror-view').EditorView, paneEl:HTMLElement}} opts
+ * @param {{view:import('prosemirror-view').EditorView, paneEl:HTMLElement,
+ *          hooks?:() => object|null}} opts
  *   paneEl：查找栏挂载容器（.editor-pane，position:relative 且为滚动容器）
+ *   hooks（虚拟模式，编辑器实例注入；普通模式省略，行为与原先逐字一致）：
+ *     getDoc()        查找范围 doc（master doc；命中即 master 坐标）
+ *     toWin(pos)      master pos → 窗口 pos；窗外 null
+ *     jumpTo(pos)     移窗覆盖 master pos 并落光标（跨窗跳转）
+ *     getMasterState() master 的 EditorState（替换事务的构造底座）
+ *     applyMasterTr(tr) master 事务应用（内核回灌 + 窗口同步，替换进 master 历史）
  */
-export function createFindBar({ view, paneEl }) {
+export function createFindBar({ view, paneEl, hooks }) {
   let bar, input, replaceInput, countEl, caseBtn, replaceRow
   let caseSensitive = false
   let visible = false
@@ -247,9 +278,15 @@ export function createFindBar({ view, paneEl }) {
     return st || { query: '', matches: [], activeIndex: -1, caseSensitive }
   }
 
+  // 查找范围的 doc：虚拟模式 = master doc（全篇命中），普通模式 = 编辑器 doc
+  function scopeDoc() {
+    const h = hooks && hooks()
+    return h ? h.getDoc() : view.state.doc
+  }
+
   function runFind(resetIndex) {
     const query = input.value
-    lastMatches = findMatches(view.state.doc, query, caseSensitive)
+    lastMatches = findMatches(scopeDoc(), query, caseSensitive)
     let idx
     if (!lastMatches.length) idx = -1
     else idx = resetIndex ? 0 : Math.min(Math.max(findState().activeIndex, 0), lastMatches.length - 1)
@@ -273,11 +310,24 @@ export function createFindBar({ view, paneEl }) {
   // 焦点在查找栏 / 命中贴近文档首尾时行为不稳。这里按命中的视口矩形滚动滚动容器
   // （paneEl），命中已完整可见时不动——连续搜索不产生视图跳动；超出滚动边界时
   // scrollTop 由浏览器钳制，文档首尾自然落定。
+  // 虚拟模式命中是 master 坐标：窗外先 jumpTo 移窗（内核落光标），再按窗口坐标选中滚动。
   function reveal(idx) {
     const m = findState().matches[idx]
     if (!m) return
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to)))
-    scrollMatchIntoView(m)
+    const h = hooks && hooks()
+    let from = m.from
+    let to = m.to
+    if (h) {
+      const f = h.toWin(m.from)
+      if (f == null) {
+        h.jumpTo(m.from) // 移窗 + 内核落光标（master 坐标）
+        from = h.toWin(m.from)
+        to = h.toWin(m.to)
+        if (from == null || to == null) return
+      }
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)))
+    scrollMatchIntoView({ from, to })
   }
 
   // 把命中矩形滚进滚动容器可视区（上下各留 72px 上下文），已在视野内则不滚
@@ -305,12 +355,20 @@ export function createFindBar({ view, paneEl }) {
     }
   }
 
-  // 替换当前高亮项，随后重算命中（被替换项消失后 activeIndex 自然落到下一个）
+  // 替换当前高亮项，随后重算命中（被替换项消失后 activeIndex 自然落到下一个）。
+  // 虚拟模式命中是 master 坐标：替换事务构造于 master state、经内核回灌窗口，
+  // 与窗口编辑共用同一条 master 历史（一步可撤销）。
   function doReplaceOne() {
     const st = findState()
     if (st.activeIndex < 0 || !st.matches[st.activeIndex]) return
-    const tr = buildReplaceTr(view.state, [st.matches[st.activeIndex]], replaceInput.value)
-    if (tr) view.dispatch(tr)
+    const h = hooks && hooks()
+    if (h) {
+      const tr = buildReplaceTr(h.getMasterState(), [st.matches[st.activeIndex]], replaceInput.value)
+      if (tr) h.applyMasterTr(tr)
+    } else {
+      const tr = buildReplaceTr(view.state, [st.matches[st.activeIndex]], replaceInput.value)
+      if (tr) view.dispatch(tr)
+    }
     runFind(false)
   }
 
@@ -327,8 +385,14 @@ export function createFindBar({ view, paneEl }) {
         return
       }
     }
-    const tr = buildReplaceTr(view.state, st.matches, replaceInput.value)
-    if (tr) view.dispatch(tr)
+    const h = hooks && hooks()
+    if (h) {
+      const tr = buildReplaceTr(h.getMasterState(), st.matches, replaceInput.value)
+      if (tr) h.applyMasterTr(tr)
+    } else {
+      const tr = buildReplaceTr(view.state, st.matches, replaceInput.value)
+      if (tr) view.dispatch(tr)
+    }
     runFind(true)
     view.focus() // 焦点留在替换框时 Ctrl+Z 撤的是输入框内容，撤不到刚做的替换
   }

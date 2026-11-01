@@ -117,6 +117,7 @@ export class VirtualEditor {
     this.windowSize = opts.windowSize ?? 40
     this.overscan = opts.overscan ?? 6
     this.estimateHeight = opts.estimateHeight ?? 64
+    this.lineHeight = opts.lineHeight ?? 24 // 行号前缀估算的行高（接入层按编辑器实际行高传）
     this.plugins = opts.plugins || []
     this.onChange = opts.onChange || null
     this.heights = new Map() // 块号 -> 实测高度 px；块号随增删漂移，接入层负责过期清理
@@ -179,6 +180,17 @@ export class VirtualEditor {
   /** 接入层喂实测块高（块滚出窗口时从 DOM 量） */
   setBlockHeight(i, h) {
     this.heights.set(i, h)
+  }
+
+  /** 块号 i 之前的全文估算行数（行号装订线的窗口前缀）。实测块高优先，缺的按
+   *  estimateHeight / lineHeight 折算——估算口径，滚动过后随实测值校准。 */
+  linePrefix(i) {
+    let n = 0
+    for (let k = 0; k < Math.min(i, this.blocks.length); k++) {
+      const h = this.heights.get(k) ?? this.estimateHeight
+      n += Math.max(1, Math.round(h / (this.lineHeight || 24)))
+    }
+    return n
   }
 
   /** 块号从 from 起的缓存过期（前面插删导致号漂移时由接入层调用） */

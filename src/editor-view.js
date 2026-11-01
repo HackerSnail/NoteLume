@@ -191,8 +191,18 @@ export function createEditor(opts) {
   let srcChangeTimer = null
   // 专注/打字机模式插件（初始态由 main.js 从 localStorage 传入）
   const modes = createModesPlugin({ focus: !!opts.initialFocus, typewriter: !!opts.initialTypewriter })
-  // 标题折叠（仅渲染层）：换文档时由 setMarkdown 清空，源码模式往返则保留
-  const fold = createFoldPlugin()
+  // 虚拟模式状态：非 null 时 view.state 是窗口 state，编辑经内核回灌 master（超大文档专用）。
+  // 声明在最前：下面各插件的坐标钩子都以闭包读它（调用时已初始化）。
+  let virtual = null
+
+  // 标题折叠（仅渲染层）：换文档时由 setMarkdown 清空，源码模式往返则保留。
+  // 虚拟模式下折叠集合存 master 坐标（窗口标题 pos + 内核 delta），重切失位自然失效。
+  const foldCoord = {
+    get delta() {
+      return virtual ? virtual.delta : 0
+    },
+  }
+  const fold = createFoldPlugin({ coord: foldCoord })
 
   // —— 行内输入规则：[[目标]] / #标签 / $公式$ 触发即转成节点，**粗** 等强调落定即换标记 ——
   const inputRulesPlugin = new Plugin({
@@ -324,10 +334,21 @@ export function createEditor(opts) {
     qdPlugin(opts.getFeatures, opts.evalQd),
     mermaidPlugin(),
     footnotePlugin(),
-    findPlugin(),
+    // 查找装饰的窗口化：钩子动态判虚拟（普通模式返回 null，行为与原先一致）
+    findPlugin(() =>
+      virtual
+        ? {
+            getDoc: () => virtual.doc,
+            toWin: (p) => virtual.masterToWinPos(p),
+          }
+        : null
+    ),
     modes.plugin,
     fold.plugin,
-    createLineNumbersPlugin(opts.getFeatures),
+    // 行号装订线的全文前缀：虚拟模式行号从窗口前的估算行数续起
+    createLineNumbersPlugin(opts.getFeatures, {
+      getStartN: () => (virtual ? virtual.linePrefix(virtual.i0) : 0),
+    }),
     ...tablePlugins(),
     // 块间隙光标：表格 / 代码块 / 公式在文末时给它下方一个可点可打字的位置，
     // 不改文档所以不判脏；放在表格插件之后，让列宽拖拽先取得鼠标事件
@@ -336,9 +357,6 @@ export function createEditor(opts) {
   const windowPlugins = allPlugins.filter((p) => !p.__nlHistory)
 
   const state = EditorState.create({ schema, doc: parseMarkdown(''), plugins: allPlugins })
-
-  // 虚拟模式状态：非 null 时 view.state 是窗口 state，编辑经内核回灌 master（超大文档专用）
-  let virtual = null
 
   const view = new EditorView(opts.mountEl, {
     state,
@@ -400,12 +418,22 @@ export function createEditor(opts) {
   setTocTitle(t('feature.tocTitle'))
 
   // 跳转到文档内某 pos：大纲与 #锚点 链接共用。目标被折在某节里时先展开，否则跳过去看不见。
-  // 虚拟模式下 pos 是 master 坐标：内核移窗覆盖目标块并落选区，再补一次滚动。
+  // 虚拟模式下 pos 是 master 坐标：目标已在窗内先按窗口坐标展开折叠，再由内核移窗落选区。
   function jumpToPos(pos) {
     if (virtual) {
+      const wp = virtual.masterToWinPos(pos)
+      if (wp != null) {
+        const open = unfoldCovering(view.state, wp, foldCoord)
+        if (open) view.dispatch(open)
+      }
       virtual.jumpToPos(pos)
       view.focus()
-      view.dispatch(view.state.tr.scrollIntoView())
+      // scrollIntoView 量坐标，无布局环境（jsdom）会炸——防御性跳过，真浏览器不受影响
+      try {
+        view.dispatch(view.state.tr.scrollIntoView())
+      } catch (_) {
+        /* no layout */
+      }
       return
     }
     const open = unfoldCovering(view.state, pos)
@@ -550,11 +578,19 @@ export function createEditor(opts) {
     const s = view.state.selection
     return { from: s.from, to: s.to }
   }
-  // 光标对齐：映射失败（异常节点、极端文本）不阻断切换，退回原来的行为（光标落文档开头）
+  // 光标对齐：映射失败（异常节点、极端文本）不阻断切换，退回原来的行为（光标落文档开头）。
+  // 虚拟模式：映射底座是 master doc，窗口选区先 +delta 转 master 坐标（夹进实块区间）。
   function mapSelToSource(text) {
     try {
-      const mapper = createPosMapper({ doc: view.state.doc, serialize: serializeMarkdownMapped, source: text, base: bodyOffset(text) })
-      const sel = currentSel()
+      const doc = virtual ? virtual.doc : view.state.doc
+      let sel = currentSel()
+      if (virtual) {
+        const r = virtual.masterWinRange()
+        const mFrom = Math.min(Math.max(sel.from, 1), virtual.winState.doc.content.size - 1) + virtual.delta
+        const mTo = Math.min(Math.max(sel.to, 1), virtual.winState.doc.content.size - 1) + virtual.delta
+        sel = { from: Math.max(r ? r.start : 0, Math.min(mFrom, doc.content.size)), to: Math.max(r ? r.start : 0, Math.min(mTo, doc.content.size)) }
+      }
+      const mapper = createPosMapper({ doc, serialize: serializeMarkdownMapped, source: text, base: bodyOffset(text) })
       return [mapper.pmToSrc(sel.from), mapper.pmToSrc(sel.to)]
     } catch (_) {
       return null
@@ -661,6 +697,9 @@ export function createEditor(opts) {
         enterVirtual(res.doc)
         rawSource = text
         modelDirty = false
+        // 光标对齐：映射底座 master doc（srcToPm 出 master 坐标），跳转落窗口
+        const sel = mapSelFromSource(text, virtual.doc, body)
+        if (sel) virtual.jumpToPos(sel.from)
         opts.onFrontmatterChange && opts.onFrontmatterChange()
         view.focus()
         return false
@@ -697,9 +736,17 @@ export function createEditor(opts) {
    *  undo/redo 在 master 历史上，经 virtualApi 分流。装饰插件对窗口 doc 计算，
    *  即为「按窗口区间」的天然窗口化；全篇级功能读 master。 */
   function enterVirtual(masterDoc) {
+    // 行高取编辑器实际值（行号前缀估算用）；读不到用默认 24
+    let lineHeight = 24
+    try {
+      lineHeight = parseFloat(getComputedStyle(view.dom).lineHeight) || 24
+    } catch (_) {
+      /* jsdom 等无布局环境用默认 */
+    }
     virtual = new VirtualEditor(masterDoc, {
       windowSize: 60,
       overscan: 8,
+      lineHeight,
       plugins: windowPlugins,
       onChange(winState) {
         view.updateState(winState)
@@ -781,6 +828,20 @@ export function createEditor(opts) {
     },
     isVirtual() {
       return virtual != null
+    },
+    /** 查找栏钩子（main.js 建 createFindBar 时传入；函数每次调用动态判虚拟，
+     *  普通模式返回 null 走原路径）。命中/替换在 master，装饰与跳转按窗口。 */
+    getFindHooks() {
+      return () =>
+        virtual
+          ? {
+              getDoc: () => virtual.doc,
+              toWin: (p) => virtual.masterToWinPos(p),
+              jumpTo: (p) => jumpToPos(p),
+              getMasterState: () => virtual.masterState,
+              applyMasterTr: (tr) => virtual.applyMasterTr(tr),
+            }
+          : null
     },
     // frontmatter：读原始文本 + 解析后的对象；解析失败/非对象时降级为 {}（不抛，原文仍在 raw）
     // 源码态从 CodeMirror 全文现取 fm（原文里的 --- 块），WYSIWYG 态取 fmRaw

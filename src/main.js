@@ -4457,7 +4457,7 @@ function ensurePaneFindBar(paneId) {
   const inst = panes.editors.get(paneId)
   const leaf = paneLeaf(paneId)
   if (!inst || !leaf) return null
-  const bar = createFindBar({ view: inst.view, paneEl: leaf })
+  const bar = createFindBar({ view: inst.view, paneEl: leaf, hooks: inst.getFindHooks && inst.getFindHooks() })
   panes.findBars.set(paneId, bar)
   return bar
 }

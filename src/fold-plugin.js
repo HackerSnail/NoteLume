@@ -61,12 +61,13 @@ function countWidgetDOM(count, pos) {
   return s
 }
 
-function buildDecorations(doc, folded) {
+function buildDecorations(doc, folded, coord) {
   const { foldable } = analyzeFolds(doc)
   if (!foldable.size) return null
   const decos = []
   for (const [pos, r] of foldable) {
-    const isFolded = folded.includes(pos)
+    // 虚拟模式折叠态存 master 坐标：窗口标题 pos + delta 对账；窗口外的折叠不渲染（本来无 DOM）
+    const isFolded = folded.includes(coord ? pos + coord.delta : pos)
     // key 让 PM 在重建装饰集时复用同一 DOM（否则每次按键都替换标题行首的三角）
     decos.push(Decoration.widget(pos + 1, toggleWidgetDOM(isFolded, pos), { inline: true, key: 'nl-fold-t-' + pos + (isFolded ? '-1' : '-0') }))
     if (!isFolded) continue
@@ -114,25 +115,39 @@ export function foldSectionCommand(state, dispatch) {
   return toggleFold(state, dispatch, target)
 }
 
-// 大纲/搜索跳转前调用：展开任何把 pos 藏起来的节（pos 是标题本身时不受影响）
-export function unfoldCovering(state, pos) {
+// 大纲/搜索跳转前调用：展开任何把 pos 藏起来的节（pos 是标题本身时不受影响）。
+// pos 与返回的 setMeta 集合都是窗口坐标（apply 统一 +delta 转存）；折叠集合存的是
+// master 坐标，虚拟模式经 coord 把 master → 窗口对账，普通模式 delta=0 行为不变。
+export function unfoldCovering(state, pos, coord) {
+  const d = coord ? coord.delta : 0
   const cur = foldKey.getState(state) || []
   if (!cur.length) return null
   const { foldable } = analyzeFolds(state.doc)
   const drop = new Set()
   for (const h of cur) {
-    const r = foldable.get(h)
+    const r = foldable.get(h - d)
     if (r && pos >= r.hideFrom && pos < r.hideTo) drop.add(h)
   }
   if (!drop.size) return null
-  return state.tr.setMeta(foldKey, { set: cur.filter((p) => !drop.has(p)) }).setMeta('addToHistory', false)
+  return state.tr
+    .setMeta(foldKey, { set: cur.filter((p) => !drop.has(p)).map((p) => p - d) })
+    .setMeta('addToHistory', false)
 }
 
-export function createFoldPlugin() {
+/**
+ * @param {object} [opts]
+ * @param {{ delta: number }} [opts.coord] 虚拟模式坐标换算：折叠集合统一存 master 坐标。
+ *  toggleFold 等 giveMeta 的 pos 是窗口坐标，apply 写入时 +delta 转存；装饰对账时同样
+ *  +delta 匹配。delta 由装配层以 getter 形式注入（虚拟模式取内核当前偏移，普通模式恒 0）。
+ *  整窗重切后窗口坐标失位 → includes 不中 → 折叠自然失效（安全方向，不错藏内容）。
+ */
+export function createFoldPlugin(opts = {}) {
   // 闭包镜像：EditorState 重建（源码模式往返）时 init 读它，折叠态因此不丢
   let folded = []
   // 装饰集缓存：apply 只在文档/折叠态真变化时产出新数组，故按引用相等即可判定复用
   let cache = null
+  const coord = opts.coord || null
+  const delta = () => (coord ? coord.delta : 0)
 
   const plugin = new Plugin({
     key: foldKey,
@@ -141,13 +156,14 @@ export function createFoldPlugin() {
       apply(tr, old) {
         const m = tr.getMeta(foldKey)
         if (!m && !tr.docChanged) return old // 纯选区变化：保持同一数组引用，令装饰缓存命中
-        let next = m && Array.isArray(m.set) ? m.set.slice() : old.slice()
+        let next = m && Array.isArray(m.set) ? m.set.map((p) => p + delta()) : old.slice()
         if (tr.docChanged) {
           const { foldable } = analyzeFolds(tr.doc)
           const seen = new Set()
+          // 普通模式（delta=0）与原行为逐字一致：窗口坐标平移 + foldable 校验
           next = next
-            .map((p) => (m ? p : tr.mapping.map(p)))
-            .filter((p) => foldable.has(p) && !seen.has(p) && seen.add(p))
+            .map((p) => (m ? p : tr.mapping.map(p - delta()) + delta()))
+            .filter((p) => foldable.has(p - delta()) && !seen.has(p) && seen.add(p))
         }
         folded = next
         return next
@@ -157,7 +173,7 @@ export function createFoldPlugin() {
       decorations(state) {
         const cur = foldKey.getState(state) || NO_FOLDS
         if (cache && cache.folded === cur && cache.doc === state.doc) return cache.set
-        const set = buildDecorations(state.doc, cur)
+        const set = buildDecorations(state.doc, cur, coord)
         cache = { folded: cur, doc: state.doc, set }
         return set
       },
