@@ -653,6 +653,26 @@ export function createEditor(opts) {
       emitMeta(view, opts)
       opts.onFrontmatterChange && opts.onFrontmatterChange()
     },
+    // 直接把原文装进 CodeMirror 源码态，全程不建 ProseMirror 模型 / 不铺 WYSIWYG DOM。
+    // 超大 markdown（main.js 按体积阈值判定）走这条：PM 无虚拟化，10MB 整篇铺 DOM 会卡数分钟
+    // 并触发装订线全文强制布局假死；CM 是虚拟化的，秒开。与 enterSource 的区别：enterSource 从
+    // 当前 PM 模型序列化取文，本方法从原始 md 直取，适用于尚未建模型的初次装载。
+    async loadAsSource(md) {
+      fold.api.reset()
+      rawSource = md
+      modelDirty = false
+      fmRaw = splitFrontmatter(md).yaml
+      if (opts.mountEl) opts.mountEl.classList.add('hidden')
+      if (opts.sourceMountEl) opts.sourceMountEl.classList.remove('hidden')
+      const s = await ensureSrc()
+      s.setDoc(md)
+      sourceMode = true
+      dirty = false
+      opts.onDirty && opts.onDirty(false)
+      opts.onFrontmatterChange && opts.onFrontmatterChange()
+      if (srcChangeTimer) clearTimeout(srcChangeTimer)
+      opts.onSourceTextChange && opts.onSourceTextChange(md)
+    },
     getMarkdown() {
       // 源码态返回 CodeMirror 全文（原文，不被重新序列化）；WYSIWYG 态序列化补回 frontmatter
       return sourceMode && src ? src.getDoc() : serializedFull()

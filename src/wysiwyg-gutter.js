@@ -1,9 +1,11 @@
 // wysiwyg-gutter.js —— 所见即所得编辑器的视觉行号装订线
 // 源码模式（CodeMirror）自带行号，这里给 WYSIWYG 对齐同款口径：按折行后的视觉行
 // 编号。开关是 features.lineNumbers（设置页「功能开关」，关掉后装订线和左侧留白一起
-// 消失）。行位来自 DOM Range 的 getClientRects 按 top 合并；装订线只渲染视口上下各 30
-// 行（虚拟化），5 万字单段、18001 字大文档都不卡。overlay 挂在 .editor 里，源码模式
-// .editor 整体 display:none，装订线跟着消失，不会和 CM 叠罗汉。
+// 消失）。行号采用窗口化：每帧对全部顶层块只做一次 getBoundingClientRect + 行高估行数的
+// 廉价扫描（得连续行号前缀），逐行 top 只在视口窗口内按 startN + i*lineHeight 展开，
+// 不再对每个块调 getClientRects（旧做法在 MB 级文档上每次编辑卡数分钟）。mergeLineTops /
+// clipToBox 作为行合并纯函数保留（单测覆盖）。overlay 挂在 .editor 里，源码模式 .editor
+// 整体 display:none，装订线跟着消失，不会和 CM 叠罗汉。
 import { Plugin } from 'prosemirror-state'
 
 // 纯函数：把一组矩形按视觉行合并，返回每行 {top, height}（按 top 升序）。
@@ -60,7 +62,8 @@ class GutterView {
     this.host = view.dom.parentNode // .editor
     this.getFeatures = getFeatures || null
     this.enabled = false // 当前是否挂载，构造时由 setEnabled 按开关决定
-    this.lines = [] // [{y, h, n}]，y 为 .editor 内容坐标
+    this.blocks = [] // 每顶层块 {top, h, lh, count, startN}，坐标为 .editor 内容系
+    this.lhCache = new Map() // 行高缓存，键 tagName|class（字号变化随实例重建失效）
     this.raf = 0
     this.overlay = document.createElement('div')
     this.overlay.className = 'nl-ln-gutter'
@@ -93,7 +96,7 @@ class GutterView {
     }
     this.ro.disconnect()
     if (this.scroller) this.scroller.removeEventListener('scroll', this.onScroll)
-    this.lines = []
+    this.blocks = []
     this.overlay.remove()
     this.host.classList.remove('nl-has-gutter')
   }
@@ -117,33 +120,50 @@ class GutterView {
   recompute() {
     const view = this.view
     const base = this.host.getBoundingClientRect().top
-    const lines = []
+    const blocks = []
     let n = 1
+    // 一次全量廉价扫描：每块只读一次 getBoundingClientRect（定 top）+ clientHeight，
+    // 用「内容高（扣 padding）/ 行高」得行数，行号连续。行高按块类型缓存（每种只实测
+    // 一次），不再对每块调 getClientRects（旧做法在 MB 级文档上每次编辑卡数分钟的根因）。
+    // 逐行 top 在 renderWindow 里只对窗口内的块按 startN + i*lineHeight 展开。
     view.state.doc.forEach((node, offset) => {
       const dom = view.nodeDOM(offset)
       if (!dom || dom.nodeType !== 1) return
-      const range = document.createRange()
-      try {
-        range.selectNodeContents(dom)
-      } catch (_) {
-        return
-      }
-      let rects
-      try {
-        rects = clipToBox(Array.from(range.getClientRects()), dom.getBoundingClientRect())
-      } catch (_) {
-        return
-      }
-      const merged = mergeLineTops(rects)
-      if (merged.length) {
-        for (const line of merged) lines.push({ y: line.top - base, h: line.height, n: n++ })
-      } else {
-        // 空段落等无行盒的块：用块自身的盒子占一行，编号不断号
-        const br = dom.getBoundingClientRect()
-        if (br.height > 0) lines.push({ y: br.top - base, h: br.height, n: n++ })
-      }
+      const rect = dom.getBoundingClientRect()
+      if (rect.height <= 0) return
+      const m = this.metricsOf(dom)
+      const contentH = Math.max(0, dom.clientHeight - m.padV)
+      const count = Math.max(1, Math.round(contentH / m.lh))
+      blocks.push({ top: rect.top - base, h: rect.height, lh: m.lh, count, startN: n })
+      n += count
     })
-    this.lines = lines
+    this.blocks = blocks
+  }
+
+  // 块的行高与纵向内边距：按 tagName|class 缓存（每种块型只算一次）。line-height:normal
+  // 时用首行文本的实际行盒高兜底（一次 getClientRects，缓存后不再重复）。
+  metricsOf(dom) {
+    const key = dom.tagName + '|' + (dom.className || '')
+    let m = this.lhCache.get(key)
+    if (m) return m
+    const cs = getComputedStyle(dom)
+    let lh = parseFloat(cs.lineHeight)
+    if (!lh || Number.isNaN(lh)) lh = this.firstLineHeight(dom) || (parseFloat(cs.fontSize) || 16) * 1.5
+    const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+    m = { lh, padV }
+    this.lhCache.set(key, m)
+    return m
+  }
+
+  firstLineHeight(dom) {
+    try {
+      const r = document.createRange()
+      r.selectNodeContents(dom)
+      const rects = r.getClientRects()
+      return rects.length ? rects[0].height : 0
+    } catch (_) {
+      return 0
+    }
   }
 
   renderWindow() {
@@ -155,13 +175,21 @@ class GutterView {
     const top = scRect.top - hostRect.top
     const bottom = top + sc.clientHeight
     const frag = document.createDocumentFragment()
-    for (const line of this.lines) {
-      if (line.y < top - 100 || line.y > bottom + 100) continue
-      const d = document.createElement('div')
-      d.className = 'nl-ln-num'
-      d.textContent = line.n
-      d.style.top = Math.round(line.y + Math.max(0, (line.h - 14) / 2)) + 'px'
-      frag.appendChild(d)
+    // blocks 按 top 升序（文档序即视觉序）：越过下界即 break，只处理与视口相交的块
+    for (const b of this.blocks) {
+      if (b.top > bottom + 100) break
+      if (b.top + b.h < top - 100) continue
+      // 只在视口 ±40px 的行区间内展开，单个超长块（数万字一段）也不会遍历它的全部行
+      const i0 = Math.max(0, Math.floor((top - 40 - b.top) / b.lh))
+      const i1 = Math.min(b.count - 1, Math.ceil((bottom + 40 - b.top) / b.lh))
+      for (let i = i0; i <= i1; i++) {
+        const y = b.top + i * b.lh
+        const d = document.createElement('div')
+        d.className = 'nl-ln-num'
+        d.textContent = b.startN + i
+        d.style.top = Math.round(y + Math.max(0, (b.lh - 14) / 2)) + 'px'
+        frag.appendChild(d)
+      }
     }
     this.overlay.replaceChildren(frag)
   }

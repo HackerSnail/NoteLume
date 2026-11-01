@@ -757,11 +757,35 @@ async function setWordGoal() {
   updateDocStats()
 }
 
+// 超大 markdown 阈值（按字符数，≈ 2MB）：超过则自动以源码模式（CodeMirror 虚拟化）打开，
+// 不建 ProseMirror 模型——10MB 整篇铺 DOM 会卡数分钟且后续每次编辑触发装订线全文强制布局假死。
+const LARGE_MD_LIMIT = 2 * 1024 * 1024
+
+// 把 md 装进某窗格编辑器：超大文档直接进源码模式（不建 PM / 不铺大 DOM），普通文档走所见即所得。
+// focused 窗格额外同步源码按钮高亮、格式工具条，并提示已降级。
+async function loadMarkdownIntoEditor(inst, md, focused) {
+  if (md.length > LARGE_MD_LIMIT) {
+    await inst.loadAsSource(md)
+    if (focused) {
+      if (els.btnSource) els.btnSource.classList.add('active')
+      syncFmtBars()
+      setStatus(t('status.largeSource'))
+    }
+  } else {
+    inst.setMarkdown(md)
+  }
+}
+
 async function toggleSourceMode() {
   if (!editor) return
   if (state.mode !== 'md') {
     setStatus(t('status.sourceOnlyMd'))
     return
+  }
+  // 从源码态切回所见即所得：超大文档会重建 PM 模型 + 铺大 DOM，先二次确认（会卡）。
+  if (editor.isSourceMode() && (editor.getMarkdown() || '').length > LARGE_MD_LIMIT) {
+    const ok = await confirmDialog(t('msg.largeToWysiwyg'), t('msg.largeToWysiwygTitle'))
+    if (!ok) return
   }
   const on = await editor.toggleSource()
   if (els.btnSource) els.btnSource.classList.toggle('active', on)
@@ -2712,12 +2736,12 @@ async function loadDocIntoPane(paneId, doc) {
       const inst = panes.editors.get(paneId)
       if (paneId === panes.focused) {
         setMode('md')
-        editor.setMarkdown(md)
+        await loadMarkdownIntoEditor(editor, md, true)
         updateDocStats() // setMode 里的刷新发生在换文档之前，这里补一次
         els.filename.textContent = ctx.scratch ? await joinPath(doc.root, doc.rel) : doc.rel
       } else if (inst) {
         // 非焦点窗格：装进它自己的编辑器实例，不抢全局焦点与面板
-        inst.setMarkdown(md)
+        await loadMarkdownIntoEditor(inst, md, false)
       }
       showPaneEmpty(paneId, false)
       if (pluginManager) pluginManager.fireFileOpen(doc.rel, md)
