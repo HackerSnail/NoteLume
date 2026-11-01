@@ -16,6 +16,11 @@ const PREFERRED = [
   'markdown', 'dockerfile', 'kotlin', 'swift', 'php', 'ruby', 'scala', 'diff', 'ini',
 ]
 
+// 预览块语言：不靠 highlight.js 上色，靠各自的预览插件把代码块换成图 / 表 / 条目
+// （mermaid-preview.js / csv-preview.js / bibtex-preview.js）。hljs 的注册表里没有它们，
+// 不补进列表就只能去源码态手写围栏 info，预览功能等于没有入口
+const PREVIEW_LANGS = ['bibtex', 'csv', 'mermaid']
+
 export function attachCodeLangPicker(view) {
   let menu = null // { el, input, list, items, index, nodePos }
 
@@ -54,9 +59,10 @@ export function attachCodeLangPicker(view) {
     const reg = hljs.listLanguages()
     const regSet = new Set(reg)
     const head = PREFERRED.filter((l) => regSet.has(l))
+    const extra = PREVIEW_LANGS.filter((l) => !regSet.has(l) && !head.includes(l))
     const rest = reg.filter((l) => !head.includes(l)).sort()
     const opts = [{ label: t('codelang.plainText'), value: '' }]
-    for (const l of [...head, ...rest]) {
+    for (const l of [...head, ...extra, ...rest]) {
       if (!q || l.includes(q)) opts.push({ label: l, value: l })
     }
     return opts.slice(0, 300)

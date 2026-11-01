@@ -342,7 +342,7 @@ export default {
   'pn.closed': 'Pane closed',
   'pn.emptyHint': 'Empty pane: pick a file from the sidebar or tabs, or drag one in, to open it here',
   'pn.canvasSplit': 'Canvas does not support split panes yet: close the other panes first',
-  'dlg.unsavedMulti': '{n} panes have unsaved changes ({names}). Save them?',
+  'dlg.unsavedMulti': '{n} panes have unsaved changes ({names}). Save them? (Discarding keeps a version snapshot.)',
 
   // —— Slash menu ——
   'slash.head': 'Insert Block',
@@ -350,7 +350,7 @@ export default {
 
   // —— Dialogs (call sites in main.js) ——
   'dlg.unsavedTitle': 'Unsaved Changes',
-  'dlg.unsavedMsg': '"{name}" has unsaved changes. Save them?',
+  'dlg.unsavedMsg': '"{name}" has unsaved changes. Save them? (Discarding keeps a version snapshot.)',
   'dlg.curDoc': 'Current Document',
   'dlg.newFileTitle': 'New Markdown File (in {dir})',
   'dlg.newFileTitleRoot': 'New Markdown File (vault root)',
@@ -930,6 +930,7 @@ export default {
   'codelang.searchPh': 'Search languages…',
   'mermaid.rendering': 'Rendering Mermaid…',
   'mermaid.renderFailed': 'Mermaid render failed: {err}',
+  'bib.count': 'References · {n}',
   'graph.stats': '{n} documents · {m} links · scroll to zoom / drag to pan / drag a node to reposition / click a node to open',
   'tab.scratchSuffix': ' (no save location chosen)',
   'stats.zero': '0 words',

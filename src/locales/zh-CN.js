@@ -341,7 +341,7 @@ export default {
   'pn.closed': '已关闭窗格',
   'pn.emptyHint': '空窗格：点左侧文件树、标签页，或把文件拖进来，在这里打开',
   'pn.canvasSplit': '画布暂不支持分栏：请先关闭其它窗格',
-  'dlg.unsavedMulti': '有 {n} 个窗格有未保存的更改（{names}），是否保存？',
+  'dlg.unsavedMulti': '有 {n} 个窗格有未保存的更改（{names}），是否保存？（不保存的改动会留一份历史版本快照）',
 
   // —— 斜杠菜单 ——
   'slash.head': '插入块',
@@ -349,7 +349,7 @@ export default {
 
   // —— 弹窗（main.js 各调用点） ——
   'dlg.unsavedTitle': '未保存的更改',
-  'dlg.unsavedMsg': '「{name}」尚未保存，是否保存更改？',
+  'dlg.unsavedMsg': '「{name}」尚未保存，是否保存更改？（不保存的改动会留一份历史版本快照）',
   'dlg.curDoc': '当前文档',
   'dlg.newFileTitle': '新建 Markdown 文件（于 {dir}）',
   'dlg.newFileTitleRoot': '新建 Markdown 文件（库根）',
@@ -930,6 +930,7 @@ export default {
   'codelang.searchPh': '搜索语言…',
   'mermaid.rendering': 'Mermaid 渲染中…',
   'mermaid.renderFailed': 'Mermaid 渲染失败：{err}',
+  'bib.count': '参考文献 {n} 条',
   'graph.stats': '{n} 个文档 · {m} 条链接 · 滚轮缩放 / 拖拽平移 / 拖节点重定位 / 点击节点跳文档',
   'tab.scratchSuffix': '（未选择保存位置）',
   'stats.zero': '0 字',

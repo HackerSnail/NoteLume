@@ -3423,6 +3423,51 @@ html.nl-dragging * {
   font-weight: 650;
 }
 
+/* ```bibtex 参考文献条目（编辑器装饰；显隐与出码态描边同 .nl-csv-* 口径，见 bibtex-preview.js）。
+   编号走 CSS counter，与 Quarkdown .bibliography 产物里的 [1] [2] 同一形态，数字不进词条 */
+.nl-bib-source {
+  display: none;
+}
+.nl-bib-editing {
+  outline: 2px solid var(--accent);
+  border-radius: 3px;
+}
+.nl-bib {
+  margin: 0.4em 0;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+.nl-bib-head {
+  color: var(--muted);
+  font-size: 0.86em;
+  margin-bottom: 0.35em;
+}
+.nl-bib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: nlbib;
+}
+.nl-bib-item {
+  counter-increment: nlbib;
+  padding: 0.3em 0;
+  border-bottom: 1px dashed rgba(127, 127, 127, 0.25);
+}
+.nl-bib-item:last-child {
+  border-bottom: none;
+}
+.nl-bib-ref {
+  color: var(--muted);
+  font-size: 0.86em;
+}
+.nl-bib-ref::before {
+  content: '[' counter(nlbib) '] ';
+  color: var(--accent);
+}
+.nl-bib-text {
+  margin-top: 0.1em;
+}
+
 /* Quarkdown 指令块（快照态隐藏源码、编辑态描边、诊断灰字条） */
 .nl-qd-source {
   display: none;
