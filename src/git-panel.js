@@ -1,7 +1,7 @@
 // git-panel.js —— 批次 E（子项目 L + R1 + R1-B + R2）本地 + 远程 Git 面板
 // 本地（L）：探测仓库 / status 改动列表 / log 历史 / 单文件 diff 预览 / 一键提交 / 初始化。
 // 远程（R1）：「同步」区——探测系统 git / 远端 origin 增改 / fetch / 领先落后 / 快进 pull。
-//   认证交系统 git（应用不碰凭据）；仅 --ff-only，非快进不自动合并。数据经 tauri-bridge 的 git_* / git_r_* 封装获取。
+//   认证交系统 git（应用不碰凭据）；仅 --ff-only，非快进不自动合并。当前分支无上游时引擎侧退到显式 refspec 拉取，拉不到才回 `[no_upstream]` 引导。数据经 tauri-bridge 的 git_* / git_r_* 封装获取。
 // R1-B（内置引擎）：无系统 git 时自动切 git2；同步区顶部展引擎徽标；fetch/pull 错误按 `[code]` 前串分派，
 //   陌生 host 走一次性信任。
 // R2（push）：↑ Push 按钮，当前分支 → upstream 同名分支；无 upstream → 确认后首次推送并建立上游，拒绝则回 `[no_upstream]` 引导。
@@ -508,9 +508,7 @@ export function createGitPanel(deps) {
       return
     }
     if (code === 'no_upstream') {
-      await messageDialog(
-        t('git.noUpstreamMsg', { body: body || raw }),
-      )
+      await messageDialog(t('git.noUpstreamMsg'))
       return
     }
     if (code === 'hostkey_mismatch') {

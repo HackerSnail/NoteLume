@@ -612,7 +612,7 @@ export default {
   'git.opStillFailed': '{op} a encore échoué : {err}{hint}',
   'git.nonFfMsg': '{op} refusé (local et distant ont divergé, avance rapide impossible) :\n{body}\n\nUtilisez le bouton « Pull (fusion) » de la zone « Synchronisation », ou « Git : Pull (fusion) » dans la palette de commandes ;\nles conflits sont listés un par un dans « Modifications », où vous pouvez garder la version locale / distante / éditer à la main. Commitez la fusion une fois tout résolu.',
   'git.localChangesMsg': 'Des modifications locales non commitées bloquent l’avance rapide :\n{body}\n\nCommittez ou stash d’abord.',
-  'git.noUpstreamMsg': 'La branche courante n’a pas d’amont, push impossible :\n{body}\n\nRappuyez sur Push puis confirmez « pousser et définir l’amont », ou lancez `git push -u origin <branche courante>` dans un terminal avant de réessayer.',
+  'git.noUpstreamMsg': 'La branche courante n’a pas d’amont. Cliquez sur Push puis confirmez « pousser et définir l’amont », avant de relancer Pull.',
   'git.pushNoUpstreamAsk': 'La branche courante n’a pas de branche amont. La pousser sur le distant et définir l’amont ?',
   'git.hostKeyMismatch': 'La clé de l’hôte ne correspond pas à l’entrée known_hosts enregistrée : attaque de l’homme du milieu possible, ou serveur ayant régénéré sa clé.\n\n{body}\n\nVérifiez l’empreinte via les canaux officiels, supprimez manuellement l’entrée known_hosts concernée puis réessayez.',
   'git.networkMsg': '{body}\n\nRemarque : vérifiez le réseau / proxy / pare-feu.',

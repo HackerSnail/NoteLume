@@ -1,4 +1,4 @@
-// git-push-dom.test.mjs —— Git 面板「首次推送建立上游」链路回归
+// git-push-dom.test.mjs —— Git 面板「首次推送建立上游」与「无上游时的拉取引导」回归
 // 运行：cd src && node tests/git-push-dom.test.mjs
 //
 // 走真模块：git-panel.js + tauri-bridge.js + @tauri-apps/plugin-dialog 的 confirm 实现，
@@ -23,20 +23,28 @@ const NO_UP_RAW =
   'To push the current branch and set the remote as upstream, use\n\n' +
   '    git push --set-upstream origin master\n'
 const PUSH_OK = 'remote: Resolving deltas: 100%\nTo /tmp/origin.git\n * [new branch]      master -> master\n'
+const NO_UP_PULL =
+  '[no_upstream]fatal: There is no tracking information for the current branch.\n' +
+  'Please specify which branch you want to merge with.\n\n' +
+  '    git branch --set-upstream-to=origin/<branch> master\n'
+const NO_UP_UNCLASSIFIED = 'fatal: There is no tracking information for the current branch.'
 
 let calls
 let pushScript
+let pullScript
 let dialogAnswer
 
 function installStub() {
   calls = []
   pushScript = []
+  pullScript = []
   window.__TAURI_INTERNALS__ = {
     invoke(cmd, args) {
       calls.push({ cmd, args })
-      if (cmd === 'git_r_push') {
-        const next = pushScript.shift()
-        if (next === undefined) throw new Error('git_r_push 调用次数超出预期')
+      if (cmd === 'git_r_push' || cmd === 'git_r_pull_ff') {
+        const script = cmd === 'git_r_push' ? pushScript : pullScript
+        const next = script.shift()
+        if (next === undefined) throw new Error(cmd + ' 调用次数超出预期')
         if (next instanceof Error) return Promise.reject(next)
         return Promise.resolve(next)
       }
@@ -94,6 +102,26 @@ async function runPush({ answer, script }) {
   return { statuses, pushCalls: calls.filter((c) => c.cmd === 'git_r_push') }
 }
 
+async function runPull({ script }) {
+  installStub()
+  pullScript = script
+  dialogAnswer = 'Cancel'
+  const statuses = []
+  const panel = createGitPanel({
+    rootEl: document.getElementById('git'),
+    getVaultRoot: () => VAULT,
+    escapeHtml: (s) => String(s),
+    setStatus: (s) => statuses.push(s),
+    onPullDone: async () => {},
+    openFile: () => {},
+  })
+  await panel.pull()
+  return {
+    statuses,
+    dialogs: calls.filter((c) => c.cmd === 'plugin:dialog|message'),
+  }
+}
+
 await test('撞无上游：弹一次确认，确认后带 setUpstream 重推', async () => {
   const { pushCalls } = await runPush({
     answer: 'Ok',
@@ -140,6 +168,21 @@ await test('已有上游时不误弹确认框', async () => {
   const { pushCalls } = await runPush({ answer: 'Ok', script: [PUSH_OK] })
   assert.strictEqual(pushCalls.length, 1)
   assert.ok(!calls.some((c) => c.cmd === 'plugin:dialog|message'), '不该弹框')
+})
+
+await test('拉取撞无上游：弹引导文案，不把 git 英文原文糊给用户', async () => {
+  const { statuses, dialogs } = await runPull({ script: [new Error(NO_UP_PULL)] })
+  assert.strictEqual(dialogs.length, 1, '只应弹一个提示框')
+  const msg = dialogs[0].args.message
+  assert.strictEqual(msg, '当前分支还没有上游。先按 Push 并确认「推送并建立上游」，再重新 Pull。')
+  assert.ok(!/tracking information|set-upstream-to/.test(msg), '不能出现 git 原文：' + msg)
+  assert.ok(statuses.includes('拉取失败'), statuses.join(' / '))
+})
+
+await test('边界：引擎没打分类前串时仍按原文兜底', async () => {
+  const { dialogs } = await runPull({ script: [new Error(NO_UP_UNCLASSIFIED)] })
+  assert.strictEqual(dialogs.length, 1)
+  assert.match(dialogs[0].args.message, /^拉取失败：fatal: There is no tracking information/)
 })
 
 console.log(`\ngit-push-dom: ${pass} passed, ${fail} failed`)

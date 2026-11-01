@@ -225,6 +225,7 @@ pub enum BuiltinErrCode {
     LocalChanges,
     NonFastForward,
     HostkeyMismatch,
+    NoUpstream,
     GitError,
 }
 
@@ -238,12 +239,15 @@ impl BuiltinErrCode {
             BuiltinErrCode::LocalChanges => "local_changes",
             BuiltinErrCode::NonFastForward => "non_fast_forward",
             BuiltinErrCode::HostkeyMismatch => "hostkey_mismatch",
+            BuiltinErrCode::NoUpstream => "no_upstream",
             BuiltinErrCode::GitError => "git_error",
         }
     }
 }
 
 /// 按 libgit2/git 常见错误文本给归一 code。顺序敏感：
+/// 0) NoUpstream 最先——「no tracking information / couldn't find remote ref」里不含别的关键词，
+///    但它是首次推送前最常见的失败，判错会让前端弹一堆凭据指引
 /// 1) HostkeyMismatch 先于 Network（"host key verification failed" 会命中 network 关键词）
 /// 2) NonFastForward 先于 LocalChanges（"Merge is not possible - divergent" 归 Divergent 语义）
 /// 3) LocalChanges 先于 Auth（"local changes would be overwritten" 不含 auth 词）
@@ -251,6 +255,13 @@ impl BuiltinErrCode {
 pub fn map_err_text(msg: &str) -> BuiltinErrCode {
     let l = msg.to_ascii_lowercase();
     let has = |needle: &str| l.contains(needle);
+    if has("no tracking information")
+        || has("no upstream")
+        || has("couldn't find remote ref")
+        || has("cannot find the remote ref")
+    {
+        return BuiltinErrCode::NoUpstream;
+    }
     if has("host key") || has("known_hosts") || has("known hosts") || has("hostkey") {
         return BuiltinErrCode::HostkeyMismatch;
     }
@@ -627,18 +638,38 @@ pub mod system {
         }
     }
 
+    /// 快进 pull。裸 `git pull --ff-only` 在没有上游时必然失败（新建库最常见），
+    /// 此时按 git 自己给的提示改走显式 refspec：`git pull --ff-only <remote> <当前分支>`
+    /// ——只拉取，不写上游配置（建上游是 Push 的事）。失败一律前置 `[code]` 串。
     pub async fn pull_ff(vault_root: String) -> Result<String, String> {
-        let run = git_run(vault_root, vec!["pull".into(), "--ff-only".into()]).await?;
+        let run = git_run(vault_root.clone(), vec!["pull".into(), "--ff-only".into()]).await?;
         let combined = format!("{}{}", run.stdout, run.stderr);
-        if run.code != 0 {
-            return Err(combined);
+        if run.code == 0 {
+            return Ok(combined);
         }
-        Ok(combined)
+        let code = super::map_err_text(&combined);
+        if !matches!(code, super::BuiltinErrCode::NoUpstream) {
+            return Err(format!("[{}]{}", code.as_str(), combined));
+        }
+        let (remote, branch) = remote_and_branch(&vault_root).await?;
+        let retry = git_run(
+            vault_root,
+            vec!["pull".into(), "--ff-only".into(), remote, branch],
+        )
+        .await?;
+        let out = format!("{}{}", retry.stdout, retry.stderr);
+        if retry.code != 0 {
+            // 远端还没有同名分支 → "couldn't find remote ref" 同样归 NoUpstream，
+            // 前端指引同一句话：先按 Push 推送并建立上游
+            return Err(format!("[{}]{}", super::map_err_text(&out).as_str(), out));
+        }
+        Ok(out)
     }
 
-    /// 首次推送用：组出 `git push --set-upstream <remote> <branch>` 的参数。
-    /// 分支取 HEAD 简名（detached 时 rev-parse 回 "HEAD" → 拒），remote 优先 origin、否则列表首个。
-    async fn upstream_push_args(vault_root: &str) -> Result<Vec<String>, String> {
+    /// 解析「当前分支 + 要推 / 拉的远端名」：分支取 HEAD 简名（detached 时 rev-parse 回
+    /// "HEAD" → 拒），remote 优先 origin、否则列表首个。
+    /// 首次推送建上游与无上游快进拉取共用这条解析。
+    async fn remote_and_branch(vault_root: &str) -> Result<(String, String), String> {
         let b = git_run(
             vault_root.to_string(),
             vec!["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
@@ -662,10 +693,16 @@ pub mod system {
         if remote.is_empty() {
             return Err(format!("[git_error]{}", ui_msg!("gitRemoteNameUnresolved")));
         }
+        Ok((remote.to_string(), branch))
+    }
+
+    /// 首次推送用：组出 `git push --set-upstream <remote> <branch>` 的参数。
+    async fn upstream_push_args(vault_root: &str) -> Result<Vec<String>, String> {
+        let (remote, branch) = remote_and_branch(vault_root).await?;
         Ok(vec![
             "push".into(),
             "--set-upstream".into(),
-            remote.to_string(),
+            remote,
             branch,
         ])
     }
@@ -733,8 +770,9 @@ pub mod system {
 
     /// R3：尝试 `git pull`（不带 --ff-only），合并远端。
     /// 成功无冲突 → Ok("MERGED\n…")；有冲突 → Ok("CONFLICTS\n…")；其他失败 → Err。
+    /// 无上游时同 pull_ff：改走显式 refspec `git pull <remote> <当前分支>`。
     pub async fn pull_merge(vault_root: String) -> Result<String, String> {
-        let run = git_run(vault_root, vec!["pull".into()]).await?;
+        let run = git_run(vault_root.clone(), vec!["pull".into()]).await?;
         let combined = format!("{}{}", run.stdout, run.stderr);
         if run.code == 0 {
             return Ok(format!("MERGED\n{}", combined));
@@ -743,6 +781,19 @@ pub mod system {
         let lower = combined.to_lowercase();
         if lower.contains("conflict") || lower.contains("automatic merge failed") || lower.contains("merge conflict") {
             return Ok(format!("CONFLICTS\n{}", combined));
+        }
+        if matches!(super::map_err_text(&combined), super::BuiltinErrCode::NoUpstream) {
+            let (remote, branch) = remote_and_branch(&vault_root).await?;
+            let retry = git_run(vault_root, vec!["pull".into(), remote, branch]).await?;
+            let out = format!("{}{}", retry.stdout, retry.stderr);
+            if retry.code == 0 {
+                return Ok(format!("MERGED\n{}", out));
+            }
+            let o = out.to_lowercase();
+            if o.contains("conflict") || o.contains("automatic merge failed") {
+                return Ok(format!("CONFLICTS\n{}", out));
+            }
+            return Err(format!("[{}]{}", super::map_err_text(&out).as_str(), out));
         }
         // 其他失败同 push 分类前置 [code]
         let code = super::map_err_text(&combined);
@@ -979,6 +1030,97 @@ pub mod system {
 
             let _ = fs::remove_dir_all(&work);
             let _ = fs::remove_dir_all(&bare);
+        }
+
+        /// 无上游的快进拉取：远端已有同名分支时按显式 refspec 拉成功（且不动上游配置）；
+        /// 远端是空仓时回 `[no_upstream]`，而不是把 git 的英文原文丢给前端。
+        #[test]
+        fn pull_ff_without_upstream_uses_explicit_refspec() {
+            use std::fs;
+            use std::path::Path;
+            let pid = std::process::id();
+            let work = std::env::temp_dir().join(format!("notelume-pull-w-{pid}"));
+            let bare = std::env::temp_dir().join(format!("notelume-pull-b-{pid}"));
+            let other = std::env::temp_dir().join(format!("notelume-pull-o-{pid}"));
+            let work2 = std::env::temp_dir().join(format!("notelume-pull-w2-{pid}"));
+            let bare2 = std::env::temp_dir().join(format!("notelume-pull-b2-{pid}"));
+            for d in [&work, &bare, &other, &work2, &bare2] {
+                let _ = fs::remove_dir_all(d);
+            }
+            fs::create_dir_all(&work).unwrap();
+            fs::create_dir_all(&work2).unwrap();
+
+            let git_in = |dir: &Path, args: &[&str]| {
+                let out = super::super::new_command("git")
+                    .args(args)
+                    .current_dir(dir)
+                    .env("GIT_TERMINAL_PROMPT", "0")
+                    .output()
+                    .unwrap();
+                assert!(
+                    out.status.success(),
+                    "git {:?}: {}",
+                    args,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            };
+            let git = |args: &[&str]| git_in(&work, args);
+            let seed = |dir: &Path, name: &str| {
+                git_in(dir, &["init", "-b", "master"]);
+                git_in(dir, &["config", "user.email", "tester@example.com"]);
+                git_in(dir, &["config", "user.name", name]);
+                git_in(dir, &["config", "commit.gpgsign", "false"]);
+            };
+
+            git_in(Path::new("/"), &["init", "--bare", bare.to_str().unwrap()]);
+            seed(&work, "Tester");
+            fs::write(work.join("a.md"), "一\n").unwrap();
+            git(&["add", "a.md"]);
+            git(&["commit", "-m", "笔记初次提交"]);
+            git(&["remote", "add", "origin", bare.to_str().unwrap()]);
+            git(&["push", "origin", "master"]); // 不带 -u：本地保持「无上游」
+
+            // 另一份工作区推第二笔，让远端领先且本地没有 tracking
+            // 显式 -b master：clone 侧的默认分支跟着环境的 init.defaultBranch 走
+            git_in(
+                Path::new("/"),
+                &["clone", "-b", "master", bare.to_str().unwrap(), other.to_str().unwrap()],
+            );
+            fs::write(other.join("b.md"), "二\n").unwrap();
+            git_in(&other, &["add", "b.md"]);
+            git_in(&other, &["commit", "-m", "远端第二笔"]);
+            git_in(&other, &["push", "origin", "master"]);
+            let remote_sha = git_in(&other, &["rev-parse", "HEAD"]);
+
+            let root = work.to_string_lossy().to_string();
+            tauri::async_runtime::block_on(pull_ff(root)).unwrap();
+            assert_eq!(git(&["rev-parse", "HEAD"]), remote_sha, "无上游时应快进跟上远端");
+            let cfg = fs::read_to_string(work.join(".git/config")).unwrap();
+            assert!(
+                !cfg.contains("[branch \"master\"]"),
+                "拉取不该写上游配置：{cfg}"
+            );
+
+            // 空远端（新建库最常见）：回 [no_upstream] 引导，而不是 git 原文
+            git_in(Path::new("/"), &["init", "--bare", bare2.to_str().unwrap()]);
+            seed(&work2, "Tester2");
+            fs::write(work2.join("c.md"), "三\n").unwrap();
+            git_in(&work2, &["add", "c.md"]);
+            git_in(&work2, &["commit", "-m", "笔记初次提交"]);
+            git_in(&work2, &["remote", "add", "origin", bare2.to_str().unwrap()]);
+            let e = tauri::async_runtime::block_on(pull_ff(
+                work2.to_string_lossy().to_string(),
+            ))
+            .unwrap_err();
+            assert!(
+                e.starts_with("[no_upstream]"),
+                "空远端 + 无上游应回 no_upstream，实际：{e}"
+            );
+
+            for d in [&work, &bare, &other, &work2, &bare2] {
+                let _ = fs::remove_dir_all(d);
+            }
         }
     }
 }
@@ -1222,19 +1364,49 @@ pub mod builtin {
         remote_name: String,
     }
 
-    fn read_head_info(repo: &Repository) -> Result<HeadInfo, String> {
+    /// HEAD 所在分支简名；分离头指针 / 无提交时报错。
+    fn head_branch(repo: &Repository) -> Result<String, String> {
         let head = repo
             .head()
             .map_err(|_| format!("[git_error]{}", ui_msg!("gitNoHead")))?;
         if !head.is_branch() {
-            return Err(format!("[git_error]{}", ui_msg!("gitDetachedPull")).into());
+            return Err(format!("[git_error]{}", ui_msg!("gitDetachedPull")));
         }
-        let branch = head
-            .shorthand()
-            .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitNoBranchName")))?
-            .to_string();
+        head.shorthand()
+            .map(str::to_string)
+            .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitNoBranchName")))
+    }
+
+    /// pull 专用头信息：有上游按上游；没有上游（新建库最常见）退到
+    /// 「默认远端的同名分支」——与系统引擎的显式 refspec 拉取同形，
+    /// 远端确实没这个分支时由后续 find_reference 回 `[no_upstream]`。
+    fn pull_head_info(repo: &Repository) -> Result<HeadInfo, String> {
+        let branch = head_branch(repo)?;
+        let up = repo
+            .branch_upstream_name(&branch)
+            .ok()
+            .and_then(|b| b.as_str().map(str::to_string))
+            .unwrap_or_default();
+        if let Some(short) = up
+            .strip_prefix("refs/remotes/")
+            .filter(|s| s.contains('/'))
+        {
+            let remote_name = short.split('/').next().unwrap_or("").to_string();
+            if !remote_name.is_empty() && repo.find_remote(&remote_name).is_ok() {
+                return Ok(HeadInfo { up_short: short.to_string(), remote_name });
+            }
+        }
+        let remote_name = pick_remote_name(repo)?;
+        Ok(HeadInfo {
+            up_short: format!("{}/{}", remote_name, branch),
+            remote_name,
+        })
+    }
+
+    fn read_head_info(repo: &Repository) -> Result<HeadInfo, String> {
+        let branch = head_branch(repo)?;
         let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
-            format!("[auth]{}", ui_msg!("gitNoUpstreamBuiltin"))
+            format!("[no_upstream]{}", ui_msg!("gitNoUpstreamBuiltin"))
         })?;
         let up_full = up_refname_buf
             .as_str()
@@ -1388,7 +1560,7 @@ pub mod builtin {
     pub async fn pull_ff(vault_root: String) -> Result<String, String> {
         tauri::async_runtime::spawn_blocking(move || {
             let repo = open_repo(&vault_root)?;
-            let info = read_head_info(&repo)?;
+            let info = pull_head_info(&repo)?;
 
             // 1) fetch 目标 remote，同 libgit2 默认 refspec；带 known_hosts 侧信道
             let entries = known_hosts_store::merged();
@@ -1407,7 +1579,9 @@ pub mod builtin {
             let head = repo.head().map_err(map_err)?;
             let local_oid = head.target().ok_or("[git_error]HEAD 无 target")?;
             let up_full = format!("refs/remotes/{}", info.up_short);
-            let up_ref = repo.find_reference(&up_full).map_err(map_err)?;
+            let up_ref = repo
+                .find_reference(&up_full)
+                .map_err(|_| format!("[no_upstream]{}", ui_msg!("gitNoUpstreamBuiltin")))?;
             let up_oid = match up_ref.target() {
                 Some(o) => o,
                 None => up_ref.peel_to_commit().map_err(map_err)?.id(),
@@ -1587,7 +1761,7 @@ pub mod builtin {
     pub async fn pull_merge(vault_root: String) -> Result<String, String> {
         tauri::async_runtime::spawn_blocking(move || {
             let repo = open_repo(&vault_root)?;
-            let info = read_head_info(&repo)?;
+            let info = pull_head_info(&repo)?;
 
             // 1) fetch（同 pull_ff）
             let entries = known_hosts_store::merged();
@@ -1604,7 +1778,9 @@ pub mod builtin {
 
             // 2) 取 upstream ref → AnnotatedCommit
             let up_full = format!("refs/remotes/{}", info.up_short);
-            let up_ref = repo.find_reference(&up_full).map_err(map_err)?;
+            let up_ref = repo
+                .find_reference(&up_full)
+                .map_err(|_| format!("[no_upstream]{}", ui_msg!("gitNoUpstreamBuiltin")))?;
             let up_annotated = repo
                 .reference_to_annotated_commit(&up_ref)
                 .map_err(map_err)?;
@@ -1952,6 +2128,23 @@ gitee.com ssh-ed25519 AAAAC3NzaFake2
     }
 
     // ---- map_err_text ----
+    #[test]
+    fn map_err_no_upstream_variants() {
+        // 新建库最常见的三种失败说法都要归到 no_upstream，否则前端弹的是 git 英文原文
+        assert_eq!(
+            map_err_text("fatal: The current branch master has no upstream branch."),
+            BuiltinErrCode::NoUpstream
+        );
+        assert_eq!(
+            map_err_text("There is no tracking information for the current branch."),
+            BuiltinErrCode::NoUpstream
+        );
+        assert_eq!(
+            map_err_text("fatal: couldn't find remote ref master"),
+            BuiltinErrCode::NoUpstream
+        );
+        assert_eq!(BuiltinErrCode::NoUpstream.as_str(), "no_upstream");
+    }
     #[test]
     fn map_err_host_key_beats_network_keyword() {
         // 典型 SSH 报的 "Host key verification failed" 也含 verification 但不是 auth/net

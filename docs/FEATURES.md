@@ -303,16 +303,18 @@ src-tauri/target/release/bundle/
 18. **Git 远程·快进 pull**（批次 E · R1）：面板「同步」区显 origin 地址，可「添加远端」/「改地址」，`Fetch` 后显「领先 N · 落后 M」徽标，`Pull（快进）` 执行 `git pull --ff-only`（无分叉时把远端提交快进进本地，成功后自动重扫文件树 / 重建索引 / 按脏净态处理当前文档，脏不静默覆盖）
     * 认证完全交系统 git（凭据助手 / ssh-agent / GCM），应用不接触也不存任何凭据
     * 非快进 / 分叉会明确拒绝并引导改走合并拉取，绝不自动 merge / rebase
+    * 当前分支没有上游时不把 git 英文原文丢出来：先退到显式 refspec `git pull --ff-only <remote> <当前分支>`（拉得到就正常快进，且不写上游配置）；远端没有同名分支（新建库最常见）回 `[no_upstream]`，面板只给一句「先按 Push 建立上游再 Pull」的引导
     * `app.git.fetch` / `app.git.pull` / `app.git.remote` 已并入命令面板
 19. **Git 内置引擎**（批次 E · R1-B）：没装系统 git 也能 fetch / pull。Rust 侧 `RemoteEngine{System, Builtin}` 双后端，装了 git 继续走 shell-out（凭据 UX 最佳）、没装自动切内置 git2（进程内一次性探测）
     * 面板徽标行为图标 + 文案：terminal 图标「系统 git」+ 版本，或 box 图标「内置引擎」（hover title 提示凭据模型）
     * 内置下 fetch / pull 靠 ssh-agent / 无口令私钥 / 环境变量 token（`NOTE_LUME_GIT_TOKEN` / `GITHUB_TOKEN` / `GITLAB_TOKEN`），应用仍不代持凭据
     * SSH 首次连陌生 host 会弹一次性信任（展示指纹、写应用私库 `git-known_hosts`，与 `~/.ssh/known_hosts` 合并命中），同主机下次自动放行
-    * fetch / pull 错误按 `[host_unknown]` / `[non_fast_forward]` / `[local_changes]` / `[hostkey_mismatch]` / `[network]` / `[auth]` 前串分类引导
+    * fetch / pull 错误按 `[host_unknown]` / `[non_fast_forward]` / `[local_changes]` / `[no_upstream]` / `[hostkey_mismatch]` / `[network]` / `[auth]` 前串分类引导
 20. **Git push**（批次 E · R2）：「同步」区的 `Push` 把当前分支推到 upstream 同名分支；双后端同一个 `git_r_push` dispatcher
     * 无 upstream 回 `[no_upstream]`：面板弹确认「是否推送到远端并建立上游」，确认后走首次推送（System 组 `git push --set-upstream <remote> <当前分支>`，Builtin 推同名分支再写 `branch.<分支>.remote` / `.merge`），不确认则维持原引导；非快进回 `[non_fast_forward]` 提示先拉（不自动先 pull）；host 陌生走一次性信任后原地重试
     * `app.git.push`（无默认键）已入命令面板
 21. **Git 合并拉取 + 冲突解决**（批次 E · R3）：「同步」区的 `Pull（合并）`（非 ff-only），ff-pull 被拒时会引导改走合并拉取；命令面板 `app.git.pullMerge`
+    * 没有上游时同样先退到显式 refspec `git pull <remote> <当前分支>`，拉不到才回 `[no_upstream]` 引导，不再透出 git 英文原文
     * 合并后若冲突，冲突文件在「变更」列表逐行以 `C` 标列出，每行给「用本地 / 用远端 / 编辑」：前者直接选 ours / theirs 边 stage，后者经编辑器打开带 `<<<<<<<` 标记的文件手改保存
     * 顶部合并工具条「提交合并」（check 图标，生成带两父的 merge commit）/「中止合并」（close 图标，回到合并前）
 22. **Word(.docx) 导入**（功能项 I）：「更多」→「导入 Word(.docx)…」选一个或多个 `.docx`，也可从系统拖 `.docx` 到文件树。不要求先开知识库：选完文件即直接解析进校对模态，落不落盘、落到哪由你决定
