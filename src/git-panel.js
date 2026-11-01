@@ -744,14 +744,15 @@ export function createGitPanel(deps) {
   }
 
   // R2：推当前分支→ upstream。无前置确认（推不会覆写本地文件），失败同走 handleRemoteErr（包含 host_unknown 信任重试）。
+  // 唯一例外：`no_upstream`（新建库首次推送）→ 确认后带 setUpstream 重推。
   async function doPush(origin, badge) {
     if (busy) return
     const vaultRoot = getVaultRoot()
     if (!vaultRoot) return
     busy = true
     setStatus(t('git.pushing'))
-    const retry = async () => {
-      await gitRPush(vaultRoot)
+    const retry = async (setUpstream = false) => {
+      await gitRPush(vaultRoot, setUpstream)
       setStatus(t('git.pushed'))
       await updateBadge(badge)
     }
@@ -760,6 +761,17 @@ export function createGitPanel(deps) {
     } catch (e) {
       const raw = errText(e)
       setStatus(t('git.pushFailed'))
+      if (raw.startsWith('[no_upstream]')) {
+        if (await confirmDialog(t('git.pushNoUpstreamAsk'), t('git.opPush'))) {
+          try {
+            await retry(true)
+          } catch (e2) {
+            setStatus(t('git.pushFailed'))
+            await handleRemoteErr(errText(e2), t('git.opPush'), retry)
+          }
+        }
+        return
+      }
       await handleRemoteErr(raw, t('git.opPush'), retry)
     } finally {
       busy = false

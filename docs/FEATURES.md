@@ -68,7 +68,7 @@
 * 本地 Git 集成（侧栏 Git 面板）：仓库探测 / status 改动 / log 历史 / 单文件 diff 预览 / 一键提交 / 初始化，`git2` 内置无外部 git 依赖
 * Git 远程同步·快进 Pull：「同步」区（远端增改、`Fetch`、领先落后、`Pull（快进）`）；认证复用系统凭据助手 / ssh-agent / GCM，应用零凭据存储
 * Git 远程内置引擎（R1-B）：免装系统 git 也能 fetch / pull。`git2` 新开 `ssh` + `https` feature，Windows MSVC 下 libgit2 走 Schannel、libssh2 走 win32-crypto，零 openssl。凭据不存不弹：SSH 先试 ssh-agent 再到无口令私钥，HTTPS 先试环境变量 token。SSH 首次陌生 host 走一次性信任，写应用私库 `git-known_hosts`。面板顶部徽标为图标 + 文案（terminal 图标「系统 git」+ 版本 / box 图标「内置引擎」）；装了 git 优先走 shell-out，没装自动切内置
-* Git push（R2）：当前分支推 upstream 同名分支，固定 refspec、不自动 force；无 upstream 明确引导、不自动先 pull
+* Git push（R2）：当前分支推 upstream 同名分支，固定 refspec、不自动 force；无 upstream 时确认后自动建立上游（首次推送），非快进不自动先 pull
 * Git 合并拉取 + 冲突解决（R3）：`Pull（合并）`（非 ff-only）；冲突文件在「变更」列表逐行列出，每个可选「用本地 / 用远端 / 编辑」；顶部合并工具条「提交合并」/「中止合并」（check / close 图标）；不代持凭据、不自动 force
 
 ### 插件
@@ -310,7 +310,7 @@ src-tauri/target/release/bundle/
     * SSH 首次连陌生 host 会弹一次性信任（展示指纹、写应用私库 `git-known_hosts`，与 `~/.ssh/known_hosts` 合并命中），同主机下次自动放行
     * fetch / pull 错误按 `[host_unknown]` / `[non_fast_forward]` / `[local_changes]` / `[hostkey_mismatch]` / `[network]` / `[auth]` 前串分类引导
 20. **Git push**（批次 E · R2）：「同步」区的 `Push` 把当前分支推到 upstream 同名分支；双后端同一个 `git_r_push` dispatcher
-    * 无 upstream 回 `[no_upstream]` 引导（不自动设，避免默默创远程新分支）；非快进回 `[non_fast_forward]` 提示先拉（不自动先 pull）；host 陌生走一次性信任后原地重试
+    * 无 upstream 回 `[no_upstream]`：面板弹确认「是否推送到远端并建立上游」，确认后走首次推送（System 组 `git push --set-upstream <remote> <当前分支>`，Builtin 推同名分支再写 `branch.<分支>.remote` / `.merge`），不确认则维持原引导；非快进回 `[non_fast_forward]` 提示先拉（不自动先 pull）；host 陌生走一次性信任后原地重试
     * `app.git.push`（无默认键）已入命令面板
 21. **Git 合并拉取 + 冲突解决**（批次 E · R3）：「同步」区的 `Pull（合并）`（非 ff-only），ff-pull 被拒时会引导改走合并拉取；命令面板 `app.git.pullMerge`
     * 合并后若冲突，冲突文件在「变更」列表逐行以 `C` 标列出，每行给「用本地 / 用远端 / 编辑」：前者直接选 ours / theirs 边 stage，后者经编辑器打开带 `<<<<<<<` 标记的文件手改保存
