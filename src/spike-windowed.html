@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>Windowed Editor Spike</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #bar { position: fixed; top: 0; left: 0; right: 0; height: 34px; background: #111; color: #0f0;
+           font: 13px/34px monospace; padding: 0 12px; z-index: 10; }
+    #scroller { position: absolute; top: 34px; bottom: 0; left: 0; right: 0; overflow-y: auto; }
+    #mount { max-width: 720px; margin: 0 auto; padding: 24px 40px; }
+    .spike-host { outline: none; min-height: 40px; }
+    .spike-host :is(p,h1,h2,h3) { line-height: 26px; margin: 6px 0; }
+    .spike-host pre { background: #0b1021; color: #e6e6e6; padding: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="bar">booting…</div>
+  <div id="scroller"><div id="mount"></div></div>
+  <script type="module" src="/spike-windowed.js"></script>
+</body>
+</html>
