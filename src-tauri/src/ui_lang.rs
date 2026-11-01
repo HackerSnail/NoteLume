@@ -543,11 +543,11 @@ const TABLE: &[Entry] = &[
         "kein Branch-Name",
     ]},
     Entry { key: "gitNoUpstreamBuiltin", texts: [
-        "当前分支无上游；先安装系统 git 运行 `git branch --set-upstream-to=origin/<br>`、或在面板里配置",
-        "當前分支無上游；先安裝系統 git 執行 `git branch --set-upstream-to=origin/<br>`、或在面板裡配置",
-        "the current branch has no upstream; install system git and run `git branch --set-upstream-to=origin/<branch>` or configure it in the panel",
-        "la branche actuelle n’a pas d’amont ; installez git système et lancez `git branch --set-upstream-to=origin/<branch>`, ou configurez-le dans le panneau",
-        "der aktuelle Branch hat keinen Upstream; installieren Sie System-git und führen `git branch --set-upstream-to=origin/<branch>` aus oder konfigurieren Sie ihn im Panel",
+        "当前分支无上游，远端也没有同名分支；按 Push 后确认「推送并建立上游」即可",
+        "目前分支無上游，遠端也沒有同名分支；按 Push 後確認「推送並建立上游」即可",
+        "the current branch has no upstream and the remote has no branch of the same name; press Push and confirm \"push and set upstream\"",
+        "la branche courante n’a pas d’amont et le dépôt distant n’a pas de branche du même nom ; appuyez sur Push puis confirmez « pousser et définir l’amont »",
+        "der aktuelle Branch hat keinen Upstream und der Remote hat keinen gleichnamigen Branch; drücken Sie Push und bestätigen Sie „pushen und Upstream setzen“",
     ]},
     Entry { key: "gitUpstreamNotUtf8", texts: [
         "上游 refname 非 UTF8",

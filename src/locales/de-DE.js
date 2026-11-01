@@ -612,7 +612,7 @@ export default {
   'git.opStillFailed': '{op} erneut fehlgeschlagen: {err}{hint}',
   'git.nonFfMsg': '{op} abgelehnt (lokal und remote sind divergiert, Fast-Forward nicht möglich):\n{body}\n\nNutze die Schaltfläche „Pull (Merge)“ im Sync-Bereich oder „Git: Pull (Merge)“ in der Befehlspalette, um mit Merge zu pullen;\nKonflikte werden in der Änderungsliste Zeile für Zeile aufgeführt und können mit Lokal / Remote / Manuell bearbeiten aufgelöst werden. Danach den Merge committen.',
   'git.localChangesMsg': 'Nicht committete lokale Änderungen blockieren den Fast-Forward:\n{body}\n\nErst committen oder stashen.',
-  'git.noUpstreamMsg': 'Der aktuelle Branch hat keinen Upstream, Push nicht möglich:\n{body}\n\nDrücken Sie erneut auf Push und bestätigen Sie „pushen und Upstream setzen“, oder führen Sie `git push -u origin <aktueller Branch>` im Terminal aus und versuchen Sie es erneut.',
+  'git.noUpstreamMsg': 'Der aktuelle Branch hat keinen Upstream. Klicken Sie auf Push und bestätigen Sie „pushen und Upstream setzen“, danach Pull erneut.',
   'git.pushNoUpstreamAsk': 'Der aktuelle Branch hat keinen Upstream-Branch. Auf das Remote pushen und Upstream setzen?',
   'git.hostKeyMismatch': 'Der Host-Schlüssel passt nicht zum gespeicherten known_hosts-Eintrag: möglicherweise ein Man-in-the-Middle-Angriff oder der Server hat seinen Schlüssel neu erzeugt.\n\n{body}\n\nPrüfe den Fingerabdruck über offizielle Kanäle, lösche den betroffenen known_hosts-Eintrag manuell und versuche es erneut.',
   'git.networkMsg': '{body}\n\nHinweis: Netzwerk / Proxy / Firewall prüfen.',

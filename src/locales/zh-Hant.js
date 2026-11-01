@@ -612,7 +612,7 @@ export default {
   'git.opStillFailed': '{op}仍失敗：{err}{hint}',
   'git.nonFfMsg': '{op}被拒（本機與遠端已分叉，無法快進）：\n{body}\n\n可用「同步」區的『Pull（合併）』按鈕，或命令面板『Git：拉取（合併）』改走合併拉取；\n產生的衝突會在「變更」清單逐一行列，可選用本機 / 遠端 / 手動編輯，全部解決後提交合併。',
   'git.localChangesMsg': '本機未提交的修改會阻擋快進：\n{body}\n\n請先提交或 stash。',
-  'git.noUpstreamMsg': '目前分支沒有上游，無法推送：\n{body}\n\n再按一次 Push 並確認「推送並建立上游」即可；也可以在終端執行 `git push -u origin <目前分支>` 後重試。',
+  'git.noUpstreamMsg': '目前分支還沒有上游。先按 Push 並確認「推送並建立上游」，再重新 Pull。',
   'git.pushNoUpstreamAsk': '目前分支沒有上游分支。是否推送至遠端並建立上游？',
   'git.hostKeyMismatch': '主機金鑰與已儲存的 known_hosts 不符：可能是中間人攻擊或伺服器重新產生金鑰。\n\n{body}\n\n請在官方管道核對指紋後，手動刪除對應的 known_hosts 條目並重試。',
   'git.networkMsg': '{body}\n\n提示：請檢查網路 / 代理 / 防火牆。',

@@ -613,7 +613,7 @@ export default {
   'git.opStillFailed': '{op} failed again: {err}{hint}',
   'git.nonFfMsg': '{op} rejected (local and remote have diverged, fast-forward impossible):\n{body}\n\nUse the "Pull (Merge)" button in the Sync section, or "Git: Pull (Merge)" in the command palette, to pull with merge;\nconflicts are listed line by line in the Changes list, where you can pick ours / theirs / edit manually. Commit the merge once all are resolved.',
   'git.localChangesMsg': 'Uncommitted local changes block a fast-forward:\n{body}\n\nCommit or stash first.',
-  'git.noUpstreamMsg': 'The current branch has no upstream, cannot push:\n{body}\n\nPress Push again and confirm "push and set upstream", or run `git push -u origin <current branch>` in a terminal and retry.',
+  'git.noUpstreamMsg': 'The current branch has no upstream. Press Push and confirm "push and set upstream", then pull again.',
   'git.pushNoUpstreamAsk': 'The current branch has no upstream. Push it to the remote and set upstream?',
   'git.hostKeyMismatch': 'The host key does not match the stored known_hosts entry: this may be a man-in-the-middle attack, or the server regenerated its key.\n\n{body}\n\nVerify the fingerprint through official channels, then remove the matching known_hosts entry manually and retry.',
   'git.networkMsg': '{body}\n\nNote: check your network / proxy / firewall.',
