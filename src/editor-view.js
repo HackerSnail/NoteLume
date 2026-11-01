@@ -4,7 +4,7 @@
 
 import { EditorView } from 'prosemirror-view'
 import { EditorState, TextSelection, NodeSelection, Plugin } from 'prosemirror-state'
-import { Fragment, Slice } from 'prosemirror-model'
+import { Fragment, Node, Slice } from 'prosemirror-model'
 import { keymap } from 'prosemirror-keymap'
 import { history, undo, redo } from 'prosemirror-history'
 import { baseKeymap, toggleMark, exitCode } from 'prosemirror-commands'
@@ -42,6 +42,7 @@ import { normalizeBinding } from './keymap.js'
 import { buildAnchorMap } from './anchor-link.js'
 import { findPlugin } from './find-in-doc.js'
 import { setHighlightMark, selectionHasHighlight, highlightColorAt } from './highlight-mark.js'
+import { VirtualEditor } from './virtual/virtual-editor.js'
 import { t } from './i18n.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
@@ -140,13 +141,22 @@ PM_COMMANDS['editor.block.table'] = (state, dispatch, view) => {
   return true
 }
 
-// 「默认键 ∪ 覆盖」→ 编辑器 keymap 插件；固定别名/结构键始终保留
-function buildEditorKeymap(overrides) {
+// 「默认键 ∪ 覆盖」→ 编辑器 keymap 插件；固定别名/结构键始终保留。
+// virtualApi：虚拟模式（超大文档窗口化）下 undo/redo 走 master 历史（实例闭包注入），
+// 窗口 state 不挂 history 插件，直接用 prosemirror-history 的 undo 会静默无操作。
+function buildEditorKeymap(overrides, virtualApi) {
   const map = {
     'Shift-Mod-z': redo,
     'Enter': nlEnter,
     'Shift-Enter': nlHardBreak,
     Backspace: nlBackspace,
+  }
+  const historyCmd = (id) => (state, dispatch, view) => {
+    if (virtualApi) {
+      const done = id === 'editor.undo' ? virtualApi.undo() : virtualApi.redo()
+      if (done) return true
+    }
+    return id === 'editor.undo' ? undo(state, dispatch, view) : redo(state, dispatch, view)
   }
   const ov = overrides && typeof overrides === 'object' ? overrides : {}
   for (const def of EDITOR_COMMANDS) {
@@ -154,7 +164,7 @@ function buildEditorKeymap(overrides) {
     if (chosen == null || chosen === '') continue // 空串 = 解绑
     const norm = normalizeBinding(chosen)
     if (!norm) continue // 非法或结构键目标：忽略
-    map[norm] = PM_COMMANDS[def.id]
+    map[norm] = def.id === 'editor.undo' || def.id === 'editor.redo' ? historyCmd(def.id) : PM_COMMANDS[def.id]
   }
   return keymap(map)
 }
@@ -281,42 +291,54 @@ export function createEditor(opts) {
   })
 
   // 编辑器 keymap：由「默认键 ∪ 覆盖」动态生成（标记 __nlKeymap，供热重配时原地替换）
-  const nlKeymapPlugin = buildEditorKeymap(opts.keymapOverrides || {})
+  // 虚拟模式（超大文档窗口化）下 undo/redo 走 master 历史经 virtualApi 分流
+  const virtualApi = {
+    undo: () => (virtual ? virtual.undo() : false),
+    redo: () => (virtual ? virtual.redo() : false),
+  }
+  const nlKeymapPlugin = buildEditorKeymap(opts.keymapOverrides || {}, virtualApi)
   nlKeymapPlugin.__nlKeymap = true
   const base = keymap(baseKeymap)
 
-  const state = EditorState.create({
-    schema,
-    doc: parseMarkdown(''),
-    plugins: [
-      history(),
-      createSuggestPlugin({
-        getDocs: opts.suggestDocs || (() => []),
-        getTags: opts.suggestTags || (() => []),
-      }),
-      createSlashMenuPlugin(),
-      tableKeymap(),
-      nlKeymapPlugin,
-      base,
-      inputRulesPlugin,
-      pasteImagesPlugin,
-      highlightPlugin(),
-      emojiPlugin(opts.getFeatures),
-      tocPlugin(opts.getFeatures),
-      csvPlugin(opts.getFeatures),
-      qdPlugin(opts.getFeatures, opts.evalQd),
-      mermaidPlugin(),
-      footnotePlugin(),
-      findPlugin(),
-      modes.plugin,
-      fold.plugin,
-      createLineNumbersPlugin(opts.getFeatures),
-      ...tablePlugins(),
-      // 块间隙光标：表格 / 代码块 / 公式在文末时给它下方一个可点可打字的位置，
-      // 不改文档所以不判脏；放在表格插件之后，让列宽拖拽先取得鼠标事件
-      gapCursor(),
-    ],
-  })
+  // 插件全集：普通模式窗口 doc = 整篇。虚拟模式的窗口 state 复用同一批插件但去掉
+  // history（历史在 master 上）——装饰/交互插件对窗口 doc 计算即天然「按窗口区间」，
+  // 全篇级功能（大纲/查找/序列化）由 master 承担。
+  const historyPlugin = history()
+  historyPlugin.__nlHistory = true
+  const allPlugins = [
+    historyPlugin,
+    createSuggestPlugin({
+      getDocs: opts.suggestDocs || (() => []),
+      getTags: opts.suggestTags || (() => []),
+    }),
+    createSlashMenuPlugin(),
+    tableKeymap(),
+    nlKeymapPlugin,
+    base,
+    inputRulesPlugin,
+    pasteImagesPlugin,
+    highlightPlugin(),
+    emojiPlugin(opts.getFeatures),
+    tocPlugin(opts.getFeatures),
+    csvPlugin(opts.getFeatures),
+    qdPlugin(opts.getFeatures, opts.evalQd),
+    mermaidPlugin(),
+    footnotePlugin(),
+    findPlugin(),
+    modes.plugin,
+    fold.plugin,
+    createLineNumbersPlugin(opts.getFeatures),
+    ...tablePlugins(),
+    // 块间隙光标：表格 / 代码块 / 公式在文末时给它下方一个可点可打字的位置，
+    // 不改文档所以不判脏；放在表格插件之后，让列宽拖拽先取得鼠标事件
+    gapCursor(),
+  ]
+  const windowPlugins = allPlugins.filter((p) => !p.__nlHistory)
+
+  const state = EditorState.create({ schema, doc: parseMarkdown(''), plugins: allPlugins })
+
+  // 虚拟模式状态：非 null 时 view.state 是窗口 state，编辑经内核回灌 master（超大文档专用）
+  let virtual = null
 
   const view = new EditorView(opts.mountEl, {
     state,
@@ -332,6 +354,23 @@ export function createEditor(opts) {
       image: makeImageNodeView(() => opts.getVault()),
     },
     dispatchTransaction(tr) {
+      if (virtual) {
+        // 虚拟路径：窗口 tr 转交内核（回灌 master + 同步窗口，onChange 里 view.updateState）。
+        // master 是唯一事实源：脏标记 / 元数据 / 回调全部基于 master doc。
+        const prevMaster = virtual.doc
+        virtual.applyWindowTr(tr)
+        if (tr.docChanged) {
+          modelDirty = true
+          if (!dirty) {
+            dirty = true
+            opts.onDirty && opts.onDirty(true)
+          }
+          emitMeta(view, opts, virtual.doc)
+          opts.onDocChange && opts.onDocChange(virtual.doc, prevMaster)
+        }
+        if (tr.selectionSet || tr.docChanged) opts.onSelectionChange && opts.onSelectionChange(view.state)
+        return
+      }
       const prevDoc = view.state.doc
       const next = view.state.apply(tr)
       view.updateState(next)
@@ -361,7 +400,14 @@ export function createEditor(opts) {
   setTocTitle(t('feature.tocTitle'))
 
   // 跳转到文档内某 pos：大纲与 #锚点 链接共用。目标被折在某节里时先展开，否则跳过去看不见。
+  // 虚拟模式下 pos 是 master 坐标：内核移窗覆盖目标块并落选区，再补一次滚动。
   function jumpToPos(pos) {
+    if (virtual) {
+      virtual.jumpToPos(pos)
+      view.focus()
+      view.dispatch(view.state.tr.scrollIntoView())
+      return
+    }
     const open = unfoldCovering(view.state, pos)
     if (open) view.dispatch(open)
     const $to = view.state.doc.resolve(Math.min(pos + 1, view.state.doc.content.size))
@@ -459,8 +505,9 @@ export function createEditor(opts) {
   })
 
   // —— 源码模式（CodeMirror 6，懒加载）与 WYSIWYG 的双向同步 ——
+  // 虚拟模式序列化 master（唯一事实源；窗口 doc 只是切片，绝不能进序列化）
   function serializedFull() {
-    return joinFrontmatter(fmRaw, serializeMarkdown(view.state.doc))
+    return joinFrontmatter(fmRaw, serializeMarkdown(virtual ? virtual.doc : view.state.doc))
   }
   function currentThemeName() {
     return document.documentElement.getAttribute('data-theme') || 'light'
@@ -596,11 +643,30 @@ export function createEditor(opts) {
     opts.onFrontmatterChange && opts.onFrontmatterChange()
     return true
   }
-  function exitSource() {
+  async function exitSource() {
     if (!sourceMode) return false
     const text = src ? src.getDoc() : rawSource || ''
     const { yaml: fm, body } = splitFrontmatter(text)
     fmRaw = fm
+    // 大文档（虚拟模式或没有虚拟但解析通道可用）：回 WYSIWYG 走 Rust 后台解析重建
+    // master，不在主线程 parseMarkdown 整篇——那正是当初超大文档退源码态的原因。
+    // 没有解析通道（纯 web / Rust 不认的构造）时维持源码态不动。
+    const large = virtual != null || body.length > 2 * 1024 * 1024
+    if (large && typeof opts.parseLargeMd === 'function') {
+      const res = await opts.parseLargeMd(body)
+      if (res && res.supported && res.doc) {
+        sourceMode = false
+        if (opts.sourceMountEl) opts.sourceMountEl.classList.add('hidden')
+        if (opts.mountEl) opts.mountEl.classList.remove('hidden')
+        enterVirtual(res.doc)
+        rawSource = text
+        modelDirty = false
+        opts.onFrontmatterChange && opts.onFrontmatterChange()
+        view.focus()
+        return false
+      }
+      return true // 留在源码态（开关态由调用方按返回值同步）
+    }
     const doc = parseMarkdown(body)
     // 光标对齐：源码选区 → 新文档里的对应位置（退出后选区和滚动都落在原处）
     const sel = mapSelFromSource(text, doc, body)
@@ -625,6 +691,28 @@ export function createEditor(opts) {
     }
     return false
   }
+
+  /** 进入虚拟模式：masterDoc 是完整 PM doc（含 spacer 派生由内核完成）。
+   *  窗口 state 复用交互插件（输入规则/快捷键/粘贴/表格/装饰），去掉 history——
+   *  undo/redo 在 master 历史上，经 virtualApi 分流。装饰插件对窗口 doc 计算，
+   *  即为「按窗口区间」的天然窗口化；全篇级功能读 master。 */
+  function enterVirtual(masterDoc) {
+    virtual = new VirtualEditor(masterDoc, {
+      windowSize: 60,
+      overscan: 8,
+      plugins: windowPlugins,
+      onChange(winState) {
+        view.updateState(winState)
+      },
+    })
+    fold.api.reset()
+    sourceMode = false
+    if (opts.sourceMountEl) opts.sourceMountEl.classList.add('hidden')
+    if (opts.mountEl) opts.mountEl.classList.remove('hidden')
+    view.updateState(virtual.winState)
+    emitMeta(view, opts, virtual.doc)
+    opts.onFrontmatterChange && opts.onFrontmatterChange()
+  }
   function setSourceTheme(name) { if (src) src.setTheme(name) }
 
   return {
@@ -647,7 +735,11 @@ export function createEditor(opts) {
       // 剥离开头 frontmatter，只把正文交给模型；原始 yaml 存于 fmRaw 供原样补回
       const { yaml: fm, body } = splitFrontmatter(md)
       fmRaw = fm
-      view.updateState(EditorState.create({ schema, doc: parseMarkdown(body), plugins: view.state.plugins }))
+      // 虚拟模式换普通文档：丢弃内核，回到完整插件（含 history）的常规 state
+      view.updateState(
+        EditorState.create({ schema, doc: parseMarkdown(body), plugins: virtual ? allPlugins : view.state.plugins }),
+      )
+      virtual = null
       dirty = false
       opts.onDirty && opts.onDirty(false)
       emitMeta(view, opts)
@@ -676,6 +768,19 @@ export function createEditor(opts) {
     getMarkdown() {
       // 源码态返回 CodeMirror 全文（原文，不被重新序列化）；WYSIWYG 态序列化补回 frontmatter
       return sourceMode && src ? src.getDoc() : serializedFull()
+    },
+    /** 虚拟模式入口（超大文档）：main.js 拿 Rust 解析产物后调它。
+     *  rawText 用于回填 fmRaw 与 rawSource；docJson 是与 schema 对齐的 PM JSON。 */
+    enterVirtualJson(docJson, rawText) {
+      fmRaw = rawText != null ? splitFrontmatter(rawText).yaml : null
+      rawSource = rawText != null ? rawText : null
+      modelDirty = false
+      enterVirtual(Node.fromJSON(schema, docJson))
+      dirty = false
+      opts.onDirty && opts.onDirty(false)
+    },
+    isVirtual() {
+      return virtual != null
     },
     // frontmatter：读原始文本 + 解析后的对象；解析失败/非对象时降级为 {}（不抛，原文仍在 raw）
     // 源码态从 CodeMirror 全文现取 fm（原文里的 --- 块），WYSIWYG 态取 fmRaw
@@ -714,7 +819,7 @@ export function createEditor(opts) {
     },
     // 重发一次大纲 / 标签元数据（分栏后焦点切回本窗格时，面板要从这个实例重新取数）
     refreshMeta() {
-      emitMeta(view, opts)
+      emitMeta(view, opts, virtual ? virtual.doc : undefined)
     },
     focus() {
       view.focus()
@@ -747,7 +852,7 @@ export function createEditor(opts) {
     },
     // 热重配编辑器 keymap：原地替换 __nlKeymap 插件（保留其它插件与顺序），令重绑即时生效
     setKeymapOverrides(overrides) {
-      const next = buildEditorKeymap(overrides)
+      const next = buildEditorKeymap(overrides, virtualApi)
       next.__nlKeymap = true
       const cur = view.state.plugins
       const idx = cur.findIndex((p) => p.__nlKeymap)
@@ -761,6 +866,10 @@ export function createEditor(opts) {
       // 源码态下可见的是 CodeMirror：撤销/重做归它自己的历史，动 PM 等于改错对象
       if (sourceMode && src && (id === 'editor.undo' || id === 'editor.redo')) {
         return id === 'editor.undo' ? src.undo() : src.redo()
+      }
+      // 虚拟模式：撤销/重做在 master 历史上
+      if (virtual && (id === 'editor.undo' || id === 'editor.redo')) {
+        return id === 'editor.undo' ? virtual.undo() : virtual.redo()
       }
       const fn = PM_COMMANDS[id]
       if (!fn) return false
@@ -810,10 +919,12 @@ export function createEditor(opts) {
     focusEditor() {
       view.focus()
     },
-    // 写作统计：源码态按 CodeMirror 全文计数；WYSIWYG 取文档纯文本（块间用 \n 分隔）
+    // 写作统计：源码态按 CodeMirror 全文计数；WYSIWYG 取文档纯文本（块间用 \n 分隔）。
+    // 虚拟模式取 master 纯文本（窗口 doc 只是切片，统计要全篇）
     getText() {
       if (sourceMode && src) return src.getDoc()
-      return view.state.doc.textBetween(0, view.state.doc.content.size, '\n', '\n')
+      const doc = virtual ? virtual.doc : view.state.doc
+      return doc.textBetween(0, doc.content.size, '\n', '\n')
     },
     // 源码模式：整篇切换 WYSIWYG <-> Markdown 原文（CodeMirror，懒加载）
     isSourceMode() { return sourceMode },
@@ -1277,12 +1388,14 @@ function deleteLine(state, dispatch) {
   return false
 }
 
-function emitMeta(view, opts) {
+// docOverride：虚拟模式下传 master doc（大纲/标签跨整篇；pos 为 master 坐标，
+// 跳转经实例 jumpToPos 的虚拟分支映射进窗口）
+function emitMeta(view, opts, docOverride) {
   if (!opts.onMetaChange) return
   const outline = []
   const tags = []
   const seen = new Set()
-  view.state.doc.forEach((node, pos) => {
+  ;(docOverride || view.state.doc).forEach((node, pos) => {
     // 空标题（只有记号、没有文字）不进大纲：列出来是一行不可跳转的空项
     if (node.type.name === 'heading' && node.textContent.trim()) {
       outline.push({ level: node.attrs.level, text: node.textContent, pos })

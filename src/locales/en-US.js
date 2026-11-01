@@ -533,6 +533,7 @@ export default {
   'status.sourceOn': 'Source mode: on (saving writes the raw text back, no reformatting)',
   'status.sourceOff': 'Source mode: off (back to WYSIWYG)',
   'status.largeSource': 'Large file opened in source mode (editing and saving work as usual; use the Source button to switch back to WYSIWYG)',
+  'status.virtualMode': 'Large-file virtualized mode: windowed rendering, only the current region is rendered (experimental)',
   'status.focusOn': 'Focus mode: on',
   'status.focusOff': 'Focus mode: off',
   'status.typewriterOn': 'Typewriter mode: on',

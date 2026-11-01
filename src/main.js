@@ -70,7 +70,7 @@ import { printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
 import { numberingCss } from './heading-numbering.js'
-import { evalQd, qdDocDir, qdLibsDir, qdPackageInstall } from './tauri-bridge.js'
+import { evalQd, qdDocDir, qdLibsDir, qdPackageInstall, mdToPmJson } from './tauri-bridge.js'
 import { docToIR } from './docx-export.js'
 import { runImport, IMG_INDEX_KEY, DEFAULT_MAX_IMAGE_BYTES } from './docx-import.js'
 import { openDocxReview } from './docx-review.js'
@@ -757,14 +757,40 @@ async function setWordGoal() {
   updateDocStats()
 }
 
-// 超大 markdown 阈值（按字符数，≈ 2MB）：超过则自动以源码模式（CodeMirror 虚拟化）打开，
-// 不建 ProseMirror 模型——10MB 整篇铺 DOM 会卡数分钟且后续每次编辑触发装订线全文强制布局假死。
+// 超大 markdown 阈值（按字符数，≈ 2MB）：超过则不走常规单视图打开——默认以源码模式
+// （CodeMirror 虚拟化）打开，实验开关开启且 Rust 解析支持时走虚拟化 WYSIWYG（窗口化渲染，
+// 见 docs/CLAUDE.MD「超大文件虚拟化编辑器」）。10MB 整篇铺 DOM 会卡数分钟且后续每次编辑
+// 触发装订线全文强制布局假死。
 const LARGE_MD_LIMIT = 2 * 1024 * 1024
 
-// 把 md 装进某窗格编辑器：超大文档直接进源码模式（不建 PM / 不铺大 DOM），普通文档走所见即所得。
-// focused 窗格额外同步源码按钮高亮、格式工具条，并提示已降级。
+// 虚拟化实验开关（Phase 2 真机验收用，默认关）：localStorage 设 nl-virtual=1 开启。
+// 开启后超大文档走 mdToPmJson 后台解析 + 窗口化 WYSIWYG；解析不支持的构造回退源码模式。
+function virtualEnabled() {
+  return localStorage.getItem('nl-virtual') === '1'
+}
+
+// 把 md 装进某窗格编辑器：普通文档走所见即所得；超大文档默认源码模式，
+// 虚拟开关开启时先试 Rust 后台解析 + 窗口化 WYSIWYG，不支持再退源码模式。
+// focused 窗格额外同步源码按钮高亮、格式工具条，并提示当前形态。
 async function loadMarkdownIntoEditor(inst, md, focused) {
   if (md.length > LARGE_MD_LIMIT) {
+    if (virtualEnabled() && window.__TAURI_INTERNALS__) {
+      try {
+        const { yaml: fm, body } = splitFrontmatter(md)
+        const res = await mdToPmJson(body)
+        if (res && res.supported && res.doc) {
+          inst.enterVirtualJson(res.doc, md)
+          if (focused) {
+            if (els.btnSource) els.btnSource.classList.remove('active')
+            syncFmtBars()
+            setStatus(t('status.virtualMode'))
+          }
+          return
+        }
+      } catch (_) {
+        /* 解析通道异常：落源码模式 */
+      }
+    }
     await inst.loadAsSource(md)
     if (focused) {
       if (els.btnSource) els.btnSource.classList.add('active')
@@ -782,8 +808,13 @@ async function toggleSourceMode() {
     setStatus(t('status.sourceOnlyMd'))
     return
   }
-  // 从源码态切回所见即所得：超大文档会重建 PM 模型 + 铺大 DOM，先二次确认（会卡）。
-  if (editor.isSourceMode() && (editor.getMarkdown() || '').length > LARGE_MD_LIMIT) {
+  // 从源码态切回所见即所得：超大文档在虚拟开关关闭时会重建 PM 模型 + 铺大 DOM，先二次确认。
+  // 虚拟模式（含开关开启后的重建路径）回的是窗口化视图，秒回，不弹确认。
+  if (
+    editor.isSourceMode() &&
+    !virtualEnabled() &&
+    (editor.getMarkdown() || '').length > LARGE_MD_LIMIT
+  ) {
     const ok = await confirmDialog(t('msg.largeToWysiwyg'), t('msg.largeToWysiwygTitle'))
     if (!ok) return
   }
@@ -4352,6 +4383,9 @@ function createPaneEditor(paneId, mountEl, sourceMountEl) {
       return evalQd(md, docDir, qdLibsDir(c.vaultRoot, docDir))
     },
     sourceMountEl,
+    // 超大文档从源码态回 WYSIWYG 的重建通道：Rust 后台解析（虚拟化 Phase 1/2）。
+    // editor-view 的 exitSource 在大文档时调它；纯 web 环境没有 invoke，注入 null 即可。
+    parseLargeMd: window.__TAURI_INTERNALS__ ? mdToPmJson : null,
     onSourceTextChange: () => {
       if (paneId !== panes.focused) return
       updateDocStats()
