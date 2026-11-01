@@ -1118,7 +1118,7 @@ function cellToMarkdown(cell) {
   const kids = []
   cell.forEach((k) => kids.push(k))
   const tempDoc = schema.node('doc', null, [schema.node('paragraph', null, kids)])
-  let s = SERIALIZER.serialize(tempDoc).replace(/\n+$/, '')
+  let s = serializeDoc(tempDoc).replace(/\n+$/, '')
   // 表格单元格里的竖线必须转义，否则会破坏列结构
   s = s.replace(/\|/g, '\\|')
   return s
@@ -1370,16 +1370,36 @@ const serializerMarks = {
   },
 }
 
-const SERIALIZER = new MarkdownSerializer(serializerNodes, serializerMarks, {
-  // 文本节点里的 '#' 一律转义：真正的标签是独立 tag 节点（原样写 '#xxx'），
-  // 而普通文字中的 '#'（如 "C#"）必须转义以免重新解析时被误判为标签。
-  // '$' 也一律转义：普通文本中的 $ 不应被误当行内数学开导。
-  escapeExtraCharacters: /[#$]/g,
-})
+// 本项目的额外转义：文本里的 '#' 与 '$'。普通文字中的 `#`（如 "C#"、"issue #12"）不转义
+// 会被重新解析成标签节点，`$` 会被当成行内数学开头；真正的标签 / 公式是独立节点，自己原样写回。
+// 刻意不走 prosemirror-markdown 的 escapeExtraCharacters 选项：那条路径排在 esc() 的「行首 # 转义」
+// 之后，段首字面 # 会被加两次反斜杠（`# 标题` 落成 `\\# 标题`，文件里多出一个可见的反斜杠），
+// 而且反斜杠要往返两次才稳定（实测 `\#` → `\\#` → `\\\#`）。改成在 esc() 返回后补一道：
+// 紧挨在反斜杠后面的字符说明 PM 已经转义过，跳过。跳过也是安全的——紧跟 `\` 的 `#`
+// 过不了解析侧标签规则的左边界白名单，不会误判成标签。
+const EXTRA_ESC = /[#$]/g
+function escExtra(str) {
+  return str.replace(EXTRA_ESC, (m, i, s) => (i > 0 && s[i - 1] === '\\' ? m : '\\' + m))
+}
+
+class NlSerializerState extends MarkdownSerializerState {
+  esc(str, startOfLine = false) {
+    return escExtra(super.esc(str, startOfLine))
+  }
+}
+
+const SERIALIZER = new MarkdownSerializer(serializerNodes, serializerMarks, {})
+
+/** 走本项目的转义口径序列化整篇（PM 的 MarkdownSerializerState 子类，见上方 escExtra 注释） */
+function serializeDoc(doc) {
+  const state = new NlSerializerState(SERIALIZER.nodes, SERIALIZER.marks, SERIALIZER.options)
+  state.renderContent(doc)
+  return state.out
+}
 
 /** ProseMirror doc -> Markdown 字符串 */
 export function serializeMarkdown(doc) {
-  return SERIALIZER.serialize(doc)
+  return serializeDoc(doc)
 }
 
 // —— 5. 位置记账序列化：源码模式与所见即所得之间的光标对齐 ————————————————————————
@@ -1397,7 +1417,7 @@ export function serializeMarkdown(doc) {
 // 记账全部用平行数字数组，不建每段一个的对象、不拷贝字符串：一次切换要过整个序列化器，
 // 这些分配会拉高 GC 时间（实测对输出串 slice 反算落点，28 万字符文档多花 4 秒，长串
 // slice 是 O(n)，所以首字符落点改由 write() 钩子回填）。
-class MappedSerializerState extends MarkdownSerializerState {
+class MappedSerializerState extends NlSerializerState {
   constructor(nodes, marks, options) {
     super(nodes, marks, options)
     this.nlAnchorPm = []

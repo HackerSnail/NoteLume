@@ -381,8 +381,23 @@ async function askSavePanes(ids) {
     for (const id of dirty) await savePane(id, true)
     return !dirty.some((id) => paneCtx(id).dirty) // 保存失败（仍脏）则不继续，避免丢改动
   }
-  for (const id of dirty) markPaneDirty(id, false) // 不保存：放弃改动继续
+  // 不保存：先给这份内容落一张历史版本快照，再清脏标记。只清标记就走的话，
+  // 编辑器接着要装另一篇文档（新建 EditorState），未保存正文和撤销栈一起没了，
+  // 用户回头只能在空白的文档里重敲（实测 D1：选「不保存」静默丢整篇正文）。
+  // 快照落进 .notelume-backup，检查器「历史版本」里可预览可回滚；弹窗文案已写明这一点。
+  for (const id of dirty) await abandonDraft(id)
+  for (const id of dirty) markPaneDirty(id, false)
   return true
+}
+
+// 弃稿前的保命快照。画布内容不在编辑器实例里（在 canvasView），跳过；
+// 快照本身失败只记日志（maybeBackup 内部已吞异常），不拦住弃稿这个显式动作
+async function abandonDraft(paneId) {
+  const ctx = paneCtx(paneId)
+  if (!ctx.rel || !ctx.vaultRoot || isCanvasPath(ctx.rel)) return
+  const inst = panes.editors.get(paneId)
+  if (!inst || typeof inst.getMarkdown !== 'function') return
+  await maybeBackup(ctx.vaultRoot, ctx.rel, inst.getMarkdown(), true)
 }
 
 // 离开当前文档（切换 / 打开别处 / 新建）前处理未保存改动。

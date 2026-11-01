@@ -20,6 +20,7 @@
 * KaTeX 行内与块级数学，往返无损，与 Obsidian / Typora 写法互通
 * 代码块语法高亮（highlight.js 视图装饰，不污染文档模型与 markdown）+ 右上角可点语言标签（Typora 式，弹搜索选语言）
 * Mermaid 图表：```` ```mermaid ```` 代码块渲染为图，`mermaid` 懒加载，不拖累首屏
+* BibTeX 参考文献：```` ```bibtex ````（或 `bib`）代码块渲染成 `[n] 作者, 标题, 出处, 年.` 条目列表，口径与 Quarkdown `.bibliography` 一致；点条目区回源码编辑，源文件与导出件都是标准围栏
 * Obsidian callout `> [!NOTE]` 渲染为彩色卡片（自定义块规则 + CSS，与文件互通）
 * 表格完整编辑：增删行列、Tab 跨格、列宽拖拽、右键行列菜单（`prosemirror-tables`）
 * 编辑器无损扩展（功能项 J）：脚注 `[^n]`（Typora 式上标角标、点角标定位、正文自动收集到文末脚注区可编辑，`markdown-it-footnote` 并入主 tokenizer）+ 合并单元格表格（含 `colspan/rowspan` 的表存真正的 `<table>` HTML 往返，右键菜单接 `mergeCells` / `splitCell`，无合并仍出 GFM）

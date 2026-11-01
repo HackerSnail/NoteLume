@@ -263,6 +263,7 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 
 - **[[toc]] 目录块**：单独一行 `[[toc]]`（Obsidian 同款普通 wikilink）。编辑器 `src/toc-block.js` 装饰换目录块（H1–H3，slug 与全量标题同源去重，条目 `<a href="#slug">` 走既有锚点拦截）；导出侧 `site-export.js` 的 `injectToc` 换渲染产物里的 toc 锚，单篇 HTML 导出靠 `exportMd` 的 heading_open 锚点规则给标题发 id。幻灯片里按普通 wikilink（分片渲染取不到全文档标题，刻意不做）。
 - **CSV 表格渲染**：`src/csv-preview.js`，mermaid 同构（光标出块隐源码挂表格 widget、点表进块），`parseCsv` 为 RFC4180 口径纯函数，短行补齐；导出件保留代码块（同 mermaid 先例）。
+- **BibTeX 条目渲染**：`src/bibtex-preview.js`（2026-11-02），mermaid / csv 同族交互（光标出块隐源码挂条目列表、点块进码、Esc 回表态），收 `bibtex` / `bib` 两种围栏 info。解析与拼装口径照 Rust 侧 `.bibliography`（`src-tauri/src/qd/bibliography.rs` 的 `parse_bibtex` / `entry_content`）：花括号配平、字段名小写、值剥括号折空白、`@comment` / `@string` / `@preamble` 跳过、同键后者覆盖；条目 = 作者（缺则 editor）、斜体标题、出处（journal / booktitle / publisher / school / howpublished 取第一个非空）、vol. / no. / pp.、年。编号走 CSS counter 的 `[n]`，不进词条（只 `bib.count` 一条，五语言）。无功能开关（同 mermaid），导出件保留代码块（同 mermaid / csv 先例）。`src/code-lang-picker.js` 的 `PREVIEW_LANGS` 把 bibtex / csv / mermaid 补进语言列表（不在 hljs 注册表里，不补就只能去源码态手写围栏）。测试 `node tests/bibtex.test.mjs` 12 条。
 - **标题自动编号**：`src/heading-numbering.js` 的 CSS counter，只编 H1/H2（1、1.1），覆盖单篇 HTML / 整站（site.css `article` 前缀）/ 打印（`.nl-pbody`）/ 幻灯片（`.reveal .slides`，counter 跨 section 连续）四个输出点；编辑器与源文件不编。
 - **Emoji 短代码**：见上节，`emoji` 开关关掉即不换脸。
 

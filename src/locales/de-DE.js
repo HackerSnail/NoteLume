@@ -341,7 +341,7 @@ export default {
   'pn.closed': 'Ansicht geschlossen',
   'pn.emptyHint': 'Leere Ansicht: Datei aus der Seitenleiste oder den Tabs wählen oder hierher ziehen',
   'pn.canvasSplit': 'Canvas unterstützt noch keine geteilten Ansichten: zuerst die anderen schließen',
-  'dlg.unsavedMulti': '{n} Ansichten haben ungespeicherte Änderungen ({names}). Speichern?',
+  'dlg.unsavedMulti': '{n} Ansichten haben ungespeicherte Änderungen ({names}). Speichern? (Beim Verwerfen bleibt eine Versionsmomentaufnahme erhalten.)',
 
   // —— Slash-Menü ——
   'slash.head': 'Block einfügen',
@@ -349,7 +349,7 @@ export default {
 
   // —— Dialoge (Aufrufstellen in main.js) ——
   'dlg.unsavedTitle': 'Nicht gespeicherte Änderungen',
-  'dlg.unsavedMsg': '„{name}“ hat nicht gespeicherte Änderungen. Speichern?',
+  'dlg.unsavedMsg': '„{name}“ hat nicht gespeicherte Änderungen. Speichern? (Beim Verwerfen bleibt eine Versionsmomentaufnahme erhalten.)',
   'dlg.curDoc': 'Aktuelles Dokument',
   'dlg.newFileTitle': 'Neue Markdown-Datei (in {dir})',
   'dlg.newFileTitleRoot': 'Neue Markdown-Datei (Vault-Wurzel)',
@@ -928,6 +928,7 @@ export default {
   'codelang.searchPh': 'Sprachen suchen…',
   'mermaid.rendering': 'Mermaid wird gerendert…',
   'mermaid.renderFailed': 'Mermaid-Rendering fehlgeschlagen: {err}',
+  'bib.count': 'Literatur · {n}',
   'graph.stats': '{n} Dokumente · {m} Links · Scrollrad zoomt / Ziehen verschiebt / Knoten ziehen verschiebt sie / Klick öffnet',
   'tab.scratchSuffix': ' (kein Speicherort gewählt)',
   'stats.zero': '0 Wörter',

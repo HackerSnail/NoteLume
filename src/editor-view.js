@@ -21,6 +21,7 @@ import { highlightPlugin } from './hl-decorations.js'
 import { emojiPlugin } from './emoji-decorations.js'
 import { tocPlugin, setTocTitle } from './toc-block.js'
 import { csvPlugin } from './csv-preview.js'
+import { bibtexPlugin } from './bibtex-preview.js'
 import { qdPlugin } from './qd/editor.js'
 import { mathInlineView, mathBlockView } from './math-nodeviews.js'
 import { sanitizeHtml, htmlHeadings } from './html-sanitize.js'
@@ -331,6 +332,7 @@ export function createEditor(opts) {
     emojiPlugin(opts.getFeatures),
     tocPlugin(opts.getFeatures),
     csvPlugin(opts.getFeatures),
+    bibtexPlugin(),
     qdPlugin(opts.getFeatures, opts.evalQd),
     mermaidPlugin(),
     footnotePlugin(),

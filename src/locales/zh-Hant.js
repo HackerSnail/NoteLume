@@ -341,7 +341,7 @@ export default {
   'pn.closed': '已關閉窗格',
   'pn.emptyHint': '空窗格：點左側檔案樹、標籤頁，或把檔案拖進來，在這裡開啟',
   'pn.canvasSplit': '畫布暫不支持分欄：請先關閉其它窗格',
-  'dlg.unsavedMulti': '有 {n} 個窗格有未儲存的更改（{names}），是否儲存？',
+  'dlg.unsavedMulti': '有 {n} 個窗格有未儲存的更改（{names}），是否儲存？（不儲存的改動會留一份歷史版本快照）',
 
   // —— 斜杠選單 ——
   'slash.head': '插入區塊',
@@ -349,7 +349,7 @@ export default {
 
   // —— 彈窗（main.js 各呼叫點） ——
   'dlg.unsavedTitle': '未儲存的變更',
-  'dlg.unsavedMsg': '「{name}」尚未儲存，是否儲存變更？',
+  'dlg.unsavedMsg': '「{name}」尚未儲存，是否儲存變更？（不儲存的改動會留一份歷史版本快照）',
   'dlg.curDoc': '當前文件',
   'dlg.newFileTitle': '新增 Markdown 文件（於 {dir}）',
   'dlg.newFileTitleRoot': '新增 Markdown 文件（庫根）',
@@ -929,6 +929,7 @@ export default {
   'codelang.searchPh': '搜尋語言…',
   'mermaid.rendering': 'Mermaid 渲染中…',
   'mermaid.renderFailed': 'Mermaid 渲染失敗：{err}',
+  'bib.count': '參考文獻 {n} 條',
   'graph.stats': '{n} 個文件 · {m} 條連結 · 滾輪縮放 / 拖曳平移 / 拖節點重定位 / 點擊節點跳文件',
   'tab.scratchSuffix': '（未選擇儲存位置）',
   'stats.zero': '0 字',

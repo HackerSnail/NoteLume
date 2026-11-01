@@ -10,6 +10,8 @@
     "preview": "vite preview --port 1420",
     "tauri": "tauri",
     "test:roundtrip": "node tests/roundtrip.test.mjs",
+    "test:serialize-escape": "node tests/serialize-escape.test.mjs",
+    "test:bibtex": "node tests/bibtex.test.mjs",
     "test:inline-input-rules": "node tests/inline-input-rules.test.mjs",
     "test:block-input-rules": "node tests/block-input-rules.test.mjs",
     "test:footnote": "node tests/footnote.test.mjs",

@@ -341,7 +341,7 @@ export default {
   'pn.closed': 'Volet fermé',
   'pn.emptyHint': 'Volet vide : choisissez un fichier dans la barre latérale ou les onglets, ou glissez-en un ici',
   'pn.canvasSplit': 'Le canvas ne prend pas encore en charge les volets : fermez d’abord les autres',
-  'dlg.unsavedMulti': '{n} volets ont des modifications non enregistrées ({names}). Les enregistrer ?',
+  'dlg.unsavedMulti': '{n} volets ont des modifications non enregistrées ({names}). Les enregistrer ? (Abandonner conserve un instantané de version.)',
 
   // —— Menu slash ——
   'slash.head': 'Insérer un bloc',
@@ -349,7 +349,7 @@ export default {
 
   // —— Boîtes de dialogue (points d’appel dans main.js) ——
   'dlg.unsavedTitle': 'Modifications non enregistrées',
-  'dlg.unsavedMsg': '« {name} » comporte des modifications non enregistrées. Les enregistrer ?',
+  'dlg.unsavedMsg': '« {name} » comporte des modifications non enregistrées. Les enregistrer ? (Abandonner conserve un instantané de version.)',
   'dlg.curDoc': 'Document actuel',
   'dlg.newFileTitle': 'Nouveau fichier Markdown (dans {dir})',
   'dlg.newFileTitleRoot': 'Nouveau fichier Markdown (racine du coffre)',
@@ -928,6 +928,7 @@ export default {
   'codelang.searchPh': 'Rechercher un langage…',
   'mermaid.rendering': 'Rendu Mermaid en cours…',
   'mermaid.renderFailed': 'Échec du rendu Mermaid : {err}',
+  'bib.count': 'Références · {n}',
   'graph.stats': '{n} documents · {m} liens · molette pour zoomer / glisser pour déplacer / glisser un nœud pour le repositionner / clic pour ouvrir',
   'tab.scratchSuffix': ' (aucun emplacement de sauvegarde choisi)',
   'stats.zero': '0 mot',
