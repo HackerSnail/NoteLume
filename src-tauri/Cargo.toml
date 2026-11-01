@@ -37,6 +37,11 @@ docx-rs = "0.4"
 # 文件系统监听：检测外部对库文件的增删改，自动刷新树
 notify = { version = "6", features = ["crossbeam-channel"] }
 
+# Phase 1（虚拟化方案）：Markdown → ProseMirror JSON 的后台解析。pulldown-cmark 纯 Rust、
+# 无 openssl；GFM 表格/删除线/任务列表靠运行时 Options 开关（非 feature）。与前端
+# editor-schema.js 双实现，靠共享 fixture 对拍 + 保守 supported:false 兜底（见 mdparse.rs）。
+pulldown-cmark = "0.13"
+
 # 大模型接入（AI）：OpenAI 兼容 /chat/completions 的流式代理。HTTP 必须在 Rust 侧做
 # （WebView 里的 fetch 撞 CORS）。TLS 用 native-tls：Windows 走系统 Schannel、mac 走
 # Security.framework，都不引 openssl（reqwest 0.13 的 rustls feature 默认绑 aws-lc-rs，

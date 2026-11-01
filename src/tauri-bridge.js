@@ -105,6 +105,13 @@ export function openExternalUrl(url) {
   return invoke('open_external_url', { url })
 }
 
+/** 超大文档后台解析（虚拟化 Phase 1）：md → {supported, doc|null, reason?}。
+ *  doc 是与 editor-schema.js 同构的 PM JSON，前端 Node.fromJSON 重建 master doc。
+ *  supported:false 表示含 Rust 解析器未覆盖的构造，调用方回退 JS 解析（见 mdparse.rs）。 */
+export function mdToPmJson(md) {
+  return invoke('md_to_pm_json', { md })
+}
+
 /** 显式安装 Quarkdown 包（@scope/name:version，atoms 源），返回缓存入口文件路径 */
 export function qdPackageInstall(reference) {
   return invoke('qd_package_install', { reference })

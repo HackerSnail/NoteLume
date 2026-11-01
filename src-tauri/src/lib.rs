@@ -36,6 +36,15 @@ mod qd;
 
 // 大模型接入（AI）：OpenAI 兼容接口的流式代理（HTTPS + SSE 解析 + 取消在 Rust 侧）。
 mod ai;
+// Phase 1（虚拟化方案地基）：Markdown → ProseMirror JSON 的后台解析（保守核心子集）。
+mod mdparse;
+
+/// Phase 1：把 Markdown 解析成 ProseMirror 文档 JSON（后台线程用）。返回
+/// {supported, doc|null, reason?}；不支持的构造 supported:false，调用方回退 JS 解析。
+#[tauri::command]
+fn md_to_pm_json(md: String) -> serde_json::Value {
+    mdparse::md_to_pm_json(&md)
+}
 
 /// qd_eval 的返回：展开文本 + 诊断（camelCase 对前端）
 #[derive(Serialize)]
@@ -4420,6 +4429,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // P0
             qd_eval,
+            md_to_pm_json,
             qd_package_install,
             drop_path_is_dir,
             open_external_url,
