@@ -564,11 +564,11 @@ const TABLE: &[Entry] = &[
         "Remote-Name konnte nicht aufgelöst werden",
     ]},
     Entry { key: "gitNoUpstreamPush", texts: [
-        "当前分支无上游，无法推——先安装系统 git 跑一次 `git push -u origin <branch>`、或在面板里配置",
-        "當前分支無上游，無法推——先安裝系統 git 跑一次 `git push -u origin <branch>`、或在面板裡配置",
-        "the current branch has no upstream, cannot push; run `git push -u origin <branch>` once with system git, or configure it in the panel",
-        "la branche actuelle n’a pas d’amont, push impossible ; lancez `git push -u origin <branch>` une fois avec git système, ou configurez-le dans le panneau",
-        "der aktuelle Branch hat keinen Upstream, Push nicht möglich; führen Sie einmal `git push -u origin <branch>` mit System-git aus oder konfigurieren Sie ihn im Panel",
+        "当前分支无上游，无法推——按 Push 后确认「推送并建立上游」即可，或手动跑 `git push -u origin <branch>`",
+        "目前分支沒有上游，無法推——按 Push 後確認「推送並建立上游」即可，或手動執行 `git push -u origin <branch>`",
+        "the current branch has no upstream, cannot push — press Push and confirm \"push and set upstream\", or run `git push -u origin <branch>` manually",
+        "la branche actuelle n’a pas d’amont, push impossible — appuyez sur Push puis confirmez « pousser et définir l’amont », ou lancez `git push -u origin <branch>` à la main",
+        "der aktuelle Branch hat keinen Upstream, Push nicht möglich — drücken Sie Push und bestätigen Sie „pushen und Upstream setzen“, oder führen Sie `git push -u origin <branch>` manuell aus",
     ]},
     Entry { key: "gitUpstreamUnresolved", texts: [
         "无法解析 upstream：{up}",

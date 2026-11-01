@@ -491,10 +491,11 @@ export function takeWindowVault() {
 }
 
 /** R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 Remote::push。
+ *  setUpstream=true 走首次推送：推当前分支到远端同名分支并建立上游。
  *  失败 reject，附 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
  *  hostkey_mismatch / host_unknown / git_error），同 handleRemoteErr 分派表。*/
-export function gitRPush(vaultRoot) {
-  return invoke('git_r_push', { vaultRoot })
+export function gitRPush(vaultRoot, setUpstream = false) {
+  return invoke('git_r_push', { vaultRoot, setUpstream })
 }
 
 /** R3 新增：合并拉取（不带 --ff-only）。resolve 为 `MERGED\n…` 或 `CONFLICTS\n…`；

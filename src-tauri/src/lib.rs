@@ -2656,13 +2656,16 @@ async fn git_r_pull_ff(vault_root: String) -> Result<String, String> {
 }
 
 /// R2 新增：推当前分支→ upstream。System 走 `git push`；Builtin 走 git2 `Remote::push`。
+/// `setUpstream=true` 时改走首次推送：`git push --set-upstream <remote> <当前分支>`
+/// （内置引擎等价地推同名分支并写 `branch.<分支>.remote` / `.merge`）。
 /// 失败时回 `[code]msg` 前串（no_upstream / non_fast_forward / auth / network /
 /// hostkey_mismatch / host_unknown / git_error），前端 `handleRemoteErr` 同一张表分派。
 #[tauri::command]
-async fn git_r_push(vault_root: String) -> Result<String, String> {
+async fn git_r_push(vault_root: String, set_upstream: Option<bool>) -> Result<String, String> {
+    let up = set_upstream.unwrap_or(false);
     match git_builtin::cached_engine() {
-        git_builtin::Engine::System => git_builtin::system::push(vault_root).await,
-        git_builtin::Engine::Builtin => git_builtin::builtin::push(vault_root).await,
+        git_builtin::Engine::System => git_builtin::system::push(vault_root, up).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::push(vault_root, up).await,
     }
 }
 

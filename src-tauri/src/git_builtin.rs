@@ -636,11 +636,52 @@ pub mod system {
         Ok(combined)
     }
 
+    /// 首次推送用：组出 `git push --set-upstream <remote> <branch>` 的参数。
+    /// 分支取 HEAD 简名（detached 时 rev-parse 回 "HEAD" → 拒），remote 优先 origin、否则列表首个。
+    async fn upstream_push_args(vault_root: &str) -> Result<Vec<String>, String> {
+        let b = git_run(
+            vault_root.to_string(),
+            vec!["rev-parse".into(), "--abbrev-ref".into(), "HEAD".into()],
+        )
+        .await?;
+        let branch = b.stdout.trim().to_string();
+        if b.code != 0 || branch.is_empty() || branch == "HEAD" {
+            return Err(format!("[git_error]{}", ui_msg!("gitDetachedPush")));
+        }
+        let r = git_run(vault_root.to_string(), vec!["remote".into()]).await?;
+        let names: Vec<&str> = r
+            .stdout
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        let remote = match names.iter().position(|n| *n == "origin") {
+            Some(i) => names[i],
+            None => names.first().copied().unwrap_or(""),
+        };
+        if remote.is_empty() {
+            return Err(format!("[git_error]{}", ui_msg!("gitRemoteNameUnresolved")));
+        }
+        Ok(vec![
+            "push".into(),
+            "--set-upstream".into(),
+            remote.to_string(),
+            branch,
+        ])
+    }
+
     /// R2：`git push`（当前分支 → upstream，非交互）。凭据交系统 git（GCM/ssh-agent/凭据助手）。
+    /// `set_upstream=true` 走 `git push --set-upstream <remote> <当前分支>`，用于远端还没有
+    /// 同名分支的首次推送（此时裸 `git push` 必然 `no upstream`）。
     /// 非零退出时按 stderr 关键字前置 `[code]` 串（与 builtin::push 同分类契约），
     /// 无匹配则保留原文回显，让前端 `handleRemoteErr` 走 NONFF_RE 兼容旧分支。
-    pub async fn push(vault_root: String) -> Result<String, String> {
-        let run = git_run(vault_root, vec!["push".into()]).await?;
+    pub async fn push(vault_root: String, set_upstream: bool) -> Result<String, String> {
+        let args = if set_upstream {
+            upstream_push_args(&vault_root).await?
+        } else {
+            vec!["push".into()]
+        };
+        let run = git_run(vault_root, args).await?;
         let combined = format!("{}{}", run.stdout, run.stderr);
         if run.code != 0 {
             let lower = combined.to_lowercase();
@@ -868,6 +909,76 @@ pub mod system {
             let ab = AheadBehind { ahead: 1, behind: 3, upstream: "origin/main".into() };
             let j2 = serde_json::to_string(&ab).unwrap();
             assert!(j2.contains("\"upstream\""));
+        }
+
+        /// 首次推送：临时库 + 本地裸仓当 origin。裸 push 必须回 `[no_upstream]`；
+        /// set_upstream=true 要推出血缘分支、并写好 `branch.<分支>.remote` / `.merge`。
+        #[test]
+        fn push_set_upstream_creates_remote_branch_and_upstream() {
+            use std::fs;
+            let pid = std::process::id();
+            let work = std::env::temp_dir().join(format!("notelume-push-w-{pid}"));
+            let bare = std::env::temp_dir().join(format!("notelume-push-b-{pid}"));
+            let _ = fs::remove_dir_all(&work);
+            let _ = fs::remove_dir_all(&bare);
+            fs::create_dir_all(&work).unwrap();
+
+            let git = |args: &[&str]| {
+                let out = super::super::new_command("git")
+                    .args(args)
+                    .current_dir(&work)
+                    .output()
+                    .unwrap();
+                assert!(
+                    out.status.success(),
+                    "git {:?}: {}",
+                    args,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            };
+
+            git(&["init", "--bare", bare.to_str().unwrap()]);
+            git(&["init", "-b", "master"]);
+            git(&["config", "user.email", "tester@example.com"]);
+            git(&["config", "user.name", "Tester"]);
+            git(&["config", "commit.gpgsign", "false"]);
+            fs::write(work.join("a.md"), "hi\n").unwrap();
+            git(&["add", "a.md"]);
+            git(&["commit", "-m", "笔记初次提交"]);
+            git(&["remote", "add", "origin", bare.to_str().unwrap()]);
+
+            let root = work.to_string_lossy().to_string();
+            let no_up = tauri::async_runtime::block_on(push(root.clone(), false)).unwrap_err();
+            assert!(
+                no_up.starts_with("[no_upstream]"),
+                "裸 push 应报 no_upstream，实际：{no_up}"
+            );
+
+            tauri::async_runtime::block_on(push(root.clone(), true)).unwrap();
+
+            // 远端确实长出了同名分支
+            let remote_sha = {
+                let out = super::super::new_command("git")
+                    .args(["--git-dir", bare.to_str().unwrap(), "rev-parse", "refs/heads/master"])
+                    .output()
+                    .unwrap();
+                assert!(out.status.success(), "远端没有 refs/heads/master");
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            };
+            assert_eq!(remote_sha, git(&["rev-parse", "HEAD"]), "远端分支与本地 HEAD 不一致");
+            // 上游配置已写
+            assert_eq!(git(&["config", "--get", "branch.master.remote"]), "origin");
+            assert_eq!(
+                git(&["config", "--get", "branch.master.merge"]),
+                "refs/heads/master"
+            );
+            // 有了上游之后，裸 push 不再报 no_upstream
+            git(&["fetch", "origin"]);
+            assert!(tauri::async_runtime::block_on(push(root, false)).is_ok());
+
+            let _ = fs::remove_dir_all(&work);
+            let _ = fs::remove_dir_all(&bare);
         }
     }
 }
@@ -1350,11 +1461,25 @@ pub mod builtin {
         .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
     }
 
+    /// 内置引擎的 remote 名：有 origin 用 origin，否则远端列表首个，一个都没有才报错。
+    fn pick_remote_name(repo: &git2::Repository) -> Result<String, String> {
+        if repo.find_remote("origin").is_ok() {
+            return Ok("origin".to_string());
+        }
+        let names = repo.remotes().map_err(map_err)?;
+        names
+            .iter()
+            .next()
+            .and_then(|n| n.map(|s| s.to_string()))
+            .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitRemoteNameUnresolved")))
+    }
+
     /// R2：内置 `Remote::push`。推当前分支→ upstream 同名分支（固定 refspec，不靠 push.default）。
     /// 同 fetch 一样走凭据 + certificate_check 回调 + 侧信道；额外挂 `push_update_reference`
     /// 捕远端拒因（fast-forward / permission / …）一并前置 `[code]` 同前端契约。
-    /// 无 upstream → `[no_upstream]`（内置不自动设 upstream，避免默默创远程新分支）。
-    pub async fn push(vault_root: String) -> Result<String, String> {
+    /// 无 upstream → `[no_upstream]`；`set_upstream=true` 则改推同名分支到远端并写
+    /// `branch.<分支>.remote` / `.merge`，等价 `git push -u`（首次推送用，需前端确认过）。
+    pub async fn push(vault_root: String, set_upstream: bool) -> Result<String, String> {
         tauri::async_runtime::spawn_blocking(move || {
             let repo = open_repo(&vault_root)?;
             let head = repo
@@ -1367,20 +1492,24 @@ pub mod builtin {
                 .shorthand()
                 .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitNoBranchName")))?
                 .to_string();
-            let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
-                format!("[no_upstream]{}", ui_msg!("gitNoUpstreamPush"))
-            })?;
-            let up_full = up_refname_buf
-                .as_str()
-                .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitUpstreamNotUtf8")))?
-                .to_string();
-            let up_short = up_full
-                .strip_prefix("refs/remotes/")
-                .unwrap_or(&up_full)
-                .to_string();
-            let (remote_name, remote_branch) = match up_short.split_once('/') {
-                Some((r, b)) => (r.to_string(), b.to_string()),
-                None => return Err(format!("[git_error]{}", ui_msg!("gitUpstreamUnresolved", "up" => up_short))),
+            let (remote_name, remote_branch) = if set_upstream {
+                (pick_remote_name(&repo)?, branch.clone())
+            } else {
+                let up_refname_buf = repo.branch_upstream_name(&branch).map_err(|_| {
+                    format!("[no_upstream]{}", ui_msg!("gitNoUpstreamPush"))
+                })?;
+                let up_full = up_refname_buf
+                    .as_str()
+                    .ok_or_else(|| format!("[git_error]{}", ui_msg!("gitUpstreamNotUtf8")))?
+                    .to_string();
+                let up_short = up_full
+                    .strip_prefix("refs/remotes/")
+                    .unwrap_or(&up_full)
+                    .to_string();
+                match up_short.split_once('/') {
+                    Some((r, b)) => (r.to_string(), b.to_string()),
+                    None => return Err(format!("[git_error]{}", ui_msg!("gitUpstreamUnresolved", "up" => up_short))),
+                }
             };
             let refspec = format!("refs/heads/{}:refs/heads/{}", branch, remote_branch);
 
@@ -1431,6 +1560,16 @@ pub mod builtin {
                 }
                 // 次优：侧信道 host_unknown；否则 map_err 默认
                 return Err(map_err_with_side(e, &side));
+            }
+            if set_upstream {
+                let mut cfg = repo.config().map_err(map_err)?;
+                cfg.set_str(&format!("branch.{}.remote", branch), &remote_name)
+                    .map_err(map_err)?;
+                cfg.set_str(
+                    &format!("branch.{}.merge", branch),
+                    &format!("refs/heads/{}", branch),
+                )
+                .map_err(map_err)?;
             }
             Ok(format!(
                 "{}\n",
