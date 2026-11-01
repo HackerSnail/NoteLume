@@ -247,22 +247,26 @@ export class VirtualEditor {
     this.openWindow(want0, want1)
   }
 
-  /** 跳到 master pos：目标在窗外先移窗覆盖它，再落选区（大纲 / 查找跳转用） */
+  /** 跳到 master pos：目标在窗外先移窗覆盖它，再落选区（大纲 / 查找跳转用）。
+   *  pos 常为块开边界（大纲给的 offset），选区用 between 收敛到最近文本位。 */
   jumpToPos(pos) {
     const n = this.blockCount
     if (n === 0) return
     pos = clamp(pos, 0, this.doc.content.size)
+    const placeSel = () => {
+      const $p = this.masterState.doc.resolve(pos)
+      const mTr = this.masterState.tr.setSelection(TextSelection.between($p, $p, 1))
+      this.masterState = this.masterState.apply(mTr)
+    }
     const r = this.masterWinRange()
     if (!(r && pos >= r.start && pos <= r.end)) {
       const b = posToBlock(this.blocks, pos)
       // 先落 master 选区再重切，openWindow 恢复选区时读到的就是目标位置
-      const mTr = this.masterState.tr.setSelection(TextSelection.create(this.masterState.doc, pos))
-      this.masterState = this.masterState.apply(mTr)
+      placeSel()
       this.openWindow(clamp(b - this.overscan, 0, n), clamp(b + this.overscan + 1, 1, n))
       return
     }
-    const mTr = this.masterState.tr.setSelection(TextSelection.create(this.masterState.doc, pos))
-    this.masterState = this.masterState.apply(mTr)
+    placeSel()
     const sel = this.masterSelectionToWin()
     if (sel) this.winState = this.winState.apply(this.winState.tr.setSelection(sel))
     this.emit()

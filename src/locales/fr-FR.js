@@ -532,6 +532,7 @@ export default {
   'status.sourceOn': 'Mode source : activé (l’enregistrement réécrit le texte brut, sans reformatage)',
   'status.sourceOff': 'Mode source : désactivé (retour au rendu)',
   'status.largeSource': 'Fichier volumineux ouvert en mode source (édition et enregistrement normaux ; utilisez le bouton Source pour revenir au rendu)',
+  'status.virtualMode': 'Mode virtualisé grand fichier : rendu par fenêtres, seule la zone courante est rendue (expérimental)',
   'status.focusOn': 'Mode concentration : activé',
   'status.focusOff': 'Mode concentration : désactivé',
   'status.typewriterOn': 'Mode machine à écrire : activé',

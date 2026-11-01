@@ -532,6 +532,7 @@ export default {
   'status.sourceOn': '原始碼模式：開啟（儲存即寫回原文，不重新排版）',
   'status.sourceOff': '原始碼模式：關閉（回到所見即所得）',
   'status.largeSource': '文件較大，已用原始碼模式開啟（編輯與儲存照常，可用原始碼按鈕切回所見即所得）',
+  'status.virtualMode': '大檔案虛擬化模式：視窗化渲染，僅當前區域進記憶體渲染（實驗功能）',
   'status.focusOn': '專注模式：開啟',
   'status.focusOff': '專注模式：關閉',
   'status.typewriterOn': '打字機模式：開啟',

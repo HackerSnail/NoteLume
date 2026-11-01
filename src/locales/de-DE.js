@@ -532,6 +532,7 @@ export default {
   'status.sourceOn': 'Quelltextmodus: ein (Speichern schreibt den Rohtext zurück, ohne Neuformatierung)',
   'status.sourceOff': 'Quelltextmodus: aus (zurück zur WYSIWYG-Ansicht)',
   'status.largeSource': 'Große Datei im Quelltextmodus geöffnet (Bearbeiten und Speichern wie gewohnt; über die Quelltext-Schaltfläche zurück zu WYSIWYG)',
+  'status.virtualMode': 'Virtualisierter Modus für große Dateien: fensterweise gerendert, nur der aktuelle Bereich wird gerendert (experimentell)',
   'status.focusOn': 'Fokusmodus: ein',
   'status.focusOff': 'Fokusmodus: aus',
   'status.typewriterOn': 'Schreibmaschinenmodus: ein',
