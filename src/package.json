@@ -13,6 +13,7 @@
     "test:inline-input-rules": "node tests/inline-input-rules.test.mjs",
     "test:block-input-rules": "node tests/block-input-rules.test.mjs",
     "test:footnote": "node tests/footnote.test.mjs",
+    "test:git-push-dom": "node tests/git-push-dom.test.mjs",
     "test:merged-table": "node tests/merged-table.test.mjs",
     "test:html-block": "node tests/html-block.test.mjs",
     "test:html-block-images": "node tests/html-block-images.test.mjs",
