@@ -4,7 +4,7 @@
 //   认证交系统 git（应用不碰凭据）；仅 --ff-only，非快进不自动合并。数据经 tauri-bridge 的 git_* / git_r_* 封装获取。
 // R1-B（内置引擎）：无系统 git 时自动切 git2；同步区顶部展引擎徽标；fetch/pull 错误按 `[code]` 前串分派，
 //   陌生 host 走一次性信任。
-// R2（push）：↑ Push 按钮，当前分支 → upstream 同名分支；无 upstream → `[no_upstream]` 引导。
+// R2（push）：↑ Push 按钮，当前分支 → upstream 同名分支；无 upstream → 确认后首次推送并建立上游，拒绝则回 `[no_upstream]` 引导。
 // R3（合并拉取 + 冲突解决）：⇅ Pull（合并）按钮；冲突文件在变更列表逐行给出「用本地 / 用远端 / 编辑」，顶部合并工具条可提交合并 / 中止合并。
 // 与主逻辑解耦：库根、转义、状态栏提示、pull 后集成回调、打开文件经 deps 注入；promptDialog / messageDialog / confirmDialog 复用既有件。
 import {
