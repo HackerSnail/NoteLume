@@ -6,6 +6,8 @@
 // 见各功能模块内的说明。
 
 // headingNumbering 默认关：它会改动所有导出件的标题呈现，属显式选择而非默认增强
+// virtualLargeMd 默认关：超大文档（>2MB）以窗口化 WYSIWYG 打开（Rust 后台解析）。
+// 这是装载路径开关，不消费 nl-features 装饰广播——改动在下次打开超大文件时生效。
 export const DEFAULT_FEATURES = {
   tocBlock: true, // [[toc]] 目录块（编辑器显示）
   csvTable: true, // ```csv 代码块渲染成表格（编辑器显示）
@@ -13,6 +15,7 @@ export const DEFAULT_FEATURES = {
   headingNumbering: false, // 导出 / 打印时标题自动编号
   quarkdown: true, // Quarkdown 指令求值（编辑器快照 + 导出展开）
   lineNumbers: true, // WYSIWYG 左侧行号装订线（编辑器显示）
+  virtualLargeMd: false, // 超大文档窗口化 WYSIWYG（虚拟化编辑器，Rust 后台解析）
 }
 
 const KEYS = Object.keys(DEFAULT_FEATURES)

@@ -308,6 +308,7 @@ export default {
   'feature.headingNumbering': 'Numérotation des titres (export / impression)',
   'feature.quarkdown': 'Évaluation Quarkdown',
   'feature.lineNumbers': 'Numéros de ligne',
+  'feature.virtualLargeMd': 'Édition fenêtrée des très gros fichiers (expérimental ; effectif à la prochaine ouverture)',
   'ap.split': 'Largeur de la barre latérale',
   'ap.splitValue': '{n} % (environ {px} px)',
   'ap.splitHint': 'Proportion entre barre latérale et zone d’édition ; glisser le séparateur de la fenêtre met aussi à jour cette valeur',

@@ -309,6 +309,7 @@ export default {
   'feature.headingNumbering': 'Heading auto-numbering (export / print)',
   'feature.quarkdown': 'Quarkdown evaluation',
   'feature.lineNumbers': 'Line numbers',
+  'feature.virtualLargeMd': 'Windowed editing for very large files (experimental; applies on next open)',
   'ap.split': 'Sidebar width',
   'ap.splitValue': '{n}% (about {px} px)',
   'ap.splitHint': 'Ratio between sidebar and editor; dragging the splitter in the window updates this too',

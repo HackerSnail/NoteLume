@@ -308,6 +308,7 @@ export default {
   'feature.headingNumbering': '標題自動編號（匯出 / 列印）',
   'feature.quarkdown': 'Quarkdown 指令求值',
   'feature.lineNumbers': '左側行號',
+  'feature.virtualLargeMd': '超大檔案視窗化編輯（實驗，下次開啟生效）',
   'ap.split': '側欄寬度',
   'ap.splitValue': '{n}%（約 {px} px）',
   'ap.splitHint': '設定側欄與編輯區的寬度比例；直接拖動視窗裡的分隔條也會更新這裡',

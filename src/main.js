@@ -763,10 +763,11 @@ async function setWordGoal() {
 // 触发装订线全文强制布局假死。
 const LARGE_MD_LIMIT = 2 * 1024 * 1024
 
-// 虚拟化实验开关（Phase 2 真机验收用，默认关）：localStorage 设 nl-virtual=1 开启。
+// 虚拟化开关（设置页「功能开关」的 virtualLargeMd，settings.json features 段，默认关）。
 // 开启后超大文档走 mdToPmJson 后台解析 + 窗口化 WYSIWYG；解析不支持的构造回退源码模式。
+// 装载路径开关：改动在下次打开超大文件时生效，不实时迁移已打开的文档。
 function virtualEnabled() {
-  return localStorage.getItem('nl-virtual') === '1'
+  return getFeatures(settingsStore).virtualLargeMd
 }
 
 // 把 md 装进某窗格编辑器：普通文档走所见即所得；超大文档默认源码模式，

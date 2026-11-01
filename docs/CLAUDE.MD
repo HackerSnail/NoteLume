@@ -308,7 +308,8 @@ OpenAI 兼容 `/chat/completions` 协议（DeepSeek / 智谱 GLM / Kimi / OpenAI
   - 行号装订线（`wysiwyg-gutter.js`）：`createLineNumbersPlugin` 加 hooks.getStartN——虚拟模式行号从「窗口前全文估算行数」续起（内核 `linePrefix`：实测块高优先、缺的按 estimateHeight/lineHeight 折算，enterVirtual 时按编辑器实际行高注入），估算口径随滚动实测校准。
   - 源码往返映射（`editor-view.js` 的 pos-map 接线）：`mapSelToSource` 虚拟模式映射底座换 master doc、窗口选区 +delta（夹实块区间）转 master 坐标；`exitSource` 大文档 Rust 重建后 `mapSelFromSource(text, virtual.doc, body)` 出 master 坐标、`jumpToPos` 落窗口。
   - 测试扩展 `tests/editor-virtual.test.mjs`（90 块 > windowSize 保证窗外块）：全篇命中/窗外 toWin null/全篇替换一步进历史、折叠集合 master 坐标 + 跳转展开。
-- **待做**：Phase 4 虚拟开关进设置页（现为 localStorage nl-virtual=1）、内存峰值实测、真机（Ubuntu/Windows）10MB 样例验收（需实机）。
+- **Phase 4 已完成（2026-11-01，除真机验收）**：虚拟开关进设置页——`features.virtualLargeMd`（`feature-flags.js` 注册表 + `appearance-settings.js` 的 FEATURE_ROWS，默认关，五语言词条「超大文件窗口化编辑（实验，下次打开生效）」），`main.js` 的 `virtualEnabled()` 改读设置项（原 localStorage `nl-virtual` 实验口径废弃，无存量用户不迁移）；开关是装载路径开关，不消费 `nl-features` 装饰广播，改动在下次打开超大文件时生效、不实时迁移已打开文档。内存与缓存收尾口径：窗口固定 60 块 + overscan 8（重切频率由可视区已覆盖短路压低）；`heights` Map 条目数 = 全文块数（10MB ≈ 2 万个数字），无上限问题；`linePrefix` / `heightFor` 的 O(n) 扫描只在重切与装订线重算时跑，微秒级。测试 `tests/feature-flags.test.mjs` 3 组（键集与默认值、坏数据逐键回落、setFeature 浅合并语义）。CHANGELOG 补四期总条目。
+- **待做（需实机，代码侧已完）**：真机验收——Ubuntu 24.04/X11 与 Windows 各用 10MB 样例验：设置页开 virtualLargeMd 后打开首屏时长（目标 <1s）、滚动帧率（spacer 高度是否随实测校准不跳）、编辑即时性（IME / 撤销跨窗口）、库内查找跨窗跳转、大纲跳转、折叠行为、保存与原 JS 路径逐字节一致、内存峰值（master doc + 窗口 DOM）。
 
 ## 架构设计
 
