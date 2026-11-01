@@ -57,10 +57,11 @@ export function lineNumbersOn(flags) {
 }
 
 class GutterView {
-  constructor(view, getFeatures) {
+  constructor(view, getFeatures, hooks) {
     this.view = view
     this.host = view.dom.parentNode // .editor
     this.getFeatures = getFeatures || null
+    this.hooks = hooks || null // 虚拟模式的全文行号前缀（getStartN）
     this.enabled = false // 当前是否挂载，构造时由 setEnabled 按开关决定
     this.blocks = [] // 每顶层块 {top, h, lh, count, startN}，坐标为 .editor 内容系
     this.lhCache = new Map() // 行高缓存，键 tagName|class（字号变化随实例重建失效）
@@ -121,7 +122,9 @@ class GutterView {
     const view = this.view
     const base = this.host.getBoundingClientRect().top
     const blocks = []
-    let n = 1
+    // 虚拟模式：窗口只是全文切片，行号从「窗口前全文估算行数」续起（hooks.getStartN），
+    // 估算口径（窗口外块无 DOM），滚动过后随实测块高校准。
+    let n = 1 + ((this.hooks && this.hooks.getStartN && this.hooks.getStartN()) || 0)
     // 一次全量廉价扫描：每块只读一次 getBoundingClientRect（定 top）+ clientHeight，
     // 用「内容高（扣 padding）/ 行高」得行数，行号连续。行高按块类型缓存（每种只实测
     // 一次），不再对每块调 getClientRects（旧做法在 MB 级文档上每次编辑卡数分钟的根因）。
@@ -203,10 +206,10 @@ class GutterView {
   }
 }
 
-export function createLineNumbersPlugin(getFeatures) {
+export function createLineNumbersPlugin(getFeatures, hooks) {
   return new Plugin({
     view(editorView) {
-      return new GutterView(editorView, getFeatures)
+      return new GutterView(editorView, getFeatures, hooks)
     },
   })
 }
