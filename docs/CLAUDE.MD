@@ -286,6 +286,8 @@ OpenAI 兼容 `/chat/completions` 协议（DeepSeek / 智谱 GLM / Kimi / OpenAI
 
 Rust 侧新命令六个（`git_discard` / `git_r_branch_list` / `git_r_checkout` / `git_r_branch_create` / `git_r_revert` / `git_r_commit_files`），系统 git 与内置 git2 双引擎同口径：检出用 SAFE 策略（与本地改动冲突时拒绝），revert 前置脏树检查回 `[local_changes]` 前串。分支下拉是 git-panel.js 里独立的自绘小弹层（复用 `.cv-menu` 样式，没走 main.js 的 placeMenu 单例）。词条 `git.*` 组五语言；Rust 侧 ui_lang 补 `gitDirtyRefuse` / `gitRevertConflict` / `gitDiscard*`。测试 `tests/git-panel-dom.test.mjs` 五条（提交框状态机 / Ctrl+Enter / 放弃的确认链路与拒绝路径），Rust 侧 `parse_branch_list` / `parse_name_status` 四条。
 
+顺手修了一个被 docs/.git 删除暴露出来的旧问题：`open_repo` / `git_open` 原来用裸 `Repository::open`，只认 .git 在库根本身，库根是仓库子目录时（「打开单个文件」进来的库）整个本地 Git 面板判成非仓库。改 `open_ext` 向上发现（lib.rs 与 git_builtin.rs 内置引擎同口径）。提交框初始塌成一条线的对齐问题也在此修掉：行内 stretch + 输入框 min-height，自适应放到挂载后的 rAF 里量。
+
 ## Quarkdown 引擎（2026-10-25 起，分期实施）
 
 总体设计 `docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md`，分期计划在 `docs/superpowers/plans/`（qd-engine-phase*.md）。约束：CLAUDE.MD 硬性约束第 3 条已修订——Quarkdown 语法文档不再要求 Typora / Obsidian 兼容，普通文档仍兼容；除 Quarkdown 层外不得再引入其他私有格式。参考实现 [iamgio/quarkdown](https://github.com/iamgio/quarkdown)（Kotlin）；本地只读副本 2026-10-26 已删除，后续对拍以 GitHub 上游为准。

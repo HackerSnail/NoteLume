@@ -2201,9 +2201,16 @@ pub struct DiffFileArgs {
     pub against: String,
 }
 
-/// 打开库根所在仓库；失败统一映射成可读错误
+/// 打开库根所在仓库；失败统一映射成可读错误。
+/// 用 open_ext 向上搜索：库根可能是仓库的子目录（如「打开单个文件」把父目录当库根），
+/// 裸 open 只认 .git 在库根本身，子目录场景整个本地 Git 功能全灭。
 fn open_repo(vault_root: &str) -> Result<git2::Repository, String> {
-    git2::Repository::open(vault_root).map_err(|e| ui_msg!("gitOpenRepoFailed", "err" => e))
+    git2::Repository::open_ext(
+        vault_root,
+        git2::RepositoryOpenFlags::empty(),
+        Vec::<&std::ffi::OsStr>::new(),
+    )
+    .map_err(|e| ui_msg!("gitOpenRepoFailed", "err" => e))
 }
 
 /// 把 Repository 收敛成 GitRepoInfo（多处复用）
@@ -2220,7 +2227,11 @@ fn repo_info(repo: &git2::Repository) -> GitRepoInfo {
 /// 探测当前库是否为 git 仓库（含向上 discover）；非仓库返回 is_repo=false 而非报错
 #[tauri::command]
 fn git_open(vault_root: String) -> Result<GitRepoInfo, String> {
-    let repo = match git2::Repository::open(&vault_root) {
+    let repo = match git2::Repository::open_ext(
+        &vault_root,
+        git2::RepositoryOpenFlags::empty(),
+        Vec::<&std::ffi::OsStr>::new(),
+    ) {
         Ok(r) => r,
         Err(_) => {
             return Ok(GitRepoInfo {

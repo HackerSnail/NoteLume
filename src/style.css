@@ -4702,12 +4702,13 @@ html.nl-dragging * {
 }
 .nl-git-commit-row {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 6px;
 }
 .nl-git-commit-input {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 30px;
   resize: none;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -4718,6 +4719,7 @@ html.nl-dragging * {
   line-height: 1.5;
   padding: 5px 8px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 .nl-git-commit-input:focus {
   outline: none;

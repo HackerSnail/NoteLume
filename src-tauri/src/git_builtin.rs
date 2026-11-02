@@ -1472,7 +1472,13 @@ pub mod builtin {
     // ---------- 小 helper ----------
 
     fn open_repo(vault_root: &str) -> Result<Repository, String> {
-        Repository::open(vault_root).map_err(|e| format!("[git_error]{}", ui_msg!("gitOpenRepoFailed", "err" => e)))
+        // open_ext 向上搜索：库根可能是仓库子目录（同 lib.rs open_repo 的口径）
+        Repository::open_ext(
+            vault_root,
+            git2::RepositoryOpenFlags::empty(),
+            Vec::<&std::ffi::OsStr>::new(),
+        )
+        .map_err(|e| format!("[git_error]{}", ui_msg!("gitOpenRepoFailed", "err" => e)))
     }
 
     fn home_dir() -> Option<std::path::PathBuf> {
