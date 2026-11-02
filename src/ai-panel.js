@@ -278,13 +278,13 @@ export function createAiPanel(deps) {
     if (!streaming) return
     // Agent 锚点协议在这里统一解析（Ask 模式模型不会输出标记，解析无害）：
     // 气泡、历史、动作行都用剥掉标记后的正文，锚点只留给自动应用定位
-    const { anchor, body } = parseAgentReply(streaming.text)
+    const { anchor, body, anchorBroken } = parseAgentReply(streaming.text)
     history.push({ role: 'assistant', content: body })
     const el = streaming.el
     el.innerHTML = md.render(body)
     el.appendChild(assistantActions(body))
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
-    if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor)
+    if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor, anchorBroken)
     if (stopped) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -338,7 +338,7 @@ export function createAiPanel(deps) {
   }
 
   /** Agent 模式收尾：按锚点（自然语言位置）或光标智能落点写进文档，结果都给一条小标签 */
-  function autoApply(text, el, anchor) {
+  function autoApply(text, el, anchor, anchorBroken) {
     if (!appendToDoc) return
     let res = null
     try { res = appendToDoc(text, anchor || null) } catch { res = null }
@@ -349,6 +349,9 @@ export function createAiPanel(deps) {
       tag.textContent = t(anchor.dir === 'before' ? 'ai.appliedAtBefore' : 'ai.appliedAtAfter', { where: res.where || anchor.target })
     } else if (ok && anchor && res.missed) {
       tag.textContent = t('ai.anchorMiss', { where: anchor.target })
+    } else if (ok && anchorBroken) {
+      // 标记本身已被 parseAgentReply 从正文剥掉，这里只告诉用户落点没认出来
+      tag.textContent = t('ai.anchorUnresolved')
     } else if (ok) {
       tag.textContent = t('ai.applied')
     } else {

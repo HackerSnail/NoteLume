@@ -1083,6 +1083,7 @@ export default {
   'ai.appliedAtAfter': 'Inséré après « {where} »',
   'ai.appliedAtBefore': 'Inséré avant « {where} »',
   'ai.anchorMiss': '« {where} » introuvable dans le document — inséré au curseur à la place',
+  'ai.anchorUnresolved': 'Marqueur d’insertion illisible — inséré au curseur',
   'ai.attMax': 'Jusqu\'à 4 images par message',
   'ai.noVision': 'Le modèle actuel ne prend pas en charge les images',
   'ai.removeAtt': 'Retirer l\'image',
@@ -1140,5 +1141,7 @@ export default {
   'ai.set.keyHint': 'La clé est enregistrée dans le settings.json local, uniquement pour les appels API ; laissez vide pour Ollama en local',
   'ai.set.model': 'Nom du modèle',
   'ai.set.hint': 'Tout service compatible OpenAI /chat/completions convient : DeepSeek / Zhipu GLM / Kimi / OpenAI / Ollama local, etc.',
+  'ai.set.errBaseUrl': 'L’adresse doit être une URL complète en http:// ou https://',
+  'ai.set.errTooLong': '{field} est limité à {max} caractères — vérifiez le contenu collé',
   'ai.set.saved': 'Réglages IA enregistrés',
 }

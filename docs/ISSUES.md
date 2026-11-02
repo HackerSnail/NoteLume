@@ -1,6 +1,8 @@
 # Issue 清单：AI 面板与剪藏服务的输入边界
 
-五条都还没修，代码基线 `7fbc9b3`。前四条由 `src/ai-tasks.js` 的函数离线直跑复现，不起应用、不开浏览器；第五条是源码与文案对读，依据是 Rust 半开区间语义，端口占满那条路径没构造过。行号会随上游提交漂移，动手前先对一遍。
+2026-11-02 已全部修复，下面是基线 `7fbc9b3` 的复现记录，保留作回归依据。改法：一、`resolveAnchorPos` 全等标题优先，无全等才退互相包含；二、`parseAgentReply` 严格匹配失败后仍识别并剥离 `<insert>` 标记，返回 `anchorBroken`，Agent 模式下面板出「落点标记无法识别」；三、新增 `validateAiConfig` / `isHttpUrl`，设置面板保存前拒绝超长与非法地址，`aiConfigured` 同步校验；四、`buildVaultContext` 表头计入 6000 预算并按剩余空间截断；五、端口注释与五语言文案统一为顺延 9 个。回归测试在 `src/tests/ai-tasks.test.mjs`（27 条），`npm run test:ai-tasks` 与 `test:i18n` 全过；Rust 侧 `cargo test --lib` 348 passed（2026-11-02 真实终端）。
+
+前四条由 `src/ai-tasks.js` 的函数离线直跑复现，不起应用、不开浏览器；第五条是源码与文案对读，依据是 Rust 半开区间语义，端口占满那条路径没构造过。行号会随上游提交漂移，动手前先对一遍。
 
 文末附完整复核脚本与实际输出，脚本放 gitignore 的 `tmp/` 下，不入库。
 

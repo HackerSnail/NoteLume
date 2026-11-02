@@ -975,7 +975,7 @@ pub struct ClipServerState(Arc<Mutex<Option<ClipServer>>>);
 /// 事件发射回调。serve_loop / handle_conn 不直接依赖 AppHandle，测试可传空实现。
 type EmitFn = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 
-/// 起服务。端口占用时顺延 +1 至多 10 个；端口全被占才返回错误。
+/// 起服务。默认端口被占时逐个 +1 顺延，最多再试 9 个（合计 10 个）；全被占才返回错误。
 pub fn start(app: &tauri::AppHandle, state: &ClipServerState, mut cfg: ClipConfig) -> Result<(), String> {
     let mut listener = None;
     let mut bound = None;

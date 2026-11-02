@@ -7,13 +7,17 @@ import {
   stripFences,
   buildDocContext,
   normalizeAiConfig,
+  validateAiConfig,
+  isHttpUrl,
   aiConfigured,
   AI_PRESETS,
+  AI_LIMITS,
   parseAgentReply,
   resolveAnchorPos,
   modelSupportsVision,
   aiQueryTerms,
   buildVaultContext,
+  AI_VAULT_CONTEXT_MAX_CHARS,
   estimateTokens,
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
@@ -100,11 +104,33 @@ t('normalizeAiConfig：坏类型回落默认，字符串 trim + 限长', () => {
   assert.strictEqual(n.model, '')
 })
 
-t('aiConfigured：地址 + 模型齐才算配好；Key 可空（Ollama）', () => {
+t('aiConfigured：地址 + 模型齐才算配好；地址须为 http(s)；Key 可空（Ollama）', () => {
   assert.strictEqual(aiConfigured(null), false)
   assert.strictEqual(aiConfigured({ baseUrl: '', apiKey: 'k', model: 'm' }), false)
   assert.strictEqual(aiConfigured({ baseUrl: 'u', apiKey: '', model: '' }), false)
+  assert.strictEqual(aiConfigured({ baseUrl: 'not a url', apiKey: '', model: 'm' }), false)
   assert.strictEqual(aiConfigured({ baseUrl: 'http://127.0.0.1:11434/v1', apiKey: '', model: 'llama3.1' }), true)
+})
+
+t('validateAiConfig：超长拒绝、非 http(s) 地址拒绝', () => {
+  const ok = validateAiConfig({ baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' })
+  assert.strictEqual(ok.ok, true)
+  assert.deepStrictEqual(ok.errors, {})
+
+  const longKey = validateAiConfig({ baseUrl: 'https://a.b/v1', apiKey: 'k'.repeat(AI_LIMITS.apiKey + 1), model: 'm' })
+  assert.strictEqual(longKey.ok, false)
+  assert.strictEqual(longKey.errors.apiKey, 'tooLong')
+
+  const longModel = validateAiConfig({ baseUrl: 'https://a.b/v1', apiKey: '', model: 'm'.repeat(AI_LIMITS.model + 1) })
+  assert.strictEqual(longModel.errors.model, 'tooLong')
+
+  const badUrl = validateAiConfig({ baseUrl: 'not a url', apiKey: '', model: 'm' })
+  assert.strictEqual(badUrl.ok, false)
+  assert.strictEqual(badUrl.errors.baseUrl, 'badUrl')
+
+  assert.strictEqual(isHttpUrl('ftp://a.b'), false)
+  assert.strictEqual(isHttpUrl(' https://a.b '), true)
+  assert.strictEqual(isHttpUrl(''), false)
 })
 
 t('AI_PRESETS：五条，baseUrl 无尾斜杠且含版本段', () => {
@@ -137,6 +163,21 @@ t('parseAgentReply：before 标记无闭合也认，标记前的客套全剥', (
   assert.strictEqual(r.body, '内容本体')
 })
 
+t('parseAgentReply：超长或含引号的目标不绑锚点，标记仍从正文剥离', () => {
+  const long = parseAgentReply('<insert after="' + 'a'.repeat(121) + '">正文')
+  assert.strictEqual(long.anchor, null)
+  assert.strictEqual(long.anchorBroken, true)
+  assert.strictEqual(long.body, '正文')
+
+  const quoted = parseAgentReply('x<insert after="say "hi"">y')
+  assert.strictEqual(quoted.anchor, null)
+  assert.strictEqual(quoted.anchorBroken, true)
+  assert.strictEqual(quoted.body, 'y')
+
+  const fine = parseAgentReply('<insert after="引言">正文')
+  assert.strictEqual(fine.anchorBroken, false)
+})
+
 t('resolveAnchorPos：标题命中，after 在标题块之后、before 在标题块之前', () => {
   const doc = mdParser.parse('# 引言\n\n开头一段。\n\n## 结论\n\n收尾。')
   const after = resolveAnchorPos(doc, { dir: 'after', target: '引言' })
@@ -152,6 +193,18 @@ t('resolveAnchorPos：正文段落前缀命中、大小写与空白不敏感', (
   const doc = mdParser.parse('# T\n\nThe Quick  Brown Fox\n\n尾段。')
   const pos = resolveAnchorPos(doc, { dir: 'after', target: 'the quick brown' })
   assert.ok(pos != null && pos > 3)
+})
+
+t('resolveAnchorPos：同前缀长标题在前时，文本全等的标题仍优先', () => {
+  const doc = mdParser.parse('# 目标进阶写法与更多字\n\n段落\n\n# 目标\n\n正文')
+  const blocks = []
+  doc.forEach((node, offset) => blocks.push({ offset, size: node.nodeSize, text: node.textContent }))
+  const target = blocks.find((b) => b.text === '目标')
+  assert.ok(target, '文档里应有全等标题')
+  const before = resolveAnchorPos(doc, { dir: 'before', target: '目标' })
+  const after = resolveAnchorPos(doc, { dir: 'after', target: '目标' })
+  assert.strictEqual(before, target.offset + 1, 'before 应落在全等标题块起点')
+  assert.strictEqual(after, target.offset + 1 + target.size, 'after 应落在全等标题块末尾')
 })
 
 t('resolveAnchorPos：找不到回 null', () => {
@@ -193,6 +246,17 @@ t('buildVaultContext：空命中回空串、截 5 篇封 6000 字符', () => {
   assert.ok(ctx.includes('T4') && !ctx.includes('T5'), '只取前 5 篇')
   const huge = [{ path: 'big.md', title: 'B', snippet: 'x'.repeat(9000) }]
   assert.ok(buildVaultContext(huge, 'H').length < 7000, '总量封顶')
+})
+
+t('buildVaultContext：表头计入 6000 预算，总长不超限', () => {
+  const list = Array.from({ length: 5 }, (_, i) => ({ path: 'p' + i, title: 't' + i, snippet: 's'.repeat(400) }))
+  const v1 = buildVaultContext(list, 'H'.repeat(5900))
+  assert.ok(v1.length <= AI_VAULT_CONTEXT_MAX_CHARS)
+  assert.strictEqual(v1.split('\n').filter((l) => l.startsWith('- ')).length, 1)
+
+  const v2 = buildVaultContext(list, 'H'.repeat(6100))
+  assert.strictEqual(v2.length, AI_VAULT_CONTEXT_MAX_CHARS)
+  assert.strictEqual(v2.split('\n').filter((l) => l.startsWith('- ')).length, 0)
 })
 
 console.log((fail ? `\n${pass} passed, ${fail} FAILED` : `all ${pass} passed`))

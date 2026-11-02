@@ -1085,6 +1085,7 @@ export default {
   'ai.appliedAtAfter': '已插入到「{where}」之后',
   'ai.appliedAtBefore': '已插入到「{where}」之前',
   'ai.anchorMiss': '文档里没找到「{where}」，已改插到光标处',
+  'ai.anchorUnresolved': '落点标记无法识别，已按光标位置插入',
   'ai.attMax': '一次最多附 4 张图片',
   'ai.noVision': '当前模型不支持图片输入，无法添加',
   'ai.removeAtt': '移除图片',
@@ -1142,5 +1143,7 @@ export default {
   'ai.set.keyHint': 'Key 保存在本机 settings.json，仅调用接口时使用；本地 Ollama 可留空',
   'ai.set.model': '模型名',
   'ai.set.hint': '任何兼容 OpenAI /chat/completions 的服务均可：DeepSeek / 智谱 GLM / Kimi / OpenAI / 本地 Ollama 等',
+  'ai.set.errBaseUrl': '接口地址需要是 http:// 或 https:// 开头的完整地址',
+  'ai.set.errTooLong': '{field}最多 {max} 个字符，请检查是否粘贴了多余内容',
   'ai.set.saved': '已保存 AI 设置',
 }

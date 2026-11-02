@@ -1015,11 +1015,11 @@ const TABLE: &[Entry] = &[
         "Endpunkt nicht gefunden",
     ]},
     Entry { key: "clip.portBusy", texts: [
-        "端口 {port} 及顺延的 10 个端口都被占用，请换一个端口",
-        "連接埠 {port} 及順延的 10 個連接埠都被佔用，請更換連接埠",
-        "Port {port} and the next 10 ports are all in use. Pick another port",
-        "Le port {port} et les 10 suivants sont tous occupés. Choisissez un autre port",
-        "Port {port} und die nächsten 10 Ports sind belegt. Wählen Sie einen anderen Port",
+        "端口 {port} 及顺延的 9 个端口都被占用，请换一个端口",
+        "連接埠 {port} 及順延的 9 個連接埠都被佔用，請更換連接埠",
+        "Port {port} and the next 9 ports are all in use. Pick another port",
+        "Le port {port} et les 9 suivants sont tous occupés. Choisissez un autre port",
+        "Port {port} und die nächsten 9 Ports sind belegt. Wählen Sie einen anderen Port",
     ]},
     Entry { key: "clip.writeFailed", texts: [
         "剪藏写盘失败：{err}",
