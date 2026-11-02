@@ -61,7 +61,8 @@
     "test:clip-extract": "node tests/clip-extract.test.mjs",
     "test:clip-report": "node tests/clip-report.test.mjs",
     "test:clip-notice": "node tests/clip-notice.test.mjs",
-    "test:ai-agent": "node tests/ai-agent.test.mjs"
+    "test:ai-agent": "node tests/ai-agent.test.mjs",
+    "test:ai-agent-dom": "node tests/ai-agent-dom.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

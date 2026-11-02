@@ -117,6 +117,7 @@ import { createClipSettings, normalizeClip } from './clip-settings.js'
 import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS, resolveAnchorPos, aiQueryTerms, buildVaultContext } from './ai-tasks.js'
 import { createAiSettings } from './ai-settings.js'
 import { createAiPanel } from './ai-panel.js'
+import { normalizeReadPath, truncateToolResult, canRevert, revertRange } from './ai-agent.js'
 import { openAiInline } from './ai-inline.js'
 import { mdParser, serializeMarkdown } from './editor-schema.js'
 import { TextSelection } from 'prosemirror-state'
@@ -981,6 +982,53 @@ function aiInsertAfter(inst, at, md) {
 function aiDocContext() {
   if (!editor || state.mode !== 'md' || !state.currentFile) return ''
   return buildDocContext(baseName(state.currentFile).replace(/\.md$/i, ''), editor.getText())
+}
+
+// —— Agent 工具执行器：把模型可调的只读工具接到既有 IPC 上 ——
+// 结果一律回 JSON 字符串（role:'tool' 的 content 按协议必须是字符串）；失败抛错，
+// 由循环统一转成 {"error":…} 回给模型。这里不做确认机制——v1 工具全只读。
+async function agentExecTool(name, argsJson) {
+  let args = {}
+  try { args = JSON.parse(String(argsJson || '{}')) } catch { args = {} }
+  const vault = state.vaultRoot
+  switch (name) {
+    case 'search_vault': {
+      const q = String(args.query || '').trim()
+      if (!q) return JSON.stringify({ error: 'query is empty' })
+      const hits = await searchVault(q, 8)
+      return JSON.stringify(Array.isArray(hits) ? hits : [])
+    }
+    case 'read_note': {
+      if (!vault) return JSON.stringify({ error: 'no vault open' })
+      const p = normalizeReadPath(args.path)
+      if (!p) return JSON.stringify({ error: 'invalid path' })
+      const md = await readMdFile(vault, p)
+      return JSON.stringify({ path: p, content: truncateToolResult(String(md ?? '')) })
+    }
+    case 'list_notes': {
+      if (!vault) return JSON.stringify({ error: 'no vault open' })
+      const list = []
+      ;(function walk(arr) {
+        ;(arr || []).forEach((n) => {
+          if (n.type === 'file' && /\.md$/i.test(n.path)) list.push({ path: n.path, title: baseName(n.path).replace(/\.md$/i, '') })
+          else if (n.type === 'folder') walk(n.children)
+        })
+      })(state.tree || (await scanVault(vault)))
+      const total = list.length
+      return JSON.stringify({ total, truncated: total > 500, notes: list.slice(0, 500) })
+    }
+    case 'read_current_doc': {
+      const md = editor && editor.getText ? editor.getText() : ''
+      return JSON.stringify({ content: truncateToolResult(String(md || ''), 20000) })
+    }
+    case 'query_tag': {
+      if (!vault) return JSON.stringify({ error: 'no vault open' })
+      const docs = await queryTag(String(args.tag || '').trim())
+      return JSON.stringify(Array.isArray(docs) ? docs : [])
+    }
+    default:
+      return JSON.stringify({ error: 'unknown tool: ' + name })
+  }
 }
 
 /** AI 全库检索：问题分词后逐词查知识库索引（title 命中优先，去重合并每篇取片段）。
@@ -5301,6 +5349,11 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     getVaultContext: aiVaultContext,
     // 会话存档落点：有知识库存 <vault>/.notelume-ai/chats/，无库存系统 temp（Rust 兜底）
     getVaultRootForChat: () => state.vaultRoot,
+    // Agent 工具循环：只读工具执行器 + 库就绪判定（决定工具集）+ 回退入口
+    execTool: agentExecTool,
+    vaultReady: () => !!state.vaultRoot && !state.singleFile,
+    revertAgentEdit: (record) => (editor && editor.view ? revertRange(editor.view, record) : false),
+    canRevertAgentEdit: (record) => (editor && editor.view ? canRevert(editor.view.state.doc, record) : false),
     insertToDoc: (text) => insertAiMarkdown(editor, text),
     // Agent 模式收尾：锚点协议（自然语言位置）优先——模型回答里 <insert after="…"> 引用的
     // 标题/段落能在文档里找到就直接插到那，找不到回退光标落点并标 missed；

@@ -11,6 +11,7 @@ import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
 import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, AI_CTX_WINDOW_TOKENS } from './ai-tasks.js'
+import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
 function nextReqId() {
@@ -38,7 +39,7 @@ let mode = (() => {
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus } = deps
+  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -80,9 +81,16 @@ export function createAiPanel(deps) {
   let attEl = null // 附件预览条（附图 chip 列表，空时隐藏）
   let attachments = [] // 待发送图片 [{ dataUrl, name }]，随消息一起发出后清空
   let history = [] // { role:'user'|'assistant', content }（content 为 string 或 OpenAI 多模态数组）
-  let streaming = null // { reqId, el, text } 流式中的气泡
+  let streaming = null // { reqId, el, text } 流式中的气泡（Agent 循环时 reqId 随轮次更新）
+  // Agent 工具循环运行态：多轮流式请求共用一个气泡，事件按 agentReq.reqId 分发
+  let agentActive = false
+  let agentReq = null // { reqId, resolve, reject, text } 等待中的一轮流式请求
+  let agentStopFlag = false
+  let agentOnDelta = () => {}
+  let lastRevertRecord = null // 最近一次 autoApply 的回退记录（只存内存，pos 是会话内坐标）
   let offLocale = null
   let offEvent = null
+  let eventStreamDisposed = false // 面板销毁先于订阅 resolve 时，挂上即退订
 
   // —— 消息渲染 ——
 
@@ -114,11 +122,55 @@ export function createAiPanel(deps) {
 
   function renderHistory() {
     msgsEl.innerHTML = ''
-    for (const m of history) msgsEl.appendChild(bubble(m.role, m.content))
+    // 重放：assistant.tool_calls 与其后的 role:'tool' 消息重放成工具行，
+    // 只有工具调用没有文本的 assistant 不出空气泡（与实时链路同一规则）
+    const toolResults = new Map()
+    for (const m of history) {
+      if (m && m.role === 'tool' && m.tool_call_id) toolResults.set(m.tool_call_id, String(m.content ?? ''))
+    }
+    for (const m of history) {
+      if (m && m.role === 'tool') continue
+      if (m && m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+        for (const c of m.tool_calls) {
+          if (!c || !c.id) continue
+          const name = (c.function && c.function.name) || '?'
+          msgsEl.appendChild(toolRowEl(name, summarizeToolArgs(name, c.function && c.function.arguments), 'done', toolResults.get(c.id) || ''))
+        }
+        if (m.content) msgsEl.appendChild(bubble('assistant', m.content))
+        continue
+      }
+      msgsEl.appendChild(bubble(m.role, m.content))
+    }
     // 空态提示常驻消息区末尾（buildDom 挂过一次，这里会 innerHTML 清掉，得重新挂）
     msgsEl.appendChild(emptyHint)
     emptyHint.classList.toggle('hidden', history.length > 0)
     scrollEnd()
+  }
+
+  /** 工具行小条目：工具名 + 参数摘要 + 状态；点击展开结果文本（可复制） */
+  function toolRowEl(name, argsSummary, state, result) {
+    const row = document.createElement('div')
+    row.className = 'ai-tool-row ' + state
+    const lab = document.createElement('span')
+    lab.className = 'ai-tool-name'
+    lab.textContent = name
+    const args = document.createElement('span')
+    args.className = 'ai-tool-args'
+    args.textContent = argsSummary || ''
+    const st = document.createElement('span')
+    st.className = 'ai-tool-state'
+    st.textContent = state === 'running' ? t('ai.toolRunning') : state === 'fail' ? t('ai.toolFail') : t('ai.toolDone')
+    const pre = document.createElement('pre')
+    pre.className = 'ai-tool-result hidden'
+    pre.textContent = result || ''
+    row.append(lab, args, st, pre)
+    row._result = result || ''
+    row.addEventListener('click', () => {
+      pre.textContent = row._result || pre.textContent || ''
+      pre.classList.toggle('hidden')
+      row.classList.toggle('open')
+    })
+    return row
   }
 
   function scrollEnd() {
@@ -227,6 +279,13 @@ export function createAiPanel(deps) {
     setStreamingUi(true)
     scrollEnd()
 
+    // Agent 模式走工具循环：模型多轮调用只读工具后给最终回答。
+    // 一次性全库检索注入跳过——检索交给 search_vault 工具按需多轮做，Ask 模式保留。
+    if (mode === 'agent') {
+      runAgentFlow()
+      return
+    }
+
     const messages = []
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) messages.push({ role: 'system', content: ctx })
@@ -263,6 +322,18 @@ export function createAiPanel(deps) {
   }
 
   function stop() {
+    // Agent 工具循环：置停旗 + 取消在跑的请求，并当场以 cancelled 收掉等待中的
+    // streamRequest（Rust abort 后不再有事件，不能挂起等 done）
+    if (agentActive) {
+      agentStopFlag = true
+      if (agentReq) {
+        aiChatCancel(agentReq.reqId).catch(() => {})
+        const a = agentReq
+        agentReq = null
+        a.resolve({ text: a.text, cancelled: true })
+      }
+      return
+    }
     if (!streaming) return
     aiChatCancel(streaming.reqId).catch(() => {})
     // Rust 侧 abort 后不再有事件，这里直接按「已停止」收尾（半截回答保留，可继续追问）
@@ -271,6 +342,135 @@ export function createAiPanel(deps) {
 
   function renderStreaming() {
     streaming.el.innerHTML = md.render(streaming.text)
+    scrollEnd()
+  }
+
+  // —— Agent 工具循环链路 ——
+
+  /** 一轮流式请求。测试接缝：deps.streamRequest 提供时直接委托（不打 Rust 事件通道） */
+  function agentStreamRequest(messages, tools) {
+    if (typeof streamRequest === 'function') return streamRequest(messages, tools)
+    return new Promise((resolve, reject) => {
+      const cfg = getConfig()
+      const reqId = nextReqId()
+      if (streaming) streaming.reqId = reqId
+      agentReq = { reqId, resolve, reject, text: '' }
+      aiChatStream({
+        reqId,
+        messages,
+        tools,
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        model: cfg.model,
+      }).catch((e) => {
+        if (agentReq && agentReq.reqId === reqId) {
+          agentReq = null
+          reject(e)
+        }
+      })
+    })
+  }
+
+  async function runAgentFlow() {
+    agentActive = true
+    agentStopFlag = false
+    const rows = []
+    let currentRow = null
+    const base = []
+    const ctx = getDocContext ? getDocContext() : ''
+    if (ctx) base.push({ role: 'system', content: ctx })
+    if (skillsLoaded) {
+      for (const p of activeSkillPaths) {
+        const skill = skills.find((s) => s.path === p)
+        if (skill && skill.content) {
+          base.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
+        }
+      }
+    }
+    base.push({ role: 'system', content: t('ai.agentHint') })
+    const baseLen = base.length
+    base.push(...history)
+    const tools = pickTools({ vaultReady: typeof vaultReady === 'function' ? !!vaultReady() : false })
+    try {
+      const res = await runAgentLoop({
+        messages: base,
+        tools,
+        streamRequest: (messages) => agentStreamRequest(messages, tools),
+        execTool: async (name, args) => {
+          const content = typeof execTool === 'function' ? await execTool(name, args) : '{"error":"tools unavailable"}'
+          if (currentRow) currentRow._result = String(content)
+          return content
+        },
+        onDelta: (chunk) => {
+          agentOnDelta(chunk)
+        },
+        onTool: (name, argsSummary, st) => {
+          if (st === 'running') {
+            currentRow = toolRowEl(name, argsSummary, 'running', '')
+            rows.push(currentRow)
+            if (streaming) msgsEl.insertBefore(currentRow, streaming.el)
+            scrollEnd()
+          } else if (currentRow) {
+            currentRow.classList.remove('running')
+            currentRow.classList.add(st === 'fail' ? 'fail' : 'done')
+            currentRow.querySelector('.ai-tool-state').textContent = st === 'fail' ? t('ai.toolFail') : t('ai.toolDone')
+          }
+        },
+        shouldStop: () => agentStopFlag,
+      })
+      finishAgent(res, baseLen)
+    } catch (e) {
+      finishError((e && e.message) || String(e), t('ai.noToolsTip'))
+    } finally {
+      agentActive = false
+      agentReq = null
+    }
+  }
+
+  function finishAgent(res, baseLen) {
+    if (!streaming) return
+    const el = streaming.el
+    if (res.error) {
+      finishError(res.error, t('ai.noToolsTip'))
+      return
+    }
+    // 采纳循环推进的消息（assistant / tool）进历史；最后一段助手文本剥掉锚点标记再存
+    const newMsgs = (res.messages || []).slice(baseLen)
+    const finalText = String(res.text || '')
+    const { anchor, body } = parseAgentReply(finalText)
+    for (let i = newMsgs.length - 1; i >= 0; i--) {
+      const m = newMsgs[i]
+      if (m && m.role === 'assistant' && !m.tool_calls) {
+        m.content = body
+        break
+      }
+    }
+    history.push(...newMsgs)
+    // 气泡显示 = 多轮流式文本的拼接（中间轮的「让我查一下…」保留），末段剥锚点标记
+    const prefixLen = streaming.text.length - finalText.length
+    const shown = (prefixLen > 0 ? streaming.text.slice(0, prefixLen) : '') + body
+    el.innerHTML = md.render(shown.trim())
+    if (body) el.appendChild(assistantActions(body))
+    // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
+    if (!res.stopped && !res.maxed && body) autoApply(body, el, anchor)
+    if (res.maxed) {
+      const tag = document.createElement('div')
+      tag.className = 'ai-stopped'
+      tag.textContent = t('ai.toolMaxSteps')
+      el.appendChild(tag)
+      setStatus(tag.textContent)
+    }
+    if (res.stopped) {
+      const tag = document.createElement('div')
+      tag.className = 'ai-stopped'
+      tag.textContent = t('ai.stopped')
+      el.appendChild(tag)
+    }
+    streaming = null
+    setStreamingUi(false)
+    syncModelChip()
+    updateCtxRing()
+    saveChat() // 回答结束自动存档（fire and forget）
     scrollEnd()
   }
 
@@ -299,11 +499,19 @@ export function createAiPanel(deps) {
     scrollEnd()
   }
 
-  function finishError(msg) {
+  function finishError(msg, tip) {
     if (!streaming) return
     const el = streaming.el
     el.innerHTML = '<div class="ai-err"></div>'
     el.querySelector('.ai-err').textContent = t('ai.errRequest', { err: msg || t('ai.errUnknown') })
+    if (tip) {
+      // Agent 模式的错误统一附「切回 Ask」建议：不区分错误原因（模型不支持工具与
+      // 网络失败从文案上分不开），不猜原因只给出路
+      const hint = document.createElement('div')
+      hint.className = 'ai-err-tip'
+      hint.textContent = tip
+      el.appendChild(hint)
+    }
     streaming = null
     setStreamingUi(false)
     updateCtxRing()
@@ -337,7 +545,8 @@ export function createAiPanel(deps) {
     return row
   }
 
-  /** Agent 模式收尾：按锚点（自然语言位置）或光标智能落点写进文档，结果都给一条小标签 */
+  /** Agent 模式收尾：按锚点（自然语言位置）或光标智能落点写进文档，结果都给一条小标签；
+   *  应用带回退记录时标签上加「撤销」按钮（pos 是会话内坐标，切文档 / 重启后校验不过自然置灰） */
   function autoApply(text, el, anchor) {
     if (!appendToDoc) return
     let res = null
@@ -353,6 +562,32 @@ export function createAiPanel(deps) {
       tag.textContent = t('ai.applied')
     } else {
       tag.textContent = t('ai.applyFail')
+    }
+    if (ok && res && res.record && typeof revertAgentEdit === 'function') {
+      lastRevertRecord = res.record
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'nl-ks-btn ai-revert-btn'
+      btn.textContent = t('ai.revert')
+      const syncBtn = () => {
+        const can = typeof canRevertAgentEdit === 'function' ? !!canRevertAgentEdit(lastRevertRecord) : true
+        btn.disabled = !lastRevertRecord || !can
+        btn.title = lastRevertRecord && !can ? t('ai.revertGone') : t('ai.revert')
+      }
+      syncBtn()
+      btn.addEventListener('click', () => {
+        if (!lastRevertRecord) return
+        if (revertAgentEdit(lastRevertRecord)) {
+          tag.textContent = t('ai.reverted')
+          lastRevertRecord = null
+          btn.remove()
+        } else {
+          btn.disabled = true
+          btn.title = t('ai.revertGone')
+        }
+        setStatus(tag.textContent)
+      })
+      tag.appendChild(btn)
     }
     el.appendChild(tag)
     setStatus(tag.textContent)
@@ -809,7 +1044,9 @@ export function createAiPanel(deps) {
     }
     const firstUser = history.find((m) => m.role === 'user')
     const title = (typeof firstUser?.content === 'string' ? firstUser.content : '') || t('ai.title')
-    const doc = { v: 1, id: chatId, title: title.slice(0, 40), messages: history }
+    // 存档前补齐悬挂 tool_calls（协议要求 assistant.tool_calls 与 role:'tool' 成对，
+    // 缺了下次带这段历史续聊会被服务端 400）；内存里的 history 不动
+    const doc = { v: 1, id: chatId, title: title.slice(0, 40), messages: repairHangingToolCalls(history) }
     try {
       await aiChatSave(getVaultRootForChat ? getVaultRootForChat() : null, chatId + '.json', JSON.stringify(doc))
     } catch { /* 存档失败不打断对话 */ }
@@ -1023,8 +1260,9 @@ export function createAiPanel(deps) {
 
   function mount() {
     buildDom()
-    // 流式事件：全局一路订阅，按 reqId 分发（选区浮层有自己的订阅，互不干扰）
-    offEvent = aiChatListen((ev) => {
+    // 流式事件：全局一路订阅，按 reqId 分发（选区浮层有自己的订阅，互不干扰）。
+    // aiChatListen 是异步订阅，退订函数在 .then 里挂进来；挂上之前面板已销毁就立刻退订
+    aiChatListen((ev) => {
       // 输入优化流先分发（独立 reqId，不进对话）
       if (optStreaming && ev && ev.reqId === optStreaming.reqId) {
         if (ev.kind === 'chunk' && ev.delta) {
@@ -1041,6 +1279,23 @@ export function createAiPanel(deps) {
         }
         return
       }
+      // Agent 工具循环的按轮请求：按 agentReq.reqId 分发（streaming.reqId 此时也在跟随，
+      // 但循环的 chunk 要走 onDelta 统一路径，这里先行拦截）
+      if (agentReq && ev && ev.reqId === agentReq.reqId) {
+        if (ev.kind === 'chunk' && ev.delta) {
+          agentReq.text += ev.delta
+          agentOnDelta(ev.delta)
+        } else if (ev.kind === 'done') {
+          const a = agentReq
+          agentReq = null
+          a.resolve({ text: a.text, toolCalls: ev.toolCalls || null })
+        } else if (ev.kind === 'error') {
+          const a = agentReq
+          agentReq = null
+          a.reject(new Error(ev.error || t('ai.errUnknown')))
+        }
+        return
+      }
       if (!streaming || !ev || ev.reqId !== streaming.reqId) return
       if (ev.kind === 'chunk' && ev.delta) {
         if (streaming.text === '') streaming.el.innerHTML = '' // 顶掉「思考中」占位
@@ -1051,6 +1306,9 @@ export function createAiPanel(deps) {
       } else if (ev.kind === 'error') {
         finishError(ev.error)
       }
+    }).then((un) => {
+      if (eventStreamDisposed) un()
+      else offEvent = un
     })
     offLocale = onLocaleChange(() => {
       buildDom()
@@ -1064,9 +1322,11 @@ export function createAiPanel(deps) {
       if (inputEl && !streaming) inputEl.focus()
     },
     destroy() {
-      if (offEvent) offEvent()
+      eventStreamDisposed = true
+      if (typeof offEvent === 'function') offEvent()
       if (offLocale) offLocale()
-      if (streaming) aiChatCancel(streaming.reqId).catch(() => {})
+      if (agentReq) aiChatCancel(agentReq.reqId).catch(() => {})
+      if (streaming && streaming.reqId) aiChatCancel(streaming.reqId).catch(() => {})
     },
   }
 }

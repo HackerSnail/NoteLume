@@ -5437,6 +5437,50 @@ html.nl-dragging * {
   font-size: 11px;
   margin-top: 4px;
 }
+/* Agent 工具行：助手气泡前的小条目，工具名 + 参数摘要 + 状态，点击展开结果 */
+.ai-tool-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--muted);
+  min-width: 0;
+}
+.ai-tool-row .ai-tool-name { font-weight: 600; flex-shrink: 0; }
+.ai-tool-row .ai-tool-args {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ai-tool-row .ai-tool-state { margin-left: auto; flex-shrink: 0; }
+.ai-tool-row.running .ai-tool-state { color: var(--accent, #4a7dbe); }
+.ai-tool-row.done .ai-tool-state { color: var(--muted); }
+.ai-tool-row.fail .ai-tool-state { color: #c0341d; }
+.ai-tool-row .ai-tool-result {
+  display: none;
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow: auto;
+  user-select: text;
+  cursor: text;
+}
+.ai-tool-row.open .ai-tool-result { display: block; }
+.ai-err-tip {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 4px;
+}
 .ai-actions {
   display: flex;
   gap: 6px;

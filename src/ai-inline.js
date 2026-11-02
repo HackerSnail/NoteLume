@@ -96,9 +96,12 @@ export function openAiInline(opts) {
   let text = ''
   let running = true
   let offLocale = null
+  let offEvent = null // aiChatListen 是异步订阅，退订函数在 .then 里挂进来
+  let disposed = false
 
   function dispose() {
-    if (offEvent) offEvent()
+    disposed = true
+    if (typeof offEvent === 'function') offEvent()
     if (offLocale) offLocale()
     if (running) aiChatCancel(reqId).catch(() => {})
     running = false
@@ -158,7 +161,7 @@ export function openAiInline(opts) {
     }).catch((e) => finish(false, (e && e.message) || String(e)))
   }
 
-  const offEvent = aiChatListen((ev) => {
+  aiChatListen((ev) => {
     if (!ev || ev.reqId !== reqId) return
     if (ev.kind === 'chunk' && ev.delta && running) {
       text += ev.delta
@@ -169,6 +172,9 @@ export function openAiInline(opts) {
     } else if (ev.kind === 'error') {
       finish(false, ev.error)
     }
+  }).then((un) => {
+    if (disposed) un()
+    else offEvent = un
   })
 
   closeBtn.addEventListener('click', dispose)
