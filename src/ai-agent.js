@@ -155,3 +155,114 @@ export function repairHangingToolCalls(messages) {
   }
   return out
 }
+
+// —— 工具循环 ——
+
+export const AGENT_MAX_STEPS = 8
+
+/**
+ * Agent 工具循环（前端驱动）。deps：
+ * - messages：OpenAI 格式数组（system + 历史），循环内拷贝推进，返回值带回完整序列
+ * - tools：pickTools 产物，每轮请求原样带上
+ * - maxSteps：请求轮数上限（含工具轮），到顶不再发请求
+ * - streamRequest：async (messages) => { text, toolCalls|null, cancelled? }，失败 throw
+ *   （流式 chunk 经 onDelta 回调；面板侧取消后以 cancelled 即返，不挂起等事件）
+ * - execTool：async (name, argsJson) => string | {content, ok}（返回值即该 tool_call 的
+ *   content 字符串，调用方负责 JSON.stringify 与截断；循环原样透传）
+ * - onDelta：(chunk) => void；onTool：(name, argsSummary, state) => void，state: running|done|fail
+ * - shouldStop：() => boolean，发请求前与每个工具执行前轮询
+ * 返回 { text, stopped, maxed, error, messages }：text 是最终回答（可能为半截或空串）；
+ * stopped = 中途终止；maxed = 步数到顶；error = 请求失败文案。
+ */
+export async function runAgentLoop(deps) {
+  const {
+    messages,
+    tools = [],
+    maxSteps = AGENT_MAX_STEPS,
+    streamRequest,
+    execTool,
+    onDelta = () => {},
+    onTool = () => {},
+    shouldStop = () => false,
+  } = deps
+  const seq = (Array.isArray(messages) ? messages : []).slice()
+  let lastText = ''
+  let stopped = false
+  let maxed = false
+  let error = null
+  let finished = false // 走到「无 toolCalls 的最终回答」
+  for (let step = 0; step < maxSteps && !stopped && !error && !finished; step++) {
+    if (shouldStop()) {
+      stopped = true
+      break
+    }
+    let resp = null
+    try {
+      resp = await streamRequest(seq)
+    } catch (e) {
+      error = (e && e.message) || String(e)
+      break
+    }
+    const text = String((resp && resp.text) || '')
+    lastText = text
+    if (resp && resp.cancelled) {
+      if (text) seq.push({ role: 'assistant', content: text })
+      stopped = true
+      break
+    }
+    const calls = resp && Array.isArray(resp.toolCalls) && resp.toolCalls.length ? resp.toolCalls : null
+    if (!calls) {
+      seq.push({ role: 'assistant', content: text })
+      finished = true
+      break
+    }
+    // assistant 带 tool_calls：content 可为空串；元素补全 type:'function'
+    // （done 载荷为省字节只带 {id,name,arguments}，严格校验的服务端缺 type 会拒收）
+    seq.push({
+      role: 'assistant',
+      content: text,
+      tool_calls: calls.map((c) => ({
+        id: c.id,
+        type: 'function',
+        function: { name: c.name, arguments: c.arguments },
+      })),
+    })
+    // 工具执行是同步 IPC 链，终止点挂在每个工具执行前；剩余的补合成结果保序列合法
+    let ran = 0
+    let aborted = false
+    for (const c of calls) {
+      if (shouldStop()) {
+        aborted = true
+        break
+      }
+      const summary = summarizeToolArgs(c.name, c.arguments)
+      onTool(c.name, summary, 'running')
+      let content = ''
+      let ok = true
+      try {
+        const res = await execTool(c.name, c.arguments)
+        content = typeof res === 'string' ? res : String((res && res.content) ?? '')
+        ok = typeof res === 'object' && res !== null ? res.ok !== false : true
+      } catch (e) {
+        // 单个工具失败不终止循环：错误文本作为该 tool_call 的结果回给模型，由它决定换查法还是收尾
+        content = JSON.stringify({ error: (e && e.message) || String(e) })
+        ok = false
+      }
+      seq.push({
+        role: 'tool',
+        tool_call_id: c.id,
+        content: typeof content === 'string' ? content : JSON.stringify(content),
+      })
+      onTool(c.name, summary, ok ? 'done' : 'fail')
+      ran++
+    }
+    if (aborted) {
+      for (const c of calls.slice(ran)) {
+        seq.push({ role: 'tool', tool_call_id: c.id, content: CANCELLED_TOOL_RESULT })
+      }
+      stopped = true
+    }
+  }
+  if (!stopped && !error && !finished) maxed = true
+  return { text: lastText, stopped, maxed, error, messages: seq }
+}
