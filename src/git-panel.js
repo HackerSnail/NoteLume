@@ -205,8 +205,10 @@ export function createGitPanel(deps) {
     syncState()
     row.append(ta, btn)
     sec.appendChild(row)
-    // 初始自适应要等挂载后量：此时 scrollHeight 还是 0
-    requestAnimationFrame(autosize)
+    // 初始自适应要等挂载后量：此时 scrollHeight 还是 0。
+    // jsdom / 旧环境没有 rAF，退到 setTimeout。
+    const raf = window.requestAnimationFrame || ((fn) => setTimeout(fn, 0))
+    raf(() => autosize())
     return sec
   }
 
