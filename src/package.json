@@ -60,7 +60,8 @@
     "test:table-picker": "node tests/table-picker.test.mjs",
     "test:clip-extract": "node tests/clip-extract.test.mjs",
     "test:clip-report": "node tests/clip-report.test.mjs",
-    "test:clip-notice": "node tests/clip-notice.test.mjs"
+    "test:clip-notice": "node tests/clip-notice.test.mjs",
+    "test:ai-agent": "node tests/ai-agent.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
