@@ -3,6 +3,9 @@
 // 循环在前端驱动：模型经 OpenAI function calling 回 tool_calls，本地执行只读工具
 // （检索 / 读文档），结果以 role:'tool' 回填后继续下一轮，直到无工具调用的最终回答。
 // 网络仍在 Rust 侧（ai.rs），这里不碰 IPC——请求与工具执行由调用方注入（ai-panel / main.js）。
+// 回退校验依赖编辑器 schema 的序列化器与解析器（editor-schema.js），仅 canRevert / revertRange 用到。
+
+import { serializeMarkdown, mdParser } from './editor-schema.js'
 
 // —— 工具注册表（v1 全只读） ——
 
@@ -265,4 +268,43 @@ export async function runAgentLoop(deps) {
   }
   if (!stopped && !error && !finished) maxed = true
   return { text: lastText, stopped, maxed, error, messages: seq }
+}
+
+// —— 修改回退 ——
+
+// record 由 main.js 的 agentApplyWithRevert 产出：{from, to, md, prev}。
+// md 是落定区间的序列化产物（不是 markdown 原文——插入的是解析后的节点，字符数对不上），
+// prev 是应用前被替换区间的序列化产物（纯插入为空串）。
+
+/** 区间仍在文档内且序列化产物与记录一致（用户没动过那段）才允许回退 */
+export function canRevert(doc, record) {
+  if (!doc || !record) return false
+  const { from, to, md } = record
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return false
+  if (from < 0 || to > doc.content.size || from >= to) return false
+  try {
+    return serializeMarkdown(doc.cut(from, to)) === md
+  } catch {
+    return false
+  }
+}
+
+/** 回退：prev 非空把区间替换回原文（恢复替换语义），为空则删除。单条事务，自身可再撤销。 */
+export function revertRange(view, record) {
+  if (!view || !canRevert(view.state.doc, record)) return false
+  const tr = view.state.tr
+  if (record.prev) {
+    let prevDoc = null
+    try {
+      prevDoc = mdParser.parse(record.prev)
+    } catch {
+      prevDoc = null
+    }
+    if (!prevDoc || !prevDoc.content.size) return false
+    tr.replaceWith(record.from, record.to, prevDoc.content)
+  } else {
+    tr.delete(record.from, record.to)
+  }
+  view.dispatch(tr)
+  return true
 }

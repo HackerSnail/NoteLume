@@ -118,7 +118,7 @@ import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI
 import { createAiSettings } from './ai-settings.js'
 import { createAiPanel } from './ai-panel.js'
 import { openAiInline } from './ai-inline.js'
-import { mdParser } from './editor-schema.js'
+import { mdParser, serializeMarkdown } from './editor-schema.js'
 import { TextSelection } from 'prosemirror-state'
 import { Slice } from 'prosemirror-model'
 import { createSettingsStore } from './settings-store.js'
@@ -929,7 +929,7 @@ function persistAi(next) {
 // 引用都还原成节点），解析失败退化为纯文本（inst.insertPlainText 已处理换行）。
 function insertAiMarkdown(inst, md, opts = {}) {
   const text = String(md || '').trim()
-  if (!text || !inst) return
+  if (!text || !inst) return null
   const view = inst.view
   let doc = null
   try { doc = mdParser.parse(text) } catch { doc = null }
@@ -939,11 +939,28 @@ function insertAiMarkdown(inst, md, opts = {}) {
     tr.setSelection(TextSelection.create(view.state.doc, Math.max(0, Math.min(opts.caret, view.state.doc.content.size))))
   }
   if (doc && doc.content && doc.content.size) {
+    // 被替换的区间（纯插入时 from === to）；替换前抓原文快照，给 Agent 回退用
+    const { from, to } = tr.selection
+    const prev = from !== to ? serializeMarkdown(view.state.doc.cut(from, to)) : ''
     tr.replaceSelection(new Slice(doc.content, 0, 0))
     view.dispatch(tr.scrollIntoView())
+    // 落定后的实际插入区间：ReplaceStep 把 [from, to) 换成 slice，边界经 mapping 贴住新内容两端
+    return { from: tr.mapping.map(from, -1), to: tr.mapping.map(to, 1), prev }
   } else {
-    inst.insertPlainText(text) // 解析兜底：退化纯文本
+    inst.insertPlainText(text) // 解析兜底：退化纯文本（无回退记录）
+    return null
   }
+}
+
+/**
+ * Agent 落文档 + 回退记录。md 记序列化产物而非原文——插入的是解析后的节点，
+ * 文档字符数与 markdown 源文本对不上，用同一序列化器回读才能保证 canRevert 的等值比对成立。
+ */
+function agentApplyWithRevert(inst, md, opts = {}) {
+  const r = insertAiMarkdown(inst, md, opts)
+  if (!r) return null
+  const doc = inst.view.state.doc
+  return { from: r.from, to: r.to, md: serializeMarkdown(doc.cut(r.from, r.to)), prev: r.prev }
 }
 
 /** 恢复 [from, to] 选区后写入（「替换」语义：写回原选区位置） */
@@ -5292,23 +5309,24 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
       if (!editor || !editor.view) return false
       const view = editor.view
       const missed = !!(anchor && anchor.target)
+      let record = null
       if (anchor && anchor.target) {
         const pos = resolveAnchorPos(view.state.doc, anchor)
         if (pos != null) {
-          insertAiMarkdown(editor, text, { caret: pos })
-          return { ok: true, where: anchor.target, missed: false }
+          record = agentApplyWithRevert(editor, text, { caret: pos })
+          return { ok: true, where: anchor.target, missed: false, record }
         }
       }
       const { selection } = view.state
       const atOrigin = selection.head === 0 && selection.anchor === 0
       if (atOrigin) {
-        insertAiMarkdown(editor, text, { caret: view.state.doc.content.size })
-        return { ok: true, where: missed ? anchor.target : undefined, missed }
+        record = agentApplyWithRevert(editor, text, { caret: view.state.doc.content.size })
+        return { ok: true, where: missed ? anchor.target : undefined, missed, record }
       }
       const $head = selection.$head
       const inBlock = $head.parent.type.name === 'heading' || $head.parent.type.name === 'code_block'
-      insertAiMarkdown(editor, text, inBlock ? { caret: $head.after(1) } : {})
-      return { ok: true, where: missed ? anchor.target : undefined, missed }
+      record = agentApplyWithRevert(editor, text, inBlock ? { caret: $head.after(1) } : {})
+      return { ok: true, where: missed ? anchor.target : undefined, missed, record }
     },
     // 底行模型选择器切模型：写回 settings.json 的 ai 段
     persistModel: (name) => persistAi({ ...currentAi(), model: String(name || '').trim().slice(0, 120) }),

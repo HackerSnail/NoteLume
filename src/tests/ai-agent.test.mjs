@@ -10,7 +10,11 @@ import {
   repairHangingToolCalls,
   runAgentLoop,
   AGENT_MAX_STEPS,
+  canRevert,
+  revertRange,
 } from '../ai-agent.js'
+import { mdParser, serializeMarkdown } from '../editor-schema.js'
+import { EditorState } from 'prosemirror-state'
 
 let pass = 0
 let fail = 0
@@ -302,6 +306,83 @@ t('runAgentLoop 默认步数上限 8、onTool 状态回调', async () => {
     onTool: (name, args, state) => states.push(name + ':' + state),
   })
   assert.deepStrictEqual(states, ['search_vault:running', 'search_vault:done'])
+})
+
+// —— 修改回退（canRevert / revertRange） ——
+
+// 文档构造与视图桩：doc 由 mdParser 造（同 resolveAnchorPos 测试口径），
+// 桩 view 用真实 EditorState.apply 走事务，保证 replaceWith / delete 真的落进 doc
+function makeView(md) {
+  const doc = mdParser.parse(md)
+  const state = EditorState.create({ doc })
+  const view = {
+    state,
+    dispatch(tr) {
+      this.state = this.state.apply(tr)
+    },
+  }
+  return view
+}
+
+/** 文档里首个含 needle 的文本节点的子串区间 [from, to] */
+function rangeOfText(view, needle) {
+  let hit = null
+  view.state.doc.descendants((node, pos) => {
+    if (!hit && node.isText && node.text && node.text.includes(needle)) {
+      const idx = node.text.indexOf(needle)
+      hit = { from: pos + idx, to: pos + idx + needle.length }
+      return false
+    }
+    return true
+  })
+  return hit
+}
+
+/** 模拟 main.js agentApplyWithRevert 的产物：md 取落定区间的序列化产物 */
+function makeRecord(view, from, to, prev = '') {
+  return { from, to, md: serializeMarkdown(view.state.doc.cut(from, to)), prev }
+}
+
+const fullText = (view) => view.state.doc.textBetween(0, view.state.doc.content.size, '\n')
+
+t('canRevert 区间未动为真、动过后为假', () => {
+  const view = makeView('# 标题\n\n第一段\n\n第二段\n')
+  const range = rangeOfText(view, '第二段')
+  const record = makeRecord(view, range.from, range.to)
+  assert.ok(canRevert(view.state.doc, record))
+  // 区间内的文字被改过 → 序列化比对失配（改动要落在区间里才测得出）
+  const changed = mdParser.parse('# 标题\n\n第一段\n\n第二改段\n')
+  assert.ok(!canRevert(changed, record))
+  // 越界 / 坏记录一律不行
+  assert.ok(!canRevert(view.state.doc, { ...record, to: view.state.doc.content.size + 5 }))
+  assert.ok(!canRevert(view.state.doc, null))
+})
+
+t('revertRange 插入场景删掉记录区间', () => {
+  const view = makeView('# 标题\n\n第一段\n')
+  const range = rangeOfText(view, '第一段')
+  const record = makeRecord(view, range.from, range.to)
+  assert.ok(revertRange(view, record))
+  assert.ok(!fullText(view).includes('第一段'))
+})
+
+t('revertRange 替换场景恢复原文（prev 非空）', () => {
+  const view = makeView('第一段\n\n旧的结尾\n')
+  const range = rangeOfText(view, '旧的结尾')
+  const record = makeRecord(view, range.from, range.to, 'old tail')
+  assert.ok(revertRange(view, record))
+  const text = fullText(view)
+  assert.ok(text.includes('old tail'))
+  assert.ok(!text.includes('旧的结尾'))
+})
+
+t('revertRange 校验不过返回 false 不动文档', () => {
+  const view = makeView('abc\n')
+  const before = view.state.doc
+  assert.ok(!revertRange(view, { from: 0, to: 2, md: '不存在的内容', prev: '' }))
+  assert.strictEqual(view.state.doc, before)
+  assert.ok(!revertRange(view, null))
+  assert.ok(!revertRange(null, { from: 0, to: 1, md: 'x', prev: '' }))
 })
 
 await Promise.all(pending)
