@@ -488,6 +488,43 @@ const TABLE: &[Entry] = &[
         "Keine Änderungen zum Committen",
     ]},
 
+    // ---------- Git 面板翻新：分支 / 检出 / 还原 / 放弃 ----------
+    Entry { key: "gitDirtyRefuse", texts: [
+        "工作树有未提交的改动，先提交或放弃更改",
+        "工作樹有未提交的改動，先提交或放棄更改",
+        "The working tree has uncommitted changes; commit or discard them first",
+        "L’arborescence contient des modifications non validées ; validez-les ou abandonnez-les d’abord",
+        "Das Arbeitsverzeichnis hat nicht committete Änderungen; zuerst committen oder verwerfen",
+    ]},
+    Entry { key: "gitRevertConflict", texts: [
+        "还原该提交产生冲突，改动已留在工作树，请手动处理后提交",
+        "還原該提交產生衝突，改動已留在工作樹，請手動處理後提交",
+        "Reverting this commit caused conflicts; the changes are left in the working tree, resolve and commit manually",
+        "Le retour de ce commit a créé des conflits ; les modifications sont laissées dans l’arborescence, résolvez-les puis validez",
+        "Das Zurücksetzen dieses Commits erzeugte Konflikte; die Änderungen liegen im Arbeitsverzeichnis, bitte manuell auflösen und committen",
+    ]},
+    Entry { key: "gitDiscardStatus", texts: [
+        "读取文件状态失败：{err}",
+        "讀取檔案狀態失敗：{err}",
+        "Failed to read file status: {err}",
+        "Échec de lecture de l’état du fichier : {err}",
+        "Dateistatus konnte nicht gelesen werden: {err}",
+    ]},
+    Entry { key: "gitDiscardRm", texts: [
+        "删除未跟踪文件失败：{err}",
+        "刪除未跟蹤檔案失敗：{err}",
+        "Failed to delete the untracked file: {err}",
+        "Échec de suppression du fichier non suivi : {err}",
+        "Unbehandelte Datei konnte nicht gelöscht werden: {err}",
+    ]},
+    Entry { key: "gitDiscardWrite", texts: [
+        "写回文件失败：{err}",
+        "寫回檔案失敗：{err}",
+        "Failed to write the file back: {err}",
+        "Échec de réécriture du fichier : {err}",
+        "Datei konnte nicht zurückgeschrieben werden: {err}",
+    ]},
+
     // ---------- Git 远程：System 后端（shell-out 系统 git） ----------
     Entry { key: "gitExitCode", texts: [
         "git 退出码 {code}",

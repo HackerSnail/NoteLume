@@ -278,6 +278,14 @@ OpenAI 兼容 `/chat/completions` 协议（DeepSeek / 智谱 GLM / Kimi / OpenAI
 - **设置**（`src/ai-settings.js`）：模态面板（clip-settings 同款壳），接口地址 / API Key / 模型名三项 + 五个预设一键填充（DeepSeek / 智谱 GLM / Kimi / OpenAI / Ollama 本机），存 settings.json 的 `ai` 段（`normalizeAiConfig` trim + 限长，main.js 的 `currentAi` / `persistAi` 读写）；地址 + 模型齐才算配置好，Key 可空（本地 Ollama）。Rust 侧不存任何配置，每次调用经 IPC 传参。
 - 词条五语言补齐（`ui.sideAi`、`ai.*` 全组、`cmd.editor.ai.*` 五条、`cmd.app.aiPanel|aiSettings`）；`node tests/ai-tasks.test.mjs` 13 条 + Rust 新增 7 条全过；无头 CDP 验证 13 项（页签切换 / 面板 DOM / 设置面板 / 命令面板 / 右键菜单五项）。
 
+## Git 面板翻新（2026-11-02）
+
+提交改 VS Code 式：message 输入框常驻变更列表上方，Ctrl+Enter 或 ✓ 按钮提交（仍是 `git add -A` 全量，不做暂存区），草稿跨面板刷新保留、提交成功才清空；每行变更加「放弃更改」——未跟踪删文件、已跟踪恢复 HEAD 版，删前弹确认。顶栏提交按钮移除，命令入口 `commitAll`（弹框输 message）保留不动。
+
+图形区（提交图）加三样：顶部工具条（刷新 / Fetch / 推送 / 快进拉取 / 合并拉取，动作与同步区调同一批函数）；分支下拉（本地 + 远端分组，当前分支勾选，选中即检出；远端分支优先检出同名本地分支、没有则 `--track` 建跟踪分支；底部「新建分支…」从 HEAD 建并检出）；提交行内「检出 / 还原」——检出旧提交进 detached HEAD（确认框说明取舍），还原走 `git revert --no-edit`。点提交行的详情新增变更文件清单（点行即展示，拿不到清单时只省略该段）。
+
+Rust 侧新命令六个（`git_discard` / `git_r_branch_list` / `git_r_checkout` / `git_r_branch_create` / `git_r_revert` / `git_r_commit_files`），系统 git 与内置 git2 双引擎同口径：检出用 SAFE 策略（与本地改动冲突时拒绝），revert 前置脏树检查回 `[local_changes]` 前串。分支下拉是 git-panel.js 里独立的自绘小弹层（复用 `.cv-menu` 样式，没走 main.js 的 placeMenu 单例）。词条 `git.*` 组五语言；Rust 侧 ui_lang 补 `gitDirtyRefuse` / `gitRevertConflict` / `gitDiscard*`。测试 `tests/git-panel-dom.test.mjs` 五条（提交框状态机 / Ctrl+Enter / 放弃的确认链路与拒绝路径），Rust 侧 `parse_branch_list` / `parse_name_status` 四条。
+
 ## Quarkdown 引擎（2026-10-25 起，分期实施）
 
 总体设计 `docs/superpowers/specs/2026-10-25-quarkdown-engine-design.md`，分期计划在 `docs/superpowers/plans/`（qd-engine-phase*.md）。约束：CLAUDE.MD 硬性约束第 3 条已修订——Quarkdown 语法文档不再要求 Typora / Obsidian 兼容，普通文档仍兼容；除 Quarkdown 层外不得再引入其他私有格式。参考实现 [iamgio/quarkdown](https://github.com/iamgio/quarkdown)（Kotlin）；本地只读副本 2026-10-26 已删除，后续对拍以 GitHub 上游为准。

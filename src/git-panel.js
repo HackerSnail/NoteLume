@@ -31,6 +31,12 @@ import {
   gitRAbortMerge,
   gitRCommitMerge,
   gitRTrustHost,
+  gitDiscard,
+  gitRBranchList,
+  gitRCheckout,
+  gitRBranchCreate,
+  gitRRevert,
+  gitRCommitFiles,
 } from './tauri-bridge.js'
 import { promptDialog } from './prompt-dialog.js'
 import { setIcon, iconHTML } from './icons.js'
@@ -70,6 +76,7 @@ export function createGitPanel(deps) {
 
   let curRepoPath = null // 当前显示仓库的工作目录（可能高于 vaultRoot）
   let busy = false // 防重入（刷新/提交期间忽略并发）
+  let commitMsg = '' // 提交框草稿：跨面板刷新保留，提交成功才清空（同 VS Code）
 
   // —— 一次性搭骨架，之后只更新内容区 ——
   rootEl.innerHTML = ''
@@ -121,13 +128,7 @@ export function createGitPanel(deps) {
     setIcon(refreshBtn, 'reload')
     refreshBtn.title = t('git.refreshTip')
     refreshBtn.addEventListener('click', () => refresh())
-    const commitBtn = document.createElement('button')
-    commitBtn.className = 'nl-git-btn nl-git-btn-primary'
-    commitBtn.textContent = t('git.commitAllBtn')
-    commitBtn.title = t('git.commitAllTip')
-    commitBtn.disabled = changeCount === 0
-    commitBtn.addEventListener('click', () => commitAll())
-    actions.append(refreshBtn, commitBtn)
+    actions.append(refreshBtn)
 
     head.append(left, count, actions)
   }
@@ -167,6 +168,94 @@ export function createGitPanel(deps) {
     return { sec, body: wrap }
   }
 
+  // —— 提交框（VS Code 式）：message 常驻变更列表上方，Ctrl+Enter 或按钮提交，git add -A 全量 ——
+  function renderCommitBox(items) {
+    const sec = document.createElement('div')
+    sec.className = 'nl-git-section nl-git-commit-box'
+    const row = document.createElement('div')
+    row.className = 'nl-git-commit-row'
+    const ta = document.createElement('textarea')
+    ta.className = 'nl-git-commit-input'
+    ta.rows = 1
+    ta.placeholder = t('git.commitPlaceholder', { n: items.length })
+    ta.value = commitMsg
+    const btn = document.createElement('button')
+    btn.className = 'nl-git-btn nl-git-btn-primary nl-git-commit-btn'
+    setIcon(btn, 'check', t('git.commitGo'))
+    btn.title = t('git.commitCtrlEnter')
+    const autosize = () => {
+      ta.style.height = 'auto'
+      ta.style.height = Math.min(120, ta.scrollHeight) + 'px'
+    }
+    const syncState = () => {
+      btn.disabled = busy || !ta.value.trim() || !items.length
+      autosize()
+    }
+    ta.addEventListener('input', () => {
+      commitMsg = ta.value
+      syncState()
+    })
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        doCommit()
+      }
+    })
+    btn.addEventListener('click', () => doCommit())
+    syncState()
+    row.append(ta, btn)
+    sec.appendChild(row)
+    return sec
+  }
+
+  // 提交：身份缺失沿「问一次」流程（与命令入口 commitAll 一致）；成功清空草稿，失败保留。
+  async function doCommit() {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const message = commitMsg.trim()
+    if (!message) return
+    busy = true
+    try {
+      let name = null
+      let email = null
+      const id = await gitConfigIdentity(vaultRoot)
+      if (!id) {
+        name = await promptDialog({ title: t('git.identityName'), placeholder: 'user.name', confirmLabel: t('git.nextStep') })
+        if (name == null) return
+        email = await promptDialog({ title: t('git.identityEmail'), placeholder: 'user@email.com', confirmLabel: t('git.commitBtn') })
+        if (email == null) return
+      }
+      const res = await gitCommitAll(vaultRoot, message, name, email)
+      commitMsg = ''
+      setStatus(t('git.committed', { id: res.idShort }))
+      await load()
+    } catch (e) {
+      await messageDialog(t('git.commitFailed', { err: errText(e) }))
+    } finally {
+      busy = false
+    }
+  }
+
+  // 放弃一个文件的未提交改动：未跟踪删文件、已跟踪恢复 HEAD 版（前端确认，后端执行）。
+  async function doDiscard(path) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const ok = await confirmDialog(t('git.discardAsk', { path }), t('git.discardTitle'))
+    if (!ok) return
+    busy = true
+    try {
+      await gitDiscard(vaultRoot, path)
+      setStatus(t('git.discarded', { path }))
+      await load()
+    } catch (e) {
+      await messageDialog(t('git.discardFailed', { err: errText(e) }))
+    } finally {
+      busy = false
+    }
+  }
+
   // —— Changes 区 ——
   function renderChanges(items) {
     const f = foldSec('changes', t('git.sectionChanges'), items.length ? String(items.length) : '')
@@ -199,6 +288,10 @@ export function createGitPanel(deps) {
           )
           row.appendChild(tools)
         } else {
+          const tools = document.createElement('span')
+          tools.className = 'nl-git-row-tools'
+          tools.appendChild(iconBtn('undo', t('git.discardBtn'), () => doDiscard(it.path)))
+          row.appendChild(tools)
           row.addEventListener('click', () => showDiff(it.path, 'HEAD', label + '：' + it.path))
         }
         list.appendChild(row)
@@ -215,11 +308,50 @@ export function createGitPanel(deps) {
   }
 
   // —— Graph 区：提交图（lane 分配 + 逐行 SVG 连线，合并分叉可见），点击行看提交详情 ——
+  // 顶部工具条（刷新 / Fetch / 推送 / 快进拉取 / 合并拉取，与同步区同源）+ 分支下拉（检出 / 新建）。
   const GW = 14 // 每条 lane 的水平宽度
   function renderGraph(commits, branch) {
     const f = foldSec('graph', t('git.sectionGraph'), commits.length ? String(commits.length) : '')
+
+    const bar = document.createElement('div')
+    bar.className = 'nl-git-graph-bar'
+    const branchBtn = document.createElement('button')
+    branchBtn.className = 'nl-git-btn nl-git-branch-btn'
+    const bIcon = document.createElement('span')
+    bIcon.className = 'nl-git-branch-cur'
+    setIcon(bIcon, 'branch', branch || t('git.detachedHead'))
+    const bChev = document.createElement('span')
+    bChev.className = 'nl-git-branch-chev'
+    setIcon(bChev, 'chevron-down')
+    branchBtn.append(bIcon, bChev)
+    branchBtn.title = t('git.branchPick')
+    branchBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation()
+      openBranchMenu(branchBtn)
+    })
+    const mkTool = (icon, title, fn) => {
+      const b = document.createElement('button')
+      b.className = 'nl-git-btn nl-git-btn-sm'
+      setIcon(b, icon, title)
+      b.title = title
+      b.addEventListener('click', () => fn())
+      return b
+    }
+    bar.append(
+      branchBtn,
+      mkTool('reload', t('git.graphRefresh'), () => refresh()),
+      mkTool('globe', t('git.graphFetch'), () => fetchRemote()),
+      mkTool('arrow-up', t('git.graphPush'), () => pushRemote()),
+      mkTool('arrow-down', t('git.graphPull'), () => pullRemote()),
+      mkTool('branch', t('git.graphMerge'), () => mergePullViaCmd()),
+    )
+    f.body.appendChild(bar)
+
     if (!commits.length) {
-      f.body.innerHTML = '<div class="nl-git-empty-inline">' + t('git.historyEmpty') + '</div>'
+      const empty = document.createElement('div')
+      empty.className = 'nl-git-empty-inline'
+      empty.textContent = t('git.historyEmpty')
+      f.body.appendChild(empty)
       return f.sec
     }
     const list = document.createElement('div')
@@ -306,6 +438,13 @@ export function createGitPanel(deps) {
       author.className = 'nl-git-meta'
       author.textContent = c.authorName
       row.append(svg, sum, author)
+      const tools = document.createElement('span')
+      tools.className = 'nl-git-row-tools'
+      tools.append(
+        iconBtn('target', t('git.checkoutBtn'), () => doCheckoutCommit(c)),
+        iconBtn('undo', t('git.revertBtn'), () => doRevert(c)),
+      )
+      row.appendChild(tools)
       if (c.id === headId && branch) {
         const pill = document.createElement('span')
         pill.className = 'nl-git-branch-pill'
@@ -360,9 +499,9 @@ export function createGitPanel(deps) {
     }
   }
 
-  // History 点击：展示提交详情（作者/时间/完整 summary）。命令面未含"列某提交改动文件"，
-  // 故此处只做详情展示；文件级 diff 由「变更」区承担（工作树 vs HEAD）。
-  function showCommit(c) {
+  // History 点击：展示提交详情（作者/时间/完整 summary + 变更文件清单）。
+  // 文件清单来自 git_r_commit_files；拿不到时只省略清单段，详情主体照常展示。
+  async function showCommit(c) {
     const detail =
       '<div class="nl-git-commit-detail">' +
       '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.detailCommit') + '</span><span class="nl-git-detail-v mono">' +
@@ -378,9 +517,36 @@ export function createGitPanel(deps) {
       '&gt;</span></div>' +
       '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.detailTime') + '</span><span class="nl-git-detail-v">' +
       escapeHtml(relTime(c.time)) +
-      '</span></div>' +
-      '</div>'
-    showDiffInBox(t('git.commitTitle', { id: c.idShort }), detail)
+      '</span></div>'
+    showDiffInBox(t('git.commitTitle', { id: c.idShort }), detail + '</div>')
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    let files = null
+    try {
+      files = await gitRCommitFiles(vaultRoot, c.id)
+    } catch (_) {
+      files = null
+    }
+    if (!files || !files.length || !diffBox.isConnected || diffBox.classList.contains('hidden')) return
+    const listHtml =
+      files
+        .map((f) => {
+          const badge = f.kind || 'M'
+          return (
+            '<div class="nl-git-item nl-git-commit-file"><span class="nl-git-badge nl-git-badge-' + escapeHtml(badge) + '">' +
+            escapeHtml(badge) +
+            '</span><span class="nl-git-path">' +
+            escapeHtml(f.path) +
+            '</span></div>'
+          )
+        })
+        .join('')
+    const box = diffBox.querySelector('.nl-git-commit-detail')
+    if (!box) return
+    box.insertAdjacentHTML(
+      'beforeend',
+      '<div class="nl-git-detail-row"><span class="nl-git-detail-k">' + t('git.commitFiles') + '</span><span class="nl-git-detail-v nl-git-commit-files">' + listHtml + '</span></div>',
+    )
   }
 
   function renderBody(items, commits, merging, branch) {
@@ -388,6 +554,7 @@ export function createGitPanel(deps) {
     const sync = buildSyncSection()
     const parts = []
     if (merging) parts.push(renderMergeBar(items))
+    else parts.push(renderCommitBox(items))
     parts.push(renderChanges(items), renderGraph(commits, branch), sync.sec, diffBox)
     body.append(...parts)
     diffBox.classList.add('hidden')
@@ -899,6 +1066,182 @@ export function createGitPanel(deps) {
     await doMergePull(origin, document.createElement('span'))
   }
 
+  // —— 面板翻新：分支下拉 / 检出 / 新建分支 / 还原提交 ——
+  async function doCheckoutBranch(b) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    busy = true
+    try {
+      await gitRCheckout(vaultRoot, b.name, b.remote)
+      setStatus(t('git.checkedOut', { name: b.name }))
+      await load()
+    } catch (e) {
+      await messageDialog(t('git.checkoutFailed', { err: errText(e) }))
+    } finally {
+      busy = false
+    }
+  }
+
+  async function doNewBranch() {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const name = await promptDialog({
+      title: t('git.newBranchTitle'),
+      placeholder: t('git.newBranchPh'),
+      confirmLabel: t('git.createBtn'),
+    })
+    if (!name || !name.trim()) return
+    busy = true
+    try {
+      await gitRBranchCreate(vaultRoot, name.trim())
+      setStatus(t('git.checkedOut', { name: name.trim() }))
+      await load()
+    } catch (e) {
+      await messageDialog(t('git.checkoutFailed', { err: errText(e) }))
+    } finally {
+      busy = false
+    }
+  }
+
+  // 检出旧提交：进 detached HEAD（查看旧状态用），前端确认后执行。
+  async function doCheckoutCommit(c) {
+    if (busy) return
+    const ok = await confirmDialog(t('git.checkoutCommitAsk', { id: c.idShort }), t('git.checkoutBtn'))
+    if (!ok) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    busy = true
+    try {
+      await gitRCheckout(vaultRoot, c.id, false)
+      setStatus(t('git.checkedOut', { name: c.idShort }))
+      await load()
+    } catch (e) {
+      await messageDialog(t('git.checkoutFailed', { err: errText(e) }))
+    } finally {
+      busy = false
+    }
+  }
+
+  // 还原一个提交：生成反向提交。脏树时后端会拒（git 原生行为），错误原文回显。
+  async function doRevert(c) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    const ok = await confirmDialog(t('git.revertAsk', { id: c.idShort, summary: c.summary || '' }), t('git.revertBtn'))
+    if (!ok) return
+    busy = true
+    try {
+      await gitRRevert(vaultRoot, c.id)
+      setStatus(t('git.reverted', { id: c.idShort }))
+      await load()
+    } catch (e) {
+      await messageDialog(t('git.revertFailed', { err: errText(e) }))
+    } finally {
+      busy = false
+    }
+  }
+
+  // 分支下拉：自绘小弹层，复用 .cv-menu 样式；点外面 / Esc / 滚轮 / resize 关闭。
+  let branchMenu = null
+  let branchMenuCleanup = null
+  function closeBranchMenu() {
+    if (branchMenuCleanup) {
+      branchMenuCleanup()
+      branchMenuCleanup = null
+    }
+    if (branchMenu) {
+      branchMenu.remove()
+      branchMenu = null
+    }
+  }
+  function branchMenuItem(label, opts = {}) {
+    const b = document.createElement('button')
+    b.className = 'cv-menu-item'
+    if (opts.disabled) b.disabled = true
+    const chk = document.createElement('span')
+    chk.className = 'cv-menu-check'
+    if (opts.checked) setIcon(chk, 'check')
+    const lab = document.createElement('span')
+    lab.className = 'cv-menu-label'
+    setIcon(lab, opts.remote ? 'globe' : 'branch', label)
+    b.append(chk, lab)
+    if (opts.fn) {
+      b.addEventListener('click', () => {
+        closeBranchMenu()
+        opts.fn()
+      })
+    }
+    return b
+  }
+  async function openBranchMenu(anchor) {
+    if (busy) return
+    const vaultRoot = getVaultRoot()
+    if (!vaultRoot) return
+    let branches = null
+    try {
+      branches = (await gitRBranchList(vaultRoot)) || []
+    } catch (e) {
+      await messageDialog(t('git.branchListFailed', { err: errText(e) }))
+      return
+    }
+    closeBranchMenu()
+    const menu = document.createElement('div')
+    menu.className = 'cv-menu nl-git-branch-menu'
+    for (const b of branches.filter((x) => !x.remote)) {
+      menu.appendChild(branchMenuItem(b.name, { checked: b.current, fn: b.current ? null : () => doCheckoutBranch(b) }))
+    }
+    const remotes = branches.filter((x) => x.remote)
+    if (remotes.length) {
+      const sep = document.createElement('div')
+      sep.className = 'cv-menu-sep'
+      menu.appendChild(sep)
+      for (const b of remotes) {
+        menu.appendChild(branchMenuItem(b.name, { remote: true, fn: () => doCheckoutBranch(b) }))
+      }
+    }
+    const sep2 = document.createElement('div')
+    sep2.className = 'cv-menu-sep'
+    menu.appendChild(sep2)
+    menu.appendChild(branchMenuItem(t('git.newBranch'), { fn: doNewBranch }))
+    document.body.appendChild(menu)
+    const r = anchor.getBoundingClientRect()
+    let x = r.left
+    let y = r.bottom + 4
+    const mw = menu.offsetWidth
+    const mh = menu.offsetHeight
+    if (x + mw > window.innerWidth - 4) x = Math.max(4, window.innerWidth - mw - 4)
+    if (y + mh > window.innerHeight - 4) y = Math.max(4, window.innerHeight - mh - 4)
+    menu.style.left = x + 'px'
+    menu.style.top = y + 'px'
+    branchMenu = menu
+    const onDocDown = (e) => {
+      if (branchMenu && !branchMenu.contains(e.target)) closeBranchMenu()
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        closeBranchMenu()
+      }
+    }
+    const onDismiss = (e) => {
+      if (e && e.type === 'wheel' && branchMenu && branchMenu.contains(e.target)) return
+      closeBranchMenu()
+    }
+    document.addEventListener('mousedown', onDocDown, true)
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('wheel', onDismiss, true)
+    window.addEventListener('resize', closeBranchMenu)
+    branchMenuCleanup = () => {
+      document.removeEventListener('mousedown', onDocDown, true)
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('wheel', onDismiss, true)
+      window.removeEventListener('resize', closeBranchMenu)
+    }
+  }
+
   // —— 公共动作 ——
   // load 做实际拉取与渲染，假定调用方已持有 busy（供 commit/init 完成后直接复用，避免被重入守卫吞掉）。
   async function load() {
@@ -1075,6 +1418,19 @@ function miniBtn(text, onClick) {
   const b = document.createElement('button')
   b.className = 'nl-git-mini'
   b.textContent = text
+  b.addEventListener('click', (ev) => {
+    ev.stopPropagation()
+    onClick()
+  })
+  return b
+}
+
+// 面板翻新：行内图标小按钮（放弃更改 / 检出 / 还原）。图标走 sprite，不用临时字形。
+function iconBtn(icon, title, onClick) {
+  const b = document.createElement('button')
+  b.className = 'nl-git-mini nl-git-mini-icon'
+  b.title = title
+  setIcon(b, icon)
   b.addEventListener('click', (ev) => {
     ev.stopPropagation()
     onClick()

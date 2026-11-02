@@ -383,6 +383,29 @@ pub struct RemoteArgs {
     pub url: String,
 }
 
+// ==================== 面板翻新：分支 / 检出 / 还原 / 放弃 / 提交文件 ====================
+
+/// `git_r_branch_list` 返回的单条分支
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchInfo {
+    /// 短名：本地 `main`、远端 `origin/main`
+    pub name: String,
+    /// 当前分支（仅本地分支会为 true）
+    pub current: bool,
+    /// 是否远端分支
+    pub remote: bool,
+}
+
+/// `git_r_commit_files` 返回的单个文件
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFile {
+    pub path: String,
+    /// git name-status 首字母：A / M / D / R / T
+    pub kind: String,
+}
+
 // ==================== Phase 2：Engine 检测与缓存 ====================
 
 /// 远程引擎二选一：装了系统 git 走 System（R1 shell-out），否则走 Builtin（R1-B 内置 git2）。
@@ -441,8 +464,8 @@ pub fn cached_engine() -> Engine {
 /// 通过 `match cached_engine() { System => system::*, Builtin => builtin::* }` 分派。
 pub mod system {
     use super::{
-        format_known_hosts_line, AheadBehind, CommitMergeArgs, GitSyncInfo, Remote, RemoteArgs,
-        ResolveArgs, TrustHostArgs,
+        format_known_hosts_line, AheadBehind, BranchInfo, CommitFile, CommitMergeArgs,
+        GitSyncInfo, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
     };
     use crate::ui_msg;
 
@@ -876,6 +899,193 @@ pub mod system {
         Ok(())
     }
 
+    // ---------- 面板翻新：分支 / 检出 / 还原 / 放弃 / 提交文件 ----------
+
+    /// 本地 + 远端分支清单（git -a 天然本地在前、远端在后）。
+    pub async fn branch_list(vault_root: String) -> Result<Vec<BranchInfo>, String> {
+        let run = git_run(
+            vault_root,
+            vec![
+                "branch".into(),
+                "-a".into(),
+                "--format=%(HEAD)%09%(refname)".into(),
+            ],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(parse_branch_list(&run.stdout))
+    }
+
+    /// 纯函数：`git branch -a --format=%(HEAD)%09%(refname)` 输出解析。
+    /// `*` 标记 = 当前分支；`refs/remotes/` 前缀归远端组，`*/HEAD` 符号引用跳过。
+    pub fn parse_branch_list(text: &str) -> Vec<BranchInfo> {
+        let mut out = Vec::new();
+        for line in text.lines() {
+            let line = line.trim_end();
+            if line.is_empty() {
+                continue;
+            }
+            let (mark, refname) = match line.split_once('\t') {
+                Some(kv) => kv,
+                None => continue,
+            };
+            let (remote, name) = if let Some(n) = refname.trim().strip_prefix("refs/remotes/") {
+                if n.ends_with("/HEAD") {
+                    continue;
+                }
+                (true, n.to_string())
+            } else if let Some(n) = refname.trim().strip_prefix("refs/heads/") {
+                (false, n.to_string())
+            } else {
+                continue;
+            };
+            out.push(BranchInfo {
+                name,
+                current: mark.trim() == "*",
+                remote,
+            });
+        }
+        out
+    }
+
+    /// 检出。remote=true 时传远端分支短名（origin/main）：优先检出同名本地分支，
+    /// 没有则 `--track` 建跟踪分支（git 的 dwim 语义）；否则直接 `git checkout <ref>`。
+    /// 脏树里检出到冲突时 git 自己拒绝，错误原文回显。
+    pub async fn checkout(vault_root: String, ref_name: String, remote: bool) -> Result<String, String> {
+        let args = if remote {
+            let local = ref_name
+                .split_once('/')
+                .map(|(_, b)| b.to_string())
+                .unwrap_or_else(|| ref_name.clone());
+            let first = git_run(vault_root.clone(), vec!["checkout".into(), local]).await?;
+            if first.code == 0 {
+                return Ok(first.stderr);
+            }
+            vec!["checkout".into(), "--track".into(), ref_name]
+        } else {
+            vec!["checkout".into(), ref_name]
+        };
+        let run = git_run(vault_root, args).await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(run.stderr)
+    }
+
+    /// 新建分支并检出（等价 `git checkout -b <name>`，起点=当前 HEAD）。
+    pub async fn branch_create(vault_root: String, name: String) -> Result<(), String> {
+        let run = git_run(
+            vault_root,
+            vec!["checkout".into(), "-b".into(), name],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(())
+    }
+
+    /// 还原一个提交（`git revert --no-edit`）。脏树时 git 自己拒绝，错误原文回显。
+    pub async fn revert(vault_root: String, hash: String) -> Result<String, String> {
+        let run = git_run(
+            vault_root,
+            vec!["revert".into(), "--no-edit".into(), hash],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(run.stderr)
+    }
+
+    /// 放弃一个文件的未提交改动：未跟踪删除（`git clean -f --`），已跟踪恢复 HEAD 版。
+    pub async fn discard(vault_root: String, path: String) -> Result<(), String> {
+        let st = git_run(
+            vault_root.clone(),
+            vec![
+                "status".into(),
+                "--porcelain".into(),
+                "--".into(),
+                path.clone(),
+            ],
+        )
+        .await?;
+        if st.code != 0 {
+            return Err(git_err_msg(&st));
+        }
+        let untracked = st.stdout.lines().any(|l| l.starts_with("??"));
+        let run = if untracked {
+            git_run(
+                vault_root,
+                vec!["clean".into(), "-f".into(), "--".into(), path],
+            )
+            .await?
+        } else {
+            git_run(
+                vault_root,
+                vec![
+                    "checkout".into(),
+                    "HEAD".into(),
+                    "--".into(),
+                    path,
+                ],
+            )
+            .await?
+        };
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(())
+    }
+
+    /// 一个提交改动的文件清单。`--root` 让根提交也能对空树取 diff。
+    pub async fn commit_files(vault_root: String, hash: String) -> Result<Vec<CommitFile>, String> {
+        let run = git_run(
+            vault_root,
+            vec![
+                "diff-tree".into(),
+                "--root".into(),
+                "--no-commit-id".into(),
+                "--name-status".into(),
+                "-r".into(),
+                hash,
+            ],
+        )
+        .await?;
+        if run.code != 0 {
+            return Err(git_err_msg(&run));
+        }
+        Ok(parse_name_status(&run.stdout))
+    }
+
+    /// 纯函数：`git diff-tree --name-status` 输出解析。R100 形态取首字母做 kind，
+    /// 路径取最后一个制表符后的字段（重命名行是 old、new 两段，展示 new）。
+    pub fn parse_name_status(text: &str) -> Vec<CommitFile> {
+        let mut out = Vec::new();
+        for line in text.lines() {
+            let line = line.trim_end();
+            if line.is_empty() {
+                continue;
+            }
+            let (status, _) = match line.split_once('\t') {
+                Some(kv) => kv,
+                None => continue,
+            };
+            let kind: String = status.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+            if kind.is_empty() {
+                continue;
+            }
+            let path = line.rsplit('\t').next().unwrap_or("").trim().to_string();
+            if path.is_empty() {
+                continue;
+            }
+            out.push(CommitFile { path, kind });
+        }
+        out
+    }
+
     /// Phase 4：System 引擎下一次性信任——追加写 `~/.ssh/known_hosts`，同 OpenSSH 自己的行为一致，
     /// 不会弄脏应用私库（System 后端的 known_hosts 无应用私库概念）。
     pub async fn trust_host(args: TrustHostArgs) -> Result<(), String> {
@@ -1122,6 +1332,46 @@ pub mod system {
                 let _ = fs::remove_dir_all(d);
             }
         }
+
+        #[test]
+        fn parse_branch_list_splits_local_remote_and_current() {
+            let s = "*\trefs/heads/master\n \trefs/heads/feature/nested\n \trefs/remotes/origin/main\n \trefs/remotes/origin/HEAD\n";
+            let r = parse_branch_list(s);
+            // 本地在前、远端在后；origin/HEAD 符号引用跳过
+            assert_eq!(r.len(), 3);
+            assert_eq!(r[0].name, "master");
+            assert!(r[0].current);
+            assert!(!r[0].remote);
+            assert_eq!(r[1].name, "feature/nested");
+            assert!(!r[1].current);
+            assert_eq!(r[2].name, "origin/main");
+            assert!(r[2].remote);
+            assert!(!r[2].current);
+        }
+
+        #[test]
+        fn parse_branch_list_empty_is_empty_vec() {
+            assert!(parse_branch_list("").is_empty());
+        }
+
+        #[test]
+        fn parse_name_status_kinds_and_rename_tail() {
+            let s = "M\tdocs/a.md\nA\tnew.md\nD\tgone.md\nR100\told.md\tnew-name.md\n";
+            let r = parse_name_status(s);
+            assert_eq!(r.len(), 4);
+            assert_eq!(r[0].kind, "M");
+            assert_eq!(r[0].path, "docs/a.md");
+            assert_eq!(r[1].kind, "A");
+            assert_eq!(r[2].kind, "D");
+            assert_eq!(r[3].kind, "R");
+            assert_eq!(r[3].path, "new-name.md", "重命名行应取 new 路径");
+        }
+
+        #[test]
+        fn parse_name_status_skips_garbage_lines() {
+            assert!(parse_name_status("").is_empty());
+            assert!(parse_name_status("\n \n").is_empty());
+        }
     }
 }
 
@@ -1205,13 +1455,13 @@ pub mod known_hosts_store {
 pub mod builtin {
     use super::{
         b64, key_type_from_blob, known_hosts_store, lookup_known_host, map_err_text,
-        AheadBehind, BuiltinErrCode, CommitMergeArgs, GitSyncInfo, HostUnknownPayload,
-        KnownHostEntry, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
+        AheadBehind, BuiltinErrCode, BranchInfo, CommitFile, CommitMergeArgs, GitSyncInfo,
+        HostUnknownPayload, KnownHostEntry, Remote, RemoteArgs, ResolveArgs, TrustHostArgs,
     };
     use crate::ui_msg;
     use git2::{
         build::CheckoutBuilder, cert::Cert, CertificateCheckStatus, Cred, CredentialType,
-        Error as GError, ErrorClass, FetchOptions, MergeOptions, ObjectType, PushOptions,
+        Error as GError, ErrorClass, BranchType, FetchOptions, MergeOptions, ObjectType, PushOptions,
         Reference, Repository, RepositoryState, ResetType,
     };
     use std::sync::{Arc, Mutex};
@@ -1952,6 +2202,263 @@ pub mod builtin {
                 let _ = std::fs::remove_file(repo.path().join(f));
             }
             Ok(())
+        })
+        .await
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
+    }
+
+    // ---------- 面板翻新：分支 / 检出 / 还原 / 放弃 / 提交文件 ----------
+
+    /// 本地 + 远端分支清单（本地在前、远端在后，与 system 口径一致）。
+    pub async fn branch_list(vault_root: String) -> Result<Vec<BranchInfo>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let head_short = repo
+                .head()
+                .ok()
+                .and_then(|h| h.shorthand().map(|s| s.to_string()));
+            let mut out = Vec::new();
+            for (bt, remote) in [(BranchType::Local, false), (BranchType::Remote, true)] {
+                for b in repo.branches(Some(bt)).map_err(map_err)? {
+                    let (branch, _) = b.map_err(map_err)?;
+                    let name = match branch.name().map_err(map_err)? {
+                        Some(n) if !n.is_empty() => n.to_string(),
+                        _ => continue,
+                    };
+                    if name.ends_with("/HEAD") {
+                        continue;
+                    }
+                    let current = !remote && head_short.as_deref() == Some(name.as_str());
+                    out.push(BranchInfo { name, current, remote });
+                }
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
+    }
+
+    /// 检出。SAFE 策略：与本地改动冲突时 git2 拒绝。remote=true 传远端短名：
+    /// 同名本地分支存在就检出它，否则建跟踪分支再检出。
+    pub async fn checkout(vault_root: String, ref_name: String, remote: bool) -> Result<String, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let head_ref = format!("refs/heads/{}", ref_name);
+            if remote {
+                let local = ref_name
+                    .split_once('/')
+                    .map(|(_, b)| b)
+                    .unwrap_or(&ref_name)
+                    .to_string();
+                if repo.find_branch(&local, BranchType::Local).is_ok() {
+                    repo.set_head(&format!("refs/heads/{}", local)).map_err(map_err)?;
+                } else {
+                    let rb = repo
+                        .find_branch(&ref_name, BranchType::Remote)
+                        .map_err(map_err)?;
+                    let commit = rb.get().peel_to_commit().map_err(map_err)?;
+                    let mut nb = repo.branch(&local, &commit, false).map_err(map_err)?;
+                    nb.set_upstream(Some(&ref_name)).map_err(map_err)?;
+                    repo.set_head(&head_ref).map_err(map_err)?;
+                }
+            } else if repo.find_branch(&ref_name, BranchType::Local).is_ok() {
+                repo.set_head(&head_ref).map_err(map_err)?;
+            } else {
+                // 提交 hash / 任意 rev：detached
+                let obj = repo.revparse_single(&ref_name).map_err(map_err)?;
+                let commit = obj.peel_to_commit().map_err(map_err)?;
+                repo.set_head_detached(commit.id()).map_err(map_err)?;
+            }
+            repo.checkout_head(Some(CheckoutBuilder::new().safe()))
+                .map_err(map_err)?;
+            Ok(String::new())
+        })
+        .await
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
+    }
+
+    /// 新建分支并检出（起点=当前 HEAD）。
+    pub async fn branch_create(vault_root: String, name: String) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let head = repo
+                .head()
+                .map_err(map_err)?
+                .peel_to_commit()
+                .map_err(map_err)?;
+            repo.branch(&name, &head, false).map_err(map_err)?;
+            repo.set_head(&format!("refs/heads/{}", name))
+                .map_err(map_err)?;
+            repo.checkout_head(Some(CheckoutBuilder::new().safe()))
+                .map_err(map_err)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
+    }
+
+    /// 还原一个提交（等价 `git revert --no-edit`）。工作树 / index 有实质改动时拒绝。
+    pub async fn revert(vault_root: String, hash: String) -> Result<String, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            if repo.state() != RepositoryState::Clean {
+                return Err(format!("[git_error]{}", ui_msg!("gitDirtyRefuse")));
+            }
+            let dirty = repo
+                .statuses(None)
+                .map_err(map_err)?
+                .iter()
+                .any(|e| {
+                    e.status()
+                        .intersects(
+                            git2::Status::INDEX_NEW
+                                | git2::Status::INDEX_MODIFIED
+                                | git2::Status::INDEX_DELETED
+                                | git2::Status::INDEX_RENAMED
+                                | git2::Status::INDEX_TYPECHANGE
+                                | git2::Status::WT_MODIFIED
+                                | git2::Status::WT_DELETED
+                                | git2::Status::WT_TYPECHANGE
+                                | git2::Status::WT_RENAMED
+                                | git2::Status::CONFLICTED,
+                        )
+                });
+            if dirty {
+                return Err(format!("[local_changes]{}", ui_msg!("gitDirtyRefuse")));
+            }
+            let oid = git2::Oid::from_str(&hash).map_err(|e| format!("[git_error]{}", e))?;
+            let commit = repo.find_commit(oid).map_err(map_err)?;
+            repo.revert(&commit, None).map_err(map_err)?;
+            let mut idx = repo.index().map_err(map_err)?;
+            if idx.has_conflicts() {
+                return Err(format!("[git_error]{}", ui_msg!("gitRevertConflict")));
+            }
+            let tree_oid = idx.write_tree().map_err(map_err)?;
+            let tree = repo.find_tree(tree_oid).map_err(map_err)?;
+            let parent = repo
+                .head()
+                .map_err(map_err)?
+                .peel_to_commit()
+                .map_err(map_err)?;
+            let sig = repo.signature().map_err(map_err)?;
+            let msg = format!(
+                "Revert \"{}\"\n\nThis reverts commit {}.",
+                commit.summary().unwrap_or(""),
+                commit.id()
+            );
+            repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[&parent])
+                .map_err(map_err)?;
+            Ok(String::new())
+        })
+        .await
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
+    }
+
+    /// 放弃一个文件的未提交改动：未跟踪删文件；已跟踪把 HEAD 版写回工作树并复位 index 条目。
+    /// HEAD 里没有、但 index 里有的（已暂存新文件）按「放弃」语义删文件 + 摘 index 条目。
+    pub async fn discard(vault_root: String, path: String) -> Result<(), String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let rel = std::path::Path::new(&path);
+            let status = repo
+                .status_file(rel)
+                .map_err(|e| format!("[git_error]{}", ui_msg!("gitDiscardStatus", "err" => e)))?;
+            let workdir = repo.workdir().ok_or_else(|| {
+                format!("[git_error]{}", ui_msg!("gitNoWorkdir"))
+            })?;
+            let full = workdir.join(rel);
+            if status.contains(git2::Status::WT_NEW) || status.contains(git2::Status::INDEX_NEW) {
+                std::fs::remove_file(&full)
+                    .map_err(|e| format!("[git_error]{}", ui_msg!("gitDiscardRm", "err" => e)))?;
+                if status.contains(git2::Status::INDEX_NEW) {
+                    let mut idx = repo.index().map_err(map_err)?;
+                    idx.remove_path(rel).map_err(map_err)?;
+                    idx.write().map_err(map_err)?;
+                }
+                return Ok(());
+            }
+            if status.contains(git2::Status::WT_DELETED) || status.contains(git2::Status::INDEX_DELETED) {
+                // 已删除：从 HEAD 恢复文件内容
+                let head = repo
+                    .head()
+                    .map_err(map_err)?
+                    .peel_to_commit()
+                    .map_err(map_err)?;
+                let blob = head
+                    .tree()
+                    .map_err(map_err)?
+                    .get_path(rel)
+                    .map_err(map_err)?;
+                let content = repo.find_blob(blob.id()).map_err(map_err)?;
+                if let Some(dir) = full.parent() {
+                    std::fs::create_dir_all(dir)
+                        .map_err(|e| format!("[git_error]{}", ui_msg!("gitDiscardWrite", "err" => e)))?;
+                }
+                std::fs::write(&full, content.content())
+                    .map_err(|e| format!("[git_error]{}", ui_msg!("gitDiscardWrite", "err" => e)))?;
+            } else {
+                // 修改/类型变更/重命名：HEAD 版写回 + add 让 index 条目回到 HEAD
+                let head = repo
+                    .head()
+                    .map_err(map_err)?
+                    .peel_to_commit()
+                    .map_err(map_err)?;
+                let entry = head.tree().map_err(map_err)?.get_path(rel).map_err(map_err)?;
+                let content = repo.find_blob(entry.id()).map_err(map_err)?;
+                std::fs::write(&full, content.content())
+                    .map_err(|e| format!("[git_error]{}", ui_msg!("gitDiscardWrite", "err" => e)))?;
+                let mut idx = repo.index().map_err(map_err)?;
+                idx.add_path(rel).map_err(map_err)?;
+                idx.write().map_err(map_err)?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?
+    }
+
+    /// 一个提交改动的文件清单：与第一父树做 diff（根提交对空树）。
+    pub async fn commit_files(vault_root: String, hash: String) -> Result<Vec<CommitFile>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let repo = open_repo(&vault_root)?;
+            let oid = git2::Oid::from_str(&hash).map_err(|e| format!("[git_error]{}", e))?;
+            let commit = repo.find_commit(oid).map_err(map_err)?;
+            let tree = commit.tree().map_err(map_err)?;
+            let kind_of = |s: git2::Delta| -> &'static str {
+                match s {
+                    git2::Delta::Added => "A",
+                    git2::Delta::Deleted => "D",
+                    git2::Delta::Renamed => "R",
+                    git2::Delta::Typechange => "T",
+                    _ => "M",
+                }
+            };
+            let base_tree = if commit.parent_count() == 0 {
+                None
+            } else {
+                Some(commit.parent(0).map_err(map_err)?.tree().map_err(map_err)?)
+            };
+            let diff = repo
+                .diff_tree_to_tree(base_tree.as_ref(), Some(&tree), None)
+                .map_err(map_err)?;
+            let mut out = Vec::new();
+            for d in diff.deltas() {
+                let path = d
+                    .new_file()
+                    .path()
+                    .or_else(|| d.old_file().path())
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if path.is_empty() {
+                    continue;
+                }
+                out.push(CommitFile {
+                    path,
+                    kind: kind_of(d.status()).to_string(),
+                });
+            }
+            Ok(out)
         })
         .await
         .map_err(|e| ui_msg!("gitSpawnBlockingFailed", "err" => e))?

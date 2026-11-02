@@ -4676,6 +4676,106 @@ html.nl-dragging * {
   background: var(--hover);
   border-color: var(--accent);
 }
+/* 面板翻新：行内图标按钮（放弃更改 / 检出 / 还原），悬停行时才显出来省视觉噪音 */
+.nl-git-mini-icon {
+  padding: 2px;
+  line-height: 0;
+}
+.nl-git-mini-icon .nl-ico {
+  width: 12px;
+  height: 12px;
+}
+.nl-git-row-tools {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.nl-git-item:hover .nl-git-row-tools,
+.nl-git-item:focus-within .nl-git-row-tools {
+  opacity: 1;
+}
+/* 提交框：message 常驻变更列表上方（VS Code 式） */
+.nl-git-commit-box {
+  padding: 0;
+}
+.nl-git-commit-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.nl-git-commit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 5px 8px;
+  overflow: hidden;
+}
+.nl-git-commit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.nl-git-commit-btn {
+  flex: none;
+  padding: 5px 12px;
+}
+.nl-git-commit-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* 图形区工具条：分支下拉 + 快捷动作 */
+.nl-git-graph-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.nl-git-branch-btn {
+  max-width: 60%;
+}
+.nl-git-branch-cur {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nl-git-branch-chev .nl-ico {
+  width: 11px;
+  height: 11px;
+}
+.nl-git-branch-menu {
+  position: fixed;
+  z-index: 1000;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.nl-git-btn-sm {
+  padding: 3px 7px;
+}
+.nl-git-btn-sm .nl-ico {
+  width: 13px;
+  height: 13px;
+}
+/* 提交详情里的变更文件清单 */
+.nl-git-commit-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nl-git-commit-file {
+  cursor: default;
+}
 .nl-git-merge-bar {
   display: flex;
   align-items: center;

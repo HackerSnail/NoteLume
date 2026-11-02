@@ -2734,6 +2734,63 @@ async fn git_r_trust_host(args: TrustHostArgs) -> Result<(), String> {
     }
 }
 
+// ==================== Git 面板翻新：分支 / 检出 / 还原 / 放弃 / 提交文件 ====================
+
+/// 放弃一个文件的未提交改动（前端已弹确认框）：未跟踪删除，已跟踪恢复 HEAD 版。
+#[tauri::command]
+async fn git_discard(vault_root: String, path: String) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::discard(vault_root, path).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::discard(vault_root, path).await,
+    }
+}
+
+/// 本地 + 远端分支清单（面板分支下拉）。
+#[tauri::command]
+async fn git_r_branch_list(vault_root: String) -> Result<Vec<git_builtin::BranchInfo>, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::branch_list(vault_root).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::branch_list(vault_root).await,
+    }
+}
+
+/// 检出分支或提交。remote=true 表示 ref_name 是远端分支短名（origin/main）。
+#[tauri::command]
+async fn git_r_checkout(vault_root: String, ref_name: String, remote: Option<bool>) -> Result<String, String> {
+    let remote = remote.unwrap_or(false);
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::checkout(vault_root, ref_name, remote).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::checkout(vault_root, ref_name, remote).await,
+    }
+}
+
+/// 新建分支（起点=当前 HEAD）并检出。
+#[tauri::command]
+async fn git_r_branch_create(vault_root: String, name: String) -> Result<(), String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::branch_create(vault_root, name).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::branch_create(vault_root, name).await,
+    }
+}
+
+/// 还原一个提交（等价 git revert --no-edit）。
+#[tauri::command]
+async fn git_r_revert(vault_root: String, hash: String) -> Result<String, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::revert(vault_root, hash).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::revert(vault_root, hash).await,
+    }
+}
+
+/// 一个提交改动的文件清单（提交详情展开用）。
+#[tauri::command]
+async fn git_r_commit_files(vault_root: String, hash: String) -> Result<Vec<git_builtin::CommitFile>, String> {
+    match git_builtin::cached_engine() {
+        git_builtin::Engine::System => git_builtin::system::commit_files(vault_root, hash).await,
+        git_builtin::Engine::Builtin => git_builtin::builtin::commit_files(vault_root, hash).await,
+    }
+}
+
 /// Phase 4 新增：上报当前引擎与系统 git 版本，前端徽标 + 错误引导需要。进程内 OnceLock 缓存，无额外开销。
 #[tauri::command]
 async fn git_r_info() -> GitSyncInfo {
@@ -4504,6 +4561,13 @@ pub fn run() {
             git_r_commit_merge,
             git_r_trust_host,
             git_r_info,
+            // 面板翻新：分支 / 检出 / 还原 / 放弃 / 提交文件
+            git_discard,
+            git_r_branch_list,
+            git_r_checkout,
+            git_r_branch_create,
+            git_r_revert,
+            git_r_commit_files,
             // Word(.docx) 离线导入（只转不写 preview + 去重落盘 commit + 独立模式临时目录 + 另存为整树拷贝）
             docx_import::docx_preview,
             docx_import::docx_commit,

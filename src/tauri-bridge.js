@@ -498,6 +498,36 @@ export function gitRPush(vaultRoot, setUpstream = false) {
   return invoke('git_r_push', { vaultRoot, setUpstream })
 }
 
+/** 面板翻新：放弃一个文件的未提交改动（未跟踪删文件、已跟踪恢复 HEAD 版）。前端已弹确认框。 */
+export function gitDiscard(vaultRoot, path) {
+  return invoke('git_discard', { vaultRoot, path })
+}
+
+/** 本地 + 远端分支清单（[{name, current, remote}]，本地在前远端在后）。 */
+export function gitRBranchList(vaultRoot) {
+  return invoke('git_r_branch_list', { vaultRoot })
+}
+
+/** 检出分支或提交；remote=true 表示 refName 是远端分支短名（origin/main）。 */
+export function gitRCheckout(vaultRoot, refName, remote = false) {
+  return invoke('git_r_checkout', { vaultRoot, refName, remote })
+}
+
+/** 新建分支（起点=当前 HEAD）并检出。 */
+export function gitRBranchCreate(vaultRoot, name) {
+  return invoke('git_r_branch_create', { vaultRoot, name })
+}
+
+/** 还原一个提交（等价 git revert --no-edit）。 */
+export function gitRRevert(vaultRoot, hash) {
+  return invoke('git_r_revert', { vaultRoot, hash })
+}
+
+/** 一个提交改动的文件清单（[{path, kind}]，kind 为 A/M/D/R/T）。 */
+export function gitRCommitFiles(vaultRoot, hash) {
+  return invoke('git_r_commit_files', { vaultRoot, hash })
+}
+
 /** R3 新增：合并拉取（不带 --ff-only）。resolve 为 `MERGED\n…` 或 `CONFLICTS\n…`；
  *  其他失败 reject 附 `[code]msg` 前串。 */
 export function gitRPullMerge(vaultRoot) {
