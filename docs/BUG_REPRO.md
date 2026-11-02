@@ -216,6 +216,36 @@ osascript -e 'tell application "System Events" to tell process "notelume" to cou
 
 ---
 
+## 四、应用内 Git 推不上去，点了没反应（库根被标签页带偏 + 子目录误建仓库）
+
+### 现象
+
+Git 面板点 ↑ Push 没有任何反应：状态栏不动、不弹框、远端收不到提交。引擎徽标正常显示「系统 git」。同一台机器命令行 `git push` 正常。
+
+### 复现
+
+三个条件凑齐：settings.json 的 `panes.tabs` 里有一个 `root` 指向仓库子目录的标签页（「打开单个文件」入口的库根是文件所在目录，会留下这种标签）；启动恢复该标签时整个库根跟到子目录；子目录又被 `git init` 过（commit `test`，无远端）。此时面板远端行显示「未配置远端」，fetch / pull / push / merge 四个按钮 disabled——disabled 按钮的点击被浏览器吞掉，无任何反馈。
+
+### 定位
+
+WebView2 远程调试（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`）+ CDP 抓控制台与 IPC：
+
+1. 干净测试库（bare 远端 + 无上游工作库）E2E：推送链路本身正常——无上游弹确认框，确认后 `push --set-upstream` 成功，bare 收到分支；gitee 真库推送同样到「已推送到远端」。排除推送实现。
+2. 故障实例里 `git_r_remote_list('E:\NoteLume\docs')` 返回 `[]`，`git_open` 把 docs 认成仓库根——`docs\.git` 存在（无 remote）。面板 `populateSync` 拿不到 origin，四个按钮全 disabled。
+3. `GIT_TRACE=<绝对路径>` 让 git 把每次调用的命令与退出码写文件，确认全程没有执行过 `git push`——按钮根本没触发。
+
+### 改法
+
+数据问题，不改代码：删掉误建的子目录 `.git`（或给它配远端），重新打开正确的库根。
+
+### 下次直接用
+
+- 「Git 点了没反应」先看面板远端行是不是「未配置远端」：无远端时按钮禁用（`git-panel.js` 的 `populateSync`），点击无反馈属正常行为，不是推送坏了。
+- 库根会被激活标签页的 `root` 带走（tab id = paneId + root + rel，恢复即切根）；排查库根漂移先读 `%APPDATA%\app.notelume.desktop\settings.json` 的 `panes.tabs` 与 `workspace.lastVault` 是否一致。
+- 应用内 git 的真实命令行与退出码：`GIT_TRACE` 指到绝对路径文件（GitRun 截走的 stderr 到不了你眼里时靠它）。
+
+---
+
 ## 空白模板
 
 ```
