@@ -34,6 +34,9 @@ pub struct AiChatArgs {
     pub model: String,
     #[serde(default)]
     pub temperature: Option<f64>,
+    // 工具定义只在 Agent 模式带上，原样透传（Rust 不理解工具语义，与 content 同口径）
+    #[serde(default)]
+    pub tools: Option<serde_json::Value>,
 }
 
 /// 推回前端的事件载荷：kind = 'chunk'（delta 有值）| 'done' | 'error'（error 有值）
@@ -46,12 +49,15 @@ struct AiEvent {
     delta: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    // done 事件可能带回累积的 tool_calls：[{id, name, arguments}]（序列化为 camelCase toolCalls）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<serde_json::Value>,
 }
 
-/// 事件回调签名：emit(kind, delta, error)。测试里可换成收集器。
+/// 事件回调签名：emit(kind, delta, error, tool_calls)。测试里可换成收集器。
 /// Send+Sync：跨 await 传递 &EmitFn 的 future 必须整体 Send；带生命周期参数，
 /// 裸别名默认 'static 会让测试闭包没法借局部变量。
-type EmitFn<'a> = dyn Fn(&str, Option<String>, Option<String>) + Send + Sync + 'a;
+type EmitFn<'a> = dyn Fn(&str, Option<String>, Option<String>, Option<serde_json::Value>) + Send + Sync + 'a;
 
 // —— 请求表：reqId → 运行中的任务（abort 句柄）+ 结束标记 ——
 // 结束标记用于插入新请求时顺手清掉已完成的条目；被 abort 的任务来不及置位，
@@ -103,8 +109,15 @@ pub fn ai_chat_stream(app: tauri::AppHandle, args: AiChatArgs) -> Result<(), Str
     let rid = req_id.clone();
     let finished = Arc::new(AtomicBool::new(false));
     let finished_task = finished.clone();
+    // 空数组 / 非数组视同未带，省一次无意义字段
+    let tools = args
+        .tools
+        .filter(|v| v.as_array().map(|a| !a.is_empty()).unwrap_or(false));
     let handle = tauri::async_runtime::spawn(async move {
-        let emit = move |kind: &str, delta: Option<String>, error: Option<String>| {
+        let emit = move |kind: &str,
+                         delta: Option<String>,
+                         error: Option<String>,
+                         tool_calls: Option<serde_json::Value>| {
             let _ = emit_app.emit(
                 "nl:ai-event",
                 AiEvent {
@@ -112,12 +125,27 @@ pub fn ai_chat_stream(app: tauri::AppHandle, args: AiChatArgs) -> Result<(), Str
                     kind: kind.to_string(),
                     delta,
                     error,
+                    tool_calls,
                 },
             );
         };
-        match run_stream(&url, &api_key, &model, temperature, &messages, &emit).await {
-            Ok(()) => emit("done", None, None),
-            Err(e) => emit("error", None, Some(e)),
+        match run_stream(&url, &api_key, &model, temperature, &messages, tools.as_ref(), &emit).await
+        {
+            Ok(calls) => emit(
+                "done",
+                None,
+                None,
+                calls.map(|c| {
+                    serde_json::Value::Array(
+                        c.into_iter()
+                            .map(|(id, name, arguments)| {
+                                serde_json::json!({ "id": id, "name": name, "arguments": arguments })
+                            })
+                            .collect(),
+                    )
+                }),
+            ),
+            Err(e) => emit("error", None, Some(e), None),
         }
         finished_task.store(true, Ordering::Relaxed);
     });
@@ -247,23 +275,132 @@ fn string_or_empty(v: Option<&serde_json::Value>) -> Option<String> {
     }
 }
 
-/// 部分网关在 200 流里塞 error 对象：{"error":{"message":"…"}} → 错误文案。
+/// 部分网关在 200 流里塞 error：{"error":{"message":"…"}} → 错误文案；
+/// Ollama 式 error 为字符串（{"error":"… does not support tools"}）直取。
 pub fn extract_sse_error(payload: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(payload).ok()?;
-    let e = v.get("error")?;
-    let msg = e.get("message").and_then(|m| m.as_str()).unwrap_or("");
-    Some(if msg.is_empty() { e.to_string() } else { msg.to_string() })
+    error_value_text(v.get("error")?)
 }
 
-/// 发起请求并逐行解析 SSE。emit 由调用方给定（测试里可换成收集器）。
-async fn run_stream(
-    url: &str,
-    api_key: &str,
+/// 非 2xx 错误体 → 文案。OpenAI 取 error.message，error 为字符串直取；
+/// 解析不出回 None（调用方回退原始文本截断）。
+pub fn extract_error_body(text: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    error_value_text(v.get("error")?)
+}
+
+fn error_value_text(e: &serde_json::Value) -> Option<String> {
+    match e {
+        serde_json::Value::String(s) => Some(s.clone()),
+        _ => {
+            let msg = e.get("message").and_then(|m| m.as_str()).unwrap_or("");
+            Some(if msg.is_empty() { e.to_string() } else { msg.to_string() })
+        }
+    }
+}
+
+// —— 工具调用累积（Agent 循环的服务端半边） ——
+
+/// 一条流式 tool_calls 增量：OpenAI 碎片式按 index 分片（id/name 只在首片），
+/// Ollama 整对象式单 chunk 一次到齐且可能缺 index（按 0 归位）。
+pub struct ToolCallDelta {
+    pub index: usize,
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub args_delta: String,
+}
+
+/// 一条 SSE data 载荷 → tool_calls 增量列表。delta 与 message（网关忽略 stream 的兜底，
+/// 整数组一次返回）同源解析；无工具调用 / 畸形载荷回空列表。
+pub fn extract_tool_call_delta(payload: &str) -> Vec<ToolCallDelta> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return Vec::new();
+    };
+    let Some(choice) = v.get("choices").and_then(|c| c.get(0)) else {
+        return Vec::new();
+    };
+    let raw = choice
+        .get("delta")
+        .and_then(|d| d.get("tool_calls"))
+        .or_else(|| choice.get("message").and_then(|m| m.get("tool_calls")));
+    let Some(list) = raw.and_then(|r| r.as_array()) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for tc in list {
+        let func = tc.get("function");
+        let id = tc.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
+        let name = func
+            .and_then(|f| f.get("name"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        let args_delta = func
+            .and_then(|f| f.get("arguments"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        if id.is_none() && name.is_none() && args_delta.is_empty() {
+            continue;
+        }
+        let index = tc.get("index").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+        out.push(ToolCallDelta { index, id, name, args_delta });
+    }
+    out
+}
+
+struct ToolCallAcc {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+/// 按 index 归组的累积器：有 id 视为新调用起始（整对象直接落全量 arguments），
+/// 无 id 视为后续碎片追加 arguments。finish 在没有任何调用时回 None。
+#[derive(Default)]
+struct ToolCallAccumulator {
+    calls: Vec<ToolCallAcc>,
+}
+
+impl ToolCallAccumulator {
+    fn push(&mut self, d: ToolCallDelta) {
+        while self.calls.len() <= d.index {
+            self.calls.push(ToolCallAcc {
+                id: String::new(),
+                name: String::new(),
+                arguments: String::new(),
+            });
+        }
+        let c = &mut self.calls[d.index];
+        if let Some(id) = d.id {
+            c.id = id;
+        }
+        if let Some(name) = d.name {
+            c.name = name;
+        }
+        c.arguments.push_str(&d.args_delta);
+    }
+
+    fn finish(self) -> Option<Vec<(String, String, String)>> {
+        if self.calls.is_empty() {
+            return None;
+        }
+        Some(
+            self.calls
+                .into_iter()
+                .map(|c| (c.id, c.name, c.arguments))
+                .collect(),
+        )
+    }
+}
+
+/// 请求体拼装：model / messages / stream 固定，temperature 与 tools 按需。
+/// tools 只在 Agent 模式带（空数组 / 非数组视同未带）。
+pub fn build_chat_body(
     model: &str,
     temperature: Option<f64>,
     messages: &[(String, serde_json::Value)],
-    emit: &EmitFn<'_>,
-) -> Result<(), String> {
+    tools: Option<&serde_json::Value>,
+) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": model,
         "messages": messages
@@ -275,6 +412,26 @@ async fn run_stream(
     if let Some(t) = temperature {
         body["temperature"] = serde_json::json!(t);
     }
+    if let Some(tv) = tools {
+        if tv.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+            body["tools"] = tv.clone();
+        }
+    }
+    body
+}
+
+/// 发起请求并逐行解析 SSE。emit 由调用方给定（测试里可换成收集器）。
+/// 返回累积的 tool_calls（(id, name, arguments) 列表），无工具调用回 None。
+async fn run_stream(
+    url: &str,
+    api_key: &str,
+    model: &str,
+    temperature: Option<f64>,
+    messages: &[(String, serde_json::Value)],
+    tools: Option<&serde_json::Value>,
+    emit: &EmitFn<'_>,
+) -> Result<Option<Vec<(String, String, String)>>, String> {
+    let body = build_chat_body(model, temperature, messages, tools);
 
     let client = reqwest::Client::builder()
         // 整体兜底：长对话不至于挂死进程；流式读本身没有 per-read 超时
@@ -289,14 +446,7 @@ async fn run_stream(
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        let via_json = serde_json::from_str::<serde_json::Value>(&text)
-            .ok()
-            .and_then(|v| {
-                v.get("error")
-                    .and_then(|e| e.get("message"))
-                    .and_then(|m| m.as_str())
-                    .map(|s| s.to_string())
-            });
+        let via_json = extract_error_body(&text);
         return Err(format!(
             "HTTP {status}: {}",
             via_json.unwrap_or_else(|| truncate_utf8(text.trim(), 300))
@@ -305,6 +455,7 @@ async fn run_stream(
 
     // 字节缓冲逐行处理：SSE 行以 \n 结尾且 JSON 行是完整 UTF-8，按行转码不会
     // 把跨 chunk 的多字节字符切坏（直接 lossy 每个 chunk 就会）。
+    let mut acc = ToolCallAccumulator::default();
     let mut buf: Vec<u8> = Vec::new();
     loop {
         let chunk = resp.chunk().await.map_err(|e| format!("读取流失败: {e}"))?;
@@ -312,19 +463,26 @@ async fn run_stream(
         buf.extend_from_slice(&bytes);
         while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = buf.drain(..=pos).collect();
-            if let Some(stop) = handle_line(&line, emit) {
-                return stop; // Ok = [DONE]；Err = 流内报错
+            if let Some(stop) = handle_line(&line, emit, &mut acc) {
+                // Ok = [DONE]（带回累积的 tool_calls）；Err = 流内报错（累积丢弃）
+                return match stop {
+                    Ok(()) => Ok(acc.finish()),
+                    Err(e) => Err(e),
+                };
             }
         }
     }
     // 流结束：剩余不足一行的尾巴也处理一次（服务端忘写换行的兜底）
     if !buf.is_empty() {
         let tail = std::mem::take(&mut buf);
-        if let Some(stop) = handle_line(&tail, emit) {
-            return stop;
+        if let Some(stop) = handle_line(&tail, emit, &mut acc) {
+            return match stop {
+                Ok(()) => Ok(acc.finish()),
+                Err(e) => Err(e),
+            };
         }
     }
-    Ok(())
+    Ok(acc.finish())
 }
 
 /// 错误响应体截断（按字符截，chars().take 天然不切坏多字节字符）；空体给占位文案
@@ -340,8 +498,12 @@ fn truncate_utf8(t: &str, max_chars: usize) -> String {
 }
 
 /// 处理一行 SSE 字节：返回 None = 与数据无关的行；Some(Ok(())) = [DONE]；
-/// Some(Err(msg)) = 流内 error。chunk 增量经 emit 发出。
-fn handle_line(line: &[u8], emit: &EmitFn<'_>) -> Option<Result<(), String>> {
+/// Some(Err(msg)) = 流内 error。chunk 增量与 tool_calls 增量分别进 emit 与累积器。
+fn handle_line(
+    line: &[u8],
+    emit: &EmitFn<'_>,
+    acc: &mut ToolCallAccumulator,
+) -> Option<Result<(), String>> {
     let text = String::from_utf8_lossy(line);
     let text = text.trim_end_matches(['\n', '\r']);
     let payload = sse_data_payload(text)?;
@@ -351,9 +513,12 @@ fn handle_line(line: &[u8], emit: &EmitFn<'_>) -> Option<Result<(), String>> {
     if let Some(err) = extract_sse_error(payload) {
         return Some(Err(err));
     }
+    for d in extract_tool_call_delta(payload) {
+        acc.push(d);
+    }
     if let Some(delta) = extract_delta_content(payload) {
         if !delta.is_empty() {
-            emit("chunk", Some(delta), None);
+            emit("chunk", Some(delta), None, None);
         }
     }
     None
@@ -425,43 +590,54 @@ mod tests {
         assert_eq!(extract_sse_error("oops"), None);
     }
 
-    /// 把 emit 换成收集器跑 handle_line，返回 (返回值, 事件列表)。Mutex：EmitFn 要求 Send+Sync
-    fn run_line(line: &[u8]) -> (Option<Result<(), String>>, Vec<(String, Option<String>)>) {
+    /// 把 emit 换成收集器跑 handle_line，返回 (返回值, 事件列表, tool_calls 累积)。
+    /// Mutex：EmitFn 要求 Send+Sync
+    fn run_line(
+        line: &[u8],
+    ) -> (
+        Option<Result<(), String>>,
+        Vec<(String, Option<String>)>,
+        Option<Vec<(String, String, String)>>,
+    ) {
         let out = Mutex::new(Vec::new());
-        let emit = |kind: &str, delta: Option<String>, _error: Option<String>| {
+        let emit = |kind: &str,
+                    delta: Option<String>,
+                    _error: Option<String>,
+                    _tc: Option<serde_json::Value>| {
             out.lock().unwrap().push((kind.to_string(), delta));
         };
-        let r = handle_line(line, &emit);
-        (r, out.into_inner().unwrap())
+        let mut acc = ToolCallAccumulator::default();
+        let r = handle_line(line, &emit, &mut acc);
+        (r, out.into_inner().unwrap(), acc.finish())
     }
 
     #[test]
     fn handle_line_emits_and_stops() {
         // 普通增量行 → chunk 事件，不终止
-        let (r, events) = run_line(b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n");
+        let (r, events, _) = run_line(b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n");
         assert!(r.is_none());
         assert_eq!(events, vec![("chunk".into(), Some("hi".into()))]);
 
         // [DONE] → Ok 终止
-        let (r, events) = run_line(b"data: [DONE]\n");
+        let (r, events, _) = run_line(b"data: [DONE]\n");
         assert_eq!(r, Some(Ok(())));
         assert!(events.is_empty());
 
         // 流内错误 → Err 终止
-        let (r, events) = run_line(b"data: {\"error\":{\"message\":\"bad key\"}}\n");
+        let (r, events, _) = run_line(b"data: {\"error\":{\"message\":\"bad key\"}}\n");
         assert_eq!(r, Some(Err("bad key".into())));
         assert!(events.is_empty());
 
         // 无关行不发事件
-        let (r, events) = run_line(b": ping\n");
+        let (r, events, _) = run_line(b": ping\n");
         assert!(r.is_none());
         assert!(events.is_empty());
-        let (r, events) = run_line(b"\n");
+        let (r, events, _) = run_line(b"\n");
         assert!(r.is_none());
         assert!(events.is_empty());
 
         // 跨 chunk 拆坏的多字节序列不会 panic（lossy 兜底），无效行回 None
-        let (r, _) = run_line(&[0xe4, 0xbd, b'\n']);
+        let (r, _, _) = run_line(&[0xe4, 0xbd, b'\n']);
         assert!(r.is_none());
     }
 
@@ -479,5 +655,105 @@ mod tests {
     #[test]
     fn cancel_unknown_id_is_false() {
         assert!(!ai_chat_cancel("__no_such_req__".into()));
+    }
+
+    #[test]
+    fn tool_call_delta_fragment_form() {
+        // OpenAI 碎片：首片带 id/name/空 arguments，次片只有 index + arguments 增量
+        let v = extract_tool_call_delta(
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search_vault","arguments":""}}]}}]}"#,
+        );
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].index, 0);
+        assert_eq!(v[0].id.as_deref(), Some("call_1"));
+        assert_eq!(v[0].name.as_deref(), Some("search_vault"));
+        assert_eq!(v[0].args_delta, "");
+        let v2 = extract_tool_call_delta(
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":"}}]}}]}"#,
+        );
+        assert_eq!(v2.len(), 1);
+        assert_eq!(v2[0].id, None);
+        assert_eq!(v2[0].args_delta, "{\"query\":");
+    }
+
+    #[test]
+    fn tool_call_delta_ollama_whole_object() {
+        // Ollama：整对象一次到齐，可能缺 index（按 0 归位）
+        let v = extract_tool_call_delta(
+            r#"{"choices":[{"delta":{"tool_calls":[{"id":"call_9","function":{"name":"read_note","arguments":"{\"path\":\"a.md\"}"}}]}}]}"#,
+        );
+        assert_eq!(v[0].index, 0);
+        assert_eq!(v[0].id.as_deref(), Some("call_9"));
+        assert_eq!(v[0].args_delta, "{\"path\":\"a.md\"}");
+    }
+
+    #[test]
+    fn tool_call_delta_message_fallback_and_content() {
+        // 网关忽略 stream：message.tool_calls 整数组一次返回
+        let v = extract_tool_call_delta(
+            r#"{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c","function":{"name":"list_notes","arguments":"{}"}}]}}]}"#,
+        );
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].name.as_deref(), Some("list_notes"));
+        // 纯 content chunk / 畸形载荷不产增量
+        assert!(extract_tool_call_delta(r#"{"choices":[{"delta":{"content":"hi"}}]}"#).is_empty());
+        assert!(extract_tool_call_delta("not json").is_empty());
+        assert!(extract_tool_call_delta("{}").is_empty());
+    }
+
+    #[test]
+    fn tool_call_accumulator_groups_by_index() {
+        let mut acc = ToolCallAccumulator::default();
+        for line in [
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"search_vault","arguments":""}},{"index":1,"id":"c2","function":{"name":"read_note","arguments":""}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"path\":\"a.md\"}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"x\"}"}}]}}]}"#,
+        ] {
+            for d in extract_tool_call_delta(line) {
+                acc.push(d);
+            }
+        }
+        assert_eq!(
+            acc.finish(),
+            Some(vec![
+                ("c1".into(), "search_vault".into(), "{\"query\":\"x\"}".into()),
+                ("c2".into(), "read_note".into(), "{\"path\":\"a.md\"}".into()),
+            ])
+        );
+        assert_eq!(ToolCallAccumulator::default().finish(), None);
+    }
+
+    #[test]
+    fn error_body_error_as_string() {
+        // Ollama 400 实锤形态：error 是字符串
+        assert_eq!(
+            extract_error_body(r#"{"error":"m does not support tools"}"#).as_deref(),
+            Some("m does not support tools")
+        );
+        // OpenAI 形态照旧
+        assert_eq!(
+            extract_error_body(r#"{"error":{"message":"bad key"}}"#).as_deref(),
+            Some("bad key")
+        );
+        assert_eq!(extract_error_body("not json"), None);
+        assert_eq!(extract_error_body(r#"{"choices":[]}"#), None);
+        // 流内 error 的字符串形态同样兼容
+        assert_eq!(
+            extract_sse_error(r#"{"error":"oops"}"#).as_deref(),
+            Some("oops")
+        );
+    }
+
+    #[test]
+    fn chat_body_tools_field() {
+        let msgs = vec![("user".to_string(), serde_json::json!("hi"))];
+        let tools = serde_json::json!([{ "type": "function" }]);
+        let body = build_chat_body("m", None, &msgs, Some(&tools));
+        assert!(body.get("tools").is_some());
+        // None / 空数组 / 非数组都不带 tools
+        assert!(build_chat_body("m", None, &msgs, None).get("tools").is_none());
+        assert!(build_chat_body("m", None, &msgs, Some(&serde_json::json!([]))).get("tools").is_none());
+        assert!(build_chat_body("m", None, &msgs, Some(&serde_json::json!("x"))).get("tools").is_none());
     }
 }
