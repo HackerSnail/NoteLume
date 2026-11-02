@@ -48,7 +48,7 @@ import { t } from './i18n.js'
 
 // —— 批次 D：编辑器命令表 + 动态 keymap ——
 // 可重绑的编辑命令（进统一注册表、面板/设置页可列）。结构键 Enter（分块）、Shift-Enter（硬换行）、
-// Backspace（块首合并 / 选中整块）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进可重绑键位表；
+// Backspace（块首合并 / 删上一代码块 / 选中原子块）与标准重做别名 Shift-Mod-z 固定于 PM keymap，不进可重绑键位表；
 // Mod-Enter（离开代码块）由 baseKeymap 提供，见下方注册表 exitBlock 一条。
 // 默认键位按 Typora/Obsidian 主流习惯配（见 docs/CLAUDE.MD「快捷键规范」）。
 // 标题是词条键（titleKey），registration 时按当前语言取值；换语言由 main.js 重注册刷新。

@@ -161,10 +161,10 @@ export const BLOCK_COMMANDS = {
 // —— 退格 ——
 // 原生链是 deleteSelection → joinBackward → selectNodeBackward；裸绑 selectNodeBackward 会跳过
 // joinBackward，于是任意一块的开头按一次退格就选中上一整块、再按一次整块消失。
-// 这里恢复原生链，只把两类上一块挑出来走「选中整块」：代码块（joinBackward 会把当前段落
-// 的正文并进代码最后一行）与原子块（joinBackward 自带「上一块是 atom 就直接删」分支，
-// 一次按键就把公式 / 图片 / hr 删掉，绕过按一下选中再删的手感）。表格由 isolating 自然
-// 被 joinBackward 拒绝，落到选中分支。
+// 这里恢复原生链，两类上一块单独处理：代码块直接删整块（joinBackward 会把当前段落的正文
+// 并进代码最后一行，选中再删要按两次；改为一次退格删块，当前段落原地不动）；原子块走
+// 「选中整块」（joinBackward 自带「上一块是 atom 就直接删」分支，一次按键就把公式 / 图片 /
+// hr 删掉，绕过按一下选中再删的手感）。表格由 isolating 自然被 joinBackward 拒绝，落到选中分支。
 const backspaceChain = chainCommands(deleteSelection, joinBackward, selectNodeBackward)
 
 // findCutBefore 的同构实现（该函数未导出）：沿祖先上溯找左侧兄弟，撞 isolating 即止
@@ -182,7 +182,12 @@ export function nlBackspace(state, dispatch, view) {
   if ($cursor && (view ? view.endOfTextblock('backward', state) : $cursor.parentOffset === 0)) {
     const cut = cutBefore($cursor)
     const before = cut && cut.nodeBefore
-    if (before && (before.type.spec.code || before.isAtom)) return selectNodeBackward(state, dispatch, view)
+    if (before && before.type.spec.code) {
+      if (!dispatch) return true
+      dispatch(state.tr.delete(cut.pos - before.nodeSize, cut.pos).scrollIntoView())
+      return true
+    }
+    if (before && before.isAtom) return selectNodeBackward(state, dispatch, view)
   }
   return backspaceChain(state, dispatch, view)
 }

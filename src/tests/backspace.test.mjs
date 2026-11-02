@@ -1,8 +1,9 @@
-// backspace.test.mjs —— 退格守卫：块首合并回原位，代码块 / 表格 / 原子块仍走「按一下选中整块」
+// backspace.test.mjs —— 退格守卫：块首合并回原位，代码块一次退格删整块，表格 / 原子块走「按一下选中整块」
 // 运行：cd src && node tests/backspace.test.mjs
 //
 // 背景：仓库曾把 Backspace 裸绑 selectNodeBackward，跳过 joinBackward，任意块首按一次退格
-// 就选中上一整块、再按一次整块消失。本文件钉住新链路的分派：能并的块并、不该并的块选。
+// 就选中上一整块、再按一次整块消失。本文件钉住新链路的分派：能并的块并、代码块直接删、
+// 其余不该并的块选。
 // 断言只到「命令返回值 + 结果文档 + 选区类型」，不依赖 DOM 光标测量，故 view 传恒真桩
 // （等价于光标确实在块首 / 块尾，夹具都按此构造）。
 
@@ -87,29 +88,29 @@ check('列表后段落块首：并回列表末项，列表还在', () => {
   assert.strictEqual(text(s.doc), '一二下面正文。')
 })
 
-check('代码块后段落块首：第一次选中代码块，正文不动', () => {
+check('代码块后段落块首：一次退格删整块，段落正文原地保留', () => {
   const { s, out } = pressTimes(top('```js\nlet a = 1\n```\n\n下面正文。\n'), (d) => caretAtStart(d, /下面/), 1)
   assert.strictEqual(out[0].r, true)
-  assert.ok(s.selection instanceof NodeSelection, '代码块该走选中整块')
-  assert.strictEqual(s.selection.node.type.name, 'code_block')
-  assert.deepStrictEqual(blocks(s.doc), ['code_block', 'paragraph'])
-  assert.match(text(s.doc), /下面正文。/)
-})
-
-check('代码块选中后第二次退格：删整块，段落正文保留（不并成一行）', () => {
-  const { s, out } = pressTimes(top('```js\nlet a = 1\n```\n\n下面正文。\n'), (d) => caretAtStart(d, /下面/), 2)
-  assert.strictEqual(out[1].r, true)
+  assert.ok(!(s.selection instanceof NodeSelection), '不该先选中再删')
   assert.deepStrictEqual(blocks(s.doc), ['paragraph'])
   assert.strictEqual(text(s.doc), '下面正文。')
   assert.ok(!text(s.doc).includes('let a = 1'), '代码内容随块一起消失才对')
 })
 
-check('mermaid 围栏同代码块一档：选中而非并入', () => {
+check('代码块后块首按两次：第二次并回上一块，不再残留选中态', () => {
+  const { s, out } = pressTimes(top('上面一段。\n\n```js\nlet a = 1\n```\n\n下面正文。\n'), (d) => caretAtStart(d, /下面/), 2)
+  assert.strictEqual(out[0].r, true)
+  assert.strictEqual(out[1].r, true)
+  assert.deepStrictEqual(blocks(s.doc), ['paragraph'])
+  assert.strictEqual(text(s.doc), '上面一段。下面正文。')
+})
+
+check('mermaid 围栏同代码块一档：一次退格直接删块', () => {
   const doc = parseMarkdown('```mermaid\ngraph TD;\nA-->B;\n```\n\n下面正文。\n')
   const { s, out } = pressTimes(doc, (d) => caretAtStart(d, /下面/), 1)
   assert.strictEqual(out[0].r, true)
-  assert.ok(s.selection instanceof NodeSelection)
-  assert.strictEqual(s.selection.node.attrs.params, 'mermaid')
+  assert.ok(!(s.selection instanceof NodeSelection))
+  assert.deepStrictEqual(blocks(s.doc), ['paragraph'])
 })
 
 check('表格后段落块首：isolating 挡住合并，选中整表', () => {
