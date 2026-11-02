@@ -699,7 +699,7 @@ export default {
   'git.discarded': 'Verworfen: {path}',
   'git.discardFailed': 'Verwerfen fehlgeschlagen: {err}',
   'git.graphRefresh': 'Aktualisieren',
-  'git.graphFetch': 'Fetch',
+  'git.graphFetch': 'Remote abrufen',
   'git.graphPush': 'Pushen',
   'git.graphPull': 'Pull (Fast-Forward)',
   'git.graphMerge': 'Pull (Merge)',

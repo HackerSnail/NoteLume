@@ -4733,15 +4733,21 @@ html.nl-dragging * {
   opacity: 0.4;
   cursor: default;
 }
-/* 图形区工具条：分支下拉 + 快捷动作 */
+/* 图形区工具条：分支下拉 + 快捷动作（纯图标，悬停见文案；窄面板放不下时换行） */
 .nl-git-graph-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
+  row-gap: 4px;
   margin-bottom: 6px;
 }
 .nl-git-branch-btn {
   max-width: 60%;
+}
+.nl-git-tool-btn {
+  padding: 3px 5px;
+  line-height: 0;
 }
 .nl-git-branch-cur {
   display: inline-flex;

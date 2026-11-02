@@ -699,7 +699,7 @@ export default {
   'git.discarded': 'Abandonné : {path}',
   'git.discardFailed': 'Échec de l’abandon : {err}',
   'git.graphRefresh': 'Actualiser',
-  'git.graphFetch': 'Fetch',
+  'git.graphFetch': 'Récupérer le dépôt distant',
   'git.graphPush': 'Pousser',
   'git.graphPull': 'Tirer (avance rapide)',
   'git.graphMerge': 'Tirer (fusion)',

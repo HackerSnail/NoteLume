@@ -699,7 +699,7 @@ export default {
   'git.discarded': '已放棄：{path}',
   'git.discardFailed': '放棄更改失敗：{err}',
   'git.graphRefresh': '重新整理',
-  'git.graphFetch': 'Fetch',
+  'git.graphFetch': '抓取遠端',
   'git.graphPush': '推送',
   'git.graphPull': '快進拉取',
   'git.graphMerge': '合併拉取',

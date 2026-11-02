@@ -335,8 +335,8 @@ export function createGitPanel(deps) {
     })
     const mkTool = (icon, title, fn) => {
       const b = document.createElement('button')
-      b.className = 'nl-git-btn nl-git-btn-sm'
-      setIcon(b, icon, title)
+      b.className = 'nl-git-btn nl-git-btn-sm nl-git-tool-btn'
+      setIcon(b, icon)
       b.title = title
       b.addEventListener('click', () => fn())
       return b
