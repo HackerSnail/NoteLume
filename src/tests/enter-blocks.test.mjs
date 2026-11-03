@@ -100,6 +100,81 @@ check('代码块 Shift-Enter：块内换行，不再跳出去（改前是 exitCo
   assert.strictEqual(s1.selection.$from.parent.type.name, 'code_block')
 })
 
+// —— 围栏进出：段首 ``` 回车进代码块，块内 ``` 回车出（与空格路径同规则） ——
+// 夹具直接搭节点：未闭合围栏的 md 会被解析器整篇当代码块，搭不出「段首一个 ``` 的段落」
+const fencePara = (text) =>
+  schema.nodes.doc.create(null, schema.nodes.paragraph.create(null, schema.text(text)))
+const fenceCode = (params, text) =>
+  schema.nodes.doc.create(null, schema.nodes.code_block.create({ params }, schema.text(text)))
+const caretIn = (doc, at) => {
+  const st = EditorState.create({ schema, doc })
+  return st.apply(st.tr.setSelection(TextSelection.create(st.doc, at)))
+}
+
+check('段首敲 ```js 回车 → 代码块，围栏吃掉、光标落块内', () => {
+  const st = caretIn(fencePara('```js'), 6)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['code_block'])
+  assert.strictEqual(s1.doc.firstChild.attrs.params, 'js')
+  assert.strictEqual(s1.selection.from, 1, '光标应落在代码块内容起点')
+})
+
+check('段首敲 ``` 回车 → 无语言代码块', () => {
+  const st = caretIn(fencePara('```'), 4)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.strictEqual(s1.doc.firstChild.attrs.params, '')
+})
+
+check('块首带前缀的 x```js 回车不转换（围栏必须在块首）', () => {
+  const st = caretIn(fencePara('x```js'), 7)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['paragraph', 'paragraph'])
+})
+
+check('围栏后已有内容时回车不转换（标记必须正好在光标前）', () => {
+  const st = caretIn(fencePara('```js let a = 1'), 15)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['paragraph', 'paragraph'])
+})
+
+check('块内行尾敲 ``` 回车 → 出代码块，闭围栏行删干净、块后新起一段', () => {
+  const st = caretIn(fenceCode('js', 'let a = 1\n```'), 14)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['code_block', 'paragraph'])
+  assert.deepStrictEqual(texts(s1.doc), ['let a = 1', ''], '闭围栏行（含它的换行）不应留在代码里')
+  assert.strictEqual(s1.selection.from, 12, '光标应落在块后新段里')
+})
+
+check('围栏后还有代码时不退出（块内以 ``` 开头的代码行）', () => {
+  const st = caretIn(fenceCode('', 'let a = 1\n```\nlet b = 2'), 14)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['code_block'], '围栏后还有代码，不该退出')
+  // 围栏行后本就有一个换行：块内加行变成两个，围栏原样留在代码里
+  assert.strictEqual(s1.doc.firstChild.textContent, 'let a = 1\n```\n\nlet b = 2')
+})
+
+check('块内非行首的 ``` 不退出（缩进的围栏行）', () => {
+  const st = caretIn(fenceCode('', 'let a = 1\n  ```'), 15)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['code_block'])
+})
+
+check('空代码块里敲 ``` 回车：退出后代码块留空（可整块删）', () => {
+  const st = caretIn(fenceCode('', '```'), 4)
+  const [ok, s1] = once(st, nlEnter)
+  assert.strictEqual(ok, true)
+  assert.deepStrictEqual(blocks(s1.doc), ['code_block', 'paragraph'])
+  assert.strictEqual(s1.doc.firstChild.textContent, '')
+  assert.strictEqual(s1.selection.from, 3)
+})
+
 check('段落 Shift-Enter：插 hard_break，序列化成行尾反斜杠', () => {
   const s = caret('甲乙丙丁\n', (n) => n.textContent === '甲乙丙丁', 2)
   const [ok, s1] = once(s, nlHardBreak)

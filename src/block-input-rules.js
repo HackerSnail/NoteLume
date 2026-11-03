@@ -9,11 +9,16 @@
 // 敲 `- ` 的空格时整段换成无序列表，接着敲 `[ ] ` 的空格把该项转为任务——两步自然衔接，
 // 与 Typora 相同。标记文字（含那个空格）从段落里删掉，光标后的内容原样保留。
 //
+// 围栏代码块同一条时机（见文末 fenceInputTr）：行首敲 ``` 或 ```lang，落一个空格就地转
+// 代码块，围栏标记吃掉、语言名进 attrs.params。回车路径同规则，在 block-commands.js 的
+// nlEnter 里（fenceEnter），连同块内 ``` 回车的退出（codeFenceExit），进出对称。
+//
 // 不转换的场合：非段落文本块（代码块、标题）；容器放不下列表（表格单元格）；列表标记
 // 不在块首（`x[ ] ` 这种）；标记右侧还有内容时也照样转换（`- abc` 中间补敲的空格同样生效，
 // abc 进列表项——Typora 同行为）。
 
 import { TextSelection } from 'prosemirror-state'
+import { Fragment } from 'prosemirror-model'
 import { schema } from './editor-schema.js'
 
 const BULLET_MARKERS = ['- ', '* ', '+ ']
@@ -95,4 +100,46 @@ export function listInputTr(state, $head, before, text) {
   const tr = state.tr.replaceWith(paraFrom, paraTo, list)
   tr.setSelection(TextSelection.create(tr.doc, paraFrom + 3))
   return tr
+}
+
+// —— 围栏代码块输入规则 ——
+// 行首敲 ``` 或 ```lang，落一个空格就地转代码块（与列表规则同时机：空格落定即转换）。
+// 围栏标记吃掉，光标后的内容原样进块内；语言名落 attrs.params（即围栏 info string），
+// 与解析器对同形态输入的判定一致。回车路径在 block-commands.js 的 nlEnter（fenceEnter），
+// 连同块内 ``` 回车的退出（codeFenceExit），进出对称。
+const FENCE_RE = /^`{3,}([A-Za-z0-9_+#-]*)$/
+
+/**
+ * 光标所在段落整段就是围栏时，把段落换成代码块；否则 null。
+ * 块首约束由 before 的形态保证：before 是块首到光标的文本，`x``` ` 这类前缀不匹配。
+ * @param {import('prosemirror-state').EditorState} state
+ * @param {import('prosemirror-state').ResolvedPos} $head 光标（段落内，sel.empty）
+ * @param {string} before 块首到光标的文本
+ * @returns {import('prosemirror-transform').Transform|null}
+ */
+export function fenceTr(state, $head, before) {
+  if ($head.parent.type.name !== 'paragraph') return null
+  const m = FENCE_RE.exec(before)
+  if (!m) return null
+  // 容器要放得下代码块（脚注项只收一个段落，放不下不转）
+  if (!$head.node(-1).type.contentMatch.matchType(schema.nodes.code_block)) return null
+  const paraFrom = $head.before($head.depth)
+  const paraTo = $head.after($head.depth)
+  // 只收纯文本：段落里可能有 hard_break 等行内节点，代码块的 content 是 text*，
+  // 原样塞进去会被 Node.create 拒掉（剔掉好过抛错——围栏前的那段本就是刚敲的同一段）
+  const rest = []
+  state.doc.slice($head.pos, paraTo - 1).content.forEach((n) => { if (n.isText) rest.push(n) })
+  const cb = schema.nodes.code_block.create({ params: m[1] }, Fragment.from(rest))
+  const tr = state.tr.replaceWith(paraFrom, paraTo, cb)
+  tr.setSelection(TextSelection.create(tr.doc, paraFrom + 1))
+  return tr
+}
+
+/**
+ * 空格落定时的围栏转换（listInputTr 的兄弟，同一时机不同规则，形态互斥不会互相挡）。
+ * @returns {import('prosemirror-transform').Transform|null} 命中返回 transform，未命中 null
+ */
+export function fenceInputTr(state, $head, before, text) {
+  if (text !== ' ') return null
+  return fenceTr(state, $head, before)
 }
