@@ -696,10 +696,7 @@ export function createAiPanel(deps) {
     autosize()
     aiChatStream({
       reqId: optStreaming.reqId,
-      messages: [
-        { role: 'system', content: msgs.system },
-        { role: 'user', content: msgs.user },
-      ],
+      messages: msgs, // buildTaskMessages 已是 OpenAI 数组形态，与选区浮层同一条出口
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey,
       model: cfg.model,

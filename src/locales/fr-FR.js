@@ -1101,6 +1101,7 @@ export default {
   'ai.stopped': 'Arrêté',
   'ai.needConfig': 'Renseignez d’abord l’URL de base et le modèle dans les Réglages IA',
   'ai.needSelection': 'Sélectionnez d’abord du texte dans l’éditeur',
+  'ai.errBadMessages': 'Requête IA invalide : les messages doivent former un tableau non vide',
   'ai.errUnknown': 'Erreur inconnue',
   'ai.errRequest': 'Échec de la requête : {err}',
   'ai.insertDoc': 'Insérer dans le document',

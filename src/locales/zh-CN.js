@@ -1103,6 +1103,7 @@ export default {
   'ai.stopped': '已停止',
   'ai.needConfig': '先在 AI 设置里填好接口地址与模型名',
   'ai.needSelection': '先在编辑器里选中一段文字',
+  'ai.errBadMessages': 'AI 请求参数不对：消息必须是非空的数组',
   'ai.errUnknown': '未知错误',
   'ai.errRequest': '请求失败：{err}',
   'ai.insertDoc': '插入到文档',

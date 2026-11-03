@@ -152,6 +152,13 @@ export function openAiInline(opts) {
       finish(false, t('ai.needConfig'))
       return
     }
+    // messages 必须是 OpenAI 的数组：递个对象给 Rust 侧的 Vec<AiMessage> 会在 IPC
+    // 反序列化阶段就报错、请求根本发不到模型（选区 AI 五项任务曾整体踩在这上头）。
+    // 在这道边界先拦下，浮层上出可读文案，而不是后端那道类型报错
+    if (!Array.isArray(messages) || !messages.length) {
+      finish(false, t('ai.errBadMessages'))
+      return
+    }
     aiChatStream({
       reqId,
       messages,

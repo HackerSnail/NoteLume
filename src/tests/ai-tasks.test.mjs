@@ -35,27 +35,38 @@ t('任务 id 表固定五项', () => {
   assert.deepStrictEqual(AI_TASK_IDS, ['polish', 'continue', 'translate', 'summarize', 'custom'])
 })
 
-t('buildTaskMessages：内置任务返回 system + user，正文被 --- 包裹', () => {
+t('buildTaskMessages：内置任务返回 system + user 两条数组消息，正文被 --- 包裹', () => {
   const m = buildTaskMessages('polish', '旧的句子', '')
-  assert.ok(m && m.system.includes('writing assistant'))
-  assert.ok(m.user.includes('---\n旧的句子\n---'))
-  assert.notStrictEqual(m.user, m.system)
+  assert.ok(Array.isArray(m) && m.length === 2, '必须回两条消息的数组')
+  assert.strictEqual(m[0].role, 'system')
+  assert.ok(m[0].content.includes('writing assistant'))
+  assert.strictEqual(m[1].role, 'user')
+  assert.ok(m[1].content.includes('---\n旧的句子\n---'))
+})
+
+t('buildTaskMessages：返回值必须是数组（Rust AiChatArgs.messages 是 Vec，传对象会让选区 AI 整体不可用）', () => {
+  for (const id of AI_TASK_IDS.filter((x) => x !== 'custom')) {
+    const m = buildTaskMessages(id, 'x', '')
+    assert.ok(Array.isArray(m), id + ' 必须回数组')
+    assert.deepStrictEqual(m.map((e) => e.role), ['system', 'user'])
+    for (const e of m) assert.strictEqual(typeof e.content, 'string')
+  }
 })
 
 t('buildTaskMessages：continuation 只要求输出续写（指令里带 continue 字样）', () => {
   const m = buildTaskMessages('continue', '前文', '')
-  assert.ok(/continue/i.test(m.user))
+  assert.ok(/continue/i.test(m[1].content))
 })
 
 t('buildTaskMessages：翻译任务带中英互译指令', () => {
   const m = buildTaskMessages('translate', '你好', '')
-  assert.ok(m.user.includes('English') && m.user.includes('Chinese'))
+  assert.ok(m[1].content.includes('English') && m[1].content.includes('Chinese'))
 })
 
 t('buildTaskMessages：custom 无指令回 null，有指令拼进 user', () => {
   assert.strictEqual(buildTaskMessages('custom', '文本', '   '), null)
   const m = buildTaskMessages('custom', '文本', '改成表格')
-  assert.ok(m.user.startsWith('改成表格\n\n---\n文本\n---'))
+  assert.ok(m[1].content.startsWith('改成表格\n\n---\n文本\n---'))
 })
 
 t('buildTaskMessages：未知任务回 null', () => {

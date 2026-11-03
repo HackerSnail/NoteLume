@@ -31,17 +31,22 @@ const TASK_BUILDERS = {
     'Summarize the following text in one short paragraph, in the same language as the text.\n\n---\n' + text + '\n---',
 }
 
-/** 任务 → OpenAI messages。custom 走用户自填指令；未知任务回 null。 */
+/**
+ * 任务 → OpenAI messages 数组（可直接交给 ai_chat_stream）。
+ * 必须是数组不是对象：Rust 侧 AiChatArgs.messages 是 Vec<AiMessage>，
+ * 递个 {system,user} 过去会在 IPC 反序列化阶段就报错、请求根本发不出去。
+ * custom 走用户自填指令；未知任务 / custom 无指令回 null。
+ */
 export function buildTaskMessages(taskId, text, customPrompt) {
   const sel = String(text || '')
   if (taskId === 'custom') {
     const inst = String(customPrompt || '').trim()
     if (!inst) return null
-    return { system: SYSTEM, user: inst + '\n\n---\n' + sel + '\n---' }
+    return [{ role: 'system', content: SYSTEM }, { role: 'user', content: inst + '\n\n---\n' + sel + '\n---' }]
   }
   const build = TASK_BUILDERS[taskId]
   if (!build) return null
-  return { system: SYSTEM, user: build(sel) }
+  return [{ role: 'system', content: SYSTEM }, { role: 'user', content: build(sel) }]
 }
 
 /** 模型爱客套：剥掉结果外层的 ``` 围栏与「以下是…：/Here is…：」式整行引导 */

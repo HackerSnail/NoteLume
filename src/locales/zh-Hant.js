@@ -1102,6 +1102,7 @@ export default {
   'ai.stopped': '已停止',
   'ai.needConfig': '請先在 AI 設定裡填好介面位址與模型名稱',
   'ai.needSelection': '請先在編輯器裡選取一段文字',
+  'ai.errBadMessages': 'AI 請求參數不對：訊息必須是非空的陣列',
   'ai.errUnknown': '未知錯誤',
   'ai.errRequest': '請求失敗：{err}',
   'ai.insertDoc': '插入到文件',

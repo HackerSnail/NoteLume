@@ -1103,6 +1103,7 @@ export default {
   'ai.stopped': 'Stopped',
   'ai.needConfig': 'Set the base URL and model name in AI Settings first',
   'ai.needSelection': 'Select some text in the editor first',
+  'ai.errBadMessages': 'Bad AI request: messages must be a non-empty array',
   'ai.errUnknown': 'Unknown error',
   'ai.errRequest': 'Request failed: {err}',
   'ai.insertDoc': 'Insert into document',

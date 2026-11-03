@@ -1101,6 +1101,7 @@ export default {
   'ai.stopped': 'Gestoppt',
   'ai.needConfig': 'Bitte zuerst Basis-URL und Modellnamen in den KI-Einstellungen eintragen',
   'ai.needSelection': 'Bitte zuerst Text im Editor auswählen',
+  'ai.errBadMessages': 'Ungültige KI-Anfrage: messages müssen ein nicht leeres Array sein',
   'ai.errUnknown': 'Unbekannter Fehler',
   'ai.errRequest': 'Anfrage fehlgeschlagen: {err}',
   'ai.insertDoc': 'Ins Dokument einfügen',
