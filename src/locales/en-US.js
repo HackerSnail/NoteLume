@@ -991,6 +991,7 @@ export default {
   'editor.linkText': 'link text',
   'suggest.wikiHead': 'Link to document',
   'suggest.tagHead': 'Existing tags',
+  'suggest.fenceHead': 'Code block language',
   'tpl.weekday.0': 'Sunday',
   'tpl.weekday.1': 'Monday',
   'tpl.weekday.2': 'Tuesday',

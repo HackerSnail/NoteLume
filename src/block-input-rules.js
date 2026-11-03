@@ -107,7 +107,9 @@ export function listInputTr(state, $head, before, text) {
 // 围栏标记吃掉，光标后的内容原样进块内；语言名落 attrs.params（即围栏 info string），
 // 与解析器对同形态输入的判定一致。回车路径在 block-commands.js 的 nlEnter（fenceEnter），
 // 连同块内 ``` 回车的退出（codeFenceExit），进出对称。
-const FENCE_RE = /^`{3,}([A-Za-z0-9_+#-]*)$/
+// 语言联想（敲 ``` 后弹语言下拉，Typora 式）在 suggest-plugin.js 的 fence 分支，
+// 确认选中语言走下面的 fenceLangTr——与空格 / 回车路径共用同一条转换规则。
+export const FENCE_RE = /^`{3,}([A-Za-z0-9_+#-]*)$/
 
 /**
  * 光标所在段落整段就是围栏时，把段落换成代码块；否则 null。
@@ -142,4 +144,30 @@ export function fenceTr(state, $head, before) {
 export function fenceInputTr(state, $head, before, text) {
   if (text !== ' ') return null
   return fenceTr(state, $head, before)
+}
+
+/**
+ * 语言联想的确认路径（suggest-plugin.js 的 fence 分支，Enter / Tab / 点击选中时调）：
+ * 段首围栏 + 已敲的语言名整段换成代码块，语言取联想选中值（不是 before 里敲的那串——
+ * 用户可能敲到一半就选中了别的），语言名文本整段删除、不进块内。
+ * 只认「整段就是围栏 + 语言名」的形态；光标后还挂着内容时交给 nlEnter 的 fenceEnter
+ * （那边保留光标后内容进块内，是「```js 代码」的既有语义，与空格路径同一口径）。
+ * @param {import('prosemirror-state').EditorState} state
+ * @param {string} lang 选中的语言（hljs 注册名或预览语言；'' = 纯文本）
+ * @returns {import('prosemirror-transform').Transform|null}
+ */
+export function fenceLangTr(state, lang) {
+  const { $from, empty } = state.selection
+  if (!empty || $from.parent.type.name !== 'paragraph') return null
+  const start = $from.start()
+  const paraTo = $from.after($from.depth)
+  const paraText = state.doc.textBetween(start, paraTo - 1, '\u0000', '\u0000')
+  if (!FENCE_RE.test(paraText)) return null
+  // 容器要放得下代码块（脚注项只收一个段落，放不下不转）
+  if (!$from.node(-1).type.contentMatch.matchType(schema.nodes.code_block)) return null
+  const paraFrom = $from.before($from.depth)
+  const cb = schema.nodes.code_block.create({ params: lang })
+  const tr = state.tr.replaceWith(paraFrom, paraTo, cb)
+  tr.setSelection(TextSelection.create(tr.doc, paraFrom + 1))
+  return tr
 }

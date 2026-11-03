@@ -990,6 +990,7 @@ export default {
   'editor.linkText': '連結文字',
   'suggest.wikiHead': '連結到文件',
   'suggest.tagHead': '已有標籤',
+  'suggest.fenceHead': '程式碼區塊語言',
   'tpl.weekday.0': '星期日',
   'tpl.weekday.1': '星期一',
   'tpl.weekday.2': '星期二',

@@ -989,6 +989,7 @@ export default {
   'editor.linkText': 'texte du lien',
   'suggest.wikiHead': 'Lier vers un document',
   'suggest.tagHead': 'Étiquettes existantes',
+  'suggest.fenceHead': 'Langage du bloc de code',
   'tpl.weekday.0': 'dimanche',
   'tpl.weekday.1': 'lundi',
   'tpl.weekday.2': 'mardi',
