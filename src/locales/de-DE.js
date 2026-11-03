@@ -960,6 +960,7 @@ export default {
   'editor.linkText': 'Linktext',
   'suggest.wikiHead': 'Mit Dokument verlinken',
   'suggest.tagHead': 'Vorhandene Tags',
+  'suggest.fenceHead': 'Sprache des Codeblocks',
   'tpl.weekday.0': 'Sonntag',
   'tpl.weekday.1': 'Montag',
   'tpl.weekday.2': 'Dienstag',

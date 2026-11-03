@@ -1,9 +1,13 @@
-// suggest-plugin.js —— `[[` 文档名 / `#` 标签 输入自动补全下拉（手搓 ProseMirror 插件，零新依赖）
-// 机制：不拦截文本输入；每次 doc/选区变化后在光标前识别 `[[query` 或 `#query`，命中候选则弹下拉；
-// ↑/↓ 移动、Enter/Tab 选当前、Esc 关闭；选中后用 schema 已有的 wikiLink / tag 节点替换原始 `[[…`/`#…`。
+// suggest-plugin.js —— `[[` 文档名 / `#` 标签 / 段首 ``` 语言 输入自动补全下拉（手搓 ProseMirror 插件，零新依赖）
+// 机制：不拦截文本输入；每次 doc/选区变化后在光标前识别 `[[query`、`#query` 或段首
+// ``` / ```lang，命中候选则弹下拉；↑/↓ 移动、Enter/Tab 选当前、Esc 关闭；
+// 选中后用 schema 已有的 wikiLink / tag 节点替换原始 `[[…`/`#…`，围栏语言则整段转
+// code_block（fenceLangTr，与空格 / 回车进入路径同一条转换规则）。
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
+import { FENCE_RE, fenceLangTr } from './block-input-rules.js'
+import { filterFenceLangs } from './code-lang-list.js'
 import { t } from './i18n.js'
 
 export const suggestKey = new PluginKey('nl-suggest')
@@ -67,11 +71,29 @@ export function createSuggestPlugin({ getDocs, getTags }) {
       if (items.length) return { kind: 'tag', from, to: caret, query: m[1], items }
       return null
     }
+
+    // 段首 ``` / ```lang 的语言联想（Typora 式）：只认段落——代码块里敲 ``` 是代码内容，
+    // 块内退出走 block-commands.js 的 codeFenceExit，不在这弹；候选为 hljs 注册语言
+    // （含 bibtex / csv / mermaid 预览语言），前缀过滤，常用置顶。
+    // 锚点取语言名起点（没敲语言时落在围栏末端即光标处），浮层贴着正在打的语言名
+    m = FENCE_RE.exec(before)
+    if (m) {
+      if ($head.parent.type.name !== 'paragraph') return null
+      const items = filterFenceLangs(m[1])
+      if (items.length) return { kind: 'fence', from: caret - m[1].length, to: caret, query: m[1], items }
+      return null
+    }
     return null
   }
 
   function applyCompletion(view, spec, value) {
     const state = view.state
+    // 围栏语言：整段转代码块（params = 选中语言），光标落块内，之后直接打代码
+    if (spec.kind === 'fence') {
+      const tr = fenceLangTr(state, value)
+      if (tr) view.dispatch(tr.scrollIntoView())
+      return
+    }
     let node
     if (spec.kind === 'wiki') node = schema.nodes.wikiLink.create({ target: value, label: null })
     else node = schema.nodes.tag.create({ tag: value })
@@ -116,7 +138,7 @@ export function createSuggestPlugin({ getDocs, getTags }) {
     el.innerHTML = ''
     const head = document.createElement('div')
     head.className = 'nl-suggest-head'
-    head.textContent = spec.kind === 'wiki' ? t('suggest.wikiHead') : t('suggest.tagHead')
+    head.textContent = spec.kind === 'wiki' ? t('suggest.wikiHead') : spec.kind === 'tag' ? t('suggest.tagHead') : t('suggest.fenceHead')
     el.appendChild(head)
     spec.items.forEach((value, i) => {
       const item = document.createElement('div')

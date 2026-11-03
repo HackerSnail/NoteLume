@@ -238,8 +238,11 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - 围栏代码块同族：段首敲 ``` / ```lang 落空格就地转代码块（`fenceInputTr`），回车路径同规则（nlEnter 的 `fenceEnter`）；语言名进 attrs.params（即围栏 info string），```mermaid / ```bibtex 直接带预览参数
 - 进出对称：代码块末行行尾整行敲 ``` 回车 = 退出，闭围栏行连它前面的换行一起删、块后另起一段（nlEnter 的 `codeFenceExit`）；围栏后还有代码、或围栏行不在行首（缩进）时不退，块内只加行
 - 围栏标记必须正好在光标前（```js 后已带内容时不转），且容器放得下代码块（脚注项只收一个段落，放不下不转）
+- 语言联想（2026-11-04，对齐 Typora）：段首敲完 ``` 即弹语言下拉（suggest-plugin.js 的 fence 分支，↑/↓ 移动、Enter/Tab/点击选中、Esc 关闭），候选为 hljs 注册语言 + bibtex / csv / mermaid 预览语言，常用置顶、前缀过滤（敲 j 不出 bash——「包含」过滤会被无关语言挤掉）；别名一并进候选（js / ts / py / sh / yml / rb / md / c++ / golang——hljs 的 listLanguages 只报主名，敲 js 不出 javascript 等于没联想），选中别名即 params=别名，hljs 认别名、序列化器原样写围栏 info，往返不变形
+- 联想选中即整段转 code_block（`fenceLangTr`，与空格 / 回车路径同一条转换规则）：语言取选中值（不是敲入的那串——可能敲到一半选中别的），语言名文本整段删除不进块内；Esc 后段落保留字面 ```lang，再落空格 / 回车仍按旧路径转；代码块里敲 ``` 不弹（块内是代码内容，退出走 codeFenceExit）
+- 候选表两个入口共用一份：`src/code-lang-list.js`（联想前缀过滤、语言标签选择器包含过滤 + 「纯文本」项），只读 hljs 注册表不注册语言，选中即有高亮由 hljs 保证
 
-测试 `node tests/block-input-rules.test.mjs` 27 条：正例断言会话文档与解析产物 `eq`、序列化写回标准 GFM；回车进出路径另见 `node tests/enter-blocks.test.mjs` 26 条。Playwright 真机路径（合成环境须给 .ProseMirror 补 `white-space: pre-wrap`，缺了 PM 把空格换成 NBSP，码点 160，规则不触发）。
+测试 `node tests/block-input-rules.test.mjs` 27 条：正例断言会话文档与解析产物 `eq`、序列化写回标准 GFM；回车进出路径另见 `node tests/enter-blocks.test.mjs` 26 条；语言联想（候选表过滤 + `fenceLangTr` 确认语义）见 `node tests/fence-lang-suggest.test.mjs` 15 条，浮层显隐 / 键盘交互归真机。Playwright 真机路径（合成环境须给 .ProseMirror 补 `white-space: pre-wrap`，缺了 PM 把空格换成 NBSP，码点 160，规则不触发）。
 
 ## 标准 GFM 导出（2026-10-26）
 

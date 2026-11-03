@@ -962,6 +962,7 @@ export default {
   'editor.linkText': '链接文字',
   'suggest.wikiHead': '链接到文档',
   'suggest.tagHead': '已有标签',
+  'suggest.fenceHead': '代码块语言',
   'tpl.weekday.0': '星期日',
   'tpl.weekday.1': '星期一',
   'tpl.weekday.2': '星期二',

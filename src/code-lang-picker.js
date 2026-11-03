@@ -4,22 +4,11 @@
 //  · 语言只写入 code_block.attrs.params（即围栏 info string ```lang），永不进入正文；
 //  · 语法高亮（hl-decorations）与 mermaid 预览都按 params 驱动，改完 setNodeMarkup 触发 docChanged 自动重渲染；
 //  · 候选语言取自 highlight.js 已注册语言（保证选中即有高亮），常用语言置顶；
+//  · 候选表与敲 ``` 的语言联想（suggest-plugin.js 的 fence 分支）共用 code-lang-list.js。
 //  · 纯 DOM 浮层，复用 .nl-suggest 的观感与交互（↑/↓/Enter/Esc + 输入过滤），零新依赖。
 
-import hljs from 'highlight.js/lib/common'
+import { fenceLangList } from './code-lang-list.js'
 import { t } from './i18n.js'
-
-// 常用语言置顶（仅保留 hljs 实际注册的那些，其余按字母序补在后面）
-const PREFERRED = [
-  'javascript', 'typescript', 'python', 'java', 'go', 'rust', 'c', 'cpp', 'csharp',
-  'sql', 'json', 'yaml', 'xml', 'html', 'css', 'bash', 'shell', 'powershell',
-  'markdown', 'dockerfile', 'kotlin', 'swift', 'php', 'ruby', 'scala', 'diff', 'ini',
-]
-
-// 预览块语言：不靠 highlight.js 上色，靠各自的预览插件把代码块换成图 / 表 / 条目
-// （mermaid-preview.js / csv-preview.js / bibtex-preview.js）。hljs 的注册表里没有它们，
-// 不补进列表就只能去源码态手写围栏 info，预览功能等于没有入口
-const PREVIEW_LANGS = ['bibtex', 'csv', 'mermaid']
 
 export function attachCodeLangPicker(view) {
   let menu = null // { el, input, list, items, index, nodePos }
@@ -56,13 +45,8 @@ export function attachCodeLangPicker(view) {
 
   function buildItems(filter) {
     const q = (filter || '').toLowerCase().trim()
-    const reg = hljs.listLanguages()
-    const regSet = new Set(reg)
-    const head = PREFERRED.filter((l) => regSet.has(l))
-    const extra = PREVIEW_LANGS.filter((l) => !regSet.has(l) && !head.includes(l))
-    const rest = reg.filter((l) => !head.includes(l)).sort()
     const opts = [{ label: t('codelang.plainText'), value: '' }]
-    for (const l of [...head, ...extra, ...rest]) {
+    for (const l of fenceLangList()) {
       if (!q || l.includes(q)) opts.push({ label: l, value: l })
     }
     return opts.slice(0, 300)
