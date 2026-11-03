@@ -19,8 +19,10 @@ cache/
 .DS_Store
 Thumbs.db
 
-# 无头调试产物（CDP 测试驱动与输出）
+# 无头调试产物（CDP 测试驱动与输出；.rel_*.json 是发版时抓的 release API 响应缓存）
 .cdp-profile/
+.playwright-cli/
+.rel_*.json
 src/__appdriver.mjs
 src/app-err.txt
 src/app-out.txt
