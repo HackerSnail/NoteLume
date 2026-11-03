@@ -388,8 +388,10 @@ export function createAiPanel(deps) {
       }
     }
     base.push({ role: 'system', content: t('ai.agentHint') })
-    const baseLen = base.length
+    // 循环返回的 seq = 系统前缀 + history + 本轮新增；newMsgs 的切片起点必须是
+    // history 的结束位置。只记前缀长度会把旧历史当本轮新增二次追加（历史整段翻倍）
     base.push(...history)
+    const histEnd = base.length
     const tools = pickTools({ vaultReady: typeof vaultReady === 'function' ? !!vaultReady() : false })
     try {
       const res = await runAgentLoop({
@@ -418,7 +420,7 @@ export function createAiPanel(deps) {
         },
         shouldStop: () => agentStopFlag,
       })
-      finishAgent(res, baseLen)
+      finishAgent(res, histEnd)
     } catch (e) {
       finishError((e && e.message) || String(e), t('ai.noToolsTip'))
     } finally {
@@ -427,15 +429,16 @@ export function createAiPanel(deps) {
     }
   }
 
-  function finishAgent(res, baseLen) {
+  function finishAgent(res, histEnd) {
     if (!streaming) return
     const el = streaming.el
     if (res.error) {
       finishError(res.error, t('ai.noToolsTip'))
       return
     }
-    // 采纳循环推进的消息（assistant / tool）进历史；最后一段助手文本剥掉锚点标记再存
-    const newMsgs = (res.messages || []).slice(baseLen)
+    // 采纳循环推进的消息（assistant / tool）进历史；起点取 seq 里 history 段之后，
+    // 否则旧历史会被重复追加；最后一段助手文本剥掉锚点标记再存
+    const newMsgs = (res.messages || []).slice(histEnd)
     const finalText = String(res.text || '')
     const { anchor, body } = parseAgentReply(finalText)
     for (let i = newMsgs.length - 1; i >= 0; i--) {

@@ -235,6 +235,47 @@ t('请求失败：错误气泡带「切回 Ask」提示', async () => {
   }
 })
 
+t('连发两轮 Agent：上一轮的历史不在新请求里翻倍（newMsgs 切片起点回归）', async () => {
+  const reqs = []
+  let round = 0
+  let secondSend = false
+  let firstReqOfSecond = null
+  const { panel, root } = makePanel({
+    streamRequest: async (messages) => {
+      const snap = messages.map((m) => (m.role + ':' + (typeof m.content === 'string' ? m.content : '[parts]')))
+      reqs.push(snap)
+      if (secondSend && !firstReqOfSecond) firstReqOfSecond = snap
+      round++
+      // 每问的轮次：第 1、2、4、5 轮回工具调用，第 3、6 轮给最终回答
+      if (round === 1 || round === 2 || round === 4 || round === 5) {
+        return { text: '', toolCalls: [{ id: 'c' + round, name: 'read_note', arguments: '{"path":"a.md"}' }] }
+      }
+      return { text: '末轮回答', toolCalls: null }
+    },
+  })
+  try {
+    send(root, '第一问')
+    await until(() => reqs.length >= 3)
+    await until(() => root.querySelector('.ai-applied'))
+    secondSend = true
+    send(root, '第二问')
+    await until(() => reqs.some((x) => x.includes('user:第二问')))
+    await until(() => root.textContent.includes('已应用') || root.textContent.includes('已插入'))
+    // 第二问的首个请求：系统前缀 1（getDocContext 空，只剩 agentHint）+ 第一问那轮 6 条 + 第二问 = 8
+    const r = firstReqOfSecond
+    assert.strictEqual(r.filter((m) => m === 'user:第一问').length, 1, '旧 user 消息不应翻倍')
+    assert.strictEqual(r.filter((m) => m === 'assistant:末轮回答').length, 1, '末轮回答已入史')
+    assert.strictEqual(r.length, 8, '序列长度应只增本轮：' + JSON.stringify(r))
+    // 末轮请求：本轮 assistant/tool 各只多一份，第一问仍只 1 条
+    const last = reqs[reqs.length - 1]
+    assert.strictEqual(last.filter((m) => m === 'user:第一问').length, 1)
+    assert.strictEqual(last.filter((m) => m === 'user:第二问').length, 1)
+  } finally {
+    panel.destroy()
+    root.remove()
+  }
+})
+
 for (const job of queue) await job()
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exitCode = fail ? 1 : 0
