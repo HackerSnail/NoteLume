@@ -3,7 +3,7 @@
 // 与 slash-menu 的分工：slash 只在「空段落敲 /」时就地把该块替换掉；这里是**显式命令**，
 // 作用于当前选区覆盖的块：标题/正文/引用/代码块走 setBlockType（保留行内内容），
 // 列表走包裹，分割线/表格/卡片走当前块之后插入（不销毁已有内容）。
-import { setBlockType, wrapIn, chainCommands, deleteSelection, joinBackward, selectNodeBackward, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock } from 'prosemirror-commands'
+import { setBlockType, wrapIn, chainCommands, deleteSelection, joinBackward, joinForward, selectNodeBackward, selectNodeForward, selectParentNode, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock } from 'prosemirror-commands'
 import { wrapInList, splitListItem } from 'prosemirror-schema-list'
 import { TextSelection } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
@@ -158,16 +158,18 @@ export const BLOCK_COMMANDS = {
   callout: insertBelow(() => [N.callout.create({ type: 'note', title: 'NOTE' }, para()), para()]),
 }
 
-// —— 退格 ——
-// 原生链是 deleteSelection → joinBackward → selectNodeBackward；裸绑 selectNodeBackward 会跳过
-// joinBackward，于是任意一块的开头按一次退格就选中上一整块、再按一次整块消失。
-// 这里恢复原生链，两类上一块单独处理：代码块直接删整块（joinBackward 会把当前段落的正文
-// 并进代码最后一行，选中再删要按两次；改为一次退格删块，当前段落原地不动）；原子块走
-// 「选中整块」（joinBackward 自带「上一块是 atom 就直接删」分支，一次按键就把公式 / 图片 /
-// hr 删掉，绕过按一下选中再删的手感）。表格由 isolating 自然被 joinBackward 拒绝，落到选中分支。
+// —— 退格 / 前向删除 ——
+// 原生链：退格 deleteSelection → joinBackward → selectNodeBackward，前向删除则是
+// deleteSelection → joinForward → selectNodeForward。裸绑 selectNodeBackward/Forward 会跳过
+// join*，任意一块的开头按一次就选中上一整块、再按一次整块消失。这里恢复原生链，只把代码块与
+// 原子块这两类挑出来走「选中整块」：joinBackward 会把当前段落的正文并进代码最后一行、
+// joinForward 会把下一块并进代码块，两条 join* 又都自带「邻居是 atom 就直接删」分支，
+// 一次按键整块消失，绕过按一下选中再删的手感。表格由 isolating 自然被 join* 拒绝，落到选中分支。
 const backspaceChain = chainCommands(deleteSelection, joinBackward, selectNodeBackward)
+const delChain = chainCommands(deleteSelection, joinForward, selectNodeForward)
 
-// findCutBefore 的同构实现（该函数未导出）：沿祖先上溯找左侧兄弟，撞 isolating 即止
+// findCutBefore / findCutAfter 的同构实现（两者均未导出）：沿祖先上溯找左 / 右侧兄弟块，
+// 父块 isolating 直接放弃、途中撞 isolating 即止。退格挑「上一块」、前向删挑「下一块」。
 function cutBefore($pos) {
   if ($pos.parent.type.spec.isolating) return null
   for (let d = $pos.depth - 1; d >= 0; d--) {
@@ -177,19 +179,66 @@ function cutBefore($pos) {
   return null
 }
 
+function cutAfter($pos) {
+  if ($pos.parent.type.spec.isolating) return null
+  for (let d = $pos.depth - 1; d >= 0; d--) {
+    if ($pos.index(d) + 1 < $pos.node(d).childCount) return $pos.doc.resolve($pos.after(d + 1))
+    if ($pos.node(d).type.spec.isolating) break
+  }
+  return null
+}
+
+// 选区正好覆盖整个代码块的内容（拖选 / 三击选完整块）：等价于选中整块，一次删除连节点
+// 一起去——deleteSelection 只删文本，会留一个空围栏壳。返回该代码块的位置，否则 null。
+function coveredCodeBlock(state) {
+  const sel = state.selection
+  if (sel.$cursor || sel.from === sel.to) return null
+  const $from = sel.$from
+  const $to = sel.$to
+  if (!$from.parent.type.spec.code || !$to.parent.type.spec.code) return null
+  if ($from.parentOffset !== 0 || $to.parentOffset !== $to.parent.content.size) return null
+  const pos = $from.before($from.depth)
+  return pos === $to.before($to.depth) ? pos : null
+}
+
+// 删掉整个代码块节点：删的是节点占位 [pos, pos + nodeSize)，光标随删除点落到附近合法位。
+function deleteCodeBlockAt(state, dispatch, pos) {
+  const node = state.doc.nodeAt(pos)
+  if (!node || !node.type.spec.code) return false
+  if (dispatch) dispatch(state.tr.delete(pos, pos + node.nodeSize).scrollIntoView())
+  return true
+}
+
 export function nlBackspace(state, dispatch, view) {
+  const covered = coveredCodeBlock(state)
+  if (covered != null) return deleteCodeBlockAt(state, dispatch, covered)
   const $cursor = state.selection.$cursor
   if ($cursor && (view ? view.endOfTextblock('backward', state) : $cursor.parentOffset === 0)) {
     const cut = cutBefore($cursor)
     const before = cut && cut.nodeBefore
-    if (before && before.type.spec.code) {
-      if (!dispatch) return true
-      dispatch(state.tr.delete(cut.pos - before.nodeSize, cut.pos).scrollIntoView())
-      return true
-    }
-    if (before && before.isAtom) return selectNodeBackward(state, dispatch, view)
+    if (before && (before.type.spec.code || before.isAtom)) return selectNodeBackward(state, dispatch, view)
+    // 光标在代码块首行行首、上一块又是可合并块：deleteBarrier 会把整个代码块的内容并进
+    // 上一块，一次按键整块消失。改选中当前代码块，再按一次才删。判据取模型位
+    // parentOffset===0——代码块里的换行是文本 \n，视觉行首（第二行起）不等于块首。
+    if ($cursor.parentOffset === 0 && $cursor.parent.type.spec.code && selectParentNode(state, dispatch)) return true
   }
   return backspaceChain(state, dispatch, view)
+}
+
+// 前向删除（Delete 键）：与退格同构、方向相反。绑在仓库键位，返回 false 时退回
+// baseKeymap 的 del（同两条原生命令，行为不变）。
+export function nlDelete(state, dispatch, view) {
+  const covered = coveredCodeBlock(state)
+  if (covered != null) return deleteCodeBlockAt(state, dispatch, covered)
+  const $cursor = state.selection.$cursor
+  if ($cursor && (view ? view.endOfTextblock('forward', state) : $cursor.parentOffset === $cursor.parent.content.size)) {
+    const cut = cutAfter($cursor)
+    const after = cut && cut.nodeAfter
+    if (after && (after.type.spec.code || after.isAtom)) return selectNodeForward(state, dispatch, view)
+    // 光标在代码块末行行尾：joinForward 会把下一块并进代码块末行，改选中当前代码块。
+    if ($cursor.parentOffset === $cursor.parent.content.size && $cursor.parent.type.spec.code && selectParentNode(state, dispatch)) return true
+  }
+  return delChain(state, dispatch, view)
 }
 
 // 硬换行命令（固定结构键 Shift-Enter）。表格里=上一格（格内插 hard_break 会把表写坏，见 §3 实测），
