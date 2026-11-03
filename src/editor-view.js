@@ -11,7 +11,7 @@ import { baseKeymap, toggleMark, exitCode } from 'prosemirror-commands'
 import { gapCursor } from 'prosemirror-gapcursor'
 import { schema, parseMarkdown, serializeMarkdown, serializeMarkdownMapped } from './editor-schema.js'
 import { emphasisInputTr } from './inline-input-rules.js'
-import { listInputTr } from './block-input-rules.js'
+import { listInputTr, fenceInputTr } from './block-input-rules.js'
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js'
 import { resolveSourceText } from './source-sync.js'
 import { createPosMapper } from './pos-map.js'
@@ -277,10 +277,10 @@ export function createEditor(opts) {
           }
           return false
         }
-        // 块级输入规则：`- ` / `1. ` / `[ ] ` 敲完空格就地转列表（Typora 手感）。
-        // 规则在 block-input-rules.js，纯逻辑可单测。
+        // 块级输入规则：`- ` / `1. ` / `[ ] ` 敲完空格就地转列表（Typora 手感）；
+        // 行首 ``` / ```lang 的空格就地转代码块。规则在 block-input-rules.js，纯逻辑可单测。
         if (text === ' ') {
-          const tr = listInputTr(state, $head, before, text)
+          const tr = listInputTr(state, $head, before, text) || fenceInputTr(state, $head, before, text)
           if (tr) {
             view.dispatch(tr.scrollIntoView())
             return true

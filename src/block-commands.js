@@ -8,6 +8,7 @@ import { wrapInList, splitListItem } from 'prosemirror-schema-list'
 import { TextSelection } from 'prosemirror-state'
 import { schema } from './editor-schema.js'
 import { nlCellEnter, nlCellBack } from './table-editing.js'
+import { fenceTr } from './block-input-rules.js'
 
 const N = schema.nodes
 const para = () => N.paragraph.create()
@@ -298,13 +299,49 @@ function splitHeadingDown(state, dispatch) {
   return true
 }
 
+// 围栏代码块的进出（固定结构键 Enter），与空格路径（block-input-rules.js 的 fenceInputTr）
+// 同一条规则、两个触发键：段首敲 ``` / ```lang 回车进代码块，围栏吃掉、光标落块内。
+function fenceEnter(state, dispatch) {
+  const { $from, empty } = state.selection
+  if (!empty) return false
+  const before = state.doc.textBetween($from.start(), $from.pos, '\u0000', '\u0000')
+  const tr = fenceTr(state, $from, before)
+  if (!tr) return false
+  if (dispatch) dispatch(tr.scrollIntoView())
+  return true
+}
+
+// 块内行首敲 ``` 回车 = 出代码块：闭围栏吃掉，块后另起一段、光标落进去。进出对称，
+// 不必记 Mod-Enter 也能自然收尾。只认「块尾那一行整行是围栏」——围栏后还有代码时不退，
+// 否则块内真的以 ``` 开头的代码行会被误当闭围栏。
+function codeFenceExit(state, dispatch) {
+  const { $from, empty } = state.selection
+  if (!empty || $from.parent.type.name !== 'code_block') return false
+  const before = state.doc.textBetween($from.start(), $from.pos, '\u0000', '\u0000')
+  const lastLine = before.slice(before.lastIndexOf('\n') + 1)
+  if (!/^`{3,}$/.test(lastLine)) return false
+  if ($from.parentOffset !== $from.parent.content.size) return false
+  if (!dispatch) return true
+  // 闭围栏整行删：行首那个换行属于围栏行不属于代码（整块就是一个围栏时前面没有换行）。
+  // 块结束位置经 mapping 映射——删除后旧坐标已失效，直接用会插错地方
+  const cutFrom = $from.pos - lastLine.length - (lastLine.length < before.length ? 1 : 0)
+  const tr = state.tr.delete(cutFrom, $from.pos)
+  const at = tr.mapping.map($from.after($from.depth))
+  tr.insert(at, para())
+  tr.setSelection(TextSelection.create(tr.doc, at + 1))
+  dispatch(tr.scrollIntoView())
+  return true
+}
+
 // 分块命令（固定结构键 Enter）：表格里走格 / 末格出表，列表项内新起一项，标题降正文，
-// 脚注项内换行，其余照原生链。
+// 脚注项内换行，段首围栏进 / 块尾围栏出代码块，其余照原生链。
 // splitListItem 在空列表项上返回 false，交回 liftEmptyBlock 退出列表，与 Typora 一致。
 export const nlEnter = chainCommands(
   nlCellEnter,
   splitListItem(N.list_item),
   splitHeadingDown,
+  fenceEnter,
+  codeFenceExit,
   (state, dispatch) => (inFootnoteItem(state) ? insertBreak(state, dispatch) : false),
   newlineInCode,
   createParagraphNear,

@@ -1,14 +1,14 @@
-// block-input-rules.test.mjs —— 列表族输入规则（纯模型，无需浏览器）
+// block-input-rules.test.mjs —— 列表族 / 围栏代码块输入规则（纯模型，无需浏览器）
 // 运行：cd src && node tests/block-input-rules.test.mjs
 //
-// 逐字符模拟击键：空格落定时调 listInputTr（即 editor-view.js handleTextInput 里那段），
-// 命中就应用 transform，未命中按普通插入文本。核心断言：会话得到的文档 == 把这串字符
+// 逐字符模拟击键：空格落定时调 listInputTr / fenceInputTr（即 editor-view.js handleTextInput
+// 里那段），命中就应用 transform，未命中按普通插入文本。核心断言：会话得到的文档 == 把这串字符
 // 当 md 解析得到的文档（所见即所得不与解析器分叉），以及序列化写回的标准 GFM 形态。
 
 import assert from 'node:assert'
 import { EditorState, TextSelection } from 'prosemirror-state'
 import { schema, parseMarkdown, serializeMarkdown } from '../editor-schema.js'
-import { listInputTr } from '../block-input-rules.js'
+import { listInputTr, fenceInputTr } from '../block-input-rules.js'
 
 let pass = 0
 let fail = 0
@@ -23,7 +23,7 @@ function typeChars(doc, chars, selPos) {
   for (const ch of chars) {
     const $head = state.selection.$head
     const before = state.doc.textBetween($head.start(), $head.pos, '\u0000', '\u0000')
-    const tr = listInputTr(state, $head, before, ch)
+    const tr = listInputTr(state, $head, before, ch) || fenceInputTr(state, $head, before, ch)
     state = state.apply(tr || state.tr.insertText(ch))
   }
   return state
@@ -142,6 +142,81 @@ t('普通段落里敲 [ ] 不转任务', () => {
 t('块中间的 - 不转换（x- 这种）', () => {
   const st = typeChars(EMPTY, [...'x- '])
   assert.strictEqual(st.doc.content.child(0).type.name, 'paragraph')
+})
+
+// —— 围栏代码块：敲 ``` / ```lang 落空格就地转 ——
+t('敲 ``` 空格 → 空代码块（无语言）', () => {
+  const st = typeChars(EMPTY, [...'``` '])
+  const cb = st.doc.content.child(0)
+  assert.strictEqual(cb.type.name, 'code_block')
+  assert.strictEqual(cb.attrs.params, '')
+  assert.strictEqual(cb.textContent, '')
+})
+
+t('敲 ```js 空格 → 代码块带语言，光标落块内', () => {
+  const st = typeChars(EMPTY, [...'```js '])
+  const cb = st.doc.content.child(0)
+  assert.strictEqual(cb.type.name, 'code_block')
+  assert.strictEqual(cb.attrs.params, 'js')
+  assert.strictEqual(st.selection.from, 1, '光标应落在代码块内容起点')
+})
+
+t('围栏后带内容：```js console.log(1) → 内容进块内', () => {
+  const st = typeChars(EMPTY, [...'```js console.log(1)'])
+  const cb = st.doc.content.child(0)
+  assert.strictEqual(cb.type.name, 'code_block')
+  assert.strictEqual(cb.attrs.params, 'js')
+  assert.strictEqual(cb.textContent, 'console.log(1)')
+})
+
+t('会话产物 == 解析产物：敲 ```js let a = 1 与解析同形态', () => {
+  const st = typeChars(EMPTY, [...'```js let a = 1'])
+  assert.ok(st.doc.eq(parseMarkdown('```js\nlet a = 1\n```')), st.doc.toString())
+})
+
+t('四个反引号同样认（GFM 围栏 3+）', () => {
+  const st = typeChars(EMPTY, [...'```` '])
+  assert.strictEqual(st.doc.content.child(0).attrs.params, '')
+})
+
+t('语言名带符号：c++ / c# 都落 params', () => {
+  assert.strictEqual(typeChars(EMPTY, [...'```c++ ']).doc.content.child(0).attrs.params, 'c++')
+  assert.strictEqual(typeChars(EMPTY, [...'```c# ']).doc.content.child(0).attrs.params, 'c#')
+})
+
+t('```mermaid 转出 mermaid 参数（预览插件按 params 生效）', () => {
+  const st = typeChars(EMPTY, [...'```mermaid '])
+  assert.strictEqual(st.doc.content.child(0).attrs.params, 'mermaid')
+})
+
+t('代码块里敲 ``` 空格不转换（块内是内容）', () => {
+  const doc = parseMarkdown('```\n```\n')
+  let pos = 0
+  doc.descendants((n, p) => { if (n.type.name === 'code_block') pos = p + 1 })
+  const st = typeChars(doc, [...'``` '], pos)
+  assert.strictEqual(st.doc.content.childCount, 1)
+  assert.strictEqual(st.doc.content.child(0).textContent, '``` ')
+})
+
+t('标题里敲 ``` 空格不转换', () => {
+  const doc = parseMarkdown('# 标题\n')
+  const st = typeChars(doc, [...'``` '], 3)
+  assert.strictEqual(st.doc.content.child(0).type.name, 'heading')
+})
+
+t('块中间的 ``` 不转换（x``` 这种）', () => {
+  const st = typeChars(EMPTY, [...'x``` '])
+  assert.strictEqual(st.doc.content.child(0).type.name, 'paragraph')
+})
+
+t('脚注项里敲 ``` 不转换（容器只收一个段落）', () => {
+  const doc = parseMarkdown('文字[^1]\n\n[^1]: 脚注\n')
+  let pos = 0
+  doc.descendants((n, p) => {
+    if (n.type.name === 'footnote_item') pos = p + 1 + 1 // 项内段落的内容起点
+  })
+  const st = typeChars(doc, [...'``` '], pos)
+  assert.strictEqual(st.doc.content.child(1).type.name, 'footnote_section')
 })
 
 console.log(`\n结果：${pass} passed, ${fail} failed`)
