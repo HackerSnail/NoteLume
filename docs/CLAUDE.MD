@@ -213,8 +213,9 @@
 - 产物：`src-tauri/icons/file-markdown.ico` / `file-canvas.ico`（16–256 九档，64 及以下 DIB、128 起 PNG）与 `file-markdown.icns` / `file-canvas.icns`（11 个槽位）。`tmp/file-icon-preview.png` 只作尺寸与深浅底色的预览，`tmp/` 不入库。
 - Windows：`src-tauri/nsis-hooks.nsh` 的 `NSIS_HOOK_POSTINSTALL` 覆盖两个 ProgID 的 `DefaultIcon`，指向 `$INSTDIR\icons\*.ico`（`tauri.conf.json` 的 `bundle.resources` 把 ico 拷进去），再 `UPDATEFILEASSOC` 刷外壳缓存；`NSIS_HOOK_POSTUNINSTALL` 在关联键删掉后再通知一次。ProgID 名取自 `fileAssociations[].name`（`NoteLume Markdown` / `NoteLume Canvas`），改名要同步改钩子。
 - macOS：`Info.macOS.plist` 的两个 document type 加 `CFBundleTypeIconFile`，icns 由 resources 平铺进 `Contents/Resources/`，目标路径不能带 `icons/`。
-- 不做 MSI 与 Linux：发布只出 NSIS setup.exe；Linux 下 Markdown 图标归 MIME 主题，应用不应抢占。
-- 改完跑 `npm run tauri -- build --bundles nsis` 装一次看真机。图标缓存偶尔晚一拍，注销或重启资源管理器再确认，不能只凭刚装完那一眼判断注册表没写进去。
+- 不做 MSI 与 Linux：发布只出 NSIS setup.exe；Linux 下 Markdown 图标归 MIME 主题，应用不应抢占。Windows 本地打包由 `src-tauri/tauri.windows.conf.json` 把 `bundle.targets` 覆盖成 `["nsis"]`，`npm run build` 不再顺带生成 msi；主配置的 `all` 留给 mac / Linux，CI 各自显式传 `--bundles`。
+- 改完跑 `npm run tauri -- build`（Windows 覆盖配置只出 NSIS）装一次看真机。图标缓存偶尔晚一拍，注销或重启资源管理器再确认，不能只凭刚装完那一眼判断注册表没写进去。
+- 2026-11-04 真机结果：静默装到 `d:\NoteLume` 后重启资源管理器，`SHGetFileInfo` 取 `.md` / `.canvas` 的 32px 图标与产物 ICO 的 32px 帧逐像素比对为 0 差。`.markdown` 例外：`HKCR\.markdown` 默认值已是 `NoteLume Markdown`，但 `AssocQueryString` 回 ProgID `Unknown`、命令 `OpenWith.exe`，外壳仍画通用白页。Windows 11 只认 `UserChoice` / `UserChoiceLatest`，`.md` 能用是因为这台机器有这个键，`.markdown` 没有；安装器不该伪造 `UserChoice`，用户在一次「打开方式 → 始终使用 NoteLume」之后才会好。排查时先看 `AssocQueryString` 的 PROGID，不要只看注册表默认值。
 
 ## 打印排版（2026-10-25）
 
