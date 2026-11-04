@@ -75,6 +75,16 @@ export function createAiPanel(deps) {
   function syncSkillBtn() {
     if (skillBtn) skillBtn.classList.toggle('active', activeSkillPaths.length > 0)
   }
+
+  // 技能是一次性上下文：随这条消息发出后即消费掉（与附件同口径），下一条不再自动带上
+  function consumeSkills() {
+    if (!activeSkillPaths.length) return
+    activeSkillPaths = []
+    saveActiveSkills()
+    syncSkillBtn()
+    renderSkillChips()
+    updateCtxRing()
+  }
   let modelPill = null // 底行模型选择器：多模型可下拉切换，单模型/未拉到列表只显示名称
   let modelsCache = { key: '', items: [] } // /models 拉取缓存（key = baseUrl）
   let emptyHint = null
@@ -297,6 +307,7 @@ export function createAiPanel(deps) {
           messages.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
         }
       }
+      consumeSkills() // 发出即消费：技能只作用于这一条消息，发完清空 chip
     }
     // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
     if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
@@ -386,6 +397,7 @@ export function createAiPanel(deps) {
           base.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
         }
       }
+      consumeSkills() // 发出即消费：技能只作用于本轮，发完清空 chip（与 Ask 模式同口径）
     }
     base.push({ role: 'system', content: t('ai.agentHint') })
     // 循环返回的 seq = 系统前缀 + history + 本轮新增；newMsgs 的切片起点必须是

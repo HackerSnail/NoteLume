@@ -1980,13 +1980,17 @@ html.nl-dragging * {
   color: #fff;
   border-radius: 2px;
 }
-/* 查找栏：绝对定位钉在 .editor-pane 可视顶部（top 由 JS 随 scrollTop 补正）；查找行 + 替换行上下排列 */
+/* 查找栏：绝对定位钉在 .editor-pane 可视顶部（top 由 JS 随 scrollTop 补正）；查找行 + 替换行上下排列。
+   宽度封顶到窗格（左右分栏后窗格可能很窄）：不加 max-width 时栏宽由内容撑开（固定 180px 输入框 + 两个文字按钮），
+   窄窗格里会溢出 .nl-pane 的 overflow 被裁掉——表现为查找 / 替换框被遮挡。 */
 .nl-find-bar {
   display: none;
   position: absolute;
   right: 24px;
   top: 12px;
   z-index: 30;
+  box-sizing: border-box;
+  max-width: calc(100% - 36px);
   flex-direction: column;
   gap: 6px;
   padding: 8px;
@@ -2160,9 +2164,12 @@ html.nl-dragging * {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 .nl-find-input {
   width: 180px;
+  min-width: 0;
+  flex: 1 1 auto;
   padding: 4px 8px;
   font-size: 13px;
   color: var(--fg);

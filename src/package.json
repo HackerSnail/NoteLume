@@ -66,6 +66,7 @@
     "test:ai-agent": "node tests/ai-agent.test.mjs",
     "test:ai-agent-dom": "node tests/ai-agent-dom.test.mjs",
     "test:ai-panel-error": "node tests/ai-panel-error.test.mjs",
+    "test:ai-skill-consume": "node tests/ai-skill-consume.test.mjs",
     "test:gettext-atoms": "node tests/gettext-atoms.test.mjs"
   },
   "dependencies": {
