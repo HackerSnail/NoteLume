@@ -145,6 +145,10 @@ export function createAiPanel(deps) {
     return wrap
   }
 
+  // 发给 API 的消息剥掉本地元字段（如用户消息上的 _skills 技能回显），只留协议字段——
+    // 严格的服务端会因多余字段 400；回显只进 history / 存档 / 渲染，不进请求体
+  const apiMsg = (m) => (m && m._skills ? (({ _skills, ...rest }) => rest)(m) : m)
+
   function renderHistory() {
     msgsEl.innerHTML = ''
     // 重放：assistant.tool_calls 与其后的 role:'tool' 消息重放成工具行，
@@ -164,7 +168,10 @@ export function createAiPanel(deps) {
         if (m.content) msgsEl.appendChild(bubble('assistant', m.content))
         continue
       }
-      msgsEl.appendChild(bubble(m.role, m.content))
+      const b = bubble(m.role, m.content)
+      // 用户消息上的技能回显：_skills 存在档里，恢复会话时一并渲染（发送即消费芯片已消失）
+      if (m && m.role === 'user' && Array.isArray(m._skills) && m._skills.length) appendSkillEcho(b, m._skills)
+      msgsEl.appendChild(b)
     }
     // 空态提示常驻消息区末尾（buildDom 挂过一次，这里会 innerHTML 清掉，得重新挂）
     msgsEl.appendChild(emptyHint)
@@ -287,7 +294,8 @@ export function createAiPanel(deps) {
     const userContent = attachments.length
       ? [{ type: 'text', text }, ...attachments.map((a) => ({ type: 'image_url', image_url: { url: a.dataUrl } }))]
       : text
-    history.push({ role: 'user', content: userContent })
+    const userMsg = { role: 'user', content: userContent }
+    history.push(userMsg)
     emptyHint.classList.add('hidden')
     const userBubble = bubble('user', userContent)
     msgsEl.appendChild(userBubble)
@@ -308,7 +316,7 @@ export function createAiPanel(deps) {
     // Agent 模式走工具循环：模型多轮调用只读工具后给最终回答。
     // 一次性全库检索注入跳过——检索交给 search_vault 工具按需多轮做，Ask 模式保留。
     if (mode === 'agent') {
-      runAgentFlow(userBubble)
+      runAgentFlow(userBubble, userMsg)
       return
     }
 
@@ -327,6 +335,7 @@ export function createAiPanel(deps) {
       }
       consumeSkills() // 发出即消费：技能只作用于这一条消息，发完清空 chip
       appendSkillEcho(userBubble, used) // 消息上回显用了哪些技能
+      if (used.length) userMsg._skills = used // 记进 history，随存档持久化（重启后仍回显）
     }
     // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
     if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
@@ -337,7 +346,7 @@ export function createAiPanel(deps) {
         if (vctx) messages.push({ role: 'system', content: vctx })
       } catch { /* 检索失败不阻断对话 */ }
     }
-    messages.push(...history)
+    messages.push(...history.map(apiMsg))
     try {
       await aiChatStream({
         reqId: streaming.reqId,
@@ -401,7 +410,7 @@ export function createAiPanel(deps) {
     })
   }
 
-  async function runAgentFlow(userBubble) {
+  async function runAgentFlow(userBubble, userMsg) {
     agentActive = true
     agentStopFlag = false
     const rows = []
@@ -420,11 +429,12 @@ export function createAiPanel(deps) {
       }
       consumeSkills() // 发出即消费：技能只作用于本轮，发完清空 chip（与 Ask 模式同口径）
       appendSkillEcho(userBubble, used) // 消息上回显用了哪些技能
+      if (used.length) userMsg._skills = used // 记进 history，随存档持久化（重启后仍回显）
     }
     base.push({ role: 'system', content: t('ai.agentHint') })
     // 循环返回的 seq = 系统前缀 + history + 本轮新增；newMsgs 的切片起点必须是
     // history 的结束位置。只记前缀长度会把旧历史当本轮新增二次追加（历史整段翻倍）
-    base.push(...history)
+    base.push(...history.map(apiMsg))
     const histEnd = base.length
     const tools = pickTools({ vaultReady: typeof vaultReady === 'function' ? !!vaultReady() : false })
     try {

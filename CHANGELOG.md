@@ -162,7 +162,7 @@
 
 ### Fixed
 
-* **AI 消息补技能回显**：技能改成发送即消费后，输入框的 chip 消失了，但发出的消息上看不出用了哪个技能。`src/ai-panel.js` 在 Ask 与 Agent 两条发送路径里，把实际注入的技能名收集起来，给该条用户消息顶部加一行小标（`ai.skillEcho`，如「用了技能：xxx」；多技能用「、」并列）。词条 `ai.skillEcho` 五语言，样式 `.ai-skill-echo`。`tests/ai-skill-consume.test.mjs` 补断言：发出的用户消息带技能回显。
+* **AI 消息补技能回显**：技能改成发送即消费后，输入框的 chip 消失了，但发出的消息上看不出用了哪个技能。`src/ai-panel.js` 在 Ask 与 Agent 两条发送路径里，把实际注入的技能名收集起来，给该条用户消息顶部加一行小标（`ai.skillEcho`，如「用了技能：xxx」；多技能用「、」并列）。词条 `ai.skillEcho` 五语言，样式 `.ai-skill-echo`。`tests/ai-skill-consume.test.mjs` 补断言：发出的用户消息带技能回显。回显持久化：技能名以 `_skills` 记在 history 的用户消息上、随存档落盘，恢复会话时按它重绘（跨重启仍在）；发给 API 前经 `apiMsg` 剥掉该字段（严格服务端会因多余字段 400）。测试补：存档含 `_skills`、请求体不含、恢复后仍回显。
 
 * **AI 对话框选中的技能发送后不消费**：技能选中后注入 system 消息，但发完 chip 不消失、下一轮又自动带上，与「一次性上下文」的预期相反（附件是发一条就清）。`src/ai-panel.js` 加 `consumeSkills()`，Ask 与 Agent 两条发送路径在技能注入 system 之后即清空 `activeSkillPaths`（同步 localStorage、chip、圆环）。测试新增 `tests/ai-skill-consume.test.mjs` 3 组（首问请求含技能正文、发送后 nl-ai-skill 清空且 chip 消失、第二问不再含）。
 
