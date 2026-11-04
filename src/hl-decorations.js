@@ -66,7 +66,23 @@ function mapTokens(html) {
   return out
 }
 
-function buildDecorations(doc) {
+// C 系预处理指令的中间态不上色：hljs 的 PREPROCESSOR 规则「# 后跟一个字母」即匹配，
+// 于是 #i / #in / #inc 也整段染成 meta——Typora（lezer 解析）要完整指令名才变色。
+// 借 hljs 自己的词表判定：完整指令的指令词会被单独包一层 hljs-keyword
+// （#include → meta(#) + keyword(include)、# define → meta(# ) + keyword(define)），
+// 中间态只有一层不含 keyword 的 meta。丢掉后者，前者原样保留。
+// 只碰「# + 字母/空白」这一种 meta 形态：yaml 的 --- 等其它 meta 用法不受影响。
+export function dropPartialPreprocessor(text, toks) {
+  const keywords = toks.filter(([, , c]) => c === 'hljs-keyword')
+  return toks.filter(([s, e, c]) => {
+    if (c !== 'hljs-meta') return true
+    if (!/^#\s*[a-z]*$/i.test(text.slice(s, e))) return true
+    // 区间里套着 keyword（完整指令名）才留
+    return keywords.some(([ks, ke]) => s <= ks && ke <= e)
+  })
+}
+
+export function buildDecorations(doc) {
   const decos = []
   doc.descendants((node, pos) => {
     if (node.type.name !== 'code_block') return
@@ -81,7 +97,7 @@ function buildDecorations(doc) {
       return
     }
     const base = pos + 1 // code_block 内容起点（跳过 node 打开位）
-    for (const [s, e, cls] of mapTokens(result)) {
+    for (const [s, e, cls] of dropPartialPreprocessor(text, mapTokens(result))) {
       if (e > s) {
         decos.push(Decoration.inline(base + s, base + e, { class: cls }))
       }

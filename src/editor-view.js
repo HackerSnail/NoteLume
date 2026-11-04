@@ -216,6 +216,10 @@ export function createEditor(opts) {
         if (!sel.empty) return false
         const $head = sel.$head
         if (!$head.parent || !$head.parent.isTextblock) return false
+        // 代码块里敲的字符是代码内容：行内规则（# 标签 / ]] / $ / 强调）若在这里把文本换成
+        // 节点，会被 schema 拒掉（code_block 的 content 是 text*、marks 只有 code），
+        // PM 修补后块内容整个消失——敲 `#include ` 想补完指令，半行进击作废
+        if ($head.parent.type.name === 'code_block') return false
         const blockFrom = $head.start()
         const caret = $head.pos
         const before = state.doc.textBetween(blockFrom, caret, '\u0000', '\u0000')

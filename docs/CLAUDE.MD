@@ -240,8 +240,10 @@ Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-opt
 - 语言联想（2026-11-04，对齐 Typora）：段首敲完 ``` 即弹语言下拉（suggest-plugin.js 的 fence 分支，↑/↓ 移动、Enter/Tab/点击选中、Esc 关闭），候选为 hljs 注册语言 + bibtex / csv / mermaid 预览语言，常用置顶、前缀过滤（敲 j 不出 bash——「包含」过滤会被无关语言挤掉）；别名一并进候选（js / ts / py / sh / yml / rb / md / c++ / golang——hljs 的 listLanguages 只报主名，敲 js 不出 javascript 等于没联想），选中别名即 params=别名，hljs 认别名、序列化器原样写围栏 info，往返不变形
 - 联想选中即整段转 code_block（`fenceLangTr`，与空格 / 回车路径同一条转换规则）：语言取选中值（不是敲入的那串——可能敲到一半选中别的），语言名文本整段删除不进块内；Esc 后段落保留字面 ```lang，再落空格 / 回车仍按旧路径转；代码块里敲 ``` 不弹（块内是代码内容，退出走 codeFenceExit）
 - 候选表两个入口共用一份：`src/code-lang-list.js`（联想前缀过滤、语言标签选择器包含过滤 + 「纯文本」项），只读 hljs 注册表不注册语言，选中即有高亮由 hljs 保证
+- C 系预处理指令的中间态不上色（2026-11-04，对齐 Typora）：hljs 的 PREPROCESSOR 规则「# 后跟一个字母」即匹配，敲 #i / #inc 也整段染 meta；`hl-decorations.js` 的 `dropPartialPreprocessor` 借 hljs 自己的词表信号（完整指令的指令词会被单独包一层 hljs-keyword——#include → meta(#)+keyword(include)、# define → meta(# )+keyword(define)）丢掉「#+字母/空白形态且区间内不含 keyword 子 span」的 meta 装饰；# 单独（hljs 本来就不匹配）、#include / # define / #pragma 完整形态、yaml 的 --- 等其它 meta 用法都不碰
+- 行内输入规则不进代码块（2026-11-04）：`editor-view.js` 的 handleTextInput 见 code_block 一律早退——「# 标签」/ ]] / $ / 强调 在块里把文本换成节点会被 schema 拒掉（code_block 的 content 是 text*、marks 只有 code），PM 修补后整块内容消失（cpp 块里敲 #include 按空格想补完指令，半行进击作废；tag 节点被挤到块外）；正文路径不受影响
 
-测试 `node tests/block-input-rules.test.mjs` 27 条：正例断言会话文档与解析产物 `eq`、序列化写回标准 GFM；回车进出路径另见 `node tests/enter-blocks.test.mjs` 26 条；语言联想（候选表过滤 + `fenceLangTr` 确认语义）见 `node tests/fence-lang-suggest.test.mjs` 15 条，浮层显隐 / 键盘交互归真机。Playwright 真机路径（合成环境须给 .ProseMirror 补 `white-space: pre-wrap`，缺了 PM 把空格换成 NBSP，码点 160，规则不触发）。
+测试 `node tests/block-input-rules.test.mjs` 27 条：正例断言会话文档与解析产物 `eq`、序列化写回标准 GFM；回车进出路径另见 `node tests/enter-blocks.test.mjs` 26 条；语言联想（候选表过滤 + `fenceLangTr` 确认语义）见 `node tests/fence-lang-suggest.test.mjs` 15 条，浮层显隐 / 键盘交互归真机；高亮中间态见 `node tests/hl-preproc.test.mjs` 9 条，行内规则的代码块守卫见 `node tests/code-block-input-guard.test.mjs` 6 条（真 node view 走 handleTextInput 管线，含「禁用守卫能复现块清空」的对照）。Playwright 真机路径（合成环境须给 .ProseMirror 补 `white-space: pre-wrap`，缺了 PM 把空格换成 NBSP，码点 160，规则不触发）。
 
 ## 标准 GFM 导出（2026-10-26）
 
