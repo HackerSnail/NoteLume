@@ -2879,6 +2879,7 @@ async function loadDocIntoPane(paneId, doc) {
       }
       if (snapshotPanel) snapshotPanel.refresh()
       if (gitPanel) gitPanel.refresh()
+      if (aiPanel) aiPanel.refresh() // 上下文圆环跟活动文档走，切文档不重算会停在上一篇的用量（BUG-004）
     }
   } catch (e) {
     Object.assign(ctx, prev)
@@ -5337,7 +5338,8 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
   // 选区任务（右键 / 命令面板）的结果在浮层里流式预览后写回文档
   aiSettings = createAiSettings({
     getAi: currentAi,
-    apply: persistAi,
+    // 存完立刻刷面板：改上下文窗口 / 模型后圆环与胶囊即时按新配置重算（面板此时已建）
+    apply: (cfg) => { persistAi(cfg); if (aiPanel) aiPanel.refresh() },
     flush: () => settingsStore.flush(),
     setStatus,
   })

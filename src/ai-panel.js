@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, AI_CTX_WINDOW_TOKENS } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -481,13 +481,13 @@ export function createAiPanel(deps) {
     if (!streaming) return
     // Agent 锚点协议在这里统一解析（Ask 模式模型不会输出标记，解析无害）：
     // 气泡、历史、动作行都用剥掉标记后的正文，锚点只留给自动应用定位
-    const { anchor, body } = parseAgentReply(streaming.text)
+    const { anchor, body, anchorBroken } = parseAgentReply(streaming.text)
     history.push({ role: 'assistant', content: body })
     const el = streaming.el
     el.innerHTML = md.render(body)
     el.appendChild(assistantActions(body))
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
-    if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor)
+    if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor, anchorBroken)
     if (stopped) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -505,8 +505,19 @@ export function createAiPanel(deps) {
   function finishError(msg, tip) {
     if (!streaming) return
     const el = streaming.el
-    el.innerHTML = '<div class="ai-err"></div>'
-    el.querySelector('.ai-err').textContent = t('ai.errRequest', { err: msg || t('ai.errUnknown') })
+    // 出错前已流入的半截回答保留在气泡里并计入历史。此前直接 innerHTML= 整体重写、函数体无
+    // history 追加（对比 finishDone），与下面「半截也归档」的注释相反——实测存档只剩 user 一条。
+    const partial = parseAgentReply(String(streaming.text || '')).body
+    if (partial.trim()) {
+      el.innerHTML = md.render(partial)
+      history.push({ role: 'assistant', content: partial })
+    } else {
+      el.innerHTML = ''
+    }
+    const err = document.createElement('div')
+    err.className = 'ai-err'
+    err.textContent = t('ai.errRequest', { err: msg || t('ai.errUnknown') })
+    el.appendChild(err)
     if (tip) {
       // Agent 模式的错误统一附「切回 Ask」建议：不区分错误原因（模型不支持工具与
       // 网络失败从文案上分不开），不猜原因只给出路
@@ -517,6 +528,7 @@ export function createAiPanel(deps) {
     }
     streaming = null
     setStreamingUi(false)
+    syncModelChip()
     updateCtxRing()
     saveChat() // 半截回答（出错前已流入的）也归档
     scrollEnd()
@@ -550,7 +562,7 @@ export function createAiPanel(deps) {
 
   /** Agent 模式收尾：按锚点（自然语言位置）或光标智能落点写进文档，结果都给一条小标签；
    *  应用带回退记录时标签上加「撤销」按钮（pos 是会话内坐标，切文档 / 重启后校验不过自然置灰） */
-  function autoApply(text, el, anchor) {
+  function autoApply(text, el, anchor, anchorBroken) {
     if (!appendToDoc) return
     let res = null
     try { res = appendToDoc(text, anchor || null) } catch { res = null }
@@ -561,6 +573,9 @@ export function createAiPanel(deps) {
       tag.textContent = t(anchor.dir === 'before' ? 'ai.appliedAtBefore' : 'ai.appliedAtAfter', { where: res.where || anchor.target })
     } else if (ok && anchor && res.missed) {
       tag.textContent = t('ai.anchorMiss', { where: anchor.target })
+    } else if (ok && anchorBroken) {
+      // 标记本身已被 parseAgentReply 从正文剥掉，这里只告诉用户落点没认出来
+      tag.textContent = t('ai.anchorUnresolved')
     } else if (ok) {
       tag.textContent = t('ai.applied')
     } else {
@@ -1016,7 +1031,10 @@ export function createAiPanel(deps) {
   function updateCtxRing() {
     if (!ctxRing || !ctxRing.circle) return
     const tokens = estimateTokens(ctxText())
-    const pct = Math.min(1, tokens / AI_CTX_WINDOW_TOKENS)
+    // 分母优先取用户在 AI 设置里填的真实上下文窗口（ai.contextTokens），未填回落参考值；
+    // 小窗口模型（本地 2K/4K）填上后，圆环能在超限前就转热报警，不再拿 32K 谎报余量。
+    const win = aiContextWindow(getConfig())
+    const pct = Math.min(1, tokens / win)
     const C = 2 * Math.PI * 7 // r=7 的周长
     ctxRing.circle.setAttribute('stroke-dasharray', C.toFixed(1))
     ctxRing.circle.setAttribute('stroke-dashoffset', (C * (1 - pct)).toFixed(1))
@@ -1320,6 +1338,12 @@ export function createAiPanel(deps) {
     /** 侧栏切到本页签时让输入框可键入 */
     focus() {
       if (inputEl && !streaming) inputEl.focus()
+    },
+    /** 切文档 / 换库后重算上下文圆环与模型胶囊（getDocContext 读的是焦点窗格活动标签，
+     *  不重算圆环会停在上一篇文档的用量上） */
+    refresh() {
+      syncModelChip()
+      updateCtxRing()
     },
     destroy() {
       eventStreamDisposed = true

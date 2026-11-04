@@ -77,21 +77,59 @@ export function buildDocContext(title, text) {
 
 // —— AI 设置（settings.json 的 ai 段）——
 
-export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '' }
+export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0 }
+
+/** 字段上限。保存前由 validateAiConfig 拒绝超长，normalizeAiConfig 只做存储层兜底截断。 */
+export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
+
+/** 上下文窗口手填上限（防手滑填天文数字）；0 表示未设，回落到参考值 */
+export const AI_CTX_WINDOW_MAX = 10000000
 
 /** 任意来源的原始设置 → 合法 AI 设置（坏类型回落默认；trim + 限长防呆） */
 export function normalizeAiConfig(raw) {
   const s = { ...DEFAULT_AI }
   if (!raw || typeof raw !== 'object') return s
-  if (typeof raw.baseUrl === 'string') s.baseUrl = raw.baseUrl.trim().slice(0, 300)
-  if (typeof raw.apiKey === 'string') s.apiKey = raw.apiKey.trim().slice(0, 300)
-  if (typeof raw.model === 'string') s.model = raw.model.trim().slice(0, 120)
+  if (typeof raw.baseUrl === 'string') s.baseUrl = raw.baseUrl.trim().slice(0, AI_LIMITS.baseUrl)
+  if (typeof raw.apiKey === 'string') s.apiKey = raw.apiKey.trim().slice(0, AI_LIMITS.apiKey)
+  if (typeof raw.model === 'string') s.model = raw.model.trim().slice(0, AI_LIMITS.model)
+  // 上下文窗口：非负整数才收，其余（缺字段 / 坏型 / 负数 / NaN）一律回 0 = 用参考值
+  const ct = Number(raw.contextTokens)
+  if (Number.isFinite(ct) && ct >= 0) s.contextTokens = Math.min(AI_CTX_WINDOW_MAX, Math.floor(ct))
   return s
 }
 
-/** 地址 + 模型齐了才算配好（API Key 允许为空：本地 Ollama 不需要） */
+/** http(s) 绝对地址；其他协议、裸字符串与空串一律 false */
+export function isHttpUrl(value) {
+  const s = String(value || '').trim()
+  if (!s) return false
+  try {
+    const u = new URL(s)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 保存前校验：超长与地址格式在这里拦下，避免密钥被静默截短后只收到 401。
+ * 返回 { ok, errors, cfg }；errors 的键是字段名，值是 'tooLong' / 'badUrl'。
+ */
+export function validateAiConfig(raw) {
+  const read = (key) => (raw && typeof raw === 'object' && typeof raw[key] === 'string' ? raw[key].trim() : '')
+  const baseUrl = read('baseUrl')
+  const apiKey = read('apiKey')
+  const model = read('model')
+  const errors = {}
+  if (baseUrl.length > AI_LIMITS.baseUrl) errors.baseUrl = 'tooLong'
+  else if (baseUrl && !isHttpUrl(baseUrl)) errors.baseUrl = 'badUrl'
+  if (apiKey.length > AI_LIMITS.apiKey) errors.apiKey = 'tooLong'
+  if (model.length > AI_LIMITS.model) errors.model = 'tooLong'
+  return { ok: Object.keys(errors).length === 0, errors, cfg: normalizeAiConfig(raw) }
+}
+
+/** 地址是合法 http(s) 且模型名非空才算配好（API Key 允许为空：本地 Ollama 不需要） */
 export function aiConfigured(cfg) {
-  return !!(cfg && String(cfg.baseUrl || '').trim() && String(cfg.model || '').trim())
+  return !!(cfg && isHttpUrl(cfg.baseUrl) && String(cfg.model || '').trim())
 }
 
 /** 常见 OpenAI 兼容服务预设：设置面板一键填充地址 + 模型名（Key 仍需用户自填） */
@@ -112,11 +150,24 @@ export const AI_PRESETS = [
  */
 export function parseAgentReply(raw) {
   const s = String(raw || '')
-  const m = s.match(/<insert\s+(after|before)="([^"]{1,120})"\s*>/i)
-  if (!m) return { anchor: null, body: stripFences(s) }
-  let body = s.slice(m.index + m[0].length)
+  const strict = s.match(/<insert\s+(after|before)="([^"]{1,120})"\s*>/i)
+  const target = strict ? strict[2].trim() : ''
+  if (strict && target) {
+    let body = s.slice(strict.index + strict[0].length)
+    body = body.replace(/<\/insert>\s*$/i, '')
+    return {
+      anchor: { dir: strict[1].toLowerCase(), target },
+      body: stripFences(body),
+      anchorBroken: false,
+    }
+  }
+  // 标记存在但目标不合法（超 120 字符 / 含双引号 / 属性残缺）：锚点放弃，标记本身
+  // 仍要从正文里剥掉——模型写坏的标记不该连同内容一起写进用户文档。
+  const loose = s.match(/<insert\b[^>]*>/i)
+  if (!loose) return { anchor: null, body: stripFences(s), anchorBroken: false }
+  let body = s.slice(loose.index + loose[0].length)
   body = body.replace(/<\/insert>\s*$/i, '')
-  return { anchor: { dir: m[1].toLowerCase(), target: m[2].trim() }, body: stripFences(body) }
+  return { anchor: null, body: stripFences(body), anchorBroken: true }
 }
 
 const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -127,6 +178,12 @@ export const AI_VAULT_MAX_DOCS = 5
 
 /** 上下文窗口参考值（估算圆环分母）：各家模型 8K~1M 不等，取保守的 32K 作提示基准 */
 export const AI_CTX_WINDOW_TOKENS = 32768
+
+/** 圆环分母优先取用户在设置里填的真实上下文窗口，未填（0/坏值）回落到上面的保守参考值 */
+export function aiContextWindow(cfg) {
+  const n = Number(cfg && cfg.contextTokens)
+  return Number.isFinite(n) && n > 0 ? n : AI_CTX_WINDOW_TOKENS
+}
 
 /** 粗估 token 数：CJK 字符 ≈ 1 token/字，其它按 4 字符 ≈ 1 token（中英混合经验值） */
 export function estimateTokens(text) {
@@ -154,19 +211,28 @@ export function aiQueryTerms(question) {
   return [...terms].filter((t) => t.length >= 2).slice(0, 12)
 }
 
+/** 注入文本总长上限（表头与命中条目合计）。 */
+export const AI_VAULT_CONTEXT_MAX_CHARS = 6000
+
 /**
  * 合并去重后的检索命中 → 注入文本。hits: [{path,title,snippet}]；
- * 超过 AI_VAULT_MAX_DOCS 篇截断，总量约 6000 字符封顶。
+ * 超过 AI_VAULT_MAX_DOCS 篇截断，总量 6000 字符封顶（表头计入）。
  */
 export function buildVaultContext(hits, headText) {
   const list = (Array.isArray(hits) ? hits : []).filter((h) => h && h.path)
   if (!list.length) return ''
-  let out = String(headText || '') + '\n'
+  // 表头计入总量：先按上限截断表头，条目只在剩余空间里追加，总长稳定不超过上限。
+  const head = String(headText || '').slice(0, AI_VAULT_CONTEXT_MAX_CHARS)
+  let text = (head ? head + '\n' : '').slice(0, AI_VAULT_CONTEXT_MAX_CHARS)
+  if (text.length >= AI_VAULT_CONTEXT_MAX_CHARS) return text
   for (const h of list.slice(0, AI_VAULT_MAX_DOCS)) {
-    if (out.length >= 6000) break
-    out += `- ${h.title || h.path}（${h.path}）\n  ${String(h.snippet || '').slice(0, 400)}\n`
+    const entry = `- ${h.title || h.path}（${h.path}）\n  ${String(h.snippet || '').slice(0, 400)}\n`
+    const room = AI_VAULT_CONTEXT_MAX_CHARS - text.length
+    if (room <= 0) break
+    text += entry.slice(0, room)
+    if (entry.length > room) break
   }
-  return out
+  return text
 }
 
 /**
@@ -177,19 +243,23 @@ export function resolveAnchorPos(doc, anchor) {
   if (!doc || !anchor || typeof anchor.target !== 'string') return null
   const target = normText(anchor.target)
   if (!target) return null
+  // 标题全等优先：模型复述锚点时给前缀/子串很常见，不能让同前缀的长标题先出现就定终身。
+  // 没有全等项时才退到互相包含匹配，最后才是正文段落前缀。
+  let headingExact = null
   let headingHit = null
   let textHit = null
   doc.forEach((node, offset) => {
-    if (headingHit) return
+    if (headingExact) return
     const text = normText(node.textContent)
     if (!text) return
     if (node.type && node.type.name === 'heading') {
-      if (!headingHit && (text === target || text.includes(target) || target.includes(text))) headingHit = { offset, node }
+      if (text === target) headingExact = { offset, node }
+      else if (!headingHit && (text.includes(target) || target.includes(text))) headingHit = { offset, node }
       return
     }
     if (!textHit && (text.startsWith(target) || target.startsWith(text.slice(0, 40)))) textHit = { offset, node }
   })
-  const hit = headingHit || textHit
+  const hit = headingExact || headingHit || textHit
   if (!hit) return null
   const start = hit.offset + 1 // forEach 的 offset 是该块在 doc 内容中的起始偏移，doc 开口占 1
   return anchor.dir === 'before' ? start : start + hit.node.nodeSize

@@ -983,11 +983,25 @@ export function createEditor(opts) {
       view.focus()
     },
     // 写作统计：源码态按 CodeMirror 全文计数；WYSIWYG 取文档纯文本（块间用 \n 分隔）。
-    // 虚拟模式取 master 纯文本（窗口 doc 只是切片，统计要全篇）
+    // 虚拟模式取 master 纯文本（窗口 doc 只是切片，统计要全篇）。
+    // leafText 不能给统一占位串：那会把 wikilink 目标与别名、行内/块级公式、图片 alt、#标签
+    // 全抹掉（getText 同时喂写作统计与 AI 文档上下文 buildDocContext / read_current_doc，
+    // 丢了这些模型就看不见）——按节点类型回代表文字，无正文的原子标记回空串。
     getText() {
       if (sourceMode && src) return src.getDoc()
       const doc = virtual ? virtual.doc : view.state.doc
-      return doc.textBetween(0, doc.content.size, '\n', '\n')
+      const leafText = (node) => {
+        switch (node.type.name) {
+          case 'wikiLink': return String(node.attrs.label || node.attrs.target || '')
+          case 'tag': return '#' + String(node.attrs.tag || '')
+          case 'math_inline':
+          case 'math_block': return String(node.attrs.latex || '')
+          case 'image': return String(node.attrs.alt || '')
+          case 'hard_break': return '\n'
+          default: return '' // anchor / footnote_ref 等无正文的原子标记
+        }
+      }
+      return doc.textBetween(0, doc.content.size, '\n', leafText)
     },
     // 源码模式：整篇切换 WYSIWYG <-> Markdown 原文（CodeMirror，懒加载）
     isSourceMode() { return sourceMode },

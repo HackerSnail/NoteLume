@@ -1114,6 +1114,7 @@ export default {
   'ai.appliedAtAfter': '已插入至「{where}」之後',
   'ai.appliedAtBefore': '已插入至「{where}」之前',
   'ai.anchorMiss': '文件裡沒找到「{where}」，已改插至游標處',
+  'ai.anchorUnresolved': '落點標記無法辨識，已按游標位置插入',
   'ai.attMax': '一次最多附 4 張圖片',
   'ai.noVision': '目前模型不支援圖片輸入，無法加入',
   'ai.removeAtt': '移除圖片',
@@ -1181,5 +1182,9 @@ export default {
   'ai.set.keyHint': 'Key 儲存在本機 settings.json，僅呼叫介面時使用；本機 Ollama 可留空',
   'ai.set.model': '模型名稱',
   'ai.set.hint': '任何相容 OpenAI /chat/completions 的服務皆可：DeepSeek / 智譜 GLM / Kimi / OpenAI / 本機 Ollama 等',
+  'ai.set.context': '上下文視窗（token）',
+  'ai.set.contextHint': '留空依 32768 估算；本機小視窗模型（如 Ollama 2048 / 4096）填真實值，圓環會在接近超限前轉熱提醒',
+  'ai.set.errBaseUrl': '介面位址需要是 http:// 或 https:// 開頭的完整位址',
+  'ai.set.errTooLong': '{field}最多 {max} 個字元，請檢查是否貼上了多餘內容',
   'ai.set.saved': '已儲存 AI 設定',
 }

@@ -6,7 +6,7 @@
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, AI_PRESETS } from './ai-tasks.js'
+import { normalizeAiConfig, validateAiConfig, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
 import { ollamaProbe, openUrl, confirmDialog } from './tauri-bridge.js'
 
 /**
@@ -110,6 +110,13 @@ export function createAiSettings(deps) {
       placeholder: 'deepseek-chat',
     })
     hint('ai.set.hint')
+
+    // 上下文窗口（token）：圆环分母。留空 = 用保守参考值 32K；本地小窗口模型（Ollama 常见
+    // 2048/4096）填上后，圆环会在超限前转热报警，不再谎报余量。
+    textRow('ai.set.context', draft.contextTokens ? String(draft.contextTokens) : '', (v) => {
+      draft.contextTokens = Math.min(AI_CTX_WINDOW_MAX, Math.max(0, Math.floor(Number(v) || 0)))
+    }, { placeholder: String(32768) })
+    hint('ai.set.contextHint')
   }
 
   function buildDom() {
@@ -157,7 +164,17 @@ export function createAiSettings(deps) {
   }
 
   async function save() {
-    apply(normalizeAiConfig(draft))
+    const { ok, errors, cfg } = validateAiConfig(draft)
+    if (!ok) {
+      const field = ['baseUrl', 'apiKey', 'model'].find((k) => errors[k])
+      const msg = errors[field] === 'badUrl'
+        ? t('ai.set.errBaseUrl')
+        : t('ai.set.errTooLong', { field: t('ai.set.' + field), max: AI_LIMITS[field] })
+      showStatus(msg, true)
+      setStatus(msg)
+      return
+    }
+    apply(cfg)
     if (flush) await flush()
     showStatus(t('ai.set.saved'))
     setStatus(t('ai.set.saved'))

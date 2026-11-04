@@ -1113,6 +1113,7 @@ export default {
   'ai.appliedAtAfter': 'Nach „{where}“ eingefügt',
   'ai.appliedAtBefore': 'Vor „{where}“ eingefügt',
   'ai.anchorMiss': '„{where}“ im Dokument nicht gefunden – stattdessen am Cursor eingefügt',
+  'ai.anchorUnresolved': 'Einfügemarke nicht lesbar – am Cursor eingefügt',
   'ai.attMax': 'Maximal 4 Bilder pro Nachricht',
   'ai.noVision': 'Das aktuelle Modell unterstützt keine Bildeingabe',
   'ai.removeAtt': 'Bild entfernen',
@@ -1180,5 +1181,9 @@ export default {
   'ai.set.keyHint': 'Der Schlüssel wird in der lokalen settings.json gespeichert und nur für API-Aufrufe verwendet; bei lokalem Ollama leer lassen',
   'ai.set.model': 'Modellname',
   'ai.set.hint': 'Jeder OpenAI-/chat/completions-kompatible Dienst funktioniert: DeepSeek / Zhipu GLM / Kimi / OpenAI / lokales Ollama usw.',
+  'ai.set.context': 'Kontextfenster (Tokens)',
+  'ai.set.contextHint': 'Leer lassen schätzt gegen 32768. Für kleine lokale Modelle (z. B. Ollama 2048 / 4096) das echte Fenster eintragen, damit der Ring vor dem Überlauf warnt',
+  'ai.set.errBaseUrl': 'Die Adresse muss eine vollständige URL mit http:// oder https:// sein',
+  'ai.set.errTooLong': '{field} ist auf {max} Zeichen begrenzt – auf eingefügten Zusatzinhalt prüfen',
   'ai.set.saved': 'KI-Einstellungen gespeichert',
 }
