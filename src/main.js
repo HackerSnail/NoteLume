@@ -5351,6 +5351,10 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     getVaultContext: aiVaultContext,
     // 会话存档落点：有知识库存 <vault>/.notelume-ai/chats/，无库存系统 temp（Rust 兜底）
     getVaultRootForChat: () => state.vaultRoot,
+    // 回退记录持久化的文档身份：只在 md 模式给根 + 库内相对路径，决定「恢复撤销」入口显隐
+    getRevertDoc: () => (state.mode === 'md' && state.vaultRoot && state.currentFile
+      ? { root: state.vaultRoot, file: state.currentFile }
+      : null),
     // Agent 工具循环：只读工具执行器 + 库就绪判定（决定工具集）+ 回退入口
     execTool: agentExecTool,
     vaultReady: () => !!state.vaultRoot && !state.singleFile,

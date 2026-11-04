@@ -1133,6 +1133,7 @@ export default {
   'ai.toolExpand': 'Click to view tool result',
   'ai.noToolsTip': 'This model may not support tool calling (Agent mode). Switch back to Ask to continue.',
   'ai.revert': 'Undo',
+  'ai.restoreRevert': 'The last AI insert into this document',
   'ai.reverted': 'Undone',
   'ai.revertGone': 'Document has changed; cannot undo this edit',
   'ai.voiceFail': 'Voice recognition failed',

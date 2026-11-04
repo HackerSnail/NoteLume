@@ -1131,6 +1131,7 @@ export default {
   'ai.toolExpand': 'Cliquer pour voir le résultat de l\'outil',
   'ai.noToolsTip': 'Ce modèle ne prend peut-être pas en charge les appels d\'outils (mode Agent). Repassez en Ask pour continuer.',
   'ai.revert': 'Annuler',
+  'ai.restoreRevert': 'Dernière insertion automatique de l’IA dans ce document',
   'ai.reverted': 'Annulé',
   'ai.revertGone': 'Le document a changé ; impossible d\'annuler cette modification',
   'ai.voiceFail': 'Échec de la reconnaissance vocale',

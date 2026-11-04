@@ -144,6 +144,15 @@ export const AI_PRESETS = [
 // —— Agent 模式：回答落点协议（自然语言锚点） ——
 
 /**
+ * 剥掉文本里所有落点标记 `<insert …>` / `</insert>`（大小写不敏感，替换成换行避免把
+ * 前后文字粘连）。模型把协议标记当正文吐出来时，残留的每一个标记都不能漏进用户文档，
+ * 所以这里是全局口径，不是「只剥首个 / 只剥尾部」。
+ */
+export function stripInsertMarkers(text) {
+  return String(text || '').replace(/<\/?insert\b[^>]*>/gi, '\n')
+}
+
+/**
  * Agent 回答落点协议：模型在内容开头放 <insert after="位置"> 或 <insert before="位置">，
  * 「位置」引用文档中已有的标题或段落原文；正文跟在标记后（闭合 </insert> 可省）。
  * 标记前的文字一律视为客套引导剥掉。无标记时 anchor 为 null，body 走 stripFences。
@@ -154,7 +163,7 @@ export function parseAgentReply(raw) {
   const target = strict ? strict[2].trim() : ''
   if (strict && target) {
     let body = s.slice(strict.index + strict[0].length)
-    body = body.replace(/<\/insert>\s*$/i, '')
+    body = stripInsertMarkers(body)
     return {
       anchor: { dir: strict[1].toLowerCase(), target },
       body: stripFences(body),
@@ -166,7 +175,7 @@ export function parseAgentReply(raw) {
   const loose = s.match(/<insert\b[^>]*>/i)
   if (!loose) return { anchor: null, body: stripFences(s), anchorBroken: false }
   let body = s.slice(loose.index + loose[0].length)
-  body = body.replace(/<\/insert>\s*$/i, '')
+  body = stripInsertMarkers(body)
   return { anchor: null, body: stripFences(body), anchorBroken: true }
 }
 

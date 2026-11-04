@@ -13,6 +13,7 @@ import {
   AI_PRESETS,
   AI_LIMITS,
   parseAgentReply,
+  stripInsertMarkers,
   resolveAnchorPos,
   modelSupportsVision,
   aiQueryTerms,
@@ -200,6 +201,30 @@ t('parseAgentReply：超长或含引号的目标不绑锚点，标记仍从正�
 
   const fine = parseAgentReply('<insert after="引言">正文')
   assert.strictEqual(fine.anchorBroken, false)
+})
+
+t('parseAgentReply：正文中段的落点标记残渣全部剥掉（只剥首个的修复）', () => {
+  const r = parseAgentReply('<insert after="引言">内容甲</insert>更多乙<insert after="x">尾巴')
+  assert.deepStrictEqual(r.anchor, { dir: 'after', target: '引言' })
+  assert.strictEqual(r.body, '内容甲\n更多乙\n尾巴')
+})
+
+t('parseAgentReply：只吐协议标记（内容为空）时 body 为空串、锚点仍绑定', () => {
+  // 真机复现形状：模型先吐标记、又吐一个闭合标签、再吐一遍标记，全程没有正文
+  const r = parseAgentReply('<insert after="引言"></insert>\n<insert after="引言">')
+  assert.deepStrictEqual(r.anchor, { dir: 'after', target: '引言' })
+  assert.strictEqual(r.body, '')
+})
+
+t('parseAgentReply：首个标记之前的残渣整段丢弃', () => {
+  const r = parseAgentReply('</insert>\n<insert after="引言">正文')
+  assert.deepStrictEqual(r.anchor, { dir: 'after', target: '引言' })
+  assert.strictEqual(r.body, '正文')
+})
+
+t('stripInsertMarkers：大小写不敏感、成对剥、残留不粘字', () => {
+  assert.strictEqual(stripInsertMarkers('a</INSERT>b<Insert after="x">c'), 'a\nb\nc')
+  assert.strictEqual(stripInsertMarkers('没有标记的正文'), '没有标记的正文')
 })
 
 t('resolveAnchorPos：标题命中，after 在标题块之后、before 在标题块之前', () => {

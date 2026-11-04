@@ -276,6 +276,145 @@ t('连发两轮 Agent：上一轮的历史不在新请求里翻倍（newMsgs 切
   }
 })
 
+t('模型只吐落点标记：不写进文档、不出应用标签、气泡出空态提示', async () => {
+  // 真机形状：模型把 <insert…> 协议标记吐了两遍、一个字正文都没有（qwen3:1.7b 实测）
+  const { panel, root, applied } = makePanel({
+    streamRequest: async () => ({ text: '</insert>\n<insert after="引言">', toolCalls: null }),
+  })
+  try {
+    send(root, '写一个python入门 2000字')
+    await until(() => root.querySelector('.ai-note'))
+    assert.strictEqual(applied.length, 0, '只吐标记时文档不得被写入')
+    assert.ok(!root.querySelector('.ai-applied'), '不应出现「已应用」标签')
+    assert.ok(!root.querySelector('.ai-anchorMiss'), '不应进入「已改插到光标处」提示链')
+    assert.strictEqual(root.querySelector('.ai-note').textContent, '模型没有返回内容，可重试或换个模型。')
+    // 气泡里也不得残留标记文本
+    const bot = root.querySelector('.ai-bot')
+    assert.ok(!/<\/?insert\b/i.test(bot.textContent), '气泡不得残留 <insert> 标记')
+    // 无正文 → 不画操作行
+    assert.ok(!root.querySelector('.ai-actions'), '无正文不应出现操作行')
+  } finally {
+    panel.destroy()
+    root.remove()
+  }
+})
+
+t('正文夹杂标记残渣：应用到文档的是剥净后的正文', async () => {
+  const { panel, root, applied } = makePanel({
+    streamRequest: async () => ({ text: '<insert after="旧标题">正文内容</insert>', toolCalls: null }),
+  })
+  try {
+    send(root, '写点什么')
+    await until(() => root.querySelector('.ai-applied'))
+    assert.strictEqual(applied.length, 1)
+    assert.strictEqual(applied[0], '正文内容')
+    assert.ok(!/<\/?insert\b/i.test(root.querySelector('.ai-bot').textContent))
+  } finally {
+    panel.destroy()
+    root.remove()
+  }
+})
+
+t('重启后恢复「撤销上次 AI 自动写入」：点撤销生效并清除持久化', async () => {
+  localStorage.removeItem('nl-ai-revert')
+  const rec = { from: 1, to: 4, md: '新内容', prev: '' }
+  const reverted = []
+  const mk = () => makePanel({
+    getRevertDoc: () => ({ root: 'g:\\vault', file: 'a.md' }),
+    appendToDoc: () => ({ ok: true, where: '旧标题', missed: false, record: rec }),
+    canRevertAgentEdit: () => true,
+    revertAgentEdit: (r) => (reverted.push(r), true),
+    streamRequest: async () => ({ text: '<insert after="旧标题">新内容', toolCalls: null }),
+  })
+  try {
+    const a = mk()
+    send(a.root, '写点什么')
+    await until(() => a.root.querySelector('.ai-applied'))
+    assert.ok(localStorage.getItem('nl-ai-revert'), '自动写入后应持久化回退记录')
+    a.panel.destroy()
+    a.root.remove()
+    // 模拟重启：新面板实例，消息区恢复后应出现「恢复撤销」行
+    const b = mk()
+    await until(() => b.root.querySelector('.ai-restored'))
+    const btn = b.root.querySelector('.ai-restored .ai-revert-btn')
+    assert.ok(btn && !btn.disabled)
+    btn.click()
+    await until(() => reverted.length === 1)
+    assert.deepStrictEqual(reverted[0], rec)
+    assert.ok(b.root.querySelector('.ai-restored').textContent.includes('已撤销'))
+    assert.strictEqual(localStorage.getItem('nl-ai-revert'), null, '撤销成功后应清除持久化记录')
+    b.panel.destroy()
+    b.root.remove()
+  } finally {
+    localStorage.removeItem('nl-ai-revert')
+  }
+})
+
+t('恢复撤销：持久化记录与当前文档对不上时不显示', async () => {
+  localStorage.removeItem('nl-ai-revert')
+  const rec = { from: 1, to: 4, md: '新内容', prev: '' }
+  let docId = { root: 'g:\\vault', file: 'a.md' }
+  const mk = () => makePanel({
+    getRevertDoc: () => docId,
+    appendToDoc: () => ({ ok: true, where: '旧标题', missed: false, record: rec }),
+    canRevertAgentEdit: () => true,
+    revertAgentEdit: () => true,
+    streamRequest: async () => ({ text: '<insert after="旧标题">新内容', toolCalls: null }),
+  })
+  try {
+    const a = mk()
+    send(a.root, '写点什么')
+    await until(() => a.root.querySelector('.ai-applied'))
+    a.panel.destroy()
+    a.root.remove()
+    // 换一篇文档：不应出现恢复行
+    docId = { root: 'g:\\vault', file: 'b.md' }
+    const b = mk()
+    assert.strictEqual(b.root.querySelector('.ai-restored'), null, '不是同一文档不应显示撤销入口')
+    b.panel.destroy()
+    b.root.remove()
+    // 换一个库根：同样不显示
+    docId = { root: 'g:\\other', file: 'a.md' }
+    const c = mk()
+    assert.strictEqual(c.root.querySelector('.ai-restored'), null)
+    c.panel.destroy()
+    c.root.remove()
+  } finally {
+    localStorage.removeItem('nl-ai-revert')
+  }
+})
+
+t('恢复撤销：canRevert 校验不过时按钮置灰且不触发回退', async () => {
+  localStorage.removeItem('nl-ai-revert')
+  const rec = { from: 1, to: 4, md: '新内容', prev: '' }
+  let reverted = 0
+  const mk = () => makePanel({
+    getRevertDoc: () => ({ root: 'g:\\vault', file: 'a.md' }),
+    appendToDoc: () => ({ ok: true, where: '旧标题', missed: false, record: rec }),
+    canRevertAgentEdit: () => false, // 用户中途改过那段
+    revertAgentEdit: () => (reverted++, true),
+    streamRequest: async () => ({ text: '<insert after="旧标题">新内容', toolCalls: null }),
+  })
+  try {
+    const a = mk()
+    send(a.root, '写点什么')
+    await until(() => a.root.querySelector('.ai-applied'))
+    a.panel.destroy()
+    a.root.remove()
+    const b = mk()
+    const row = b.root.querySelector('.ai-restored')
+    assert.ok(row, '行仍显示（说明为何不能撤销）')
+    const btn = row.querySelector('.ai-revert-btn')
+    assert.ok(btn.disabled, 'canRevert 为假时按钮应置灰')
+    btn.click()
+    assert.strictEqual(reverted, 0)
+    b.panel.destroy()
+    b.root.remove()
+  } finally {
+    localStorage.removeItem('nl-ai-revert')
+  }
+})
+
 for (const job of queue) await job()
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exitCode = fail ? 1 : 0

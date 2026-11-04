@@ -1133,6 +1133,7 @@ export default {
   'ai.toolExpand': '点击查看工具结果',
   'ai.noToolsTip': '该模型可能不支持工具调用（Agent 模式），可切回 Ask 继续',
   'ai.revert': '撤销',
+  'ai.restoreRevert': '上次 AI 自动写入了这段内容',
   'ai.reverted': '已撤销',
   'ai.revertGone': '文档已改动，无法回退',
   'ai.voiceFail': '语音识别失败',

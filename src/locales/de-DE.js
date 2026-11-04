@@ -1131,6 +1131,7 @@ export default {
   'ai.toolExpand': 'Klicken, um das Werkzeugergebnis anzuzeigen',
   'ai.noToolsTip': 'Dieses Modell unterstützt möglicherweise keine Tool-Aufrufe (Agent-Modus). Wechseln Sie zurück zu Ask.',
   'ai.revert': 'Rückgängig',
+  'ai.restoreRevert': 'Letzte KI-Einfügung in diesem Dokument',
   'ai.reverted': 'Rückgängig gemacht',
   'ai.revertGone': 'Dokument wurde geändert; diese Änderung lässt sich nicht zurücknehmen',
   'ai.voiceFail': 'Spracherkennung fehlgeschlagen',

@@ -1132,6 +1132,7 @@ export default {
   'ai.toolExpand': '點擊查看工具結果',
   'ai.noToolsTip': '該模型可能不支援工具呼叫（Agent 模式），可切回 Ask 繼續',
   'ai.revert': '復原',
+  'ai.restoreRevert': '上次 AI 自動寫入了這段內容',
   'ai.reverted': '已復原',
   'ai.revertGone': '文件已變動，無法復原',
   'ai.voiceFail': '語音辨識失敗',

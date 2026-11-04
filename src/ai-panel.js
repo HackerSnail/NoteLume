@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -39,7 +39,7 @@ let mode = (() => {
  * @param {(msg: string) => void} deps.setStatus
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest } = deps
+  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest, getRevertDoc } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -112,7 +112,86 @@ export function createAiPanel(deps) {
   let agentReq = null // { reqId, resolve, reject, text } 等待中的一轮流式请求
   let agentStopFlag = false
   let agentOnDelta = () => {}
-  let lastRevertRecord = null // 最近一次 autoApply 的回退记录（只存内存，pos 是会话内坐标）
+  let lastRevertRecord = null // 最近一次 autoApply 的回退记录（pos 是会话内坐标）
+  let liveRevertEl = null //  live 标签元素（撤销钮所在标签）；重建消息区后 isConnected 为假，快照行据此恢复
+
+  // —— 回退记录跨重启持久化（localStorage nl-ai-revert）——
+  // 自动写入带回退记录，写入时存一份；重开面板 / 重启应用后按「root + rel」认
+  // 同一文档，并经 canRevertAgentEdit 校验区间内容与记录一致才放开按钮——
+  // 用户中途改过那段，或开了别的文档时，按钮置灰或干脆不出现
+  let restoreRevertEl = null
+  const normIdPath = (p) => String(p || '').replace(/[\\/]+$/, '').toLowerCase()
+  function revertDocId() {
+    try {
+      const id = typeof getRevertDoc === 'function' ? getRevertDoc() : null
+      if (!id || typeof id !== 'object') return null
+      return { root: String(id.root || ''), file: String(id.file || '') }
+    } catch { return null }
+  }
+  function persistRevert(record) {
+    const id = revertDocId()
+    if (!id || !id.file) return
+    try {
+      localStorage.setItem('nl-ai-revert', JSON.stringify({ v: 1, root: id.root, file: id.file, record, ts: Date.now() }))
+    } catch { /* 存不上就只留会话内 */ }
+  }
+  function clearPersistedRevert() {
+    try { localStorage.removeItem('nl-ai-revert') } catch { /* 忽略 */ }
+  }
+  function readPersistedRevert() {
+    try {
+      const raw = localStorage.getItem('nl-ai-revert')
+      if (!raw) return null
+      const d = JSON.parse(raw)
+      if (!d || d.v !== 1 || !d.record) return null
+      const { from, to, md, prev } = d.record
+      if (!Number.isInteger(from) || !Number.isInteger(to)) return null
+      if (typeof md !== 'string' || typeof prev !== 'string') return null
+      return d
+    } catch { return null }
+  }
+  function clearRestoredRevert() {
+    if (restoreRevertEl) { restoreRevertEl.remove(); restoreRevertEl = null }
+  }
+  function syncRestoredRevert() {
+    clearRestoredRevert()
+    if (typeof revertAgentEdit !== 'function') return
+    // 会话里刚自动写入过且 live 标签还挂在消息区时（lastRevertRecord 非空、按钮仍在），
+    // 不重复出第二个入口；消息区重建后标签已离线，快照行照常恢复
+    if (liveRevertEl && liveRevertEl.isConnected) return
+    if (streaming || agentActive) return
+    const saved = readPersistedRevert()
+    if (!saved) { clearPersistedRevert(); return } // 坏记录清掉
+    const id = revertDocId()
+    if (!id) return
+    if (normIdPath(id.root) !== normIdPath(saved.root) || String(id.file).toLowerCase() !== String(saved.file).toLowerCase()) {
+      return // 不是同一文档：不显示
+    }
+    const can = typeof canRevertAgentEdit === 'function' ? !!canRevertAgentEdit(saved.record) : false
+    const el = document.createElement('div')
+    el.className = 'ai-stopped ai-applied ai-restored'
+    el.textContent = t('ai.restoreRevert')
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'nl-ks-btn ai-revert-btn'
+    btn.textContent = t('ai.revert')
+    btn.disabled = !can
+    btn.title = can ? t('ai.revert') : t('ai.revertGone')
+    btn.addEventListener('click', () => {
+      if (!revertAgentEdit(saved.record)) {
+        btn.disabled = true
+        btn.title = t('ai.revertGone')
+        return
+      }
+      clearPersistedRevert()
+      el.textContent = t('ai.reverted')
+      btn.remove()
+      setStatus(t('ai.reverted'))
+    })
+    el.appendChild(btn)
+    msgsEl.appendChild(el)
+    restoreRevertEl = el
+  }
   let offLocale = null
   let offEvent = null
   let eventStreamDisposed = false // 面板销毁先于订阅 resolve 时，挂上即退订
@@ -219,6 +298,8 @@ export function createAiPanel(deps) {
     // 空态提示常驻消息区末尾（buildDom 挂过一次，这里会 innerHTML 清掉，得重新挂）
     msgsEl.appendChild(emptyHint)
     emptyHint.classList.toggle('hidden', history.length > 0)
+    // 恢复「撤销上次自动写入」入口：每次重建消息区都按当前文档 identity + canRevert 校验一遍
+    syncRestoredRevert()
     scrollEnd()
   }
 
@@ -423,7 +504,8 @@ export function createAiPanel(deps) {
   }
 
   function renderStreaming() {
-    paintAssistant(streaming.el, streaming.text, streaming.reasoning, true)
+    // 流式过程中实时剥掉落点标记：模型重复输出 <insert…> 时用户不必盯着标记看
+    paintAssistant(streaming.el, stripInsertMarkers(streaming.text), streaming.reasoning, true)
     scrollEnd()
   }
 
@@ -540,9 +622,10 @@ export function createAiPanel(deps) {
     }
     if (lastAssistant && reasoning.trim()) lastAssistant._reasoning = reasoning
     history.push(...newMsgs)
-    // 气泡显示 = 多轮流式文本的拼接（中间轮的「让我查一下…」保留），末段剥锚点标记
+    // 气泡显示 = 多轮流式文本的拼接（中间轮的「让我查一下…」保留），末段剥锚点标记；
+    // 全局再剥一遍：模型在循环里重复吐出的 <insert…> / </insert> 残留一律不进气泡、不进文档
     const prefixLen = streaming.text.length - finalText.length
-    const shown = (prefixLen > 0 ? streaming.text.slice(0, prefixLen) : '') + body
+    const shown = stripInsertMarkers((prefixLen > 0 ? streaming.text.slice(0, prefixLen) : '') + body).trim()
     paintAssistant(el, shown.trim(), reasoning, false)
     if (body) el.appendChild(assistantActions(body))
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
@@ -689,6 +772,8 @@ export function createAiPanel(deps) {
     }
     if (ok && res && res.record && typeof revertAgentEdit === 'function') {
       lastRevertRecord = res.record
+      persistRevert(res.record) // 跨重启可撤销：存一份，面板重建后能恢复入口
+      liveRevertEl = tag // 消息区重建后离线，快照行据此判断要不要再出一个入口
       const btn = document.createElement('button')
       btn.type = 'button'
       btn.className = 'nl-ks-btn ai-revert-btn'
@@ -704,6 +789,8 @@ export function createAiPanel(deps) {
         if (revertAgentEdit(lastRevertRecord)) {
           tag.textContent = t('ai.reverted')
           lastRevertRecord = null
+          liveRevertEl = null
+          clearPersistedRevert() // 已撤销，别让重开面板再出一条「可撤销」
           btn.remove()
         } else {
           btn.disabled = true
@@ -1118,8 +1205,11 @@ export function createAiPanel(deps) {
 
   let ctxRing = null // { el, circle } SVG 圆环
 
-  /** 会话将随下一条消息发送的全部文本（估算用） */
+  /** 会话将随下一条消息发送的全部文本（估算用）；空对话回 ''（圆环归零） */
   function ctxText() {
+    // 空对话（无历史消息且输入框为空）：文档上下文 / 技能要到第一条消息真正发出后才计入，
+    // 一打开面板就显示"已有用量"是误导
+    if (history.length === 0 && (!inputEl || !inputEl.value)) return ''
     let s = ''
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) s += ctx
@@ -1459,9 +1549,11 @@ export function createAiPanel(deps) {
     refresh() {
       syncModelChip()
       updateCtxRing()
+      syncRestoredRevert() // 切文档后按新文档 identity 重新决定是否展示恢复撤销入口
     },
     destroy() {
       eventStreamDisposed = true
+      clearRestoredRevert()
       if (typeof offEvent === 'function') offEvent()
       if (offLocale) offLocale()
       if (agentReq) aiChatCancel(agentReq.reqId).catch(() => {})
