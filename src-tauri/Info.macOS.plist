@@ -26,6 +26,8 @@
       </array>
       <key>CFBundleTypeRole</key>
       <string>Editor</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>file-markdown.icns</string>
       <key>LSHandlerRank</key>
       <string>Default</string>
     </dict>
@@ -38,6 +40,8 @@
       </array>
       <key>CFBundleTypeRole</key>
       <string>Editor</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>file-canvas.icns</string>
       <key>LSHandlerRank</key>
       <string>Default</string>
     </dict>

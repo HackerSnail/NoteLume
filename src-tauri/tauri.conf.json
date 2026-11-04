@@ -33,6 +33,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "icons/file-markdown.ico": "icons/file-markdown.ico",
+      "icons/file-canvas.ico": "icons/file-canvas.ico",
+      "icons/file-markdown.icns": "file-markdown.icns",
+      "icons/file-canvas.icns": "file-canvas.icns"
+    },
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
@@ -49,6 +55,11 @@
     ],
     "macOS": {
       "infoPlist": "Info.macOS.plist"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis-hooks.nsh"
+      }
     },
     "linux": {
       "rpm": {

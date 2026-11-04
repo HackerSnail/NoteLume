@@ -206,6 +206,16 @@
 - `::: notes` … `:::` 摘进该片的 `<aside class="notes">`（未闭合吃到片尾，fence 内不算）；演讲者视图按 S 弹出——reveal 5 的 notes 插件自己 `document.write` 内嵌页面，不请求外部资源，单文件开箱即用（设计时按 reveal 4 预判的 blob URL 方案实现时删了）。
 - 每片正文复用 `site-export.js` 的 `renderSite` 全保真渲染；KaTeX css 走 CDN（断网时公式降级）；主题字体 `@import` 构建期剥掉，回退系统字体栈。图片相对路径按导出文件所在目录解析，与单篇 HTML 导出同口径。整库编译幻灯片、垂直分页、主题选择不做（YAGNI，整库版后续单独立项）。
 
+## 关联文件图标（2026-11-04）
+
+`.md` / `.markdown` / `.canvas` 装完后仍是主程序图标，因为 Tauri 的关联注册把 ProgID 的 `DefaultIcon` 统一指到 exe。两枚文件图标由 `scripts/gen-file-icons.py` 生成（Pillow + numpy，全部几何绘制；改设计改脚本再跑一遍，不要手改二进制）：纸页 + 右上折角 + 蓝紫对角渐变（`#3D6FE3` → `#8338EC`，与主图标同色），Markdown 是白色「M↓」，画布是三点连线。
+
+- 产物：`src-tauri/icons/file-markdown.ico` / `file-canvas.ico`（16–256 九档，64 及以下 DIB、128 起 PNG）与 `file-markdown.icns` / `file-canvas.icns`（11 个槽位）。`tmp/file-icon-preview.png` 只作尺寸与深浅底色的预览，`tmp/` 不入库。
+- Windows：`src-tauri/nsis-hooks.nsh` 的 `NSIS_HOOK_POSTINSTALL` 覆盖两个 ProgID 的 `DefaultIcon`，指向 `$INSTDIR\icons\*.ico`（`tauri.conf.json` 的 `bundle.resources` 把 ico 拷进去），再 `UPDATEFILEASSOC` 刷外壳缓存；`NSIS_HOOK_POSTUNINSTALL` 在关联键删掉后再通知一次。ProgID 名取自 `fileAssociations[].name`（`NoteLume Markdown` / `NoteLume Canvas`），改名要同步改钩子。
+- macOS：`Info.macOS.plist` 的两个 document type 加 `CFBundleTypeIconFile`，icns 由 resources 平铺进 `Contents/Resources/`，目标路径不能带 `icons/`。
+- 不做 MSI 与 Linux：发布只出 NSIS setup.exe；Linux 下 Markdown 图标归 MIME 主题，应用不应抢占。
+- 改完跑 `npm run tauri -- build --bundles nsis` 装一次看真机。图标缓存偶尔晚一拍，注销或重启资源管理器再确认，不能只凭刚装完那一眼判断注册表没写进去。
+
 ## 打印排版（2026-10-25）
 
 Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-options-dialog.js`，四个勾选：自动目录页 / 页码与页眉标题 / H1 起新页 / 封面页，存 localStorage `nl-print-options`，首启只勾页码与页眉），确认后 Paged.js 预分页再走系统打印；取消不打印，canvas 模式直出老打印。设计 `docs/superpowers/specs/2026-10-25-print-pagedjs-design.md`。
