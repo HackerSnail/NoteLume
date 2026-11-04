@@ -24,6 +24,7 @@ import {
   probeExternalDrop,
   revealInFolder,
   openUrl,
+  readClipboardText,
   ollamaProbe,
   confirmDialog,
   messageDialog,
@@ -2259,7 +2260,7 @@ function attachEditorContextMenu(paneId, inst) {
     menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), async () => {
       let text = null
       try {
-        text = await navigator.clipboard.readText()
+        text = await readClipboardText()
       } catch (err) {
         setStatus(t('status.clipFail', { err: errText(err) }))
         return
@@ -2334,7 +2335,8 @@ function installGlobalContextMenu() {
 
 // 可编辑目标（input / textarea / CodeMirror 源码）的自绘编辑菜单。
 // 不用 document.execCommand('paste')（WebView2 里拿不到系统剪贴板读权限），
-// 统一走 navigator.clipboard 读 + 就地写回；写回对 CM 用 insertText（CM6 经
+// 统一走 readClipboardText() 读 + 就地写回（桌面经 clipboard-manager 插件，不弹网页授权条；
+// 纯 web 预览才落回 navigator.clipboard）；写回对 CM 用 insertText（CM6 经
 // beforeinput 接住），对输入框用 setRangeText 并补发 input 事件。
 function openEditContextMenu(e, target) {
   const editable = target.closest('input, textarea, [contenteditable="true"], .cm-content')
@@ -2393,7 +2395,7 @@ function openEditContextMenu(e, target) {
   }, false, false, null, !hasSel))
   menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), async () => {
     let text = null
-    try { text = await navigator.clipboard.readText() } catch (_) {}
+    try { text = await readClipboardText() } catch (_) {}
     if (!text) return
     editable.focus()
     insertText(text)
@@ -4009,7 +4011,7 @@ function registerAppCommands() {
     if (el && el.closest && el.closest('input, textarea, .cm-content')) return
     let text = null
     try {
-      text = await navigator.clipboard.readText()
+      text = await readClipboardText()
     } catch (e) {
       setStatus(t('status.clipFail', { err: errText(e) }))
       return

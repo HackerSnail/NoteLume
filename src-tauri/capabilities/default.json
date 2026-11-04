@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "clipboard-manager:allow-read-text",
     "core:webview:allow-print",
     "core:window:allow-destroy",
     "core:window:allow-set-title",

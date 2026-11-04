@@ -81,6 +81,7 @@
     "@lezer/highlight": "^1",
     "@lezer/markdown": "^1",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "highlight.js": "^11.9.0",
     "js-yaml": "^5.4.3",

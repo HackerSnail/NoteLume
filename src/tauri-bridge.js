@@ -105,6 +105,28 @@ export function openExternalUrl(url) {
   return invoke('open_external_url', { url })
 }
 
+/** 读系统剪贴板的纯文本：桌面走 clipboard-manager 插件（Rust 侧 arboard 直读），
+ *  纯 web 预览没有 IPC 通道，才用网页 Clipboard API。
+ *  不走 navigator.clipboard 的原因是权限条：WebView2 里 readText() 属受网页权限管的操作，
+ *  每回右键「粘贴」/ Ctrl+Shift+V 就在窗口里弹一条「想要 查看复制到剪贴板的文本和图像」，
+ *  要点一下「允许」才拿到文本（「阻止」或关掉则粘贴无声失败）。这条能力本来就已装好
+ *  （Cargo.toml 的 tauri-plugin-clipboard-manager、lib.rs 的 init、capabilities 的
+ *  clipboard-manager:allow-read-text），不必绕网页权限那一层。
+ *  插件按懒加载进单独 chunk，纯 web 构建不为此多背一份依赖。
+ *  剪贴板里只有图 / 没有文字时，arboard 报错而不是回空串，这里归成空串交给调用方那句
+ *  「剪贴板是空的」提示，与网页 Clipboard API 那边的体感一致。 */
+export async function readClipboardText() {
+  if (!window.__TAURI_INTERNALS__) return await navigator.clipboard.readText()
+  const { readText } = await import('@tauri-apps/plugin-clipboard-manager')
+  try {
+    return await readText()
+  } catch (err) {
+    const msg = String((err && err.message) || err || '')
+    if (/empty|not available/i.test(msg)) return ''
+    throw err
+  }
+}
+
 /** 超大文档后台解析（虚拟化 Phase 1）：md → {supported, doc|null, reason?}。
  *  doc 是与 editor-schema.js 同构的 PM JSON，前端 Node.fromJSON 重建 master doc。
  *  supported:false 表示含 Rust 解析器未覆盖的构造，调用方回退 JS 解析（见 mdparse.rs）。 */

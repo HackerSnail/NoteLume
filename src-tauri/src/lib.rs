@@ -4444,6 +4444,7 @@ pub fn run() {
     // 启动参数先于窗口装配收好（P5 §6.6）：exe 路径本身已被 launch_targets 剔除
     let launch = launch_targets(std::env::args());
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         // 单实例（P5 §6.6）：第二个进程把新文件路径经本回调交给第一个进程。
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
