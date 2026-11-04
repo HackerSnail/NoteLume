@@ -162,6 +162,8 @@
 
 ### Fixed
 
+* **AI 消息补技能回显**：技能改成发送即消费后，输入框的 chip 消失了，但发出的消息上看不出用了哪个技能。`src/ai-panel.js` 在 Ask 与 Agent 两条发送路径里，把实际注入的技能名收集起来，给该条用户消息顶部加一行小标（`ai.skillEcho`，如「用了技能：xxx」；多技能用「、」并列）。词条 `ai.skillEcho` 五语言，样式 `.ai-skill-echo`。`tests/ai-skill-consume.test.mjs` 补断言：发出的用户消息带技能回显。
+
 * **AI 对话框选中的技能发送后不消费**：技能选中后注入 system 消息，但发完 chip 不消失、下一轮又自动带上，与「一次性上下文」的预期相反（附件是发一条就清）。`src/ai-panel.js` 加 `consumeSkills()`，Ask 与 Agent 两条发送路径在技能注入 system 之后即清空 `activeSkillPaths`（同步 localStorage、chip、圆环）。测试新增 `tests/ai-skill-consume.test.mjs` 3 组（首问请求含技能正文、发送后 nl-ai-skill 清空且 chip 消失、第二问不再含）。
 
 * **左右分栏后查找 / 替换框被遮挡**：`.nl-find-bar` 绝对定位只设 `right: 24px`、不设宽度，栏宽由内容撑开（固定 180px 输入框 + 两个文字按钮，非英文按钮更长）。左右分栏后窗格变窄，栏宽超出 `.nl-pane` 的 overflow 被裁掉，查找 / 替换框看着被遮挡。改法：`.nl-find-bar` 加 `max-width: calc(100% - 36px)` + `box-sizing: border-box`，`.nl-find-input` 由固定 180px 改 `flex: 1 1 auto; min-width: 0` 随窗格收窄，`.nl-find-row` 补 `min-width: 0`。窄窗格下输入框收缩、整栏不溢出；宽窗格保持原紧凑观感。纯 CSS，需真机分栏复核。

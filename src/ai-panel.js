@@ -85,6 +85,21 @@ export function createAiPanel(deps) {
     renderSkillChips()
     updateCtxRing()
   }
+
+  // 技能发送即从 composer 消费，但要在发出的用户消息上留痕（用了哪些技能），否则回退会话后看不出
+  function appendSkillEcho(bubbleEl, names) {
+    if (!bubbleEl || !names || !names.length) return
+    const echo = document.createElement('div')
+    echo.className = 'ai-skill-echo'
+    const ic = document.createElement('span')
+    ic.className = 'ai-skill-echo-ic'
+    setIcon(ic, 'box')
+    const tx = document.createElement('span')
+    tx.className = 'ai-skill-echo-tx'
+    tx.textContent = t('ai.skillEcho', { names: names.join('、') })
+    echo.append(ic, tx)
+    bubbleEl.insertBefore(echo, bubbleEl.firstChild) // 放消息顶部，像给这条消息打的标签
+  }
   let modelPill = null // 底行模型选择器：多模型可下拉切换，单模型/未拉到列表只显示名称
   let modelsCache = { key: '', items: [] } // /models 拉取缓存（key = baseUrl）
   let emptyHint = null
@@ -274,7 +289,8 @@ export function createAiPanel(deps) {
       : text
     history.push({ role: 'user', content: userContent })
     emptyHint.classList.add('hidden')
-    msgsEl.appendChild(bubble('user', userContent))
+    const userBubble = bubble('user', userContent)
+    msgsEl.appendChild(userBubble)
     inputEl.value = ''
     attachments = []
     renderAtt()
@@ -292,7 +308,7 @@ export function createAiPanel(deps) {
     // Agent 模式走工具循环：模型多轮调用只读工具后给最终回答。
     // 一次性全库检索注入跳过——检索交给 search_vault 工具按需多轮做，Ask 模式保留。
     if (mode === 'agent') {
-      runAgentFlow()
+      runAgentFlow(userBubble)
       return
     }
 
@@ -301,13 +317,16 @@ export function createAiPanel(deps) {
     if (ctx) messages.push({ role: 'system', content: ctx })
     // 选中的本机技能（可多个）：每条 SKILL.md 指引各作一条 system 消息（扫描未完成时视为无）
     if (skillsLoaded) {
+      const used = []
       for (const p of activeSkillPaths) {
         const skill = skills.find((s) => s.path === p)
         if (skill && skill.content) {
           messages.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
+          used.push(skill.name)
         }
       }
       consumeSkills() // 发出即消费：技能只作用于这一条消息，发完清空 chip
+      appendSkillEcho(userBubble, used) // 消息上回显用了哪些技能
     }
     // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
     if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
@@ -382,7 +401,7 @@ export function createAiPanel(deps) {
     })
   }
 
-  async function runAgentFlow() {
+  async function runAgentFlow(userBubble) {
     agentActive = true
     agentStopFlag = false
     const rows = []
@@ -391,13 +410,16 @@ export function createAiPanel(deps) {
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) base.push({ role: 'system', content: ctx })
     if (skillsLoaded) {
+      const used = []
       for (const p of activeSkillPaths) {
         const skill = skills.find((s) => s.path === p)
         if (skill && skill.content) {
           base.push({ role: 'system', content: t('ai.skillInject', { name: skill.name }) + '\n\n' + skill.content })
+          used.push(skill.name)
         }
       }
       consumeSkills() // 发出即消费：技能只作用于本轮，发完清空 chip（与 Ask 模式同口径）
+      appendSkillEcho(userBubble, used) // 消息上回显用了哪些技能
     }
     base.push({ role: 'system', content: t('ai.agentHint') })
     // 循环返回的 seq = 系统前缀 + history + 本轮新增；newMsgs 的切片起点必须是

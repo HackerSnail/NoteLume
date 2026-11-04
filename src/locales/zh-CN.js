@@ -1143,6 +1143,7 @@ export default {
   'ai.skillOn': '已启用技能：{name}',
   'ai.skillOff': '已停用技能',
   'ai.removeSkill': '移除技能',
+  'ai.skillEcho': '用了技能：{names}',
   'ai.vaultCtxHead': '以下是从知识库检索到的相关片段（可能不完整，供参考）：',
   'ai.ctxTip': '上下文用量：约 {pct}%（估算 {tokens} / 32K tokens）',
   'ai.modelsFail': '拉取模型列表失败：{err}',

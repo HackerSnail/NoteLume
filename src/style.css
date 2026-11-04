@@ -5687,6 +5687,26 @@ html.nl-dragging * {
   width: 12px;
   height: 12px;
 }
+/* 用户消息上的技能回显：技能发送即从输入框消费，消息顶部留一行小标说明用了哪些技能 */
+.ai-skill-echo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ai-skill-echo-ic {
+  display: inline-flex;
+  flex: none;
+}
+.ai-skill-echo-ic .nl-ico {
+  width: 12px;
+  height: 12px;
+}
+.ai-skill-echo-tx {
+  min-width: 0;
+}
 .ai-skill-chip-name {
   min-width: 0;
   overflow: hidden;

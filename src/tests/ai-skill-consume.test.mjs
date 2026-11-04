@@ -95,6 +95,9 @@ await t('第一问：选中的技能作为 system 注入请求', async () => {
   send(root, '第一问')
   assert.ok(await until(() => streamMsgs.length >= 1), 'send 应触发一次 ai_chat_stream')
   assert.ok(streamMsgs[0].some((m) => m.includes('DESKILL-CONTENT')), '首条请求应含技能正文：' + JSON.stringify(streamMsgs[0]))
+  const echo = root.querySelector('.ai-msg.ai-user .ai-skill-echo')
+  assert.ok(echo, '发出的用户消息应带技能回显')
+  assert.ok(echo.textContent.includes('demo'), '回显应含技能名：' + (echo && echo.textContent))
   fire({ reqId: streamReqId, kind: 'done' }) // 收尾清 streaming
 })
 

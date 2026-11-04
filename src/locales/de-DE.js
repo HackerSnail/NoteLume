@@ -1141,6 +1141,7 @@ export default {
   'ai.skillOn': 'Fähigkeit aktiviert: {name}',
   'ai.skillOff': 'Fähigkeit deaktiviert',
   'ai.removeSkill': 'Fähigkeit entfernen',
+  'ai.skillEcho': 'Verwendete Fähigkeit: {names}',
   'ai.vaultCtxHead': 'Relevante Ausschnitte aus der Wissensbasis (möglicherweise unvollständig, zur Orientierung):',
   'ai.ctxTip': 'Kontextnutzung: ~{pct}% (geschätzt {tokens} / 32K Tokens)',
   'ai.modelsFail': 'Modellliste konnte nicht geladen werden: {err}',
