@@ -1663,6 +1663,13 @@ details.panel[open] > summary::before {
   padding: 4px 8px;
   font-size: 12px;
 }
+/* AI 设置模型行：上行控制（下拉/手输 + 刷新钮）+ 下行状态，纵放 */
+.nl-ap-model {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nl-ap-hint.err { color: #c0341d; }
 .nl-ap-range {
   flex: 1;
   min-width: 0;

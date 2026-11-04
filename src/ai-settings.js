@@ -6,8 +6,8 @@
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, validateAiConfig, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
-import { ollamaProbe, openUrl, confirmDialog } from './tauri-bridge.js'
+import { normalizeAiConfig, validateAiConfig, isHttpUrl, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
+import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridge.js'
 
 /**
  * 「AI 设置」面板。
@@ -24,6 +24,11 @@ export function createAiSettings(deps) {
   let statusEl = null
   let offLocale = null
   let draft = null // 打开时拷一份；「保存」才 apply，关闭不提交
+  let models = [] // 自动检测到的模型列表（aiModelsList / GET /models）
+  let modelsLoading = false
+  let modelsError = ''
+  let modelRowEl = null // 模型行控制容器（下拉 / 手输 + 刷新钮）
+  let modelStatusEl = null // 模型行下方的状态行（拉取中 / 失败）
 
   function section(titleKey) {
     const head = document.createElement('div')
@@ -58,6 +63,96 @@ export function createAiSettings(deps) {
     row.append(label, input)
     bodyEl.appendChild(row)
     return input
+  }
+
+  // —— 模型名：自动检测（GET /models）出下拉，检测不到才回落手动输入 ——
+  async function loadModels() {
+    const url = (draft && draft.baseUrl || '').trim()
+    if (!isHttpUrl(url)) {
+      models = []
+      modelsError = ''
+      modelsLoading = false
+      renderModelRow()
+      return
+    }
+    modelsLoading = true
+    modelsError = ''
+    renderModelRow()
+    let list = []
+    try {
+      const r = await aiModelsList(url, draft.apiKey || '')
+      list = Array.isArray(r) ? r.map((x) => String(x || '').trim()).filter(Boolean) : []
+      list = [...new Set(list)].sort((a, b) => a.localeCompare(b))
+    } catch (e) {
+      modelsError = (e && e.message) || String(e)
+    }
+    modelsLoading = false
+    // 草稿里的模型不在列表（手动留的旧值 / 预设默认值）时仍保留为一个选项，避免一保存就被换掉
+    if (draft.model && !list.includes(draft.model)) list.unshift(draft.model)
+    // 有列表而草稿为空：选第一个，省一次点击
+    if (!draft.model && list.length) draft.model = list[0]
+    models = list
+    renderModelRow()
+  }
+
+  function renderModelRow() {
+    if (!modelRowEl) return
+    modelRowEl.innerHTML = ''
+    const label = document.createElement('span')
+    label.className = 'nl-ap-label'
+    label.textContent = t('ai.set.model')
+    modelRowEl.appendChild(label)
+
+    if (modelsLoading) {
+      const st = document.createElement('input')
+      st.type = 'text'
+      st.className = 'nl-ap-text'
+      st.value = draft.model || ''
+      st.disabled = true
+      modelRowEl.appendChild(st)
+    } else if (models.length) {
+      const sel = document.createElement('select')
+      sel.className = 'nl-ap-select'
+      sel.setAttribute('aria-label', t('ai.set.model'))
+      for (const m of models) {
+        const o = document.createElement('option')
+        o.value = m
+        o.textContent = m
+        if (m === draft.model) o.selected = true
+        sel.appendChild(o)
+      }
+      sel.addEventListener('change', () => { draft.model = sel.value })
+      modelRowEl.appendChild(sel)
+    } else {
+      // 没拉到列表（地址未填 / 服务不提供 /models / 拉取失败）：回落手动输入
+      const input = document.createElement('input')
+      input.type = 'text'
+      input.className = 'nl-ap-text'
+      input.value = draft.model || ''
+      input.placeholder = 'deepseek-chat'
+      input.autocomplete = 'off'
+      input.spellcheck = false
+      input.setAttribute('aria-label', t('ai.set.model'))
+      input.addEventListener('change', () => { draft.model = input.value })
+      modelRowEl.appendChild(input)
+    }
+
+    // 刷新：改完地址 / Key 后手动重拉（模型启动晚了、首次打开时还没起来）
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'nl-ks-btn'
+    btn.style.padding = '4px 7px'
+    setIcon(btn, 'reload')
+    btn.title = t('ai.set.modelRefresh')
+    btn.setAttribute('aria-label', t('ai.set.modelRefresh'))
+    btn.addEventListener('click', () => loadModels())
+    modelRowEl.appendChild(btn)
+
+    if (modelStatusEl) {
+      modelStatusEl.textContent = modelsLoading ? t('ai.set.modelsLoading') : (modelsError ? t('ai.set.modelFail') : '')
+      modelStatusEl.classList.toggle('err', !modelsLoading && !!modelsError)
+      modelStatusEl.classList.toggle('hidden', !modelStatusEl.textContent)
+    }
   }
 
   function render() {
@@ -101,15 +196,25 @@ export function createAiSettings(deps) {
     bodyEl.appendChild(presetRow)
     hint('ai.set.presetHint')
 
-    textRow('ai.set.baseUrl', draft.baseUrl, (v) => { draft.baseUrl = v }, {
+    textRow('ai.set.baseUrl', draft.baseUrl, (v) => { draft.baseUrl = v; models = []; modelsError = ''; loadModels() }, {
       placeholder: 'https://api.deepseek.com/v1',
     })
-    textRow('ai.set.apiKey', draft.apiKey, (v) => { draft.apiKey = v }, { password: true })
+    textRow('ai.set.apiKey', draft.apiKey, (v) => { draft.apiKey = v; models = []; modelsError = ''; loadModels() }, { password: true })
     hint('ai.set.keyHint')
-    textRow('ai.set.model', draft.model, (v) => { draft.model = v }, {
-      placeholder: 'deepseek-chat',
-    })
+
+    // 模型名：自动检测 /models 出下拉选择，检测不到才回落手动输入。外层 wrap 纵放：上行控制 + 下行状态。
+    const modelWrap = document.createElement('div')
+    modelWrap.className = 'nl-ap-model'
+    modelRowEl = document.createElement('div')
+    modelRowEl.className = 'nl-ap-row'
+    modelWrap.appendChild(modelRowEl)
+    modelStatusEl = document.createElement('div')
+    modelStatusEl.className = 'nl-ap-hint hidden'
+    modelWrap.appendChild(modelStatusEl)
+    bodyEl.appendChild(modelWrap)
+    renderModelRow()
     hint('ai.set.hint')
+    loadModels() // 打开时若已有合法地址，自动拉一次模型列表
 
     // 上下文窗口（token）：圆环分母。留空 = 用保守参考值 32K；本地小窗口模型（Ollama 常见
     // 2048/4096）填上后，圆环会在超限前转热报警，不再谎报余量。
