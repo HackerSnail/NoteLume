@@ -39,7 +39,8 @@ pub struct AiChatArgs {
     pub tools: Option<serde_json::Value>,
 }
 
-/// 推回前端的事件载荷：kind = 'chunk'（delta 有值）| 'done' | 'error'（error 有值）
+/// 推回前端的事件载荷：kind = 'chunk'（delta 有值）| 'reasoning'（推理模型的思考增量）
+/// | 'done' | 'error'（error 有值）
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct AiEvent {
@@ -263,6 +264,25 @@ pub fn extract_delta_content(payload: &str) -> Option<String> {
     }
     if let Some(m) = choice.get("message") {
         return string_or_empty(m.get("content"));
+    }
+    None
+}
+
+/// 一条 SSE data 载荷 → 思考增量。推理模型（Qwen3 / DeepSeek-R1 等）把「思考过程」
+/// 放在 delta.reasoning / reasoning_content / thinking 里，此时 content 可能整段为空——
+/// 只认 content 会得到一个空气泡。非推理模型没有这些字段，回 None（不发空事件）。
+pub fn extract_delta_reasoning(payload: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(payload).ok()?;
+    let choice = v.get("choices")?.get(0)?;
+    let obj = choice
+        .get("delta")
+        .or_else(|| choice.get("message"))?;
+    for key in ["reasoning", "reasoning_content", "thinking"] {
+        if let Some(serde_json::Value::String(s)) = obj.get(key) {
+            if !s.is_empty() {
+                return Some(s.clone());
+            }
+        }
     }
     None
 }
@@ -498,7 +518,7 @@ fn truncate_utf8(t: &str, max_chars: usize) -> String {
 }
 
 /// 处理一行 SSE 字节：返回 None = 与数据无关的行；Some(Ok(())) = [DONE]；
-/// Some(Err(msg)) = 流内 error。chunk 增量与 tool_calls 增量分别进 emit 与累积器。
+/// Some(Err(msg)) = 流内 error。正文增量 / 思考增量分别进 emit，tool_calls 进累积器。
 fn handle_line(
     line: &[u8],
     emit: &EmitFn<'_>,
@@ -520,6 +540,10 @@ fn handle_line(
         if !delta.is_empty() {
             emit("chunk", Some(delta), None, None);
         }
+    }
+    // 思考过程单独走 reasoning 事件：前端折叠展示，不混进正文（也就不会被当成回答写进文档）
+    if let Some(reasoning) = extract_delta_reasoning(payload) {
+        emit("reasoning", Some(reasoning), None, None);
     }
     None
 }
@@ -579,6 +603,25 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_extraction() {
+        // Ollama qwen3 的 OpenAI 兼容流：content 为空串，思考文本在 delta.reasoning
+        let chunk = r#"{"choices":[{"delta":{"content":"","reasoning":"用户"}}]}"#;
+        assert_eq!(extract_delta_reasoning(chunk).as_deref(), Some("用户"));
+        // DeepSeek-R1 / 部分网关用 reasoning_content
+        let alt = r#"{"choices":[{"delta":{"reasoning_content":"先想一下"}}]}"#;
+        assert_eq!(extract_delta_reasoning(alt).as_deref(), Some("先想一下"));
+        // 忽略 stream 的一次性 message 兜底
+        let full = r#"{"choices":[{"message":{"content":"答案","reasoning":"思考"}}]}"#;
+        assert_eq!(extract_delta_reasoning(full).as_deref(), Some("思考"));
+        // 普通 content 流 / 空 reasoning / 坏形状：不产事件
+        assert_eq!(extract_delta_reasoning(r#"{"choices":[{"delta":{"content":"hi"}}]}"#), None);
+        assert_eq!(extract_delta_reasoning(r#"{"choices":[{"delta":{"reasoning":""}}]}"#), None);
+        assert_eq!(extract_delta_reasoning(r#"{"choices":[{"delta":{"reasoning":42}}]}"#), None);
+        assert_eq!(extract_delta_reasoning("not json"), None);
+        assert_eq!(extract_delta_reasoning("{}"), None);
+    }
+
+    #[test]
     fn sse_error_extraction() {
         assert_eq!(
             extract_sse_error(r#"{"error":{"message":"Incorrect API key"}}"#).as_deref(),
@@ -617,6 +660,13 @@ mod tests {
         let (r, events, _) = run_line(b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n");
         assert!(r.is_none());
         assert_eq!(events, vec![("chunk".into(), Some("hi".into()))]);
+
+        // 推理模型帧：content 空、reasoning 有值 → 只发 reasoning 事件
+        let (r, events, _) = run_line(
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"\",\"reasoning\":\"\xe6\x80\x9d\"}}]}\n",
+        );
+        assert!(r.is_none());
+        assert_eq!(events, vec![("reasoning".into(), Some("思".into()))]);
 
         // [DONE] → Ok 终止
         let (r, events, _) = run_line(b"data: [DONE]\n");

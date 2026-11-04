@@ -5441,6 +5441,58 @@ html.nl-dragging * {
   color: var(--text-quote);
 }
 .ai-dots { color: var(--muted); }
+/* 推理模型（Qwen3 / DeepSeek-R1 等）的思考过程：正文上方的折叠块。
+   流式中展开，回答完自动收起；只有思考没有正文时保持展开当兜底内容。 */
+.ai-reasoning {
+  margin: 0 0 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+}
+.ai-reasoning > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.ai-reasoning > summary::-webkit-details-marker { display: none; }
+.ai-reasoning > summary .nl-ico {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+/* 收起/展开的箭头用边框画，避免依赖平台自带的三角标记 */
+.ai-reasoning > summary::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+.ai-reasoning[open] > summary::after { transform: rotate(-135deg); }
+.ai-reasoning-body {
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* 没有正文时的可读兜底（模型只给了思考 / 什么都没给） */
+.ai-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 2px 0;
+}
 .ai-err {
   color: #c0341d;
   font-size: 12px;

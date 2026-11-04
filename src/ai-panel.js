@@ -119,7 +119,45 @@ export function createAiPanel(deps) {
 
   // —— 消息渲染 ——
 
-  function bubble(role, text) {
+  /** 推理模型的「思考过程」折叠块：流式中展开；结束后默认收起（仅思考无正文时保持展开） */
+  function reasoningBlock(text, live) {
+    const details = document.createElement('details')
+    details.className = 'ai-reasoning'
+    if (live) details.open = true
+    const sum = document.createElement('summary')
+    setIcon(sum, 'lightbulb', t('ai.reasoning'))
+    const body = document.createElement('div')
+    body.className = 'ai-reasoning-body'
+    body.textContent = text
+    details.append(sum, body)
+    return details
+  }
+
+  /**
+   * 绘制助手气泡内容：思考块在上，正文在下。
+   * 正文为空时给可读兜底（有思考 → reasoningOnly，连思考都没有 → emptyReply），
+   * 不再留下一个什么都没有的空气泡。live = 仍在流式中，此时不画兜底提示。
+   */
+  function paintAssistant(el, body, reasoning, live) {
+    el.innerHTML = ''
+    const hasReasoning = !!(reasoning && String(reasoning).trim())
+    const hasBody = !!(body && String(body).trim())
+    if (hasReasoning) el.appendChild(reasoningBlock(String(reasoning), live || !hasBody))
+    if (hasBody) {
+      const ans = document.createElement('div')
+      ans.className = 'ai-answer'
+      ans.innerHTML = md.render(String(body))
+      el.appendChild(ans)
+    } else if (!live) {
+      const note = document.createElement('div')
+      note.className = 'ai-note'
+      note.textContent = hasReasoning ? t('ai.reasoningOnly') : t('ai.emptyReply')
+      el.appendChild(note)
+    }
+    return { hasReasoning, hasBody }
+  }
+
+  function bubble(role, text, reasoning) {
     const wrap = document.createElement('div')
     wrap.className = 'ai-msg ' + (role === 'user' ? 'ai-user' : 'ai-bot')
     if (role === 'user' && Array.isArray(text)) {
@@ -140,14 +178,19 @@ export function createAiPanel(deps) {
     } else if (role === 'user') {
       wrap.textContent = text
     } else {
-      wrap.innerHTML = md.render(text)
+      paintAssistant(wrap, text, reasoning, false)
     }
     return wrap
   }
 
-  // 发给 API 的消息剥掉本地元字段（如用户消息上的 _skills 技能回显），只留协议字段——
-    // 严格的服务端会因多余字段 400；回显只进 history / 存档 / 渲染，不进请求体
-  const apiMsg = (m) => (m && m._skills ? (({ _skills, ...rest }) => rest)(m) : m)
+  // 发给 API 的消息剥掉本地元字段（用户消息的 _skills 技能回显、助手消息的 _reasoning
+  // 思考过程），只留协议字段——严格的服务端会因多余字段 400；这些只进 history / 存档 /
+  // 渲染，不进请求体（思考过程回灌也没有意义）。
+  const apiMsg = (m) => {
+    if (!m || (!m._skills && !m._reasoning)) return m
+    const { _skills, _reasoning, ...rest } = m
+    return rest
+  }
 
   function renderHistory() {
     msgsEl.innerHTML = ''
@@ -165,10 +208,10 @@ export function createAiPanel(deps) {
           const name = (c.function && c.function.name) || '?'
           msgsEl.appendChild(toolRowEl(name, summarizeToolArgs(name, c.function && c.function.arguments), 'done', toolResults.get(c.id) || ''))
         }
-        if (m.content) msgsEl.appendChild(bubble('assistant', m.content))
+        if (m.content || m._reasoning) msgsEl.appendChild(bubble('assistant', m.content || '', m._reasoning))
         continue
       }
-      const b = bubble(m.role, m.content)
+      const b = bubble(m.role, m.content, m.role === 'assistant' ? m._reasoning : undefined)
       // 用户消息上的技能回显：_skills 存在档里，恢复会话时一并渲染（发送即消费芯片已消失）
       if (m && m.role === 'user' && Array.isArray(m._skills) && m._skills.length) appendSkillEcho(b, m._skills)
       msgsEl.appendChild(b)
@@ -309,7 +352,7 @@ export function createAiPanel(deps) {
     bot.className = 'ai-msg ai-bot'
     bot.innerHTML = '<span class="ai-dots">' + t('ai.thinking') + '</span>'
     msgsEl.appendChild(bot)
-    streaming = { reqId: nextReqId(), el: bot, text: '' }
+    streaming = { reqId: nextReqId(), el: bot, text: '', reasoning: '' }
     setStreamingUi(true)
     scrollEnd()
 
@@ -380,7 +423,7 @@ export function createAiPanel(deps) {
   }
 
   function renderStreaming() {
-    streaming.el.innerHTML = md.render(streaming.text)
+    paintAssistant(streaming.el, streaming.text, streaming.reasoning, true)
     scrollEnd()
   }
 
@@ -485,18 +528,22 @@ export function createAiPanel(deps) {
     const newMsgs = (res.messages || []).slice(histEnd)
     const finalText = String(res.text || '')
     const { anchor, body } = parseAgentReply(finalText)
+    const reasoning = String(streaming.reasoning || '')
+    let lastAssistant = null
     for (let i = newMsgs.length - 1; i >= 0; i--) {
       const m = newMsgs[i]
       if (m && m.role === 'assistant' && !m.tool_calls) {
         m.content = body
+        lastAssistant = m
         break
       }
     }
+    if (lastAssistant && reasoning.trim()) lastAssistant._reasoning = reasoning
     history.push(...newMsgs)
     // 气泡显示 = 多轮流式文本的拼接（中间轮的「让我查一下…」保留），末段剥锚点标记
     const prefixLen = streaming.text.length - finalText.length
     const shown = (prefixLen > 0 ? streaming.text.slice(0, prefixLen) : '') + body
-    el.innerHTML = md.render(shown.trim())
+    paintAssistant(el, shown.trim(), reasoning, false)
     if (body) el.appendChild(assistantActions(body))
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
     if (!res.stopped && !res.maxed && body) autoApply(body, el, anchor)
@@ -526,10 +573,15 @@ export function createAiPanel(deps) {
     // Agent 锚点协议在这里统一解析（Ask 模式模型不会输出标记，解析无害）：
     // 气泡、历史、动作行都用剥掉标记后的正文，锚点只留给自动应用定位
     const { anchor, body, anchorBroken } = parseAgentReply(streaming.text)
-    history.push({ role: 'assistant', content: body })
+    const reasoning = String(streaming.reasoning || '')
     const el = streaming.el
-    el.innerHTML = md.render(body)
-    el.appendChild(assistantActions(body))
+    // 正文 / 思考分开展示；正文为空时把思考当兜底内容画出来，并给出原因提示
+    const { hasReasoning } = paintAssistant(el, body, reasoning, false)
+    const histMsg = { role: 'assistant', content: body }
+    if (hasReasoning) histMsg._reasoning = reasoning
+    history.push(histMsg)
+    // 没有正文时不画操作行：思考过程不是回答，不该提供「插入到文档」
+    if (body) el.appendChild(assistantActions(body))
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
     if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor, anchorBroken)
     if (stopped) {
@@ -552,11 +604,21 @@ export function createAiPanel(deps) {
     // 出错前已流入的半截回答保留在气泡里并计入历史。此前直接 innerHTML= 整体重写、函数体无
     // history 追加（对比 finishDone），与下面「半截也归档」的注释相反——实测存档只剩 user 一条。
     const partial = parseAgentReply(String(streaming.text || '')).body
+    const reasoning = String(streaming.reasoning || '')
+    const hasReasoning = !!reasoning.trim()
+    el.innerHTML = ''
+    if (hasReasoning) el.appendChild(reasoningBlock(reasoning, false))
     if (partial.trim()) {
-      el.innerHTML = md.render(partial)
-      history.push({ role: 'assistant', content: partial })
-    } else {
-      el.innerHTML = ''
+      const ans = document.createElement('div')
+      ans.className = 'ai-answer'
+      ans.innerHTML = md.render(partial)
+      el.appendChild(ans)
+      const histMsg = { role: 'assistant', content: partial }
+      if (hasReasoning) histMsg._reasoning = reasoning
+      history.push(histMsg)
+    } else if (hasReasoning) {
+      // 只有思考过程也归档：重开面板时还能看到模型想过什么
+      history.push({ role: 'assistant', content: '', _reasoning: reasoning })
     }
     const err = document.createElement('div')
     err.className = 'ai-err'
@@ -1347,6 +1409,12 @@ export function createAiPanel(deps) {
         if (ev.kind === 'chunk' && ev.delta) {
           agentReq.text += ev.delta
           agentOnDelta(ev.delta)
+        } else if (ev.kind === 'reasoning' && ev.delta) {
+          // 思考增量只进气泡上方的折叠块，不混进本轮正文
+          if (streaming) {
+            streaming.reasoning += ev.delta
+            renderStreaming()
+          }
         } else if (ev.kind === 'done') {
           const a = agentReq
           agentReq = null
@@ -1362,6 +1430,9 @@ export function createAiPanel(deps) {
       if (ev.kind === 'chunk' && ev.delta) {
         if (streaming.text === '') streaming.el.innerHTML = '' // 顶掉「思考中」占位
         streaming.text += ev.delta
+        renderStreaming()
+      } else if (ev.kind === 'reasoning' && ev.delta) {
+        streaming.reasoning += ev.delta
         renderStreaming()
       } else if (ev.kind === 'done') {
         finishDone(false)
