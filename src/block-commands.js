@@ -6,6 +6,7 @@
 import { setBlockType, wrapIn, chainCommands, deleteSelection, joinBackward, joinForward, selectNodeBackward, selectNodeForward, selectParentNode, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock } from 'prosemirror-commands'
 import { wrapInList, splitListItem } from 'prosemirror-schema-list'
 import { TextSelection } from 'prosemirror-state'
+import { CellSelection, deleteTable } from 'prosemirror-tables'
 import { schema } from './editor-schema.js'
 import { nlCellEnter, nlCellBack } from './table-editing.js'
 import { fenceTr } from './block-input-rules.js'
@@ -210,9 +211,23 @@ function deleteCodeBlockAt(state, dispatch, pos) {
   return true
 }
 
+// 选区把整张表选全了（拖选整表、光标落在表格相邻块时按删除键先落地的全表 CellSelection——
+// 表格节点被选中时 prosemirror-tables 的 normalizeSelection 会把它换成整表框选）：与
+// coveredCodeBlock 同规矩，一次删除连表格节点一起走。deleteSelection 在 CellSelection 上只清
+// 单元格文字（库语义），留下的空壳反而删不掉：单元格是 isolating，光标一旦落进壳里，
+// 退格与前向删除全被边界挡死，键盘上只剩不出表的几条路。
+// 整表判定用库自己的口径（isColSelection = 上下到边、isRowSelection = 左右到边，
+// CellSelection.content 里同一对判定用来决定回不回整个表格节点），colspan / rowspan 一并算对。
+function coveredWholeTable(state) {
+  const sel = state.selection
+  if (!(sel instanceof CellSelection)) return false
+  return sel.isColSelection() && sel.isRowSelection()
+}
+
 export function nlBackspace(state, dispatch, view) {
   const covered = coveredCodeBlock(state)
   if (covered != null) return deleteCodeBlockAt(state, dispatch, covered)
+  if (coveredWholeTable(state)) return deleteTable(state, dispatch)
   const $cursor = state.selection.$cursor
   if ($cursor && (view ? view.endOfTextblock('backward', state) : $cursor.parentOffset === 0)) {
     const cut = cutBefore($cursor)
@@ -231,6 +246,7 @@ export function nlBackspace(state, dispatch, view) {
 export function nlDelete(state, dispatch, view) {
   const covered = coveredCodeBlock(state)
   if (covered != null) return deleteCodeBlockAt(state, dispatch, covered)
+  if (coveredWholeTable(state)) return deleteTable(state, dispatch)
   const $cursor = state.selection.$cursor
   if ($cursor && (view ? view.endOfTextblock('forward', state) : $cursor.parentOffset === $cursor.parent.content.size)) {
     const cut = cutAfter($cursor)
