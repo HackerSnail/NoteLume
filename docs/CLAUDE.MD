@@ -217,6 +217,16 @@
 - 改完跑 `npm run tauri -- build`（Windows 覆盖配置只出 NSIS）装一次看真机。图标缓存偶尔晚一拍，注销或重启资源管理器再确认，不能只凭刚装完那一眼判断注册表没写进去。
 - 2026-11-04 真机结果：静默装到 `d:\NoteLume` 后重启资源管理器，`SHGetFileInfo` 取 `.md` / `.canvas` 的 32px 图标与产物 ICO 的 32px 帧逐像素比对为 0 差。`.markdown` 例外：`HKCR\.markdown` 默认值已是 `NoteLume Markdown`，但 `AssocQueryString` 回 ProgID `Unknown`、命令 `OpenWith.exe`，外壳仍画通用白页。Windows 11 只认 `UserChoice` / `UserChoiceLatest`，`.md` 能用是因为这台机器有这个键，`.markdown` 没有；安装器不该伪造 `UserChoice`，用户在一次「打开方式 → 始终使用 NoteLume」之后才会好。排查时先看 `AssocQueryString` 的 PROGID，不要只看注册表默认值。
 
+## 主程序图标（2026-11-05）
+
+桌面快捷方式、任务栏与 exe 内嵌的那枚图标此前是一整块蓝紫径向渐变、零字形，`src-tauri/icons/` 全套尺寸都是这块色斑，辨识度还不如 `scripts/gen-file-icons.py` 画的 `.md` / `.canvas` 两枚文件图标。现在主图标是同一套几何的纸页 + 白色「N」（NoteLume 首字母）：画布 1024、4x 超采样、圆角纸页 `168,104,856,920` 加半径 96 与右上折角 196、`#3D6FE3` → `#8338EC` 对角渐变，常量与 gen-file-icons.py 逐项相同（两个脚本各带一份几何，测试钉住不许漂移）；差别只在字标，单字母线宽从「M↓」的 68 加粗到 84，16px 下笔画仍分得开。
+
+- 生成两步，改设计改脚本再跑一遍，不要手改 `src-tauri/icons/` 下的二进制：`python scripts/gen-app-icon.py` 出 `tmp/app-icon-source.png`（1024 方图、透明底）和 `tmp/app-icon-preview.png`（深浅两种底色 × 256/128/64/48/32/24/16 七档），再在仓库根跑 `node src\node_modules\@tauri-apps\cli\tauri.js icon tmp\app-icon-source.png` 铺全套——`icon.ico` / `icon.icns` / `icon.png` / 32 / 64 / 128 / 128@2x、Windows 磁贴 `Square*Logo.png` 与 `StoreLogo.png`、`android/` 与 `ios/` 一次刷完。不出移动包，移动端那两套只是跟着保持一致。
+- `tauri.conf.json` 的 `bundle.icon` 四条路径与 `src-tauri/nsis-hooks.nsh` 都不动：桌面快捷方式取的是 exe 内嵌的 `icon.ico`，换文件即生效；关联文件图标走的是另一套 ProgID 的 `DefaultIcon`，两码事。
+- 源图带透明边，所以 `tauri icon` 不需要 `--fit`，iOS 白底用默认的 `--ios-color #fff` 即可，折角不会被裁掉。
+- 测试 `node tests/app-icon.test.mjs` 七条：conf 引用的四条文件都在、`icon.ico` 头合法且帧尺寸覆盖 16–256、`icon.icns` 魔数与总长自洽、像素层两条（自带最小 PNG 解码，断言 128 与 256 两档中心 40% 区域里近白笔画 ≥ 15% 且渐变底 ≥ 10%——旧的纯渐变在这一条实测近白 0.0%，整块涂白则过不了后一半）、主图标与两枚文件图标互不相同、两个脚本的几何常量不漂移。关联图标侧 `node tests/file-association-icons.test.mjs` 九条不受影响。
+- 装一次看真机：图标缓存偶尔晚一拍，注销或重启资源管理器再确认，与关联文件图标同一注意事项。
+
 ## 打印排版（2026-10-25）
 
 Ctrl+P（`main.js` 的 `printViaDialog`）先弹排版选项窗（`src/print-options-dialog.js`，四个勾选：自动目录页 / 页码与页眉标题 / H1 起新页 / 封面页，存 localStorage `nl-print-options`，首启只勾页码与页眉），确认后 Paged.js 预分页再走系统打印；取消不打印，canvas 模式直出老打印。设计 `docs/superpowers/specs/2026-10-25-print-pagedjs-design.md`。
