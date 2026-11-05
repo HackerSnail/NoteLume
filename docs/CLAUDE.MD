@@ -402,6 +402,16 @@ Rust 侧新命令六个（`git_discard` / `git_r_branch_list` / `git_r_checkout`
 - 新文案一律进词条，不写死中文；中英标点各自惯例（中文全角、西文半角），法文注意省音符撇号（’）与窄空格习惯。
 - 后端同理：`src-tauri/src/ui_lang.rs` 放五语言词表，Rust 各处 `ui_msg!("key", "name" => value)` 取词；前端启动与切语言时经 `set_ui_lang` 上报（tauri-bridge.js 的 `setUiLang`），未上报默认 zh-CN。带 `[code]` 前串的 git 错误与 `MERGED` / `CONFLICTS` 协议行只本地化前串之后的说明（前端按前串分派解析）；docx 导入警告的 code 不变、message 本地化。
 
+## 官网落地页与 GEO（2026-11-05）
+
+官网是一个单文件落地页 `index.html`，只存在于 `lumenote-promo-page` 分支（master 上没有这个文件），发布走 GitHub Pages 的 https://hackersnail.github.io/NoteLume/ 。分支纪律与硬性约束 8 同理但方向不同：这条分支只放落地页与它的下载菜单，不要把桌面侧的 src/ 提交摘过来（历史上摘错过一次，补回见 949ce6c）。
+
+- 页面段落：hero / features / demo（GIF 转盘）/ capabilities / highlights / compare / quickstart / faq / changelog。文案全部由页内一份五语言字典（`I18N`）在客户端切换，默认与不执行 JS 时都是简体中文，所以抓取器读到的正文就是 zh-CN 那一份。
+- GEO 改造依据 `docs/NoteLume文溯GEO-优化提示词手册.md`：head 有 canonical / OG / Twitter / robots，一段 `application/ld+json` 的 `@graph` 六节点（Organization、WebSite、WebPage、SoftwareApplication、FAQPage、HowTo）；可见正文里有产品定义句、能力四组、八维度竞品对照表、上手五步与十条 FAQ。没有真实评分就不写 `aggregateRating`，虚造一项属于误导性结构化数据。
+- 结构化数据必须与可见文案同语言：`setPromoLang` 末尾的 `syncGeo` 在切语言时一并重写 description / og / twitter / `og:locale` 与 ld+json 里的 `inLanguage`、`WebPage.name`、`SoftwareApplication.description` 与 `featureList`、`FAQPage.mainEntity`、`HowTo.name` 与 `step`。改问答或步骤文案要同时改字典和静态那份 JSON，`npm run test:promo-geo`（`tests/promo-geo.test.mjs` 14 条）逐条比对两边，漂移就红。
+- 手册里的榜单类（提示词 6）与博客文章（提示词 9）不做在自家落地页上：把广告写成独立评测是不诚实的，对比表照实写自己落后的两行就够。hreflang（提示词 12）需要每种语言一个 URL，单文件客户端切换做不到，留作后续。
+- 本地看效果直接打开 `index.html` 即可；3D 场景与 GIF 转盘依赖 CDN，取不到时退化成平铺网格，不影响文案与结构化数据。
+
 ## 当前状态
 
 本地Rust已安装，tauri-cli已安装。
