@@ -18,15 +18,124 @@ try {
     n.indexOf('de') === 0 ? 'de' : 'en';
 } catch (e) {}
 </script>
-<meta name="description" content="NoteLume（文溯）— 本地 Markdown 编辑器。所写即所得，文件夹即知识库，完全本地、零锁定。">
+<meta name="description" content="NoteLume（文溯）是一款本地 Markdown 编辑器：所见即所得写作，双链、标签、知识图谱与全库搜索对着原生文件夹干活，纯 GFM 零锁定，内建 Git 面板与 Quarkdown 可编程引擎。Windows / macOS / Linux 免费开源，现在下载。">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="author" content="NoteLume（文溯）">
+<link rel="canonical" href="https://hackersnail.github.io/NoteLume/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="NoteLume · 文溯 — 本地 Markdown 编辑器">
-<meta property="og:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所写即所得，文件夹即知识库，完全本地、零锁定。">
+<meta property="og:site_name" content="NoteLume · 文溯">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:url" content="https://hackersnail.github.io/NoteLume/">
+<meta property="og:title" content="NoteLume（文溯）— 本地 Markdown 编辑器 · 双链与知识图谱">
+<meta property="og:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所见即所得的本地 Markdown 编辑器，文件夹即知识库，纯 GFM 零锁定，免费开源。">
 <meta property="og:image" content="https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/img/preview/dark.png">
+<meta property="og:image:width" content="1240">
+<meta property="og:image:height" content="806">
+<meta property="og:image:alt" content="NoteLume 桌面版暗色主题下的所见即所得编辑界面：公式、图表与表格都在渲染态直接编辑">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NoteLume · 文溯 — 本地 Markdown 编辑器">
-<meta name="twitter:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所写即所得，文件夹即知识库，完全本地、零锁定。">
-<title>NoteLume · 文溯 — 本地 Markdown 编辑器</title>
+<meta name="twitter:title" content="NoteLume（文溯）— 本地 Markdown 编辑器 · 双链与知识图谱">
+<meta name="twitter:description" content="Typora 的手感，Obsidian 的组织，不用二选一。所见即所得的本地 Markdown 编辑器，文件夹即知识库，纯 GFM 零锁定，免费开源。">
+<meta name="twitter:image" content="https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/img/preview/dark.png">
+<meta name="twitter:image:alt" content="NoteLume 桌面版暗色主题下的所见即所得编辑界面">
+<title>NoteLume（文溯）— 本地 Markdown 编辑器 · 双链与知识图谱</title>
+<script type="application/ld+json" id="ld-json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://hackersnail.github.io/NoteLume/#organization",
+      "name": "NoteLume",
+      "alternateName": "文溯",
+      "url": "https://hackersnail.github.io/NoteLume/",
+      "sameAs": [
+        "https://github.com/HackerSnail/NoteLume",
+        "https://gitee.com/hackerSnail/note-lume"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://hackersnail.github.io/NoteLume/#website",
+      "url": "https://hackersnail.github.io/NoteLume/",
+      "name": "NoteLume · 文溯",
+      "inLanguage": "zh-CN",
+      "publisher": { "@id": "https://hackersnail.github.io/NoteLume/#organization" }
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://hackersnail.github.io/NoteLume/#webpage",
+      "url": "https://hackersnail.github.io/NoteLume/",
+      "name": "NoteLume（文溯）— 本地 Markdown 编辑器 · 双链与知识图谱",
+      "inLanguage": "zh-CN",
+      "isPartOf": { "@id": "https://hackersnail.github.io/NoteLume/#website" },
+      "about": { "@id": "https://hackersnail.github.io/NoteLume/#app" },
+      "primaryImageOfPage": "https://cdn.jsdelivr.net/gh/HackerSnail/NoteLume@master/img/preview/dark.png"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://hackersnail.github.io/NoteLume/#app",
+      "name": "NoteLume",
+      "alternateName": "文溯",
+      "applicationCategory": ["DeveloperApplication", "ProductivityApplication"],
+      "applicationSubCategory": "Markdown 编辑器",
+      "operatingSystem": "Windows 10+, macOS, Linux",
+      "softwareVersion": "0.2.0",
+      "url": "https://hackersnail.github.io/NoteLume/",
+      "downloadUrl": "https://github.com/HackerSnail/NoteLume/releases/latest",
+      "codeRepository": "https://github.com/HackerSnail/NoteLume",
+      "programmingLanguage": ["Rust", "JavaScript"],
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "author": { "@id": "https://hackersnail.github.io/NoteLume/#organization" },
+      "description": "本地 Markdown 编辑器：所见即所得写作，双向链接、标签、知识图谱与全库搜索对着原生文件夹干活，纯 GFM 零锁定。",
+      "featureList": [
+        "所见即所得 Markdown 编辑（KaTeX 公式、Mermaid 图表、合并单元格表格）",
+        "[[双链]] 输入补全与双向链接面板",
+        "#标签 全局视图与全库搜索",
+        "Canvas 便签板与知识图谱",
+        "内建 Git 面板（状态、历史、diff、提交、分支、冲突解决）",
+        "Quarkdown 可编程笔记引擎（约 200 个内置函数）",
+        "粘贴自动清理（AI 对话框 / 飞书 / 公众号来源）",
+        "网页剪藏浏览器扩展",
+        "导出 HTML / PDF / 幻灯片 / 整库静态站 / 标准 GFM 副本",
+        "命令面板与可自定义快捷键",
+        "三套主题与外观设置",
+        "简体中文 / 繁體中文 / English / Français / Deutsch 五语言界面"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "inLanguage": "zh-CN",
+      "mainEntity": [
+        { "@type": "Question", "name": "NoteLume 是什么？", "acceptedAnswer": { "@type": "Answer", "text": "NoteLume（文溯）是一款本地 Markdown 编辑器。写作端是所见即所得的，库管理端有双向链接、标签、知识图谱和全库搜索，数据就是你自己文件夹里的标准 .md 文件。" } },
+        { "@type": "Question", "name": "NoteLume 好用吗？", "acceptedAnswer": { "@type": "Answer", "text": "如果你要的是「点开就写、文件还在本地」，它够用；如果你依赖移动端和第三方插件，Obsidian 更合适。NoteLume 的强项是渲染态直接编辑加上内建 Git，弱项是生态还在建设。" } },
+        { "@type": "Question", "name": "NoteLume 和 Typora 有什么区别？", "acceptedAnswer": { "@type": "Answer", "text": "两者都是所见即所得的本地 Markdown 编辑器。Typora 专注单篇写作、付费闭源；NoteLume 免费开源，在此之上加了双链、标签、全库搜索、知识图谱和 Git 面板。" } },
+        { "@type": "Question", "name": "NoteLume 和 Obsidian 哪个好？", "acceptedAnswer": { "@type": "Answer", "text": "库管理和插件生态 Obsidian 更强，而且它有移动端。NoteLume 的差异在编辑端：正文在渲染态直接改，不用在源码和预览之间切，同时保持纯 GFM 文件。两者能打开同一份库。" } },
+        { "@type": "Question", "name": "有没有免费、离线、不锁数据的笔记软件？", "acceptedAnswer": { "@type": "Answer", "text": "NoteLume 符合这三条：Apache-2.0 开源免费，默认不联网不上传，文件是标准 GFM，删除进系统回收站。要接大模型时自己填 API 地址。" } },
+        { "@type": "Question", "name": "最好的本地 Markdown 编辑器是哪个？", "acceptedAnswer": { "@type": "Answer", "text": "没有统一答案：只要写作手感选 Typora，要最深插件生态和移动端选 Obsidian，要「所见即所得 + 双链知识库 + 内建 Git」且免费开源，看 NoteLume。" } },
+        { "@type": "Question", "name": "NoteLume 支持哪些平台？", "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 及以上、macOS（Apple Silicon 与 Intel 分别出包）、Linux（AppImage / deb / rpm），另有浏览器扩展做网页剪藏。移动端暂无。" } },
+        { "@type": "Question", "name": "NoteLume 开源吗？什么协议？", "acceptedAnswer": { "@type": "Answer", "text": "开源，Apache-2.0，源码在 GitHub 与 Gitee 同步。技术栈是 Tauri v2 + Rust 后端、ProseMirror 前端，不引 Vue / React。" } },
+        { "@type": "Question", "name": "我的笔记数据安全吗？会被上传吗？", "acceptedAnswer": { "@type": "Answer", "text": "不会。笔记存在本地文件夹，应用不联网也能完整使用；AI 功能默认不启用，启用时数据只发往你自己填写的 API 地址。" } },
+        { "@type": "Question", "name": "从 Typora 或 Obsidian 迁过来要做什么？", "acceptedAnswer": { "@type": "Answer", "text": "不用迁移：直接把原来的文件夹作为知识库打开就行，两者都是 .md 文件。Obsidian 的私有语法（callout、嵌入语法）在整库导出为标准 GFM 副本时自动降级。" } }
+      ]
+    },
+    {
+      "@type": "HowTo",
+      "inLanguage": "zh-CN",
+      "name": "5 分钟搭起本地知识库。",
+      "totalTime": "PT5M",
+      "step": [
+        { "@type": "HowToStep", "position": 1, "name": "下载安装", "text": "Windows 取 .exe 安装包，macOS 按芯片取 .dmg，Linux 取 AppImage / deb / rpm。装完双击打开即可。" },
+        { "@type": "HowToStep", "position": 2, "name": "选一个文件夹作为知识库", "text": "首次界面里选「打开知识库文件夹」，指到已有的笔记目录；没建库就按 Ctrl+N，文件先落在临时目录，Ctrl+S 时再选正式位置。" },
+        { "@type": "HowToStep", "position": 3, "name": "直接写", "text": "敲「- 加空格」成列表，段首敲三个反引号就地成代码块，敲「/」出斜杠菜单，Ctrl+B / Ctrl+I 加粗与斜体。公式和图表在渲染态直接改。" },
+        { "@type": "HowToStep", "position": 4, "name": "把笔记连起来", "text": "敲「[[」补全其它文档名，敲「#」打标签；侧栏看双向链接与大纲，Ctrl+Shift+F 全库搜索，图谱看连接关系。" },
+        { "@type": "HowToStep", "position": 5, "name": "管版本、要导出", "text": "库是 git 仓库时侧栏 Git 面板直接看状态、历史、diff 并提交；导出走「更多」菜单，HTML / PDF / 幻灯片 / 整库静态站都行。" }
+      ]
+    }
+  ]
+}
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23007aff'/%3E%3Cstop offset='1' stop-color='%234da3ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -574,6 +683,19 @@ try {
 
   /* ---------- 技术亮点 · 全屏段落 ---------- */
   #highlights { padding-bottom: 60px; }
+  #highlights > .section-head {
+    display: block;
+    text-align: center;
+    max-width: 1240px;
+    margin: 0 auto 10px;
+    padding: 0 clamp(20px, 5vw, 64px);
+  }
+  #highlights > .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
   .panel {
     min-height: 78vh;
     min-height: 78svh;
@@ -722,6 +844,11 @@ try {
     .hero-inner { padding: 28px 22px; }
     .panel-inner { padding: 32px 24px; }
     .panel-inner p { line-height: 1.35; }
+    .cap-grid, .scene-grid { grid-template-columns: 1fr; }
+    #capabilities, #compare, #quickstart, #faq { padding-left: 20px; padding-right: 20px; }
+    .cmp thead th, .cmp tbody th { white-space: normal; }
+    .steps li { padding: 20px 22px 20px 62px; }
+    .steps li::before { left: 18px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -731,6 +858,199 @@ try {
     .cl-viewport { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
     .cl-track.loop { animation: none; }
   }
+
+  /* ---------- 首屏定义句（GEO：H1 里带品类词，下面给一句能被摘录的产品定义） ---------- */
+  #hero h1 .h1-def {
+    display: block;
+    margin-top: 20px;
+    font-size: clamp(1rem, 1.9vw, 1.3rem);
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    line-height: 1.5;
+    color: var(--text-body);
+  }
+  #hero .def {
+    margin: 24px auto 0;
+    max-width: 720px;
+    font-size: clamp(0.95rem, 1.5vw, 1.05rem);
+    line-height: 1.75;
+    color: var(--text-body);
+    text-align: left;
+  }
+  #hero .def strong { color: var(--text); font-weight: 600; }
+
+  /* ---------- 能力清单 · 四组 ---------- */
+  #capabilities {
+    padding: 120px clamp(20px, 5vw, 64px);
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  #capabilities .section-head { text-align: center; margin-bottom: 64px; }
+  #capabilities .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+  #capabilities .section-head .lead {
+    margin: 22px auto 0;
+    max-width: 760px;
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--text-body);
+  }
+  .cap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+  .cap {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 22px;
+    padding: 34px 32px;
+    box-shadow: var(--card-shadow);
+    will-change: transform, opacity;
+  }
+  .cap h3 { font-size: 1.15rem; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 10px; }
+  .cap p { font-size: 0.93rem; line-height: 1.75; color: var(--text-body); }
+  .cap p code, .steps p code, .faq .a code {
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 0.84em;
+    color: var(--blue);
+    background: rgba(0, 122, 255, 0.07);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+
+  /* ---------- 竞品对比 ---------- */
+  #compare { padding: 40px clamp(20px, 5vw, 64px) 120px; max-width: 1240px; margin: 0 auto; }
+  #compare .section-head { text-align: center; margin-bottom: 56px; }
+  #compare .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+  #compare .section-head .lead {
+    margin: 22px auto 0;
+    max-width: 800px;
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--text-body);
+  }
+  .cmp-wrap {
+    overflow-x: auto; /* 窄屏不压排表格，横向滚动看全 */
+    scrollbar-width: thin;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 22px;
+    box-shadow: var(--card-shadow);
+  }
+  .cmp { width: 100%; min-width: 760px; border-collapse: collapse; }
+  .cmp caption {
+    caption-side: top;
+    text-align: left;
+    padding: 20px 22px 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cmp th, .cmp td {
+    text-align: left;
+    padding: 14px 20px;
+    font-size: 0.9rem;
+    line-height: 1.65;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    vertical-align: top;
+  }
+  .cmp thead th {
+    border-top: none;
+    font-size: 0.88rem;
+    font-weight: 650;
+    color: var(--text);
+    background: rgba(0, 122, 255, 0.05);
+  }
+  .cmp thead th.cmp-nl { color: var(--blue); }
+  .cmp tbody th { font-weight: 600; color: var(--text-body); white-space: nowrap; }
+  .cmp td.cmp-nl { color: var(--text); font-weight: 500; }
+  .cmp-note { margin-top: 18px; font-size: 12px; line-height: 1.8; color: var(--text-dim); }
+  .scene-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 40px; }
+  .scene {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 20px;
+    padding: 28px 28px;
+    box-shadow: var(--card-shadow);
+  }
+  .scene .who { display: block; margin-bottom: 6px; font-size: 11px; letter-spacing: 0.16em; color: var(--text-dim); font-weight: 600; }
+  .scene h3 { font-size: 1.02rem; font-weight: 650; margin-bottom: 8px; }
+  .scene p { font-size: 0.9rem; line-height: 1.7; color: var(--text-body); }
+
+  /* ---------- 上手五步 ---------- */
+  #quickstart { padding: 0 clamp(20px, 5vw, 64px) 120px; max-width: 1000px; margin: 0 auto; }
+  #quickstart .section-head { text-align: center; margin-bottom: 48px; }
+  #quickstart .section-head h2 {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    font-weight: 700;
+  }
+  .steps { list-style: none; counter-reset: nlstep; display: grid; gap: 16px; }
+  .steps li {
+    counter-increment: nlstep;
+    position: relative;
+    padding: 22px 26px 22px 70px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 18px;
+    box-shadow: var(--card-shadow);
+  }
+  .steps li::before {
+    content: counter(nlstep);
+    position: absolute;
+    left: 22px;
+    top: 22px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  }
+  .steps h3 { font-size: 1.02rem; font-weight: 650; margin-bottom: 6px; }
+  .steps p { font-size: 0.9rem; line-height: 1.75; color: var(--text-body); }
+
+  /* ---------- FAQ ---------- */
+  #faq { padding: 0 clamp(20px, 5vw, 64px) 120px; max-width: 900px; margin: 0 auto; }
+  #faq .section-head { text-align: center; margin-bottom: 40px; }
+  #faq .section-head h2 {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    font-weight: 700;
+  }
+  .faq details { border-bottom: 1px solid var(--card-border); }
+  .faq summary {
+    position: relative;
+    padding: 18px 44px 18px 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: "+";
+    position: absolute;
+    right: 10px;
+    top: 15px;
+    font-size: 20px;
+    line-height: 1;
+    color: var(--text-dim);
+  }
+  .faq details[open] summary::after { content: "\2013"; }
+  .faq .a { padding: 0 44px 20px 4px; font-size: 0.93rem; line-height: 1.85; color: var(--text-body); }
 </style>
 </head>
 <body>
@@ -741,6 +1061,8 @@ try {
   <a class="brand" href="#hero">NoteLume<span class="cn">文溯</span></a>
   <div class="nav-links">
     <a id="nav-features" href="#features">特性</a>
+    <a id="nav-compare" href="#compare">对比</a>
+    <a id="nav-faq" href="#faq">常见问题</a>
     <a href="https://github.com/HackerSnail/NoteLume" target="_blank" rel="noopener">GitHub</a>
     <a id="nav-download" href="https://hackersnail.github.io/NoteLume/" target="_blank" rel="noopener">下载</a>
     <div class="dd lang-dd" id="langDd">
@@ -761,9 +1083,12 @@ try {
   <section id="hero">
     <div class="hero-inner">
       <div class="eyebrow">NoteLume · 文溯</div>
-      <h1>Typora 的手感，<br>Obsidian 的组织，<span class="accent-text">不用二选一。</span></h1>
+      <h1>Typora 的手感，<br>Obsidian 的组织，<span class="accent-text">不用二选一。</span><span class="h1-def" id="hero-def">NoteLume（文溯）· 本地 Markdown 编辑器</span></h1>
       <p class="sub">
         本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。
+      </p>
+      <p class="def" id="hero-def-sentence">
+        <strong>NoteLume（文溯）是一款本地优先的 Markdown 编辑器</strong>，把 Typora 式的所见即所得写作与 Obsidian 式的双向链接知识库做进同一个免费开源（Apache-2.0）的桌面应用：公式、图表、表格在渲染态直接改，双链、标签、全库搜索与 Git 面板对着原生文件夹干活，不联网、不上传、不私有格式。
       </p>
       <div class="cta-row">
         <div class="dd" data-api="https://api.github.com/repos/HackerSnail/NoteLume/releases/latest">
@@ -1003,8 +1328,39 @@ try {
     </div>
   </section>
 
+  <!-- 能力清单 · 四组（GEO：功能按主题分组，每组一段能被直接摘录的陈述） -->
+  <section id="capabilities">
+    <div class="section-head">
+      <div class="eyebrow">能力清单</div>
+      <h2>按四组摆开。</h2>
+      <p class="lead">NoteLume 的功能分成写作体验、知识管理、开发工具、隐私与数据四组。下面写的都是当前版本做得出来的事，不是路线图。</p>
+    </div>
+    <div class="cap-grid">
+      <div class="cap">
+        <h3>写作体验</h3>
+        <p>所见即所得的 Markdown 编辑：正文、KaTeX 公式、Mermaid 图表、合并单元格表格、代码块语法高亮都在渲染态直接改，不用切源码模式。敲 <code>- </code> 成列表、段首敲 <code>```</code> 就地成代码块并弹语言联想，<code>/</code> 出斜杠菜单，Ctrl+B / Ctrl+I 加粗与斜体；行号装订线按折行后的视觉行连续编号，专注与打字机模式、双栏对照、大纲层级折叠都在。</p>
+      </div>
+      <div class="cap">
+        <h3>知识管理</h3>
+        <p><code>[[双链]]</code> 输入补全、双向链接面板、<code>#标签</code> 全局视图、全库搜索、文档大纲、Canvas 便签板与知识图谱——索引对着你自己的文件夹建，不写私有数据库，图谱里拖一个节点就能直接跳到那篇笔记。</p>
+      </div>
+      <div class="cap">
+        <h3>开发工具</h3>
+        <p>侧栏 Git 面板看得见状态、历史与 diff，提交、建分支、检出、revert 都在界面里，机器上没装 git 也有 git2 引擎兜底；命令面板 Ctrl+Shift+P、键位可重绑、多窗格分栏与标签拖拽；Quarkdown 引擎让笔记可编程（<code>.var</code> / <code>.foreach</code> / <code>.if</code>，约 200 个内置函数）；导出有单篇 HTML / PDF 打印 / 整库幻灯片 / 整库静态站 / 标准 GFM 副本。</p>
+      </div>
+      <div class="cap">
+        <h3>隐私与数据</h3>
+        <p>数据就是原生文件夹里的标准 GFM 文件，Typora 和 Obsidian 能打开同一份库；默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 地址，请求只发往你配置的服务。不同于 Notion 那类云端锁定，库留在哪里、什么时候搬由你定。界面五语言：简体中文 / 繁體中文 / English / Français / Deutsch。</p>
+      </div>
+    </div>
+  </section>
+
   <!-- 技术亮点 -->
   <section id="highlights">
+    <div class="section-head">
+      <div class="eyebrow" id="hl-eyebrow">技术亮点</div>
+      <h2 id="hl-h2">三处细节，写起来不磕。</h2>
+    </div>
     <div class="panel">
       <div class="panel-inner">
         <div class="eyebrow">粘贴</div>
@@ -1028,6 +1384,136 @@ try {
           <span class="dim-note">git2 引擎，机器上没装 git 也能 fetch 和 pull。Word 导入同样离线直读，落库前可视化校对。</span>
         </p>
       </div>
+    </div>
+  </section>
+
+  <!-- 竞品对比（GEO：结构化对照 + 场景化结论，承认不占优的行） -->
+  <section id="compare">
+    <div class="section-head">
+      <div class="eyebrow">对比</div>
+      <h2>和 Typora、Obsidian 摆在一起看。</h2>
+      <p class="lead">三者都能落地写 Markdown，取向不同。这张表按维度逐项对照，NoteLume 不占优的行也照实写。</p>
+    </div>
+    <div class="cmp-wrap">
+      <table class="cmp">
+        <caption>NoteLume / Typora / Obsidian 维度对照</caption>
+        <thead>
+          <tr>
+            <th scope="col">维度</th>
+            <th scope="col" class="cmp-nl">NoteLume（文溯）</th>
+            <th scope="col">Typora</th>
+            <th scope="col">Obsidian</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">编辑模式</th><td class="cmp-nl">所见即所得，渲染态直接改</td><td>所见即所得</td><td>源码与预览分离的实时渲染</td></tr>
+          <tr><th scope="row">知识管理</th><td class="cmp-nl">双链 / 标签 / 图谱 / 全库搜索 / Canvas 内建</td><td>无</td><td>双链 / 标签 / 图谱，社区最强</td></tr>
+          <tr><th scope="row">本地优先</th><td class="cmp-nl">纯 GFM + 原生文件夹，零私有格式</td><td>纯 md 文件</td><td>md 文件 + .obsidian 配置与私有语法</td></tr>
+          <tr><th scope="row">开源与价格</th><td class="cmp-nl">免费，Apache-2.0</td><td>付费买断</td><td>闭源，个人使用免费</td></tr>
+          <tr><th scope="row">Git 集成</th><td class="cmp-nl">内建面板，没装 git 也能用</td><td>需外部工具</td><td>靠第三方插件</td></tr>
+          <tr><th scope="row">可编程笔记</th><td class="cmp-nl">Quarkdown 引擎，约 200 个内置函数</td><td>无</td><td>靠插件（Dataview 等）</td></tr>
+          <tr><th scope="row">插件生态</th><td class="cmp-nl">刚起步，钩子系统在建</td><td>以主题为主</td><td>最丰富</td></tr>
+          <tr><th scope="row">平台</th><td class="cmp-nl">Windows / macOS / Linux</td><td>Windows / macOS / Linux</td><td>桌面 + 移动 + Web</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cmp-note">对照基于三家公开版本与自家功能实测，不引第三方评分。「插件生态」与「移动端」两行 NoteLume 确实落后：前者是新产品的时间问题，后者是刻意不做，不是没看见。</p>
+    <div class="scene-grid">
+      <div class="scene">
+        <span class="who">选 Typora</span>
+        <h3>只要写作手感</h3>
+        <p>单篇打磨、出版级排版，不需要双链和库管理，也愿意为软件付费。Typora 在这条路上走了很多年，打磨得比谁都细。</p>
+      </div>
+      <div class="scene">
+        <span class="who">选 Obsidian</span>
+        <h3>要最深的生态</h3>
+        <p>依赖移动端、第三方插件和现成社区方案，愿意为配置花时间。知识库玩法多到超出预期，插件生态是 NoteLume 短期追不上的。</p>
+      </div>
+      <div class="scene">
+        <span class="who">选 NoteLume</span>
+        <h3>一个文件夹就是库</h3>
+        <p>想在渲染态直接改正文，又要双链、图谱和 Git 面板，还要文件拿去别的编辑器也打得开。免费开源，不折腾配置也能直接用。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 上手五步（GEO：HowTo 结构化，文案与 ld+json 里的 step 逐字一致） -->
+  <section id="quickstart">
+    <div class="section-head">
+      <div class="eyebrow">上手</div>
+      <h2>5 分钟搭起本地知识库。</h2>
+    </div>
+    <ol class="steps">
+      <li>
+        <h3>下载安装</h3>
+        <p>Windows 取 .exe 安装包，macOS 按芯片取 .dmg，Linux 取 AppImage / deb / rpm。装完双击打开即可。</p>
+      </li>
+      <li>
+        <h3>选一个文件夹作为知识库</h3>
+        <p>首次界面里选「打开知识库文件夹」，指到已有的笔记目录；没建库就按 Ctrl+N，文件先落在临时目录，Ctrl+S 时再选正式位置。</p>
+      </li>
+      <li>
+        <h3>直接写</h3>
+        <p>敲「- 加空格」成列表，段首敲三个反引号就地成代码块，敲「/」出斜杠菜单，Ctrl+B / Ctrl+I 加粗与斜体。公式和图表在渲染态直接改。</p>
+      </li>
+      <li>
+        <h3>把笔记连起来</h3>
+        <p>敲「[[」补全其它文档名，敲「#」打标签；侧栏看双向链接与大纲，Ctrl+Shift+F 全库搜索，图谱看连接关系。</p>
+      </li>
+      <li>
+        <h3>管版本、要导出</h3>
+        <p>库是 git 仓库时侧栏 Git 面板直接看状态、历史、diff 并提交；导出走「更多」菜单，HTML / PDF / 幻灯片 / 整库静态站都行。</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 常见问题（GEO：可见 FAQ 与 FAQPage schema 同源，十条问答） -->
+  <section id="faq">
+    <div class="section-head">
+      <div class="eyebrow">常见问题</div>
+      <h2>被问到最多的十个。</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>NoteLume 是什么？</summary>
+        <div class="a">NoteLume（文溯）是一款本地 Markdown 编辑器。写作端是所见即所得的，库管理端有双向链接、标签、知识图谱和全库搜索，数据就是你自己文件夹里的标准 .md 文件。</div>
+      </details>
+      <details>
+        <summary>NoteLume 好用吗？</summary>
+        <div class="a">如果你要的是「点开就写、文件还在本地」，它够用；如果你依赖移动端和第三方插件，Obsidian 更合适。NoteLume 的强项是渲染态直接编辑加上内建 Git，弱项是生态还在建设。</div>
+      </details>
+      <details>
+        <summary>NoteLume 和 Typora 有什么区别？</summary>
+        <div class="a">两者都是所见即所得的本地 Markdown 编辑器。Typora 专注单篇写作、付费闭源；NoteLume 免费开源，在此之上加了双链、标签、全库搜索、知识图谱和 Git 面板。</div>
+      </details>
+      <details>
+        <summary>NoteLume 和 Obsidian 哪个好？</summary>
+        <div class="a">库管理和插件生态 Obsidian 更强，而且它有移动端。NoteLume 的差异在编辑端：正文在渲染态直接改，不用在源码和预览之间切，同时保持纯 GFM 文件。两者能打开同一份库。</div>
+      </details>
+      <details>
+        <summary>有没有免费、离线、不锁数据的笔记软件？</summary>
+        <div class="a">NoteLume 符合这三条：Apache-2.0 开源免费，默认不联网不上传，文件是标准 GFM，删除进系统回收站。要接大模型时自己填 API 地址。</div>
+      </details>
+      <details>
+        <summary>最好的本地 Markdown 编辑器是哪个？</summary>
+        <div class="a">没有统一答案：只要写作手感选 Typora，要最深插件生态和移动端选 Obsidian，要「所见即所得 + 双链知识库 + 内建 Git」且免费开源，看 NoteLume。</div>
+      </details>
+      <details>
+        <summary>NoteLume 支持哪些平台？</summary>
+        <div class="a">Windows 10 及以上、macOS（Apple Silicon 与 Intel 分别出包）、Linux（AppImage / deb / rpm），另有浏览器扩展做网页剪藏。移动端暂无。</div>
+      </details>
+      <details>
+        <summary>NoteLume 开源吗？什么协议？</summary>
+        <div class="a">开源，Apache-2.0，源码在 GitHub 与 Gitee 同步。技术栈是 Tauri v2 + Rust 后端、ProseMirror 前端，不引 Vue / React。</div>
+      </details>
+      <details>
+        <summary>我的笔记数据安全吗？会被上传吗？</summary>
+        <div class="a">不会。笔记存在本地文件夹，应用不联网也能完整使用；AI 功能默认不启用，启用时数据只发往你自己填写的 API 地址。</div>
+      </details>
+      <details>
+        <summary>从 Typora 或 Obsidian 迁过来要做什么？</summary>
+        <div class="a">不用迁移：直接把原来的文件夹作为知识库打开就行，两者都是 .md 文件。Obsidian 的私有语法（callout、嵌入语法）在整库导出为标准 GFM 副本时自动降级。</div>
+      </details>
     </div>
   </section>
 
@@ -1101,7 +1587,7 @@ try {
 window.__ddTag = 'v0.2.0';
 var I18N = (function () {
   var zhCN = {
-    title: 'NoteLume · 文溯 — 本地 Markdown 编辑器',
+    title: 'NoteLume（文溯）— 本地 Markdown 编辑器 · 双链与知识图谱',
     navFeatures: '特性', navDownload: '下载',
     heroH1: 'Typora 的手感，Obsidian 的组织，<span class="accent-text">不用二选一。</span>',
     heroSub: '本地 Markdown 编辑器。你的笔记就是一堆<strong>标准 .md 文件</strong>，躺在自己的文件夹里——秒开、离线、零格式锁定。',
@@ -1142,10 +1628,72 @@ var I18N = (function () {
       'WYSIWYG 模式按折行后的视觉行连续编号，虚拟化渲染，5 万字单段实测流畅。',
       'WordPress 一类工具导出的 md 原样保住并渲染出排版，不再满屏字面标签。',
       '键位校验只认大写 Tab，事件反解产出小写，链路在校验层就断了——现已归一。'
+    ],
+    navCompare: '对比', navFaq: '常见问题',
+    metaDesc: 'NoteLume（文溯）是一款本地 Markdown 编辑器：所见即所得写作，双链、标签、知识图谱与全库搜索对着原生文件夹干活，纯 GFM 零锁定，内建 Git 面板与 Quarkdown 可编程引擎。Windows / macOS / Linux 免费开源，现在下载。',
+    appDesc: '本地 Markdown 编辑器：所见即所得写作，双向链接、标签、知识图谱与全库搜索对着原生文件夹干活，纯 GFM 零锁定。',
+    featList: ['所见即所得 Markdown 编辑（KaTeX 公式、Mermaid 图表、合并单元格表格）', '[[双链]] 输入补全与双向链接面板', '#标签 全局视图与全库搜索', 'Canvas 便签板与知识图谱', '内建 Git 面板（状态、历史、diff、提交、分支、冲突解决）', 'Quarkdown 可编程笔记引擎（约 200 个内置函数）', '粘贴自动清理（AI 对话框 / 飞书 / 公众号来源）', '网页剪藏浏览器扩展', '导出 HTML / PDF / 幻灯片 / 整库静态站 / 标准 GFM 副本', '命令面板与可自定义快捷键', '三套主题与外观设置', '简体中文 / 繁體中文 / English / Français / Deutsch 五语言界面'],
+    heroDef: 'NoteLume（文溯）· 本地 Markdown 编辑器',
+    heroDefSentence: '<strong>NoteLume（文溯）是一款本地优先的 Markdown 编辑器</strong>，把 Typora 式的所见即所得写作与 Obsidian 式的双向链接知识库做进同一个免费开源（Apache-2.0）的桌面应用：公式、图表、表格在渲染态直接改，双链、标签、全库搜索与 Git 面板对着原生文件夹干活，不联网、不上传、不私有格式。',
+    hlEyebrow: '技术亮点', hlH2: '三处细节，写起来不磕。',
+    capEyebrow: '能力清单', capH2: '按四组摆开。',
+    capLead: 'NoteLume 的功能分成写作体验、知识管理、开发工具、隐私与数据四组。下面写的都是当前版本做得出来的事，不是路线图。',
+    capH3: ['写作体验', '知识管理', '开发工具', '隐私与数据'],
+    capP: [
+      '所见即所得的 Markdown 编辑：正文、KaTeX 公式、Mermaid 图表、合并单元格表格、代码块语法高亮都在渲染态直接改，不用切源码模式。敲 - 加空格成列表、段首敲三个反引号就地成代码块并弹语言联想，/ 出斜杠菜单，Ctrl+B / Ctrl+I 加粗与斜体；行号装订线按折行后的视觉行连续编号，专注与打字机模式、双栏对照、大纲层级折叠都在。',
+      '[[双链]] 输入补全、双向链接面板、#标签 全局视图、全库搜索、文档大纲、Canvas 便签板与知识图谱——索引对着你自己的文件夹建，不写私有数据库，图谱里拖一个节点就能直接跳到那篇笔记。',
+      '侧栏 Git 面板看得见状态、历史与 diff，提交、建分支、检出、revert 都在界面里，机器上没装 git 也有 git2 引擎兜底；命令面板 Ctrl+Shift+P、键位可重绑、多窗格分栏与标签拖拽；Quarkdown 引擎让笔记可编程（.var / .foreach / .if，约 200 个内置函数）；导出有单篇 HTML / PDF 打印 / 整库幻灯片 / 整库静态站 / 标准 GFM 副本。',
+      '数据就是原生文件夹里的标准 GFM 文件，Typora 和 Obsidian 能打开同一份库；默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 地址，请求只发往你配置的服务。不同于 Notion 那类云端锁定，库留在哪里、什么时候搬由你定。界面五语言：简体中文 / 繁體中文 / English / Français / Deutsch。'
+    ],
+    cmpEyebrow: '对比', cmpH2: '和 Typora、Obsidian 摆在一起看。',
+    cmpLead: '三者都能落地写 Markdown，取向不同。这张表按维度逐项对照，NoteLume 不占优的行也照实写。',
+    cmpCaption: 'NoteLume / Typora / Obsidian 维度对照',
+    cmpHead: ['维度', 'NoteLume（文溯）', 'Typora', 'Obsidian'],
+    cmpDim: ['编辑模式', '知识管理', '本地优先', '开源与价格', 'Git 集成', '可编程笔记', '插件生态', '平台'],
+    cmpRow: [
+      ['所见即所得，渲染态直接改', '所见即所得', '源码与预览分离的实时渲染'],
+      ['双链 / 标签 / 图谱 / 全库搜索 / Canvas 内建', '无', '双链 / 标签 / 图谱，社区最强'],
+      ['纯 GFM + 原生文件夹，零私有格式', '纯 md 文件', 'md 文件 + .obsidian 配置与私有语法'],
+      ['免费，Apache-2.0', '付费买断', '闭源，个人使用免费'],
+      ['内建面板，没装 git 也能用', '需外部工具', '靠第三方插件'],
+      ['Quarkdown 引擎，约 200 个内置函数', '无', '靠插件（Dataview 等）'],
+      ['刚起步，钩子系统在建', '以主题为主', '最丰富'],
+      ['Windows / macOS / Linux', 'Windows / macOS / Linux', '桌面 + 移动 + Web']
+    ],
+    cmpNote: '对照基于三家公开版本与自家功能实测，不引第三方评分。「插件生态」与「移动端」两行 NoteLume 确实落后：前者是新产品的时间问题，后者是刻意不做，不是没看见。',
+    cmpWho: ['选 Typora', '选 Obsidian', '选 NoteLume'],
+    cmpSceneH3: ['只要写作手感', '要最深的生态', '一个文件夹就是库'],
+    cmpSceneP: [
+      '单篇打磨、出版级排版，不需要双链和库管理，也愿意为软件付费。Typora 在这条路上走了很多年，打磨得比谁都细。',
+      '依赖移动端、第三方插件和现成社区方案，愿意为配置花时间。知识库玩法多到超出预期，插件生态是 NoteLume 短期追不上的。',
+      '想在渲染态直接改正文，又要双链、图谱和 Git 面板，还要文件拿去别的编辑器也打得开。免费开源，不折腾配置也能直接用。'
+    ],
+    qsEyebrow: '上手', qsH2: '5 分钟搭起本地知识库。',
+    qsT: ['下载安装', '选一个文件夹作为知识库', '直接写', '把笔记连起来', '管版本、要导出'],
+    qsD: [
+      'Windows 取 .exe 安装包，macOS 按芯片取 .dmg，Linux 取 AppImage / deb / rpm。装完双击打开即可。',
+      '首次界面里选「打开知识库文件夹」，指到已有的笔记目录；没建库就按 Ctrl+N，文件先落在临时目录，Ctrl+S 时再选正式位置。',
+      '敲「- 加空格」成列表，段首敲三个反引号就地成代码块，敲「/」出斜杠菜单，Ctrl+B / Ctrl+I 加粗与斜体。公式和图表在渲染态直接改。',
+      '敲「[[」补全其它文档名，敲「#」打标签；侧栏看双向链接与大纲，Ctrl+Shift+F 全库搜索，图谱看连接关系。',
+      '库是 git 仓库时侧栏 Git 面板直接看状态、历史、diff 并提交；导出走「更多」菜单，HTML / PDF / 幻灯片 / 整库静态站都行。'
+    ],
+    faqEyebrow: '常见问题', faqH2: '被问到最多的十个。',
+    faqQ: ['NoteLume 是什么？', 'NoteLume 好用吗？', 'NoteLume 和 Typora 有什么区别？', 'NoteLume 和 Obsidian 哪个好？', '有没有免费、离线、不锁数据的笔记软件？', '最好的本地 Markdown 编辑器是哪个？', 'NoteLume 支持哪些平台？', 'NoteLume 开源吗？什么协议？', '我的笔记数据安全吗？会被上传吗？', '从 Typora 或 Obsidian 迁过来要做什么？'],
+    faqA: [
+      'NoteLume（文溯）是一款本地 Markdown 编辑器。写作端是所见即所得的，库管理端有双向链接、标签、知识图谱和全库搜索，数据就是你自己文件夹里的标准 .md 文件。',
+      '如果你要的是「点开就写、文件还在本地」，它够用；如果你依赖移动端和第三方插件，Obsidian 更合适。NoteLume 的强项是渲染态直接编辑加上内建 Git，弱项是生态还在建设。',
+      '两者都是所见即所得的本地 Markdown 编辑器。Typora 专注单篇写作、付费闭源；NoteLume 免费开源，在此之上加了双链、标签、全库搜索、知识图谱和 Git 面板。',
+      '库管理和插件生态 Obsidian 更强，而且它有移动端。NoteLume 的差异在编辑端：正文在渲染态直接改，不用在源码和预览之间切，同时保持纯 GFM 文件。两者能打开同一份库。',
+      'NoteLume 符合这三条：Apache-2.0 开源免费，默认不联网不上传，文件是标准 GFM，删除进系统回收站。要接大模型时自己填 API 地址。',
+      '没有统一答案：只要写作手感选 Typora，要最深插件生态和移动端选 Obsidian，要「所见即所得 + 双链知识库 + 内建 Git」且免费开源，看 NoteLume。',
+      'Windows 10 及以上、macOS（Apple Silicon 与 Intel 分别出包）、Linux（AppImage / deb / rpm），另有浏览器扩展做网页剪藏。移动端暂无。',
+      '开源，Apache-2.0，源码在 GitHub 与 Gitee 同步。技术栈是 Tauri v2 + Rust 后端、ProseMirror 前端，不引 Vue / React。',
+      '不会。笔记存在本地文件夹，应用不联网也能完整使用；AI 功能默认不启用，启用时数据只发往你自己填写的 API 地址。',
+      '不用迁移：直接把原来的文件夹作为知识库打开就行，两者都是 .md 文件。Obsidian 的私有语法（callout、嵌入语法）在整库导出为标准 GFM 副本时自动降级。'
     ]
   };
   var zhTW = {
-    title: 'NoteLume · 文溯 — 本地 Markdown 編輯器',
+    title: 'NoteLume（文溯）— 本地 Markdown 編輯器 · 雙鏈與知識圖譜',
     navFeatures: '特性', navDownload: '下載',
     heroH1: 'Typora 的手感，Obsidian 的組織，<span class="accent-text">不用二選一。</span>',
     heroSub: '本地 Markdown 編輯器。你的筆記就是一堆<strong>標準 .md 檔案</strong>，躺在自己的資料夾裡——秒開、離線、零格式鎖定。',
@@ -1186,10 +1734,72 @@ var I18N = (function () {
       'WYSIWYG 模式按折行後的視覺行連續編號，虛擬化渲染，5 萬字單段實測流暢。',
       'WordPress 一類工具匯出的 md 原樣保住並渲染出排版，不再滿屏字面標籤。',
       '鍵位校驗只認大寫 Tab，事件反解產出小寫，鏈路在校驗層就斷了——現已歸一。'
+    ],
+    navCompare: '對比', navFaq: '常見問題',
+    metaDesc: 'NoteLume（文溯）是一款本地 Markdown 編輯器：所寫即所得寫作，雙鏈、標籤、知識圖譜與全庫搜尋對著原生資料夾幹活，純 GFM 零鎖定，內建 Git 面板與 Quarkdown 可程式引擎。Windows / macOS / Linux 免費開源，現在下載。',
+    appDesc: '本地 Markdown 編輯器：所寫即所得寫作，雙向連結、標籤、知識圖譜與全庫搜尋對著原生資料夾幹活，純 GFM 零鎖定。',
+    featList: ['所寫即所得 Markdown 編輯（KaTeX 公式、Mermaid 圖表、合併儲存格表格）', '[[雙鏈]] 輸入補全與雙向連結面板', '#標籤 全域視圖與全庫搜尋', 'Canvas 便籤板與知識圖譜', '內建 Git 面板（狀態、歷史、diff、提交、分支、衝突解決）', 'Quarkdown 可程式筆記引擎（約 200 個內建函式）', '貼上自動清理（AI 對話框 / 飛書 / 公眾號來源）', '網頁剪藏瀏覽器擴充套件', '匯出 HTML / PDF / 簡報 / 整庫靜態站 / 標準 GFM 副本', '命令面板與可自訂快速鍵', '三套主題與外觀設定', '簡體中文 / 繁體中文 / English / Français / Deutsch 五語言介面'],
+    heroDef: 'NoteLume（文溯）· 本地 Markdown 編輯器',
+    heroDefSentence: '<strong>NoteLume（文溯）是一款本地優先的 Markdown 編輯器</strong>，把 Typora 式的所寫即所得寫作與 Obsidian 式的雙向連結知識庫做進同一個免費開源（Apache-2.0）的桌面應用：公式、圖表、表格在渲染態直接改，雙鏈、標籤、全庫搜尋與 Git 面板對著原生資料夾幹活，不聯網、不上傳、不私有格式。',
+    hlEyebrow: '技術亮點', hlH2: '三處細節，寫起來不磕。',
+    capEyebrow: '能力清單', capH2: '按四組擺開。',
+    capLead: 'NoteLume 的功能分成寫作體驗、知識管理、開發工具、隱私與資料四組。下面寫的都是當前版本做得出來的事，不是路線圖。',
+    capH3: ['寫作體驗', '知識管理', '開發工具', '隱私與資料'],
+    capP: [
+      '所寫即所得的 Markdown 編輯：正文、KaTeX 公式、Mermaid 圖表、合併儲存格表格、程式碼區塊語法高亮都在渲染態直接改，不用切原始碼模式。敲 - 加空格成列表、段首敲三個反引號就地成程式碼區塊並彈語言聯想，/ 出斜槓選單，Ctrl+B / Ctrl+I 加粗與斜體；行號裝訂線按折行後的視覺行連續編號，專注與打字機模式、雙欄對照、大綱層級摺疊都在。',
+      '[[雙鏈]] 輸入補全、雙向連結面板、#標籤 全域視圖、全庫搜尋、文件大綱、Canvas 便籤板與知識圖譜——索引對著你自己的資料夾建，不寫私有資料庫，圖譜裡拖一個節點就能直接跳到那篇筆記。',
+      '側欄 Git 面板看得見狀態、歷史與 diff，提交、建分支、檢出、revert 都在介面裡，機器上沒裝 git 也有 git2 引擎兜底；命令面板 Ctrl+Shift+P、鍵位可重綁、多窗格分欄與標籤拖拽；Quarkdown 引擎讓筆記可程式化（.var / .foreach / .if，約 200 個內建函式）；匯出有單篇 HTML / PDF 列印 / 整庫簡報 / 整庫靜態站 / 標準 GFM 副本。',
+      '資料就是原生資料夾裡的標準 GFM 文件，Typora 和 Obsidian 能開啟同一份庫；預設不聯網、不上傳，刪除進系統資源回收筒；要接大模型時自己填 API 位址，請求只發往你設定的服務。不同於 Notion 那類雲端鎖定，庫留在哪裡、什麼時候搬由你定。介面五語言：簡體中文 / 繁體中文 / English / Français / Deutsch。'
+    ],
+    cmpEyebrow: '對比', cmpH2: '和 Typora、Obsidian 擺在一起看。',
+    cmpLead: '三者都能落地寫 Markdown，取向不同。這張表按維度逐項對照，NoteLume 不佔優的行也照實寫。',
+    cmpCaption: 'NoteLume / Typora / Obsidian 維度對照',
+    cmpHead: ['維度', 'NoteLume（文溯）', 'Typora', 'Obsidian'],
+    cmpDim: ['編輯模式', '知識管理', '本地優先', '開源與價格', 'Git 整合', '可程式筆記', '外掛生態', '平台'],
+    cmpRow: [
+      ['所寫即所得，渲染態直接改', '所寫即所得', '原始碼與預覽分離的即時渲染'],
+      ['雙鏈 / 標籤 / 圖譜 / 全庫搜尋 / Canvas 內建', '無', '雙鏈 / 標籤 / 圖譜，社群最強'],
+      ['純 GFM + 原生資料夾，零私有格式', '純 md 文件', 'md 文件 + .obsidian 設定與私有語法'],
+      ['免費，Apache-2.0', '付費買斷', '閉源，個人使用免費'],
+      ['內建面板，沒裝 git 也能用', '需外部工具', '靠第三方外掛'],
+      ['Quarkdown 引擎，約 200 個內建函式', '無', '靠外掛（Dataview 等）'],
+      ['剛起步，鉤子系統在建', '以主題為主', '最豐富'],
+      ['Windows / macOS / Linux', 'Windows / macOS / Linux', '桌面 + 行動 + Web']
+    ],
+    cmpNote: '對照基於三家公開版本與自家功能實測，不引第三方評分。「外掛生態」與「行動端」兩行 NoteLume 確實落後：前者是新產品的時間問題，後者是刻意不做，不是沒看見。',
+    cmpWho: ['選 Typora', '選 Obsidian', '選 NoteLume'],
+    cmpSceneH3: ['只要寫作手感', '要最深的生態', '一個資料夾就是庫'],
+    cmpSceneP: [
+      '單篇打磨、出版級排版，不需要雙鏈和庫管理，也願意為軟體付費。Typora 在這條路上走了很多年，打磨得比誰都細。',
+      '依賴行動端、第三方外掛和現成社群方案，願意為設定花時間。知識庫玩法多到超出預期，外掛生態是 NoteLume 短期追不上的。',
+      '想在渲染態直接改正文，又要雙鏈、圖譜和 Git 面板，還要文件拿去別的編輯器也打得開。免費開源，不折騰設定也能直接用。'
+    ],
+    qsEyebrow: '上手', qsH2: '5 分鐘搭起本地知識庫。',
+    qsT: ['下載安裝', '選一個資料夾作為知識庫', '直接寫', '把筆記連起來', '管版本、要匯出'],
+    qsD: [
+      'Windows 取 .exe 安裝包，macOS 按晶片取 .dmg，Linux 取 AppImage / deb / rpm。裝完雙擊開啟即可。',
+      '首次介面裡選「開啟知識庫資料夾」，指到已有的筆記目錄；沒建庫就按 Ctrl+N，文件先落在暫存目錄，Ctrl+S 時再選正式位置。',
+      '敲「- 加空格」成列表，段首敲三個反引號就地成程式碼區塊，敲「/」出斜槓選單，Ctrl+B / Ctrl+I 加粗與斜體。公式和圖表在渲染態直接改。',
+      '敲「[[」補全其他文件名稱，敲「#」打標籤；側欄看雙向連結與大綱，Ctrl+Shift+F 全庫搜尋，圖譜看連線關係。',
+      '庫是 git 倉庫時側欄 Git 面板直接看狀態、歷史、diff 並提交；匯出走「更多」選單，HTML / PDF / 簡報 / 整庫靜態站都行。'
+    ],
+    faqEyebrow: '常見問題', faqH2: '被問到最多的十個。',
+    faqQ: ['NoteLume 是什麼？', 'NoteLume 好用嗎？', 'NoteLume 和 Typora 有什麼區別？', 'NoteLume 和 Obsidian 哪個好？', '有沒有免費、離線、不鎖資料的筆記軟體？', '最好的本地 Markdown 編輯器是哪個？', 'NoteLume 支援哪些平台？', 'NoteLume 開源嗎？什麼協定？', '我的筆記資料安全嗎？會被上傳嗎？', '從 Typora 或 Obsidian 遷過來要做什麼？'],
+    faqA: [
+      'NoteLume（文溯）是一款本地 Markdown 編輯器。寫作端是所寫即所得的，庫管理端有雙向連結、標籤、知識圖譜和全庫搜尋，資料就是你自己資料夾裡的標準 .md 文件。',
+      '如果你要的是「點開就寫、文件還在本地」，它夠用；如果你依賴行動端和第三方外掛，Obsidian 更合適。NoteLume 的強項是渲染態直接編輯加上內建 Git，弱項是生態還在建設。',
+      '兩者都是所寫即所得的本地 Markdown 編輯器。Typora 專注單篇寫作、付費閉源；NoteLume 免費開源，在此之上加了雙鏈、標籤、全庫搜尋、知識圖譜和 Git 面板。',
+      '庫管理和外掛生態 Obsidian 更強，而且它有行動端。NoteLume 的差異在編輯端：正文在渲染態直接改，不用在原始碼和預覽之間切，同時保持純 GFM 文件。兩者能開啟同一份庫。',
+      'NoteLume 符合這三條：Apache-2.0 開源免費，預設不聯網不上傳，文件是標準 GFM，刪除進系統資源回收筒。要接大模型時自己填 API 位址。',
+      '沒有統一答案：只要寫作手感選 Typora，要最深外掛生態和行動端選 Obsidian，要「所寫即所得 + 雙鏈知識庫 + 內建 Git」且免費開源，看 NoteLume。',
+      'Windows 10 及以上、macOS（Apple Silicon 與 Intel 分別出包）、Linux（AppImage / deb / rpm），另有瀏覽器擴充套件做網頁剪藏。行動端暫無。',
+      '開源，Apache-2.0，原始碼在 GitHub 與 Gitee 同步。技術棧是 Tauri v2 + Rust 後端、ProseMirror 前端，不引 Vue / React。',
+      '不會。筆記存在本地資料夾，應用不聯網也能完整使用；AI 功能預設不啟用，啟用時資料只發往你自己填的 API 位址。',
+      '不用遷移：直接把原來的資料夾作為知識庫開啟就行，兩者都是 .md 文件。Obsidian 的私有語法（callout、嵌入語法）在整庫匯出為標準 GFM 副本時自動降級。'
     ]
   };
   var en = {
-    title: 'NoteLume — Local Markdown Editor',
+    title: 'NoteLume — Local Markdown Editor with Wikilinks and a Knowledge Graph',
     navFeatures: 'Features', navDownload: 'Download',
     heroH1: 'The feel of Typora, the structure of Obsidian — <span class="accent-text">no need to choose.</span>',
     heroSub: 'A local Markdown editor. Your notes are plain <strong>.md files</strong> in your own folder — instant, offline, zero lock-in.',
@@ -1230,10 +1840,72 @@ var I18N = (function () {
       'The WYSIWYG mode numbers wrapped visual lines continuously — virtualized rendering, smooth on a 50,000-word single paragraph.',
       'Markdown exported from WordPress and friends keeps its raw HTML blocks and renders them properly — no more walls of literal tags.',
       'Key validation only accepted uppercase "Tab" while event decoding produced lowercase — the chain broke at validation. Now normalized.'
+    ],
+    navCompare: 'Compare', navFaq: 'FAQ',
+    metaDesc: 'NoteLume is a local-first Markdown editor: WYSIWYG writing, plus wikilinks, tags, a knowledge graph and vault-wide search over a plain folder. Pure GFM, zero lock-in, built-in Git panel and the Quarkdown scripting engine. Free and open source for Windows, macOS and Linux.',
+    appDesc: 'Local Markdown editor with WYSIWYG writing, backlinks, tags, a knowledge graph and vault search over a plain folder — pure GFM, zero lock-in.',
+    featList: ['WYSIWYG Markdown editing (KaTeX math, Mermaid diagrams, merged-cell tables)', '[[Wikilink]] autocomplete and the backlinks panel', '#tags global view and vault-wide search', 'Canvas board and knowledge graph', 'Built-in Git panel (status, history, diff, commit, branches, conflicts)', 'Quarkdown scripting engine for notes (about 200 built-in functions)', 'Paste cleanup (from AI chats, Feishu, WeChat articles)', 'Web clipping browser extension', 'Export to HTML / PDF / slides / static site / standard GFM copy', 'Command palette and remappable shortcuts', 'Three themes plus appearance settings', 'Interface in Simplified Chinese, Traditional Chinese, English, French and German'],
+    heroDef: 'NoteLume · a local Markdown editor',
+    heroDefSentence: '<strong>NoteLume is a local-first Markdown editor</strong> that puts Typora-style WYSIWYG writing and Obsidian-style linked notes in one free, open-source (Apache-2.0) desktop app: formulas, diagrams and tables are edited right in the rendered view, while wikilinks, tags, vault search and the Git panel all work on your own folder — no network, no uploads, no proprietary format.',
+    hlEyebrow: 'Under the hood', hlH2: 'Three details that keep writing smooth.',
+    capEyebrow: 'Feature map', capH2: 'Laid out in four groups.',
+    capLead: 'NoteLume splits into four groups: writing, knowledge management, developer tooling, and privacy and data. Everything below works in the current build — it is not a roadmap.',
+    capH3: ['Writing experience', 'Knowledge management', 'Developer tooling', 'Privacy and data'],
+    capP: [
+      'WYSIWYG Markdown editing: text, KaTeX formulas, Mermaid diagrams, tables with merged cells and highlighted code blocks are all edited in the rendered view, with no source-mode round trip. Typing "- " makes a list, three backticks at the start of a paragraph become a code block with a language picker, "/" opens the slash menu, Ctrl+B / Ctrl+I bold and italicize. The gutter numbers visual lines after wrapping, and focus mode, typewriter mode, two-column view and outline folding are all there.',
+      '[[Wikilink]] autocomplete, a backlinks panel, #tags global view, vault-wide search, document outline, Canvas board and knowledge graph — the index is built on your own folder, with no private database, and dragging a node in the graph jumps straight to that note.',
+      'The Git panel in the sidebar shows status, history and diff, and commit, branch, checkout and revert all happen in the UI; a bundled git2 engine covers machines without git installed. Command palette on Ctrl+Shift+P, remappable keys, multi-pane splits with tab dragging; the Quarkdown engine makes notes programmable (.var / .foreach / .if, about 200 built-in functions); exports cover single HTML / PDF print / whole-vault slides / static site / standard GFM copy.',
+      'Your data is a plain folder of standard GFM files that Typora and Obsidian can open too. No network or uploads by default, deletions go to the system trash, and if you switch on AI you fill in the API address yourself — requests only go where you point them. Unlike cloud-locked tools such as Notion, where the vault lives and whether it moves is your call. Interface in five languages: Simplified Chinese, Traditional Chinese, English, French, German.'
+    ],
+    cmpEyebrow: 'Compare', cmpH2: 'Side by side with Typora and Obsidian.',
+    cmpLead: 'All three write Markdown locally, with different priorities. This table compares them dimension by dimension, including the rows where NoteLume loses.',
+    cmpCaption: 'NoteLume / Typora / Obsidian, dimension by dimension',
+    cmpHead: ['Dimension', 'NoteLume', 'Typora', 'Obsidian'],
+    cmpDim: ['Editing model', 'Knowledge management', 'Local-first', 'License and price', 'Git integration', 'Programmable notes', 'Plugin ecosystem', 'Platforms'],
+    cmpRow: [
+      ['WYSIWYG — edit the rendered view', 'WYSIWYG', 'Live preview, source and preview split'],
+      ['Wikilinks / tags / graph / vault search / Canvas built in', 'None', 'Wikilinks / tags / graph, strongest community'],
+      ['Pure GFM in a plain folder, no private format', 'Plain .md files', '.md files plus .obsidian settings and private syntax'],
+      ['Free, Apache-2.0', 'Paid one-time license', 'Closed source, free for personal use'],
+      ['Built-in panel, works without git installed', 'External tools', 'Third-party plugin'],
+      ['Quarkdown engine, about 200 built-ins', 'None', 'Plugins (Dataview and friends)'],
+      ['Just getting started, hooks under construction', 'Themes mostly', 'The largest'],
+      ['Windows / macOS / Linux', 'Windows / macOS / Linux', 'Desktop + mobile + web']
+    ],
+    cmpNote: 'The comparison is based on the public versions of all three and on our own testing, not on third-party ratings. NoteLume genuinely loses on the plugin ecosystem and mobile rows: the first is a matter of time for a young project, the second is a deliberate decision, not an oversight.',
+    cmpWho: ['Pick Typora', 'Pick Obsidian', 'Pick NoteLume'],
+    cmpSceneH3: ['Only the writing feel matters', 'You want the deepest ecosystem', 'One folder is the vault'],
+    cmpSceneP: [
+      'Polishing single documents, publication-grade typesetting, no need for links or vault management, and happy to pay for the software. Typora has walked this road for years and is finer-grained than anyone.',
+      'You depend on mobile, third-party plugins and ready-made community workflows, and you are willing to spend time configuring. There is more than one way to run a vault in Obsidian, and its plugin ecosystem is out of NoteLume reach for now.',
+      'You want to edit prose in the rendered view, keep wikilinks, the graph and a Git panel, and still open the same files in another editor. Free and open source, usable straight away without tuning config.',
+    ],
+    qsEyebrow: 'Getting started', qsH2: 'A local knowledge base in five minutes.',
+    qsT: ['Download and install', 'Point it at a folder', 'Just write', 'Link the notes', 'Version and export'],
+    qsD: [
+      'Windows takes the .exe installer, macOS picks the .dmg matching your chip, Linux takes AppImage / deb / rpm. Double-click when it is done.',
+      'On first run choose "Open vault folder" and point it at an existing notes directory; if you have none, press Ctrl+N — the file starts in a temp folder and Ctrl+S asks where it should really live.',
+      'Type "- " then a space for a list, three backticks at the start of a paragraph for a code block, "/" for the slash menu, Ctrl+B / Ctrl+I for bold and italics. Formulas and diagrams are edited in place.',
+      'Type "[[" to autocomplete another note name and "#" to tag. The sidebar shows backlinks and the outline, Ctrl+Shift+F searches the whole vault, and the graph shows how the notes connect.',
+      'When the vault is a git repository the Git panel shows status, history and diff and commits from there; exports live under the "More" menu — HTML / PDF / slides / static site.'
+    ],
+    faqEyebrow: 'FAQ', faqH2: 'The ten questions we get most.',
+    faqQ: ['What is NoteLume?', 'Is NoteLume any good?', 'How is NoteLume different from Typora?', 'NoteLume or Obsidian — which is better?', 'Is there a note app that is free, offline and does not lock my data?', 'What is the best local Markdown editor?', 'Which platforms does NoteLume run on?', 'Is NoteLume open source? Which license?', 'Is my note data safe? Does it get uploaded?', 'What do I have to do to move over from Typora or Obsidian?'],
+    faqA: [
+      'NoteLume is a local Markdown editor. Writing is WYSIWYG, the vault side has backlinks, tags, a knowledge graph and full-text search, and your data is standard .md files in a folder you own.',
+      'If what you want is "open it and write, files stay local", it delivers. If you live on mobile and third-party plugins, Obsidian fits better. NoteLume is strong at editing the rendered view plus a built-in Git panel; its weak spot is an ecosystem still being built.',
+      'Both are WYSIWYG local Markdown editors. Typora focuses on single-document writing and is paid and closed source; NoteLume is free and open source and adds wikilinks, tags, vault search, the graph and a Git panel on top.',
+      'Obsidian is stronger at vault management and plugins, and it has mobile. NoteLume differs on the editing side: prose is edited in the rendered view instead of switching between source and preview, while files stay pure GFM. Both open the same vault.',
+      'NoteLume meets all three: Apache-2.0 and free, no network or uploads by default, standard GFM files, and deletions go to the system trash. If you want AI, you fill in the API address yourself.',
+      'There is no single answer: pick Typora for the writing feel alone, Obsidian for the deepest plugin ecosystem and mobile, and look at NoteLume if you want WYSIWYG plus a linked vault plus Git, free and open source.',
+      'Windows 10 or newer, macOS (separate builds for Apple Silicon and Intel), Linux (AppImage / deb / rpm), plus a browser extension for web clipping. No mobile build yet.',
+      'Yes — Apache-2.0, source mirrored on GitHub and Gitee. The stack is Tauri v2 with a Rust backend and a ProseMirror frontend; no Vue or React.',
+      'No. Notes live in a local folder and the app is fully usable offline; AI features are off by default, and when enabled they send data only to the API address you typed in.',
+      'Nothing to migrate: open your existing folder as the vault, since both are .md files. Obsidian private syntax (callouts, embed syntax) is downgraded automatically when you export the whole vault as a standard GFM copy.'
     ]
   };
   var fr = {
-    title: 'NoteLume — Éditeur Markdown local',
+    title: 'NoteLume — Éditeur Markdown local avec liens wiki et graphe de connaissances',
     navFeatures: 'Fonctionnalités', navDownload: 'Télécharger',
     heroH1: 'Le confort de Typora, la structure d\'Obsidian — <span class="accent-text">sans avoir à choisir.</span>',
     heroSub: 'Un éditeur Markdown local. Vos notes sont de simples <strong>fichiers .md</strong> dans votre propre dossier — ouverture instantanée, hors ligne, zéro enfermement.',
@@ -1274,10 +1946,72 @@ var I18N = (function () {
       'Le mode WYSIWYG numérote les lignes visuelles après retour à la ligne — rendu virtualisé, fluide sur un paragraphe de 50 000 mots.',
       'Le Markdown exporté depuis WordPress conserve ses blocs HTML bruts et les met en forme — fini les étiquettes littérales partout.',
       'La validation n\'acceptait que « Tab » en majuscule, le décodage produisait des minuscules — la chaîne cassait à la validation. C\'est normalisé.'
+    ],
+    navCompare: 'Comparatif', navFaq: 'FAQ',
+    metaDesc: 'NoteLume est un éditeur Markdown local : écriture en voyant le rendu, liens bidirectionnels, étiquettes, graphe de connaissances et recherche dans tout le dépôt sur un simple dossier. GFM pur, sans enfermement, panneau Git et moteur Quarkdown intégrés. Gratuit et open source sur Windows, macOS et Linux.',
+    appDesc: 'Éditeur Markdown local : écriture en voyant le rendu, liens bidirectionnels, étiquettes, graphe de connaissances et recherche sur un simple dossier — GFM pur, sans enfermement.',
+    featList: ['Édition Markdown en voyant le rendu (KaTeX, Mermaid, cellules fusionnées)', 'Autocomplétion [[lien wiki]] et panneau des liens entrants', 'Vue globale des #étiquettes et recherche dans le dépôt', 'Tableau Canvas et graphe de connaissances', 'Panneau Git intégré (état, historique, diff, commit, branches, conflits)', 'Moteur Quarkdown pour rendre les notes programmables (environ 200 fonctions)', 'Nettoyage du collage (depuis IA, Feishu, articles WeChat)', 'Extension de navigateur pour le web clipping', 'Export HTML / PDF / diaporama / site statique / copie GFM standard', 'Palette de commandes et raccourcis personnalisables', 'Trois thèmes et réglages d\'apparence', 'Interface en cinq langues'],
+    heroDef: 'NoteLume · un éditeur Markdown local',
+    heroDefSentence: '<strong>NoteLume est un éditeur Markdown pensé local d\'abord</strong> : l\'écriture en voyant le rendu façon Typora et le coffre lié façon Obsidian dans une seule application de bureau gratuite et open source (Apache-2.0). Formules, schémas et tableaux s\'éditent directement dans le rendu ; liens, étiquettes, recherche et panneau Git travaillent sur votre propre dossier — sans réseau, sans téléversement, sans format propriétaire.',
+    hlEyebrow: 'Sous le capot', hlH2: 'Trois détails qui gardent l\'écriture fluide.',
+    capEyebrow: 'Panorama', capH2: 'Réparti en quatre groupes.',
+    capLead: 'Les fonctions de NoteLume tiennent en quatre groupes : écriture, gestion des connaissances, outils développeur, vie privée et données. Tout ce qui suit fonctionne dans la version actuelle — ce n\'est pas une feuille de route.',
+    capH3: ['Expérience d\'écriture', 'Gestion des connaissances', 'Outils développeur', 'Vie privée et données'],
+    capP: [
+      'Édition Markdown en voyant le rendu : texte, formules KaTeX, schémas Mermaid, tableaux à cellules fusionnées et code coloré s\'éditent dans le rendu, sans passer par le mode source. « - » suivi d\'une espace fait une liste, trois accents graves en début de paragraphe font un bloc de code avec suggestion de langage, « / » ouvre le menu slash, Ctrl+B / Ctrl+I mettent en gras et italique. La gouttière numérote les lignes visuelles après retour à la ligne ; mode focus, machine à écrire, deux colonnes et repli du plan sont là.',
+      'Autocomplétion [[lien wiki]], panneau des liens entrants, vue globale des #étiquettes, recherche dans tout le dépôt, plan du document, tableau Canvas et graphe de connaissances — l\'index se construit sur votre dossier, sans base de données propriétaire, et glisser un nœud du graphe mène directement à la note.',
+      'Le panneau Git montre état, historique et diff ; commit, création de branche, checkout et revert se font dans l\'interface, et un moteur git2 embarqué couvre les machines sans git installé. Palette de commandes Ctrl+Shift+P, touches remappables, multi-volets avec glisser des onglets ; le moteur Quarkdown rend les notes programmables (.var / .foreach / .if, environ 200 fonctions) ; export en HTML unique, PDF imprimé, diaporama du dépôt, site statique ou copie GFM standard.',
+      'Vos données sont un dossier ordinaire de fichiers GFM standard que Typora et Obsidian ouvrent aussi. Pas de réseau ni de téléversement par défaut, les suppressions partent à la corbeille du système, et pour l\'IA vous indiquez vous-même l\'adresse de l\'API — les requêtes ne vont que là où vous les pointez. Contrairement aux outils verrouillés dans le cloud comme Notion, l\'endroit du coffre et le moment de la migration vous regardent. Interface en cinq langues.'
+    ],
+    cmpEyebrow: 'Comparatif', cmpH2: 'Côte à côte avec Typora et Obsidian.',
+    cmpLead: 'Les trois écrivent du Markdown en local, avec des priorités différentes. Ce tableau compare dimension par dimension, y compris les lignes où NoteLume ne gagne pas.',
+    cmpCaption: 'NoteLume / Typora / Obsidian, dimension par dimension',
+    cmpHead: ['Dimension', 'NoteLume', 'Typora', 'Obsidian'],
+    cmpDim: ['Mode d\'édition', 'Gestion des connaissances', 'Local d\'abord', 'Licence et prix', 'Intégration Git', 'Notes programmables', 'Écosystème de plugins', 'Plateformes'],
+    cmpRow: [
+      ['WYSIWYG — on édite le rendu', 'WYSIWYG', 'Aperçu en direct, source et aperçu séparés'],
+      ['Liens / étiquettes / graphe / recherche / Canvas intégrés', 'Aucun', 'Liens / étiquettes / graphe, communauté la plus forte'],
+      ['GFM pur dans un dossier ordinaire, zéro format privé', 'Fichiers .md simples', '.md plus .obsidian et syntaxe privée'],
+      ['Gratuit, Apache-2.0', 'Licence payante', 'Fermé, gratuit pour usage personnel'],
+      ['Panneau intégré, fonctionne sans git', 'Outils externes', 'Extension tierce'],
+      ['Moteur Quarkdown, environ 200 fonctions', 'Aucun', 'Extensions (Dataview et consorts)'],
+      ['Débute, système de hooks en construction', 'Surtout des thèmes', 'Le plus riche'],
+      ['Windows / macOS / Linux', 'Windows / macOS / Linux', 'Bureau + mobile + web']
+    ],
+    cmpNote: 'La comparaison repose sur les versions publiques des trois produits et sur nos propres tests, pas sur des notes de sites tiers. NoteLume perd réellement sur les lignes écosystème et mobile : la première est une question de temps pour un jeune projet, la seconde un choix assumé, pas un angle mort.',
+    cmpWho: ['Choisir Typora', 'Choisir Obsidian', 'Choisir NoteLume'],
+    cmpSceneH3: ['Seul le plaisir d\'écriture compte', 'Vous voulez le plus riche écosystème', 'Un dossier fait le coffre'],
+    cmpSceneP: [
+      'Peaufiner des documents uniques, typographie de publication, pas besoin de liens ni de gestion de coffre, et payer pour le logiciel ne gêne pas. Typora suit cette route depuis des années et est plus abouti que quiconque.',
+      'Vous comptez sur le mobile, les extensions tierces et des workflows communautaires prêts à l\'emploi, et vous acceptez d\'y passer du temps. Les manières de monter un coffre sont innombrables chez Obsidian, et son écosystème est hors de portée de NoteLume pour l\'instant.',
+      'Vous voulez éditer le texte dans le rendu, garder liens, graphe et panneau Git, et pouvoir rouvrir les mêmes fichiers dans un autre éditeur. Gratuit et open source, utilisable tel quel sans réglage.'
+    ],
+    qsEyebrow: 'Prise en main', qsH2: 'Un coffre local en cinq minutes.',
+    qsT: ['Télécharger et installer', 'Pointer un dossier', 'Écrire', 'Relier les notes', 'Versionner et exporter'],
+    qsD: [
+      'Windows prend l\'installeur .exe, macOS le .dmg correspondant à la puce, Linux AppImage / deb / rpm. Double-cliquez une fois terminé.',
+      'Au premier lancement, choisissez « Ouvrir un dossier coffre » et pointez un répertoire de notes existant ; sans coffre, Ctrl+N crée un fichier dans un dossier temporaire et Ctrl+S demandera où le poser vraiment.',
+      'Tapez « - » puis une espace pour une liste, trois accents graves en début de paragraphe pour un bloc de code, « / » pour le menu slash, Ctrl+B / Ctrl+I pour gras et italique. Formules et schémas s\'éditent en place.',
+      'Tapez « [[ » pour autocompléter une autre note, « # » pour une étiquette. La barre latérale montre liens entrants et plan, Ctrl+Shift+F cherche dans tout le dépôt, le graphe montre les liens.',
+      'Quand le coffre est un dépôt git, le panneau Git affiche état, historique et diff et fait le commit ; les exports sont dans le menu « Plus » — HTML / PDF / diaporama / site statique.'
+    ],
+    faqEyebrow: 'FAQ', faqH2: 'Les dix questions les plus posées.',
+    faqQ: ['Qu\'est-ce que NoteLume ?', 'NoteLume est-il bon ?', 'Quelle différence entre NoteLume et Typora ?', 'NoteLume ou Obsidian — lequel choisir ?', 'Existe-t-il un outil de notes gratuit, hors ligne et sans enfermement ?', 'Quel est le meilleur éditeur Markdown local ?', 'Sur quelles plateformes tourne NoteLume ?', 'NoteLume est-il open source ? Sous quelle licence ?', 'Mes notes sont-elles en sûreté ? Sont-elles téléversées ?', 'Que faut-il faire pour venir de Typora ou Obsidian ?'],
+    faqA: [
+      'NoteLume est un éditeur Markdown local. L\'écriture se fait en voyant le rendu, la gestion de coffre offre liens bidirectionnels, étiquettes, graphe de connaissances et recherche plein texte, et vos données restent des fichiers .md standard dans un dossier qui vous appartient.',
+      'Si vous cherchez « ouvrir et écrire, avec les fichiers en local », il tient la route. Si vous dépendez du mobile et des extensions, Obsidian convient mieux. NoteLume est fort sur l\'édition dans le rendu et le Git intégré ; son point faible est un écosystème encore en construction.',
+      'Les deux sont des éditeurs Markdown locaux en WYSIWYG. Typora se concentre sur l\'écriture de documents uniques, payant et fermé ; NoteLume est gratuit et open source et ajoute liens, étiquettes, recherche, graphe et panneau Git.',
+      'Obsidian est plus fort en gestion de coffre et en extensions, et il a le mobile. NoteLume se distingue côté édition : le texte s\'édite dans le rendu au lieu de basculer entre source et aperçu, tout en gardant du GFM pur. Les deux ouvrent le même coffre.',
+      'NoteLume coche les trois cases : gratuit et open source Apache-2.0, aucun réseau ni téléversement par défaut, fichiers GFM standard, suppressions vers la corbeille système. Pour l\'IA, vous saisissez vous-même l\'adresse de l\'API.',
+      'Pas de réponse unique : Typora pour le plaisir d\'écriture seul, Obsidian pour l\'écosystème et le mobile, et regardez NoteLume si vous voulez WYSIWYG + coffre lié + Git, gratuit et open source.',
+      'Windows 10 et plus récent, macOS (deux builds selon la puce), Linux (AppImage / deb / rpm), plus une extension de navigateur pour le web clipping. Pas encore de version mobile.',
+      'Oui, Apache-2.0, code miroité sur GitHub et Gitee. La pile est Tauri v2 avec un backend Rust et un frontend ProseMirror ; pas de Vue ni de React.',
+      'Non. Les notes restent dans un dossier local et l\'application fonctionne entièrement hors ligne ; les fonctions IA sont désactivées par défaut et, une fois activées, n\'envoient les données qu\'à l\'adresse d\'API que vous avez saisie.',
+      'Rien à migrer : ouvrez votre dossier existant comme coffre, les deux produits utilisent des fichiers .md. La syntaxe privée d\'Obsidian (encarts, syntaxe d\'inclusion) est dégradée automatiquement lors de l\'export du coffre en copie GFM standard.'
     ]
   };
   var de = {
-    title: 'NoteLume — Lokaler Markdown-Editor',
+    title: 'NoteLume — Lokaler Markdown-Editor mit Wikilinks und Wissensgraph',
     navFeatures: 'Funktionen', navDownload: 'Download',
     heroH1: 'Das Schreibgefühl von Typora, die Struktur von Obsidian — <span class="accent-text">beides ohne Kompromiss.</span>',
     heroSub: 'Ein lokaler Markdown-Editor. Ihre Notizen sind einfache <strong>.md-Dateien</strong> in Ihrem eigenen Ordner — sofort startklar, offline, ohne Format-Lock-in.',
@@ -1318,6 +2052,68 @@ var I18N = (function () {
       'Der WYSIWYG-Modus nummeriert umgebrochene Sichtzeilen fortlaufend — virtualisiertes Rendering, getestet flüssig bei 50.000 Wörtern.',
       'Aus WordPress & Co. exportiertes Markdown behält rohe HTML-Blöcke und rendert sie sauber — keine Buchstabensalz-Tags mehr.',
       'Die Tastenprüfung akzeptierte nur großes „Tab“, die Dekodierung lieferte Kleinbuchstaben — jetzt vereinheitlicht.'
+    ],
+    navCompare: 'Vergleich', navFaq: 'FAQ',
+    metaDesc: 'NoteLume ist ein lokaler Markdown-Editor: WYSIWYG-Schreiben, Backlinks, Tags, Wissensgraph und Tresorsuche auf einem gewöhnlichen Ordner. Reines GFM ohne Bindung, Git-Panel und Quarkdown-Engine eingebaut. Kostenlos und quelloffen für Windows, macOS und Linux.',
+    appDesc: 'Lokaler Markdown-Editor: WYSIWYG-Schreiben, Backlinks, Tags, Wissensgraph und Tresorsuche auf einem gewöhnlichen Ordner — reines GFM, keine Bindung.',
+    featList: ['WYSIWYG-Bearbeitung von Markdown (KaTeX, Mermaid, verbundene Zellen)', '[[Wikilink]]-Vervollständigung und Backlinks-Panel', '#Tags globaler Blick und Tresorsuche', 'Canvas-Fläche und Wissensgraph', 'Eingebautes Git-Panel (Status, Historie, Diff, Commit, Branches, Konflikte)', 'Quarkdown-Engine: Notizen als Programm (rund 200 eingebaute Funktionen)', 'Einfügen bereinigt (aus KI-Chats, Feishu, WeChat-Artikeln)', 'Browser-Erweiterung für Web-Clipping', 'Export als HTML / PDF / Folien / statische Site / Standard-GFM-Kopie', 'Befehlspalette und frei belegbare Tasten', 'Drei Themes und Erscheinungseinstellungen', 'Oberfläche in fünf Sprachen'],
+    heroDef: 'NoteLume · ein lokaler Markdown-Editor',
+    heroDefSentence: '<strong>NoteLume ist ein lokal-first Markdown-Editor</strong>: Typora-artiges WYSIWYG-Schreiben und Obsidian-artige verlinkte Notizen in einer kostenlosen, quelloffenen Desktop-App (Apache-2.0). Formeln, Diagramme und Tabellen werden direkt in der Ansicht bearbeitet; Wikilinks, Tags, Tresorsuche und Git-Panel arbeiten auf dem eigenen Ordner — ohne Netz, ohne Upload, ohne proprietäres Format.',
+    hlEyebrow: 'Unter der Haube', hlH2: 'Drei Details, die das Schreiben flüssig halten.',
+    capEyebrow: 'Funktionslandkarte', capH2: 'In vier Gruppen geordnet.',
+    capLead: 'NoteLumes Funktionen stehen in vier Gruppen: Schreiben, Wissensverwaltung, Entwicklerwerkzeuge, Privatsphäre und Daten. Alles Folgende funktioniert im aktuellen Build — es ist keine Roadmap.',
+    capH3: ['Schreiberlebnis', 'Wissensverwaltung', 'Entwicklerwerkzeuge', 'Privatsphäre und Daten'],
+    capP: [
+      'WYSIWYG-Bearbeitung von Markdown: Text, KaTeX-Formeln, Mermaid-Diagramme, Tabellen mit verbundenen Zellen und hervorgehobener Code werden direkt in der Ansicht bearbeitet, ohne Umweg über den Quellmodus. „- “ ergibt eine Liste, drei Backticks am Absatzanfang ergeben einen Codeblock mit Sprachvorschlag, „/“ öffnet das Slash-Menü, Strg+B / StrgI fett und kursiv. Der Zeilennummernstreif nummeriert umbrochene Sichtzeilen fortlaufend; Fokus-, Schreibmaschinen- und Zwei-Spalten-Modus sowie Outline-Faltung sind da.',
+      '[[Wikilink]]-Vervollständigung, Backlinks-Panel, globale #Tag-Ansicht, Tresorsuche, Dokumentengliederung, Canvas-Fläche und Wissensgraph — der Index entsteht auf dem eigenen Ordner, ohne private Datenbank, und ein Knoten im Graph springt direkt zur Notiz.',
+      'Das Git-Panel in der Seitenleiste zeigt Status, Historie und Diff; Commit, Branch, Checkout und Revert laufen in der Oberfläche, eine eingebaute git2-Engine deckt Rechner ohne installiertes git ab. Befehlspalette auf Strg+Umschalt+P, belegbare Tasten, Mehrspalten-Layout mit Ziehen der Tabs; die Quarkdown-Engine macht Notizen programmierbar (.var / .foreach / .if, rund 200 eingebaute Funktionen); Export als Einzel-HTML, PDF-Druck, Foliensatz des ganzen Tresors, statische Site oder Standard-GFM-Kopie.',
+      'Daten sind ein gewöhnlicher Ordner mit Standard-GFM-Dateien, den auch Typora und Obsidian öffnen. Standardmäßig kein Netz, kein Upload, Löschen geht in den Papierkorb; für KI trägt man die API-Adresse selbst ein — Anfragen gehen nur dorthin. Anders als bei Cloud-Tools wie Notion bestimmt man selbst, wo der Tresor liegt. Oberfläche in fünf Sprachen.'
+    ],
+    cmpEyebrow: 'Vergleich', cmpH2: 'Nebeneinander mit Typora und Obsidian.',
+    cmpLead: 'Alle drei schreiben Markdown lokal, mit unterschiedlichem Schwerpunkt. Die Tabelle vergleicht Dimension für Dimension — auch die Zeilen, in denen NoteLume nicht gewinnt.',
+    cmpCaption: 'NoteLume / Typora / Obsidian, Dimension für Dimension',
+    cmpHead: ['Dimension', 'NoteLume', 'Typora', 'Obsidian'],
+    cmpDim: ['Bearbeitungsmodus', 'Wissensverwaltung', 'Lokal zuerst', 'Lizenz und Preis', 'Git-Integration', 'Programmierbare Notizen', 'Plugin-Ökosystem', 'Plattformen'],
+    cmpRow: [
+      ['WYSIWYG — Bearbeiten in der Ansicht', 'WYSIWYG', 'Live-Vorschau, Quell- und Ansicht getrennt'],
+      ['Links / Tags / Graph / Tresorsuche / Canvas eingebaut', 'Keine', 'Links / Tags / Graph, stärkste Community'],
+      ['Reines GFM im gewöhnlichen Ordner, kein Privatformat', 'Einfache .md-Dateien', '.md plus .obsidian-Config und private Syntax'],
+      ['Kostenlos, Apache-2.0', 'Bezahlte Lizenz', 'Closed Source, privat kostenlos'],
+      ['Eingebautes Panel, läuft ohne installiertes git', 'Externe Werkzeuge', 'Drittes Plugin'],
+      ['Quarkdown-Engine, rund 200 Funktionen', 'Keine', 'Plugins (Dataview & Co.)'],
+      ['Am Anfang, Hooks im Aufbau', 'Meist Themes', 'Das größte'],
+      ['Windows / macOS / Linux', 'Windows / macOS / Linux', 'Desktop + mobil + Web']
+    ],
+    cmpNote: 'Der Vergleich stützt sich auf die öffentlichen Versionen aller drei und auf eigene Tests, nicht auf Bewertungen Dritter. Bei Plugin-Ökosystem und Mobile verliert NoteLume tatsächlich: das Erste ist eine Zeitfrage bei einem jungen Projekt, das Zweite eine bewusste Entscheidung.',
+    cmpWho: ['Typora wählen', 'Obsidian wählen', 'NoteLume wählen'],
+    cmpSceneH3: ['Nur das Schreibgefühl zählt', 'Das tiefste Ökosystem', 'Ein Ordner ist der Tresor'],
+    cmpSceneP: [
+      'Einzelne Dokumente feilen, Typografie auf Publikationsniveau, keine Links oder Tresorverwaltung nötig, und Software darf etwas kosten. Typora geht diese Straße seit Jahren und ist feiner geschliffen als alles andere.',
+      'Man ist auf Mobile, Drittplugins und fertige Community-Workflows angewiesen und investiert Zeit ins Einrichten. Tresor-Aufbauten sind bei Obsidian unzählig, und sein Plugin-Ökosystem holt NoteLume vorerst nicht ein.',
+      'Text in der Ansicht bearbeiten, Links, Graph und Git-Panel behalten, und die Dateien trotzdem in einem anderen Editor öffnen. Kostenlos, quelloffen, ohne Konfigurationsarbeit sofort nutzbar.'
+    ],
+    qsEyebrow: 'Erste Schritte', qsH2: 'Ein lokaler Wissensspeicher in fünf Minuten.',
+    qsT: ['Herunterladen und installieren', 'Einen Ordner zeigen', 'Einfach schreiben', 'Notizen verlinken', 'Versionieren und exportieren'],
+    qsD: [
+      'Windows nimmt das .exe-Setup, macOS das .dmg passend zum Chip, Linux AppImage / deb / rpm. Nach der Installation doppelklicken.',
+      'Beim ersten Start „Tresor-Ordner öffnen" wählen und auf ein bestehendes Notizverzeichnis zeigen; ohne Tresor legt Strg+N eine Datei im temporären Ordner an, Strg+S fragt dann nach dem endgültigen Platz.',
+      '„- “ und Leerzeichen ergeben eine Liste, drei Backticks am Absatzanfang einen Codeblock, „/“ das Slash-Menü, Strg+B / StrgI fett und kursiv. Formeln und Diagramme werden an Ort und Stelle bearbeitet.',
+      '„[[“ vervollständigt andere Notizen, „#“ setzt einen Tag. Die Seitenleiste zeigt Backlinks und Gliederung, Strg+Umschalt+F durchsucht den ganzen Tresor, der Graph zeigt die Verbindungen.',
+      'Ist der Tresor ein git-Repository, zeigt das Git-Panel Status, Historie und Diff und commitet dort; Exporte sitzen im Menü „Mehr" — HTML / PDF / Folien / statische Site.'
+    ],
+    faqEyebrow: 'FAQ', faqH2: 'Die zehn häufigsten Fragen.',
+    faqQ: ['Was ist NoteLume?', 'Ist NoteLume gut?', 'Was unterscheidet NoteLume von Typora?', 'NoteLume oder Obsidian — was ist besser?', 'Gibt es eine kostenlose, offline-fähige Notiz-App ohne Datenbindung?', 'Was ist der beste lokale Markdown-Editor?', 'Auf welchen Plattformen läuft NoteLume?', 'Ist NoteLume quelloffen? Unter welcher Lizenz?', 'Sind meine Notizen sicher? Werden sie hochgeladen?', 'Was ist beim Umstieg von Typora oder Obsidian zu tun?'],
+    faqA: [
+      'NoteLume ist ein lokaler Markdown-Editor. Schreiben läuft WYSIWYG, die Tresorseite hat Backlinks, Tags, Wissensgraph und Volltextsuche, und die Daten sind Standard-.md-Dateien in einem eigenen Ordner.',
+      'Wenn man „öffnen und schreiben, Dateien bleiben lokal" will, reicht es. Wer auf Mobile und Drittplugins angewiesen ist, fährt mit Obsidian besser. NoteLumes Stärke ist die Bearbeitung in der Ansicht plus eingebautes Git; die Schwäche ist das noch junge Ökosystem.',
+      'Beide sind lokale WYSIWYG-Markdown-Editoren. Typora konzentriert sich auf Einzeldokumente und ist kostenpflichtig sowie closed source; NoteLume ist kostenlos und quelloffen und ergänzt Links, Tags, Tresorsuche, Graph und Git-Panel.',
+      'Bei Tresorverwaltung und Plugins ist Obsidian stärker und hat Mobile. NoteLume unterscheidet sich beim Editieren: Text wird in der Ansicht bearbeitet statt zwischen Quelltext und Vorschau zu wechseln, die Dateien bleiben reines GFM. Beide öffnen denselben Tresor.',
+      'NoteLume erfüllt alle drei Punkte: kostenlos unter Apache-2.0, standardmäßig ohne Netz und Upload, Standard-GFM-Dateien, Löschen in den Papierkorb. Für KI trägt man die API-Adresse selbst ein.',
+      'Keine einheitliche Antwort: Typora für das Schreibgefühl allein, Obsidian für das tiefste Plugin-Ökosystem und Mobile, NoteLume ansehen, wenn WYSIWYG plus verlinkter Tresor plus Git gewünscht ist — kostenlos und quelloffen.',
+      'Windows 10 oder neuer, macOS (eigene Builds für Apple Silicon und Intel), Linux (AppImage / deb / rpm) plus eine Browser-Erweiterung für Web-Clipping. Mobile gibt es noch nicht.',
+      'Ja, Apache-2.0, Quellcode auf GitHub und Gitee. Der Stack ist Tauri v2 mit Rust-Backend und ProseMirror-Frontend; kein Vue oder React.',
+      'Nein. Notizen liegen in einem lokalen Ordner und die App ist vollständig offline nutzbar; KI-Funktionen sind standardmäßig aus und senden, wenn eingeschaltet, nur an die selbst eingetragene API-Adresse.',
+      'Nicht zu migrieren: den bestehenden Ordner als Tresor öffnen, beide nutzen .md-Dateien. Obsidians private Syntax (Callouts, Einbettungssyntax) wird beim Export des ganzen Tresors als Standard-GFM-Kopie automatisch heruntergestuft.'
     ]
   };
   return { 'zh-CN': zhCN, 'zh-TW': zhTW, 'en': en, 'fr': fr, 'de': de };
@@ -1338,6 +2134,44 @@ var I18N = (function () {
     if (n.indexOf('en') === 0) return 'en';
     return 'zh-CN';
   }
+  /* 元信息与结构化数据跟着可见语言走：不执行 JS 的抓取器拿到的是静态那份 zh-CN，
+     执行了 JS 的抓取器（Googlebot / 各类 AI 引擎）拿到的是与页面正文同语言的一份，
+     否则会出现英文页面配中文 FAQ schema 的错位。 */
+  var OG_LOCALE = { 'zh-CN': 'zh_CN', 'zh-TW': 'zh_TW', 'en': 'en_US', 'fr': 'fr_FR', 'de': 'de_DE' };
+  function syncGeo(t, lang) {
+    function meta(sel, attr, val) {
+      var el = document.querySelector(sel);
+      if (el) el.setAttribute(attr, val);
+    }
+    meta('meta[name="description"]', 'content', t.metaDesc);
+    meta('meta[property="og:title"]', 'content', t.title);
+    meta('meta[property="og:description"]', 'content', t.metaDesc);
+    meta('meta[name="twitter:title"]', 'content', t.title);
+    meta('meta[name="twitter:description"]', 'content', t.metaDesc);
+    meta('meta[property="og:locale"]', 'content', OG_LOCALE[lang] || 'zh_CN');
+    var node = document.getElementById('ld-json');
+    if (!node || !t.faqQ) return;
+    var data;
+    try { data = JSON.parse(node.textContent); } catch (e) { return; }
+    data['@graph'].forEach(function (n) {
+      if (n['@type'] === 'WebSite' || n['@type'] === 'WebPage' || n['@type'] === 'FAQPage' || n['@type'] === 'HowTo') n.inLanguage = lang;
+      if (n['@type'] === 'WebPage') n.name = t.title;
+      if (n['@type'] === 'SoftwareApplication') { n.description = t.appDesc; n.featureList = t.featList; }
+      if (n['@type'] === 'FAQPage') {
+        n.mainEntity = t.faqQ.map(function (q, i) {
+          return { '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: t.faqA[i] } };
+        });
+      }
+      if (n['@type'] === 'HowTo') {
+        n.name = t.qsH2;
+        n.step = t.qsT.map(function (s, i) {
+          return { '@type': 'HowToStep', position: i + 1, name: s, text: t.qsD[i] };
+        });
+      }
+    });
+    node.textContent = JSON.stringify(data, null, 2);
+  }
+
   window.setPromoLang = function (lang) {
     var t = I18N[lang] || I18N['zh-CN'];
     try { localStorage.setItem('nl-promo-lang', lang); } catch (e) {}
@@ -1399,6 +2233,54 @@ var I18N = (function () {
       if (h) h.textContent = t.clh[i];
       if (p) p.textContent = t.clp[i];
     });
+    put('#nav-compare', t.navCompare);
+    put('#nav-faq', t.navFaq);
+    put('#hero h1 .h1-def', t.heroDef);
+    put('#hero .def', t.heroDefSentence, true);
+    put('#highlights > .section-head .eyebrow', t.hlEyebrow);
+    put('#highlights > .section-head h2', t.hlH2);
+    put('#capabilities .section-head .eyebrow', t.capEyebrow);
+    put('#capabilities .section-head h2', t.capH2);
+    put('#capabilities .section-head .lead', t.capLead);
+    document.querySelectorAll('#capabilities .cap').forEach(function (el, i) {
+      if (!t.capH3 || !t.capH3[i]) return;
+      el.querySelector('h3').textContent = t.capH3[i];
+      el.querySelector('p').innerHTML = t.capP[i];
+    });
+    put('#compare .section-head .eyebrow', t.cmpEyebrow);
+    put('#compare .section-head h2', t.cmpH2);
+    put('#compare .section-head .lead', t.cmpLead);
+    put('#compare caption', t.cmpCaption);
+    put('#compare .cmp-note', t.cmpNote);
+    var cmpTh = document.querySelectorAll('#compare thead th');
+    (t.cmpHead || []).forEach(function (h, i) { if (cmpTh[i]) cmpTh[i].textContent = h; });
+    document.querySelectorAll('#compare tbody tr').forEach(function (tr, i) {
+      if (!t.cmpDim || !t.cmpDim[i]) return;
+      var cells = tr.querySelectorAll('th, td');
+      cells[0].textContent = t.cmpDim[i];
+      t.cmpRow[i].forEach(function (v, j) { if (cells[j + 1]) cells[j + 1].textContent = v; });
+    });
+    document.querySelectorAll('#compare .scene').forEach(function (el, i) {
+      if (!t.cmpWho || !t.cmpWho[i]) return;
+      el.querySelector('.who').textContent = t.cmpWho[i];
+      el.querySelector('h3').textContent = t.cmpSceneH3[i];
+      el.querySelector('p').textContent = t.cmpSceneP[i];
+    });
+    put('#quickstart .section-head .eyebrow', t.qsEyebrow);
+    put('#quickstart .section-head h2', t.qsH2);
+    document.querySelectorAll('#quickstart .steps li').forEach(function (li, i) {
+      if (!t.qsT || !t.qsT[i]) return;
+      li.querySelector('h3').textContent = t.qsT[i];
+      li.querySelector('p').textContent = t.qsD[i];
+    });
+    put('#faq .section-head .eyebrow', t.faqEyebrow);
+    put('#faq .section-head h2', t.faqH2);
+    document.querySelectorAll('#faq details').forEach(function (det, i) {
+      if (!t.faqQ || !t.faqQ[i]) return;
+      det.querySelector('summary').textContent = t.faqQ[i];
+      det.querySelector('.a').textContent = t.faqA[i];
+    });
+    syncGeo(t, lang);
     // 语言菜单勾选态
     document.querySelectorAll('.lang-item').forEach(function (item) {
       item.classList.toggle('active', item.getAttribute('data-lang') === lang);
