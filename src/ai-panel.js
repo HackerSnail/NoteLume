@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -840,7 +840,7 @@ export function createAiPanel(deps) {
       showAttNote(t('ai.noVision'))
       return
     }
-    if (attachments.length >= 4) {
+    if (attachments.length >= AI_MAX_IMAGES) {
       showAttNote(t('ai.attMax'))
       return
     }

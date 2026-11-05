@@ -79,6 +79,7 @@
     "test:windows-bundle-targets": "node tests/windows-bundle-targets.test.mjs",
     "test:find-bar-narrow-pane": "node tests/find-bar-narrow-pane.test.mjs",
     "test:ollama-pull": "node tests/ollama-pull.test.mjs",
+    "test:ai-data-flow": "node tests/ai-data-flow.test.mjs",
     "audit:osv": "node tools/osv-audit.mjs"
   },
   "dependencies": {

@@ -7,7 +7,8 @@
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel, ollamaFlowFor, ollamaUsable } from './ai-tasks.js'
+import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel, ollamaFlowFor, ollamaUsable, aiEgressVars } from './ai-tasks.js'
+import { TOOL_RESULT_MAX_CHARS } from './ai-agent.js'
 import { ollamaProbe, openUrl, aiModelsList } from './tauri-bridge.js'
 
 /**
@@ -42,6 +43,8 @@ export function createAiSettings(deps) {
   let ollamaWrapEl = null // 本机 Ollama 那一块的容器（探测与拉取进度都只重画这一块）
   let ollamaState = null // 最近一次 ollamaProbe 结果（{ state, models }）
   let offPull = null // 拉取进度订阅的退订
+  let egressListEl = null // 「数据流向」两行：只改文本，地址敲完不会重画整个面板
+  let egressWhereEl = null
 
   // —— 地址与 Key 是一对 ——
   // Key 存在 ai.keys 里按 host:port 分格，切服务商不会把上一家的 Key 带过去。
@@ -307,6 +310,19 @@ export function createAiSettings(deps) {
     paintOllama()
   }
 
+  /**
+   * 「数据流向」两行：与「零锁定」同口径的说明。数字全部从 `aiEgressVars` 来（那里又取自
+   * 真实生效的截断常量），文案不写死数字——改了截断值说明自己跟着变，不会出现两套口径。
+   * 本机回环与远程地址两套措辞：填 DeepSeek 这类远程服务时，笔记内容就是经网络发出去的，
+   * 这句话得写在设置页上而不是埋在文档里。
+   */
+  function paintEgress() {
+    if (!egressListEl || !egressWhereEl) return
+    const vars = { ...aiEgressVars(draft), tool: TOOL_RESULT_MAX_CHARS }
+    egressListEl.textContent = t('ai.set.dataFlow', vars)
+    egressWhereEl.textContent = t(vars.local ? 'ai.set.dataFlowLocal' : 'ai.set.dataFlowRemote', vars)
+  }
+
   function render() {
     bodyEl.innerHTML = ''
     section('ai.set.section')
@@ -380,7 +396,7 @@ export function createAiSettings(deps) {
     paintOllama()
     probeOllama()
 
-    baseUrlInputEl = textRow('ai.set.baseUrl', draft.baseUrl, (v) => { syncKeyWithBaseUrl(v); syncPresetActive(); models = []; modelsError = ''; loadModels() }, {
+    baseUrlInputEl = textRow('ai.set.baseUrl', draft.baseUrl, (v) => { syncKeyWithBaseUrl(v); syncPresetActive(); models = []; modelsError = ''; loadModels(); paintEgress() }, {
       placeholder: 'https://api.deepseek.com/v1',
     })
     apiKeyInputEl = textRow('ai.set.apiKey', draft.apiKey, (v) => { setApiKey(v); models = []; modelsError = ''; loadModels() }, { password: true })
@@ -409,6 +425,12 @@ export function createAiSettings(deps) {
       draft.contextTokens = Math.min(AI_CTX_WINDOW_MAX, Math.max(0, Math.floor(Number(v) || 0)))
     }, { placeholder: String(32768) })
     hint('ai.set.contextHint')
+
+    // 数据流向：列全每次请求会带出去的内容，再按地址是不是回环给一句结论
+    section('ai.set.egressSection')
+    egressListEl = hint('ai.set.dataFlow')
+    egressWhereEl = hint('ai.set.dataFlow')
+    paintEgress()
   }
 
   function buildDom() {

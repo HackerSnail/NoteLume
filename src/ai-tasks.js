@@ -82,6 +82,9 @@ export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0
 /** 字段上限。保存前由 validateAiConfig 拒绝超长，normalizeAiConfig 只做存储层兜底截断。 */
 export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
 
+/** 一条消息最多带的附图数（ai-panel.js 的附件闸与「出机说明」共用这一个数，别抄两份） */
+export const AI_MAX_IMAGES = 4
+
 /** 上下文窗口手填上限（防手滑填天文数字）；0 表示未设，回落到参考值 */
 export const AI_CTX_WINDOW_MAX = 10000000
 
@@ -211,6 +214,39 @@ export function ollamaUsable(status) {
   return st === 'ready' || st === 'no_models'
 }
 
+/** 地址是不是只往本机发：回环与 localhost 才算。其余（含局域网 IP 与 .local）一律按「会出机」提示，宁可多说一句 */
+export function isLoopbackUrl(url) {
+  const raw = String(url || '').trim()
+  if (!raw) return false
+  // 先认协议：只有 http(s) 才谈得上「发到哪儿」，ftp://127.0.0.1 之类不算本机地址
+  if (!isHttpUrl(raw)) return false
+  let host = ''
+  try { host = new URL(raw).hostname } catch { return false }
+  const h = String(host || '').replace(/^\[|\]$/g, '').toLowerCase()
+  if (!h || h === '0.0.0.0') return false
+  if (h === '::1' || h === 'localhost' || h.endsWith('.localhost')) return true
+  // 127.0.0.1 / 127.8.9.10 这一整段都是回环
+  return /^127\.\d{1,3}(\.\d{1,3}){0,2}$/.test(h)
+}
+
+/**
+ * 「哪些内容会离开本机」的变量表：数字全部取自上面那些真实生效的常量，文案只插值——
+ * 改了截断值说明自己跟着变，不会出现「文档写 6000、代码截 4000」这种漂移。
+ * 工具结果的截断值在 ai-agent.js（TOOL_RESULT_MAX_CHARS），由调用方并进来，这里不反向依赖。
+ */
+export function aiEgressVars(cfg) {
+  const baseUrl = String((cfg && cfg.baseUrl) || '')
+  return {
+    host: aiKeyHost(baseUrl) || '',
+    local: isLoopbackUrl(baseUrl),
+    doc: DOC_CONTEXT_MAX_CHARS,
+    vaultDocs: AI_VAULT_MAX_DOCS,
+    snippet: AI_VAULT_SNIPPET_MAX_CHARS,
+    vaultTotal: AI_VAULT_CONTEXT_MAX_CHARS,
+    imgs: AI_MAX_IMAGES,
+  }
+}
+
 // —— Agent 模式：回答落点协议（自然语言锚点） ——
 
 /**
@@ -306,6 +342,9 @@ export function aiQueryTerms(question) {
 /** 注入文本总长上限（表头与命中条目合计）。 */
 export const AI_VAULT_CONTEXT_MAX_CHARS = 6000
 
+/** 单条检索片段的截断长度。提成常量是为了「出机说明」能引用它，别在文案里抄一份数字。 */
+export const AI_VAULT_SNIPPET_MAX_CHARS = 400
+
 /**
  * 合并去重后的检索命中 → 注入文本。hits: [{path,title,snippet}]；
  * 超过 AI_VAULT_MAX_DOCS 篇截断，总量 6000 字符封顶（表头计入）。
@@ -318,7 +357,7 @@ export function buildVaultContext(hits, headText) {
   let text = (head ? head + '\n' : '').slice(0, AI_VAULT_CONTEXT_MAX_CHARS)
   if (text.length >= AI_VAULT_CONTEXT_MAX_CHARS) return text
   for (const h of list.slice(0, AI_VAULT_MAX_DOCS)) {
-    const entry = `- ${h.title || h.path}（${h.path}）\n  ${String(h.snippet || '').slice(0, 400)}\n`
+    const entry = `- ${h.title || h.path}（${h.path}）\n  ${String(h.snippet || '').slice(0, AI_VAULT_SNIPPET_MAX_CHARS)}\n`
     const room = AI_VAULT_CONTEXT_MAX_CHARS - text.length
     if (room <= 0) break
     text += entry.slice(0, room)
