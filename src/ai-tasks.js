@@ -331,3 +331,29 @@ export function modelSupportsVision(model) {
   if (!m.trim()) return false
   return VISION_PATTERNS.some((re) => re.test(m))
 }
+
+// —— /models 列表里的非对话模型 ——
+// 聚合服务（SiliconFlow 一类）把向量、重排、文生图与语音模型和对话模型放在同一张表里，
+// 按名称升序自动填第一个就可能填到 BAAI/bge-m3 这种 embedding 模型——发
+// /chat/completions 回 400「Model does not exist」，看着像接口连不上。只按明确特征摘，
+// 认不准的留在列表里（宁可不删，也别把能用的对话模型删掉）。
+const NON_CHAT_PATTERNS = [
+  /embed/, /rerank/, /bge-/, /bce-/, /m3e-/, /gte-/, /mxbai/,
+  /whisper/, /\btts\b/, /cosyvoice/, /speech/, /\basr\b/,
+  /flux/, /stable-diffusion/, /sdxl/, /dall-e/, /imagen/, /kolors/, /hunyuanimage/,
+  /clip/, /ocr/,
+]
+
+/** id 看着不像对话模型（向量 / 重排 / 文生图 / 语音）；空名不算 */
+export function isNonChatModel(id) {
+  const m = String(id || '').toLowerCase()
+  if (!m.trim()) return false
+  return NON_CHAT_PATTERNS.some((re) => re.test(m))
+}
+
+/** /models 列表只留对话模型（顺带去空串与重复）；全被摘光时回原表，不给空候选 */
+export function chatModelsOnly(list) {
+  const arr = [...new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim()).filter(Boolean))]
+  const kept = arr.filter((id) => !isNonChatModel(id))
+  return kept.length || !arr.length ? kept : arr
+}

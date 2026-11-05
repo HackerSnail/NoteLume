@@ -1194,6 +1194,7 @@ export default {
   'ai.set.modelRefresh': 'Recharger la liste des modèles',
   'ai.set.modelsLoading': 'Récupération de la liste des modèles…',
   'ai.set.modelFail': 'Impossible de récupérer la liste des modèles, saisissez le nom manuellement',
+  'ai.set.modelNonChat': 'Ce nom ressemble à un modèle d’embeddings ou de reranking, inutilisable en conversation — choisissez un nom Instruct / Chat',
   'ai.set.errBaseUrl': 'L’adresse doit être une URL complète en http:// ou https://',
   'ai.set.errTooLong': '{field} est limité à {max} caractères — vérifiez le contenu collé',
   'ai.set.saved': 'Réglages IA enregistrés',

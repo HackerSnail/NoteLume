@@ -1196,6 +1196,7 @@ export default {
   'ai.set.modelRefresh': '重新获取模型列表',
   'ai.set.modelsLoading': '正在获取模型列表…',
   'ai.set.modelFail': '未能获取模型列表，可手动输入模型名',
+  'ai.set.modelNonChat': '这个模型名看着是向量或重排模型，不能用来对话；换成 Instruct / Chat 结尾的模型名',
   'ai.set.errBaseUrl': '接口地址需要是 http:// 或 https:// 开头的完整地址',
   'ai.set.errTooLong': '{field}最多 {max} 个字符，请检查是否粘贴了多余内容',
   'ai.set.saved': '已保存 AI 设置',

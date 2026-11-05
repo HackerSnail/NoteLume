@@ -7,7 +7,7 @@
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
+import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel } from './ai-tasks.js'
 import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridge.js'
 
 /**
@@ -119,7 +119,7 @@ export function createAiSettings(deps) {
     return input
   }
 
-  // —— 模型名：可手输，拉到 /models 时把列表挂成候选（datalist） ——
+  // —— 模型名：可手输，拉到 /models 时另起一行给一个候选下拉 ——
   async function loadModels() {
     const url = (draft && draft.baseUrl || '').trim()
     if (!isHttpUrl(url)) {
@@ -136,7 +136,9 @@ export function createAiSettings(deps) {
     try {
       const r = await aiModelsList(url, draft.apiKey || '')
       list = Array.isArray(r) ? r.map((x) => String(x || '').trim()).filter(Boolean) : []
-      list = [...new Set(list)].sort((a, b) => a.localeCompare(b))
+      // 聚合服务的 /models 里混着向量与重排模型，按名称升序自动填第一个会填到它们身上；
+      // 候选只留对话模型（全表都是非对话模型时保留原样，不给空候选）
+      list = chatModelsOnly([...new Set(list)].sort((a, b) => a.localeCompare(b)))
     } catch (e) {
       modelsError = (e && e.message) || String(e)
     }
@@ -178,11 +180,26 @@ export function createAiSettings(deps) {
       if (!sel.value) return
       draft.model = sel.value
       if (modelInputEl) modelInputEl.value = sel.value
+      // 从候选里选了一个对话模型，非对话模型的提醒跟着收掉
+      syncModelStatus()
     })
     if (modelsLoading) sel.disabled = true
     modelPickEl.appendChild(sel)
     modelPickSel = sel
     syncPick()
+  }
+
+  // 状态行优先级：拉取中 > 拉取失败 > 当前模型名看着不是对话模型。最后一条是给用户
+  // 提个醒：选了 embedding 模型发 /chat/completions 只会回 400「Model does not exist」，
+  // 看着像接口连不上。
+  function syncModelStatus() {
+    if (!modelStatusEl) return
+    const hint = !modelsLoading && !modelsError && isNonChatModel(draft.model) ? t('ai.set.modelNonChat') : ''
+    modelStatusEl.textContent = modelsLoading
+      ? t('ai.set.modelsLoading')
+      : (modelsError ? t('ai.set.modelFail') : hint)
+    modelStatusEl.classList.toggle('err', !modelsLoading && (!!modelsError || !!hint))
+    modelStatusEl.classList.toggle('hidden', !modelStatusEl.textContent)
   }
 
   function renderModelRow() {
@@ -204,7 +221,7 @@ export function createAiSettings(deps) {
     input.autocomplete = 'off'
     input.spellcheck = false
     input.setAttribute('aria-label', t('ai.set.model'))
-    input.addEventListener('change', () => { draft.model = input.value; syncPick() })
+    input.addEventListener('change', () => { draft.model = input.value; syncPick(); syncModelStatus() })
     if (modelsLoading) input.disabled = true
     modelRowEl.appendChild(input)
     modelInputEl = input
@@ -223,9 +240,7 @@ export function createAiSettings(deps) {
     renderModelPick()
 
     if (modelStatusEl) {
-      modelStatusEl.textContent = modelsLoading ? t('ai.set.modelsLoading') : (modelsError ? t('ai.set.modelFail') : '')
-      modelStatusEl.classList.toggle('err', !modelsLoading && !!modelsError)
-      modelStatusEl.classList.toggle('hidden', !modelStatusEl.textContent)
+      syncModelStatus()
     }
   }
 

@@ -69,6 +69,7 @@
     "test:ai-panel-error": "node tests/ai-panel-error.test.mjs",
     "test:ai-skill-consume": "node tests/ai-skill-consume.test.mjs",
     "test:ai-settings-model": "node tests/ai-settings-model.test.mjs",
+    "test:ai-model-filter": "node tests/ai-model-filter.test.mjs",
     "test:ai-settings-per-key": "node tests/ai-settings-per-key.test.mjs",
     "test:ai-settings-presets": "node tests/ai-settings-presets.test.mjs",
     "test:gettext-atoms": "node tests/gettext-atoms.test.mjs",

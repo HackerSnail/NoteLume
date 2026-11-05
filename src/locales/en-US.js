@@ -1196,6 +1196,7 @@ export default {
   'ai.set.modelRefresh': 'Reload model list',
   'ai.set.modelsLoading': 'Fetching model list…',
   'ai.set.modelFail': 'Could not fetch the model list — enter the model name manually',
+  'ai.set.modelNonChat': 'This model name looks like an embedding or rerank model, which cannot chat — use an Instruct / Chat model name',
   'ai.set.errBaseUrl': 'The endpoint must be a full http:// or https:// URL',
   'ai.set.errTooLong': '{field} is limited to {max} characters — check for extra pasted content',
   'ai.set.saved': 'AI settings saved',

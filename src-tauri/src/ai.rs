@@ -307,10 +307,27 @@ pub fn extract_sse_error(payload: &str) -> Option<String> {
 }
 
 /// 非 2xx 错误体 → 文案。OpenAI 取 error.message，error 为字符串直取；
+/// SiliconFlow 一类网关把说明放在顶层 message（配数字 code 与 data:null），
+/// 只认 error.* 时整串 JSON 会原样糊到界面上（实测 api.siliconflow.cn 的
+/// 「Model does not exist」400 就是这个形态）。带 code 时附在后面，报障能直接对服务商文档。
 /// 解析不出回 None（调用方回退原始文本截断）。
 pub fn extract_error_body(text: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
-    error_value_text(v.get("error")?)
+    if let Some(s) = v.get("error").and_then(error_value_text) {
+        if !s.trim().is_empty() {
+            return Some(s);
+        }
+    }
+    let msg = ["message", "msg"]
+        .iter()
+        .find_map(|k| v.get(*k).and_then(|m| m.as_str()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+    Some(match v.get("code") {
+        Some(serde_json::Value::String(c)) if !c.is_empty() => format!("{msg}（code {c}）"),
+        Some(c) if c.is_i64() || c.is_u64() => format!("{msg}（code {}）", c.as_i64().unwrap_or_default()),
+        _ => msg,
+    })
 }
 
 fn error_value_text(e: &serde_json::Value) -> Option<String> {
@@ -795,6 +812,24 @@ mod tests {
         );
         assert_eq!(extract_error_body("not json"), None);
         assert_eq!(extract_error_body(r#"{"choices":[]}"#), None);
+        // SiliconFlow 形态：顶层 message + 数字 code，没有 error 字段
+        assert_eq!(
+            extract_error_body(r#"{"code":20012,"message":"Model does not exist. Please check it carefully.","data":null}"#)
+                .as_deref(),
+            Some("Model does not exist. Please check it carefully.（code 20012）")
+        );
+        // 顶层 message 的字符串 code 与 msg 别名同样收
+        assert_eq!(
+            extract_error_body(r#"{"code":"E400","msg":"bad model"}"#).as_deref(),
+            Some("bad model（code E400）")
+        );
+        // error.* 优先于顶层 message（OpenAI 两个都有时不取外层的客套话）
+        assert_eq!(
+            extract_error_body(r#"{"error":{"message":"inner"},"message":"outer"}"#).as_deref(),
+            Some("inner")
+        );
+        // 只有空串 message 时不编文案，回 None 让调用方截原文
+        assert_eq!(extract_error_body(r#"{"message":"   "}"#), None);
         // 流内 error 的字符串形态同样兼容
         assert_eq!(
             extract_sse_error(r#"{"error":"oops"}"#).as_deref(),

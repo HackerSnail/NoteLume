@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -360,7 +360,8 @@ export function createAiPanel(deps) {
     if (modelsCache.key !== cfg.baseUrl) {
       try {
         const r = await aiModelsList(cfg.baseUrl, cfg.apiKey)
-        modelsCache = { key: cfg.baseUrl, items: Array.isArray(r) ? r : [] }
+        // 与设置面板同一口径：/models 里的向量 / 重排 / 文生图模型不能对话，不混进切换菜单
+        modelsCache = { key: cfg.baseUrl, items: chatModelsOnly(r) }
       } catch (e) {
         setStatus(t('ai.modelsFail', { err: (e && e.message) || String(e) }))
         return

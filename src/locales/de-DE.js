@@ -1194,6 +1194,7 @@ export default {
   'ai.set.modelRefresh': 'Modelliste neu laden',
   'ai.set.modelsLoading': 'Modelliste wird geladen…',
   'ai.set.modelFail': 'Modelliste konnte nicht geladen werden – Modellname manuell eingeben',
+  'ai.set.modelNonChat': 'Dieser Modellname sieht nach einem Embedding- oder Rerank-Modell aus – damit lässt sich nicht chatten; nutze einen Instruct-/Chat-Modellnamen',
   'ai.set.errBaseUrl': 'Die Adresse muss eine vollständige URL mit http:// oder https:// sein',
   'ai.set.errTooLong': '{field} ist auf {max} Zeichen begrenzt – auf eingefügten Zusatzinhalt prüfen',
   'ai.set.saved': 'KI-Einstellungen gespeichert',
