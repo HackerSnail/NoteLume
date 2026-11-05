@@ -166,6 +166,7 @@ export default {
   'menu.group.view': 'View',
   'menu.group.window': 'Window',
   'menu.group.git': 'Git',
+  'menu.group.help': 'Help',
   'menu.role.about': 'About {app}',
   'menu.role.services': 'Services',
   'menu.role.hide': 'Hide {app}',

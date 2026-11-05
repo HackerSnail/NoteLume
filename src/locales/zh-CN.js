@@ -165,6 +165,7 @@ export default {
   'menu.group.view': '视图',
   'menu.group.window': '窗口',
   'menu.group.git': 'Git',
+  'menu.group.help': '帮助',
   'menu.role.about': '关于 {app}',
   'menu.role.services': '服务',
   'menu.role.hide': '隐藏 {app}',

@@ -87,16 +87,8 @@
     <div id="app">
       <header class="toolbar">
         <span class="appbar-lead" data-tauri-drag-region>NoteLume</span>
-        <div class="btn-group">
-          <button id="btn-open-file" data-i18n-title="ui.tipOpenFile" title="打开单个 Markdown 文件 (Ctrl+O)"><svg class="nl-ico"><use href="#i-file" /></svg><span class="btn-label" data-i18n="ui.openFile">打开文件</span></button>
-          <button id="btn-open" data-i18n-title="ui.tipOpenVault" title="打开文件夹作为知识库 (Ctrl+Shift+O)"><svg class="nl-ico"><use href="#i-folder" /></svg><span class="btn-label" data-i18n="ui.openVault">打开知识库</span></button>
-          <button id="btn-new-file" data-i18n-title="ui.tipNew" title="新建（先建到系统临时目录，Ctrl+S 或关闭时再选保存位置） (Ctrl+N)"><svg class="nl-ico"><use href="#i-file-plus" /></svg><span class="btn-label" data-i18n="ui.new">新建</span></button>
-          <button id="btn-save" data-i18n-title="ui.tipSave" title="保存 (Ctrl+S)"><svg class="nl-ico"><use href="#i-save" /></svg><span class="btn-label" data-i18n="ui.save">保存</span></button>
-          <button id="btn-daily" data-i18n-title="ui.tipToday" title="今日速记（全局浮层，独立于知识库） (Ctrl+Shift+D)"><svg class="nl-ico"><use href="#i-calendar" /></svg><span class="btn-label" data-i18n="ui.today">今日</span></button>
-          <button id="btn-source" data-i18n-title="ui.tipSource" title="Markdown 源码模式（原文，带高亮/行号） (Ctrl+E)"><svg class="nl-ico"><use href="#i-code" /></svg><span class="btn-label" data-i18n="ui.source">源码</span></button>
-          <button id="btn-paragraph" data-i18n-title="ui.tipParagraph" title="段落类型（标题 / 列表 / 引用 / 表格 / 卡片）"><svg class="nl-ico"><use href="#i-pilcrow" /></svg><span class="btn-label" data-i18n="ui.paragraph">段落</span></button>
-          <button id="btn-more" data-i18n-title="ui.tipMore" title="更多操作（导出 / 打印 / 图谱 / 画布 / 模板 / 模式）"><svg class="nl-ico"><use href="#i-chevron-down" /></svg><span class="btn-label" data-i18n="ui.more">更多</span></button>
-        </div>
+        <!-- 一级分类由 main.js 按 app-menu.js 的分组渲染；mac 走系统菜单栏，这一条只出在 win/linux -->
+        <nav class="nl-menubar" id="nl-menubar" aria-label="菜单"></nav>
         <span id="docstats" class="docstats" data-i18n-title="ui.tipDocstats" title="写作统计（点击设置字数目标）"></span>
         <!-- 文件名是动态内容，全由 main.js 写（无文档时占位走 ui.noDocOpen）。这里不能挂 data-i18n：
              applyStaticDom 切语言时会把带该属性的元素整片重刷，真实文件名会被占位文案顶掉 -->

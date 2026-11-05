@@ -99,6 +99,7 @@ import { createPaneStrip } from './pane-strip.js'
 import { normVaultPath, rootChanged } from './vault-path.js'
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, defaultKeyFor, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
+import { createMenuBar } from './menu-bar.js'
 import { createCanvasView } from './canvas-view.js'
 import { openImage } from './img-viewer.js'
 import { builtinVars, applyTemplate } from './template.js'
@@ -203,10 +204,6 @@ const els = {
   filename: $('filename'),
   tabs: null,
   tabsSplit: null,
-  btnOpen: $('btn-open'),
-  btnOpenFile: $('btn-open-file'),
-  btnNewFile: $('btn-new-file'),
-  btnSave: $('btn-save'),
   btnTheme: $('btn-theme'),
 btnFind: $('btn-find'),
 btnReplace: $('btn-replace'),
@@ -225,10 +222,7 @@ btnReplace: $('btn-replace'),
   snapshotClose: $('snapshot-close'),
   plugins: $('plugins'),
   canvasMount: $('canvas-mount'),
-  btnDaily: $('btn-daily'),
-  btnSource: $('btn-source'),
-  btnParagraph: $('btn-paragraph'),
-  btnMore: $('btn-more'),
+  menubar: $('nl-menubar'),
   sourceMount: $('source-mount'),
   docstats: $('docstats'),
   sidebar: $('sidebar'),
@@ -800,7 +794,6 @@ async function loadMarkdownIntoEditor(inst, md, focused) {
         if (res && res.supported && res.doc) {
           inst.enterVirtualJson(res.doc, md)
           if (focused) {
-            if (els.btnSource) els.btnSource.classList.remove('active')
             syncFmtBars()
             setStatus(t('status.virtualMode'))
           }
@@ -812,7 +805,6 @@ async function loadMarkdownIntoEditor(inst, md, focused) {
     }
     await inst.loadAsSource(md)
     if (focused) {
-      if (els.btnSource) els.btnSource.classList.add('active')
       syncFmtBars()
       setStatus(t('status.largeSource'))
     }
@@ -838,7 +830,6 @@ async function toggleSourceMode() {
     if (!ok) return
   }
   const on = await editor.toggleSource()
-  if (els.btnSource) els.btnSource.classList.toggle('active', on)
   syncFmtBars()
   setStatus(on ? t('status.sourceOn') : t('status.sourceOff'))
 }
@@ -1647,7 +1638,7 @@ function bindNativeDrop() {
 
 // ==================== 功能项 I：Word(.docx) → Markdown 校对导入 ====================
 
-/** 「更多」菜单入口：选 .docx → 直接解析校对；已开库接受即落库，未开库接受时才问存到哪（取消=不保存） */
+/** 「文件」菜单「导入 Word」入口：选 .docx → 直接解析校对；已开库接受即落库，未开库接受时才问存到哪（取消=不保存） */
 async function importWordViaDialog() {
   const paths = await pickDocxFiles()
   if (!paths || !paths.length) return
@@ -2109,156 +2100,66 @@ async function newBlankTemplate() {
   } catch (e) { await messageDialog(t('msg.newTplFailed', { err: errText(e) })) }
 }
 
-// 工具条「模板」菜单：列模板 + 今日速记 + 新建模板 + 今日速记设置
-function openTemplateMenu(anchorEl) {
-  if (!state.vaultRoot) { messageDialog(t('msg.openVaultFirst')); return }
-  refreshTree().then(() => {
-    closeTreeMenu()
-    const menu = document.createElement('div')
-    menu.className = 'cv-menu tree-menu'
-    const tpls = listMdInDir(TEMPLATE_DIR())
-    if (!tpls.length) {
-      menu.appendChild(makeMenuItem(t('menu.noTemplatesInDir', { dir: TEMPLATE_DIR() }), () => {}))
-    } else {
-      tpls.forEach((p) => menu.appendChild(makeMenuItem(baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p), false, false, 'file')))
-    }
-    // 内置 Quarkdown 模板：装好就能跑的可编程示例（周报 / 变量化文档头 / 编号与交叉引用），
-    // 不写进库内 Templates/，选了现起一个新文件（默认名带日期，重名由用户改名规避覆盖）
-    menu.appendChild(menuSep())
-    for (const tpl of QD_TEMPLATES) {
-      menu.appendChild(makeMenuItem(t(tpl.nameKey), () => newQdTemplate(tpl), false, false, 'terminal'))
-    }
-    menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem(t('menu.dailyCaptureEntry'), () => toggleDailyCapture(), false, false, 'calendar'))
-    menu.appendChild(makeMenuItem(t('cmd.app.newTemplate'), () => newBlankTemplate(), false, false, 'plus'))
-    menu.appendChild(makeMenuItem(t('cmd.app.dailySettings'), () => configureDailyCapture(), false, false, 'sliders'))
-    const r = anchorEl.getBoundingClientRect()
-    placeMenu(menu, r.left, r.bottom + 4)
-  })
-}
-
-// 工具条「更多」菜单：收纳低频操作（导出/打印/图谱/画布/模板）与视图模式开关（专注/打字机）
-// 文案、键位后缀、勾选态都取注册表那一套（与 mac 原生菜单同源），菜单不自带第二份文案
-function addMenuCmd(menu, id, icon) {
-  const cmd = commandRegistry.get(id)
-  if (!cmd) return
-  const key = commandBindingFor(id)
-  const checked = MENU_CHECKED[id] ? MENU_CHECKED[id]() : false
-  menu.appendChild(makeMenuItem(cmd.title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, icon))
-}
-
-// 命令子菜单（导出 / Git）：与 mac 菜单栏同构——同一组命令 id，剥掉注册表标题里的
-// 归类前缀（「导出」「Git：」，父项已经说了同一件事），勾选态与置灰走同一套口径
-function openCmdSubmenu(anchorEl, text, icon, ids, prefixKey) {
-  closeTreeMenu()
-  const menu = document.createElement('div')
-  menu.className = 'cv-menu tree-menu'
-  const re = new RegExp('^' + t(prefixKey).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*')
-  for (const id of ids) {
-    const cmd = commandRegistry.get(id)
-    if (!cmd) continue
-    const key = commandBindingFor(id)
-    const checked = MENU_CHECKED[id] ? MENU_CHECKED[id]() : false
-    const title = String(cmd.title).replace(re, '')
-    menu.appendChild(makeMenuItem(title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, null, !menuEnabled(id)))
-  }
-  placeMenu(menu, anchorEl.getBoundingClientRect().left, anchorEl.getBoundingClientRect().bottom + 4)
-}
-
-function openMoreMenu(anchorEl) {
-  closeTreeMenu()
-  const menu = document.createElement('div')
-  menu.className = 'cv-menu tree-menu'
-  // 文件：新建 / 打开 → 最近 / 模板 → 保存 / 重命名 / 定位 → 导入导出 → 速记 / 自动保存 / 关闭
-  addMenuCmd(menu, 'app.newFile', 'file-plus')
-  addMenuCmd(menu, 'app.openFile', 'file')
-  addMenuCmd(menu, 'app.openFolder', 'folder')
-  menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
-  menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
-  menu.appendChild(menuSep())
-  addMenuCmd(menu, 'app.save', 'save')
-  addMenuCmd(menu, 'app.renameFile', 'pen')
-  addMenuCmd(menu, 'app.revealFile', 'folder')
-  menu.appendChild(menuSep())
-  addMenuCmd(menu, 'app.importWord', 'file')
-  menu.appendChild(makeMenuItem(t('menu.export'), () => openCmdSubmenu(anchorEl, t('menu.export'), 'export', [
-    'app.print',
-    'app.export',
-    'app.exportPlain',
-    'app.exportWord',
-    'app.exportSlides',
-    'app.exportVaultSlides',
-    'app.exportSite',
-  ], 'menu.exportPrefix'), false, false, 'export'))
-  menu.appendChild(menuSep())
-  addMenuCmd(menu, 'app.dailyCapture', 'calendar')
-  addMenuCmd(menu, 'app.autosave', 'save')
-  addMenuCmd(menu, 'app.closeFile', 'close')
-  menu.appendChild(menuSep())
-  addMenuCmd(menu, 'app.graph', 'graph')
-  addMenuCmd(menu, 'app.newCanvas', 'board')
-  addMenuCmd(menu, 'app.clipSettings', 'clipboard')
-  addMenuCmd(menu, 'app.qdToggleEval', 'terminal')
-  addMenuCmd(menu, 'app.qdInstallPackage', 'plus')
-  // Git：与 mac 顶级 Git 组同一组命令
-  menu.appendChild(makeMenuItem(t('menu.group.git'), () => openCmdSubmenu(anchorEl, t('menu.group.git'), 'branch', [
-    'app.git.refresh',
-    'app.git.commit',
-    'app.git.fetch',
-    'app.git.pull',
-    'app.git.pullMerge',
-    'app.git.push',
-    'app.git.remote',
-    'app.git.init',
-  ], 'menu.gitPrefix'), false, false, 'branch'))
-  menu.appendChild(menuSep())
-  addMenuCmd(menu, 'app.palette', 'terminal')
-  addMenuCmd(menu, 'app.shortcuts', 'sliders')
-  addMenuCmd(menu, 'app.appearance', 'palette')
-  // 语言：子菜单列出全部语言，当前语言打勾
-  menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
-  addMenuCmd(menu, 'app.about', 'info')
-  menu.appendChild(menuSep())
-  addMenuCmd(menu, 'app.focusMode', 'target')
-  addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
-  addMenuCmd(menu, 'app.toggleSidebar', 'sidebar')
-  addMenuCmd(menu, 'app.toggleInspector', 'sliders')
-  addMenuCmd(menu, 'app.aiPanel', 'sparkle')
-  const r = anchorEl.getBoundingClientRect()
-  placeMenu(menu, r.left, r.bottom + 4)
-}
-
-// 工具条「段落」菜单（Windows / Linux 用；mac 是原生「段落」菜单，两边不同时挂）：
-// 直接取 buildMacMenuSpec 的「段落」组渲染 —— 分组、顺序、勾选、置灰、剥掉的「段落：」前缀
-// 与 mac 同一份定义，两边不会各改各的。执行走 runViaShortcut → 命令注册表，与命令面板同链路。
-function openParagraphMenu(anchorEl) {
-  closeTreeMenu()
-  const menu = document.createElement('div')
-  menu.className = 'cv-menu tree-menu'
-  const icons = {
-    para: 'pilcrow', quote: 'quote', code: 'code', mermaid: 'diagram', exitBlock: 'arrow-down',
-    bullet: 'list-bullet', ordered: 'list-ordered', task: 'task', hr: 'hr', table: 'table', callout: 'lightbulb',
-    link: 'link', footnote: 'pen', footnoteDelete: 'eraser', mathBlock: 'math', headingUp: 'arrow-up', headingDown: 'arrow-down',
-  }
-  const para = (buildMacMenuSpec(menuSpecCtx()).groups.find((g) => g.id === 'paragraph') || { items: [] }).items
-  for (const it of para) {
-    if (it.type === 'sep') { menu.appendChild(menuSep()); continue }
-    const name = it.id.split('.').pop()
-    const key = commandBindingFor(it.id)
-    const el = makeMenuItem(it.text + (key ? ' (' + key + ')' : ''), () => runViaShortcut(it.id),
-      false, it.type === 'check' && !!it.checked, icons[name] || null, it.enabled === false)
-    menu.appendChild(el)
-  }
-  const r = anchorEl.getBoundingClientRect()
-  placeMenu(menu, r.left, r.bottom + 4)
-}
-
 // —— 编辑器通用右键菜单（窗格内：剪切 / 复制 / 粘贴 + 行内格式 + 插入块）——
 // 挂在窗格（.nl-pane）而不是 view.dom：编辑器上下留白、文档下方的空白也归编辑部，
 // 那些位置右键照样出这个菜单。表格范围不接——表格菜单挂在 view.dom 上、事件先到它
 // 那儿且已 preventDefault，这里见 defaultPrevented 就让路。标签条 / 查找栏 / 源码模式 /
 // 输入框不在这接：它们由 installGlobalContextMenu 的 document capture 兜底接管
 // （输入框出编辑菜单、标签条出标签菜单），不会再冒 WebView2 原生菜单。
+// 剪贴板四动作在所见即所得窗格上的实现。右键菜单与 Windows / Linux 菜单条共用这一份：
+// 读写纯文本（markdown 编辑器要的就是纯文本）；剪切 = 复制成功后按 PM 事务删选区，
+// 不依赖 execCommand('cut') 的 DOM 副作用。
+function pmClipboardOps(inst) {
+  const view = inst.view
+  const hasSel = () => {
+    const s = view.state.selection
+    return !!(s && !s.empty)
+  }
+  const selText = () => view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, '\n', '\n')
+  const writeClip = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch (err) {
+      setStatus(t('status.clipFail', { err: errText(err) }))
+      return false
+    }
+  }
+  return {
+    canCutCopy: hasSel,
+    cut: async () => {
+      if (!hasSel()) return
+      if (await writeClip(selText())) {
+        const { from, to } = view.state.selection
+        view.dispatch(view.state.tr.delete(from, to))
+      }
+    },
+    copy: async () => {
+      if (hasSel()) await writeClip(selText())
+    },
+    paste: async () => {
+      let text = null
+      try {
+        text = await readClipboardText()
+      } catch (err) {
+        setStatus(t('status.clipFail', { err: errText(err) }))
+        return
+      }
+      if (!text) {
+        setStatus(t('status.clipEmpty'))
+        return
+      }
+      inst.focusEditor()
+      inst.insertPlainText(text)
+    },
+    selectAll: () => {
+      inst.focusEditor()
+      selectAll(view.state, view.dispatch)
+      view.focus()
+    },
+  }
+}
+
 function attachEditorContextMenu(paneId, inst) {
   const pane = inst.view.dom.closest('.nl-pane')
   if (!pane) return
@@ -2282,47 +2183,13 @@ function attachEditorContextMenu(paneId, inst) {
     closeTreeMenu()
     // 右键落在这个窗格：命令对这个窗格的编辑器求值，别打到焦点窗格上去
     inst.focusEditor()
-    const view = inst.view
-    const sel = view.state.selection
-    const hasSel = !!(sel && !sel.empty)
-    const selText = () => view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, '\n', '\n')
-    const writeClip = async (text) => {
-      try {
-        await navigator.clipboard.writeText(text)
-        return true
-      } catch (err) {
-        setStatus(t('status.clipFail', { err: errText(err) }))
-        return false
-      }
-    }
+    const clip = pmClipboardOps(inst)
+    const hasSel = clip.canCutCopy()
     const menu = document.createElement('div')
     menu.className = 'cv-menu tree-menu'
-    // 剪切 / 复制写纯文本（markdown 编辑器要的就是纯文本）；剪切 = 复制成功后按 PM 事务
-    // 删选区，不依赖 execCommand('cut') 的 DOM 副作用
-    menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), async () => {
-      if (!hasSel) return
-      if (await writeClip(selText())) {
-        const { from, to } = view.state.selection
-        view.dispatch(view.state.tr.delete(from, to))
-      }
-    }, false, false, null, !hasSel))
-    menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), async () => {
-      if (hasSel) await writeClip(selText())
-    }, false, false, null, !hasSel))
-    menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), async () => {
-      let text = null
-      try {
-        text = await readClipboardText()
-      } catch (err) {
-        setStatus(t('status.clipFail', { err: errText(err) }))
-        return
-      }
-      if (!text) {
-        setStatus(t('status.clipEmpty'))
-        return
-      }
-      inst.insertPlainText(text)
-    }))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), clip.cut, false, false, null, !hasSel))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), clip.copy, false, false, null, !hasSel))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste))
     menu.appendChild(menuSep())
     const cmd = (id, labelKey) => makeMenuItem(withKey(t(labelKey), commandBindingFor(id)), () => inst.runEditorCommand(id))
     menu.appendChild(cmd('editor.bold', 'cmd.editor.bold'))
@@ -2344,10 +2211,7 @@ function attachEditorContextMenu(paneId, inst) {
       menu.appendChild(makeMenuItem(t('ai.task.' + task), () => runSelectionAi(task, inst), false, false, aiIcon[task] || 'sparkle', !hasSel))
     }
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), () => {
-      selectAll(view.state, view.dispatch)
-      view.focus()
-    }))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll))
     placeMenu(menu, e.clientX, e.clientY)
   })
 }
@@ -2385,41 +2249,84 @@ function installGlobalContextMenu() {
   }, true)
 }
 
-// 可编辑目标（input / textarea / CodeMirror 源码）的自绘编辑菜单。
-// 不用 document.execCommand('paste')（WebView2 里拿不到系统剪贴板读权限），
-// 统一走 readClipboardText() 读 + 就地写回（桌面经 clipboard-manager 插件，不弹网页授权条；
-// 纯 web 预览才落回 navigator.clipboard）；写回对 CM 用 insertText（CM6 经
-// beforeinput 接住），对输入框用 setRangeText 并补发 input 事件。
-function openEditContextMenu(e, target) {
-  const editable = target.closest('input, textarea, [contenteditable="true"], .cm-content')
-  if (!editable) return
+// 剪贴板四动作在输入框 / contenteditable / CodeMirror 源码上的实现，右键菜单与 Windows /
+// Linux 菜单条共用这一份。不用 document.execCommand('paste')（WebView2 里拿不到系统剪贴板
+// 读权限），统一走 readClipboardText() 读 + 就地写回（桌面经 clipboard-manager 插件，不弹网页
+// 授权条；纯 web 预览才落回 navigator.clipboard）；写回对 CM 用 insertText（CM6 经 beforeinput
+// 接住），对输入框用 setRangeText 并补发 input 事件。选区每次调用现读，不缓存在菜单上。
+function boxClipboardOps(editable) {
   const isBox = editable instanceof HTMLInputElement || editable instanceof HTMLTextAreaElement
-  const isCM = !!(editable.closest && editable.closest('.cm-editor'))
-  let boxSel = null // [start, end]
-  if (isBox) {
-    try { boxSel = [editable.selectionStart, editable.selectionEnd] } catch (_) {}
+  const boxSel = () => {
+    if (!isBox) return null
+    try { return [editable.selectionStart, editable.selectionEnd] } catch (_) { return null }
   }
-  const ceSel = !isBox && (() => {
+  const hasSel = () => {
+    if (isBox) {
+      const s = boxSel()
+      return !!(s && s[0] != null && s[0] !== s[1])
+    }
     const s = window.getSelection()
     return !!(s && !s.isCollapsed && s.anchorNode && editable.contains(s.anchorNode))
-  })()
-  const hasSel = isBox ? !!(boxSel && boxSel[0] != null && boxSel[0] !== boxSel[1]) : ceSel
-  const selectedText = () => (isBox
-    ? editable.value.slice(boxSel[0], boxSel[1])
-    : String(window.getSelection() || ''))
+  }
+  const selectedText = () => {
+    if (isBox) {
+      const s = boxSel()
+      return s ? editable.value.slice(s[0], s[1]) : ''
+    }
+    return String(window.getSelection() || '')
+  }
   const writeClip = async (text) => {
     try { await navigator.clipboard.writeText(text); return true } catch (_) { return false }
   }
   const insertText = (text) => {
     if (isBox) {
-      const s = boxSel && boxSel[0] != null ? boxSel[0] : editable.value.length
-      const end = boxSel && boxSel[1] != null ? boxSel[1] : s
-      editable.setRangeText(text, s, end, 'end')
+      const s = boxSel() || [editable.value.length, editable.value.length]
+      editable.setRangeText(text, s[0], s[1], 'end')
       editable.dispatchEvent(new Event('input', { bubbles: true }))
     } else {
       document.execCommand('insertText', false, text)
     }
   }
+  return {
+    canCutCopy: hasSel,
+    cut: async () => {
+      if (!hasSel()) return
+      const s = boxSel()
+      if (await writeClip(selectedText())) {
+        editable.focus()
+        if (isBox) {
+          editable.setRangeText('', s[0], s[1], 'start')
+          editable.dispatchEvent(new Event('input', { bubbles: true }))
+        } else {
+          document.execCommand('delete')
+        }
+      }
+    },
+    copy: async () => {
+      if (hasSel()) await writeClip(selectedText())
+    },
+    paste: async () => {
+      let text = null
+      try { text = await readClipboardText() } catch (_) {}
+      if (!text) return
+      editable.focus()
+      insertText(text)
+    },
+    selectAll: () => {
+      editable.focus()
+      if (isBox) editable.select()
+      else document.execCommand('selectAll')
+    },
+  }
+}
+
+// 可编辑目标（input / textarea / CodeMirror 源码）的自绘编辑菜单。
+function openEditContextMenu(e, target) {
+  const editable = target.closest('input, textarea, [contenteditable="true"], .cm-content')
+  if (!editable) return
+  const isCM = !!(editable.closest && editable.closest('.cm-editor'))
+  const clip = boxClipboardOps(editable)
+  const hasSel = clip.canCutCopy()
   const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
   const withKey = (label, key) => (key ? label + '  ' + key : label)
   const menu = document.createElement('div')
@@ -2430,34 +2337,11 @@ function openEditContextMenu(e, target) {
       document.execCommand('undo')
     }))
   }
-  menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), async () => {
-    if (!hasSel) return
-    if (await writeClip(selectedText())) {
-      editable.focus()
-      if (isBox) {
-        editable.setRangeText('', boxSel[0], boxSel[1], 'start')
-        editable.dispatchEvent(new Event('input', { bubbles: true }))
-      } else {
-        document.execCommand('delete')
-      }
-    }
-  }, false, false, null, !hasSel))
-  menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), async () => {
-    if (hasSel) await writeClip(selectedText())
-  }, false, false, null, !hasSel))
-  menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), async () => {
-    let text = null
-    try { text = await readClipboardText() } catch (_) {}
-    if (!text) return
-    editable.focus()
-    insertText(text)
-  }))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), clip.cut, false, false, null, !hasSel))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), clip.copy, false, false, null, !hasSel))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste))
   menu.appendChild(menuSep())
-  menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), () => {
-    editable.focus()
-    if (isBox) editable.select()
-    else document.execCommand('selectAll')
-  }))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll))
   placeMenu(menu, e.clientX, e.clientY)
 }
 
@@ -2591,37 +2475,6 @@ function recordRecent(root, rel) {
   list.unshift({ root, rel, name: baseName(rel) })
   saveRecents(list.slice(0, RECENT_MAX))
   syncTrayRecents()
-}
-function openRecentMenu(anchorEl) {
-  const list = loadRecents()
-  closeTreeMenu()
-  const menu = document.createElement('div')
-  menu.className = 'cv-menu tree-menu'
-  if (!list.length) {
-    menu.appendChild(makeMenuItem(t('menu.noRecent'), () => {}))
-  } else {
-    list.forEach((e) => {
-      const it = makeMenuItem(e.name, () => reopenRecent(e), false, false, 'file')
-      it.title = e.root + '/' + e.rel
-      menu.appendChild(it)
-    })
-    menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem(t('cmd.app.clearRecents'), () => saveRecents([]), false, false, 'eraser'))
-  }
-  const r = anchorEl.getBoundingClientRect()
-  placeMenu(menu, r.left, r.bottom + 4)
-}
-
-// 语言子菜单：列 LOCALES 全部语言，当前项打勾；点选项即切换并整体刷新界面
-function openLangMenu(anchorEl) {
-  closeTreeMenu()
-  const menu = document.createElement('div')
-  menu.className = 'cv-menu tree-menu'
-  for (const l of LOCALES) {
-    menu.appendChild(makeMenuItem(l.name, () => switchLocale(l.id), false, getLocale() === l.id, 'globe'))
-  }
-  const r = anchorEl.getBoundingClientRect()
-  placeMenu(menu, r.left, r.bottom + 4)
 }
 async function reopenRecent(entry) {
   if (!(await ensureSavedBeforeLeave())) return
@@ -3196,7 +3049,6 @@ function setMode(mode) {
   // 切画布前先退出源码模式（同步回灌模型），避免源码容器盖住画布
   if (canvasOn && editor && editor.isSourceMode()) {
     editor.exitSource()
-    if (els.btnSource) els.btnSource.classList.remove('active')
   }
   // md 态下若仍在源码模式，保持主编辑器隐藏、源码容器可见（供 openFile 调 setMode('md') 时不破坏源码态）
   const inSource = !canvasOn && !!editor && editor.isSourceMode()
@@ -4088,7 +3940,7 @@ function registerAppCommands() {
   app('app.toggleSidebar', 'Mod-Shift-s', () => toggleSidebar())
   // 检查器改到 Ctrl+Shift+B：Ctrl+Shift+I 让给「插入图片」
   app('app.toggleInspector', 'Mod-Shift-b', () => toggleInspector())
-  // 以下原先只挂在「更多」菜单里：入注册表后 mac 原生菜单可直接取用（一处定义，两处消费）
+  // 以下原先只挂在窗口内的平铺菜单里：入注册表后 mac 原生菜单与 win/linux 菜单条都直接取用（一处定义，多处消费）
   app('app.shortcuts', null, () => { if (keySettings) keySettings.open() })
   // 外观设置：主题 / 颜色 / 字体 / 字号 / 行高 / 自动换行 / 侧栏比例，走 settings.json
   app('app.appearance', null, () => { if (apSettings) apSettings.open() })
@@ -4117,7 +3969,7 @@ function registerAppCommands() {
   app('app.dailySettings', null, () => configureDailyCapture())
   app('app.autosave', null, () => setAutosave(!state.autosave.enabled))
   app('app.clearRecents', null, () => saveRecents([]))
-  // 「关于」：Windows/Linux 从「更多」菜单与命令面板进；mac 用原生 About role（app-menu.js），
+  // 「关于」：Windows/Linux 从「帮助」菜单与命令面板进；mac 用原生 About role（app-menu.js），
   // 两边不同时挂，免得 mac 出现两个入口。无默认键。
   app('app.about', null, () => openAboutDialog())
   // 界面语言：一种语言一条命令，标题按当前语言生成（各语言自称取自 LOCALES）；选中态由 MENU_CHECKED 给出
@@ -4277,7 +4129,7 @@ const MENU_CHECKED = {
   'app.sourceMode': () => !!(editor && editor.isSourceMode()),
   'app.qdToggleEval': () => getFeatures(settingsStore).quarkdown,
 }
-// 语言命令的勾：当前语言那一项打勾（注册表 title 按当前语言生成，勾用于「更多」菜单与 mac 菜单）
+// 语言命令的勾：当前语言那一项打勾（注册表 title 按当前语言生成，勾用于菜单条与 mac 菜单）
 for (const l of LOCALES) {
   MENU_CHECKED['app.lang.' + l.id] = () => getLocale() === l.id
 }
@@ -4313,7 +4165,12 @@ function menuSpecCtx() {
   return {
     commands: menuCommands(),
     recents: loadRecents().map((e, i) => ({ id: 'recent:' + i, label: e.name })),
-    templates: listMdInDir(TEMPLATE_DIR()).map((p) => ({ id: 'tpl:' + p, label: baseName(p).replace(/\.md$/i, '') })),
+    // 模板 = 库内 Templates/ 里的 + 内置 Quarkdown 示例。后者原先只在窗口内那版模板菜单里出，
+    // 写进这一份 spec 后 mac 的「模板」子菜单同样能选到
+    templates: [
+      ...listMdInDir(TEMPLATE_DIR()).map((p) => ({ id: 'tpl:' + p, label: baseName(p).replace(/\.md$/i, '') })),
+      ...QD_TEMPLATES.map((tpl) => ({ id: 'qd:' + tpl.nameKey, label: t(tpl.nameKey) })),
+    ],
     themes: THEMES.map((name) => ({ id: 'theme:' + name, label: t('theme.' + name), checked: name === choice })),
     languages: LOCALES.map((l) => ({ id: 'app.lang.' + l.id, label: l.name, checked: l.id === getLocale() })),
   }
@@ -4328,6 +4185,11 @@ function onMenuSelect(id) {
   }
   if (id.startsWith('tpl:')) {
     newFromTemplate(id.slice('tpl:'.length))
+    return
+  }
+  if (id.startsWith('qd:')) {
+    const tpl = QD_TEMPLATES.find((x) => x.nameKey === id.slice('qd:'.length))
+    if (tpl) newQdTemplate(tpl)
     return
   }
   if (id.startsWith('theme:')) {
@@ -4352,6 +4214,95 @@ function runViaShortcut(id) {
     setStatus(t('status.cmdFailed', { err: (err && err.message) || err }))
   }
   scheduleMacChrome()
+}
+
+// —— Windows / Linux：窗口内菜单条 ——
+// 一级分类与 macOS 原生菜单栏取同一份 spec（app-menu.js 的 buildMacMenuSpec），下一级在
+// WebView2 / WebKitGTK 里自绘 .cv-menu；mac 那侧走系统菜单栏，这里不挂载，两边不同时出入口。
+// spec 里的 role(...) 在这一侧要有真实动作：剪贴板四项接右键菜单那份实现（按当前焦点目标
+// 分派），窗口四项接 plugin-window，纯 mac 的系统项由 menu-bar.js 整项丢弃。
+
+const MOD_KEY = { Cut: 'X', Copy: 'C', Paste: 'V', SelectAll: 'A' }
+const WINDOW_ROLES = new Set(['Minimize', 'Maximize', 'Fullscreen', 'CloseWindow', 'Quit'])
+// 只有这四项要看「当前焦点落在哪块可编辑区」；其余 role（About 那类走注册表命令的）不能拿它当判据，否则会被误置灰
+const EDIT_ROLES = new Set(['Cut', 'Copy', 'Paste', 'SelectAll'])
+
+function instOwning(el) {
+  for (const inst of panes.editors.values()) {
+    if (inst && inst.view && inst.view.dom && inst.view.dom.contains(el)) return inst
+  }
+  return null
+}
+
+// 当前该由哪个可编辑目标接住剪贴板命令：焦点在所见即所得窗格就用它，其次输入框 / 源码，
+// 都没有（刚点过菜单）就落回焦点窗格的编辑器。返回 null = 这四项此刻无处可落，置灰。
+function menuEditOps() {
+  const a = document.activeElement
+  if (a && a.closest) {
+    const pm = a.closest('.ProseMirror')
+    if (pm) {
+      const inst = instOwning(pm)
+      if (inst) return pmClipboardOps(inst)
+    }
+    const box = a.closest('input, textarea, [contenteditable="true"], .cm-content')
+    if (box) return boxClipboardOps(box)
+  }
+  const inst = panes.editors.get(panes.focused)
+  return inst && state.currentFile && state.mode === 'md' ? pmClipboardOps(inst) : null
+}
+
+async function runWindowRole(name) {
+  const w = getCurrentWindow()
+  if (name === 'Minimize') await w.minimize()
+  else if (name === 'Maximize') await w.toggleMaximize()
+  else if (name === 'Fullscreen') await w.setFullscreen(!(await w.isFullscreen()))
+  else await w.close() // CloseWindow / Quit：都走关闭链路，未保存询问在前端
+}
+
+const menuBarRoleHandler = {
+  run: (role) => {
+    if (WINDOW_ROLES.has(role)) {
+      if ('__TAURI_INTERNALS__' in window) runWindowRole(role).catch((err) => setStatus(t('status.cmdFailed', { err: errText(err) })))
+      return
+    }
+    const ops = menuEditOps()
+    if (ops && ops[role.toLowerCase()]) ops[role.toLowerCase()]()
+  },
+  enabled: (role) => {
+    if (WINDOW_ROLES.has(role)) return '__TAURI_INTERNALS__' in window
+    if (!EDIT_ROLES.has(role)) return true
+    const ops = menuEditOps()
+    if (!ops) return false
+    if (role === 'Cut' || role === 'Copy') return ops.canCutCopy()
+    return true
+  },
+  key: (role) => (MOD_KEY[role] ? (IS_MAC ? '⌘' + MOD_KEY[role] : 'Ctrl+' + MOD_KEY[role]) : ''),
+}
+
+// 菜单条的行：文案 + 快捷键后缀，勾选与置灰沿用注册表口径；子菜单项右侧挂一个箭头。
+function menuBarRow(label, fn, opt = {}) {
+  const el = makeMenuItem(label, fn, false, !!opt.checked, null, !!opt.disabled)
+  if (opt.arrow) {
+    const a = document.createElement('span')
+    a.className = 'cv-menu-arrow'
+    a.textContent = '▸'
+    el.appendChild(a)
+  }
+  return el
+}
+
+function initMenuBar() {
+  if (IS_MAC || !els.menubar) return
+  createMenuBar({
+    mount: els.menubar,
+    helpLabel: () => t('menu.group.help'),
+    buildSpec: () => buildMacMenuSpec(menuSpecCtx()),
+    row: menuBarRow,
+    separator: menuSep,
+    runCommand: (id) => onMenuSelect(id),
+    roleHandler: menuBarRoleHandler,
+    keyFor: (it) => (it.id ? commandBindingFor(it.id) : ''),
+  })
 }
 
 function scheduleMacChrome() {
@@ -4401,7 +4352,7 @@ function syncWindowTitle() {
 function setupTrayMenu() {
   if (!IS_MAC || !window.__TAURI_INTERNALS__) return
   listen('notelume://menu-action', (e) => {
-    if (e.payload === 'new') els.btnNewFile?.click()
+    if (e.payload === 'new') newScratchFile()
     // 'show' 由 Rust 侧 show()+set_focus() 处理，前端不用动；'quit' 由 Rust 走窗口关闭
   })
   listen('notelume://menu-open', (e) => {
@@ -4716,7 +4667,6 @@ async function syncFocusedEditor() {
       : ctx.rel
     : t('ui.noDocOpen')
   els.filename.classList.toggle('dirty', ctx.dirty)
-  if (els.btnSource) els.btnSource.classList.toggle('active', !!(inst && inst.isSourceMode()))
   if (rootChanged) {
     // 跨根焦点切换：树与索引跟着新焦点的文档走（既有跨库切页链路）
     if (ctx.scratch) {
@@ -5325,18 +5275,11 @@ async function boot() {
   els.chkAutosave.checked = state.autosave.enabled
   els.chkAutosave.addEventListener('change', () => setAutosave(els.chkAutosave.checked))
 
-  els.btnOpen.addEventListener('click', openFolder)
-  els.btnOpenFile.addEventListener('click', openSingleFile)
-  els.btnNewFile.addEventListener('click', () => newScratchFile())
-  els.btnSave.addEventListener('click', () => saveCurrent(true))
   els.btnTheme.addEventListener('click', toggleTheme)
-// 标题栏「查找 / 替换」：走命令注册表同一入口（无文档 / 源码态时命令自守卫为空操作）
-els.btnFind && els.btnFind.addEventListener('click', () => runViaShortcut('app.findInDoc'))
-els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut('app.replace'))
-  els.btnDaily && els.btnDaily.addEventListener('click', () => toggleDailyCapture())
-  els.btnSource && els.btnSource.addEventListener('click', toggleSourceMode)
-  els.btnParagraph && els.btnParagraph.addEventListener('click', (e) => openParagraphMenu(e.currentTarget))
-  els.btnMore && els.btnMore.addEventListener('click', (e) => openMoreMenu(e.currentTarget))
+  // 标题栏「查找 / 替换」：走命令注册表同一入口（无文档 / 源码态时命令自守卫为空操作）
+  els.btnFind && els.btnFind.addEventListener('click', () => runViaShortcut('app.findInDoc'))
+  els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut('app.replace'))
+  initMenuBar()
   els.docstats && els.docstats.addEventListener('click', setWordGoal)
   updateDocStats()
   els.searchInput.addEventListener('input', onSearchInput)

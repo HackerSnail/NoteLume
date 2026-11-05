@@ -247,13 +247,6 @@ body {
 .toolbar button:hover {
   background: var(--hover);
 }
-/* 主操作组只留图标：文字包在 .btn-label 里收起，悬停提示走各按钮自带的 title */
-.toolbar .btn-group button {
-  padding: 5px 7px;
-}
-.toolbar .btn-group .btn-label {
-  display: none;
-}
 .toolbar button.active {
   background: var(--accent);
   color: #fff;
@@ -372,9 +365,28 @@ body {
 .toolbar .spacer {
   flex: 1;
 }
-/* 按钮组：Windows 用 display:contents 保持原有排布，mac 下整组隐藏 */
-.toolbar .btn-group {
-  display: contents;
+/* 菜单条（Windows / Linux）：一级是分类名，下一级复用 .cv-menu 自绘；mac 走系统菜单栏，整条隐藏。
+   窄窗口里横向滚动，不折行（与顶栏其它条子同一口径） */
+.nl-menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nl-menubar::-webkit-scrollbar {
+  display: none;
+}
+.toolbar .nl-menubar-item {
+  padding: 4px 8px;
+  flex: none;
+  /* 定高：纯拉丁文的一级项（Git）行盒比中文矮 3px，居中后高一块低一块 */
+  height: 26px;
+}
+.toolbar .nl-menubar-item[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--accent);
 }
 
 /* —— 窗格标签条（完整分栏模式，spec 2026-10-18）：每个窗格顶部一条 —— */
@@ -553,7 +565,7 @@ body {
   border-top: 1px solid var(--border);
   padding: 5px 12px;
 }
-[data-mac] .toolbar .btn-group,
+[data-mac] .toolbar .nl-menubar,
 [data-mac] .toolbar .spacer,
 [data-mac] .toolbar #btn-theme,
 [data-mac] #filename {
@@ -2405,7 +2417,7 @@ html.nl-dragging * {
   position: fixed;
   z-index: 40;
   min-width: 132px;
-  /* 菜单比窗口还长时（「更多」菜单 20 多项）就地出滚动条，不再整块溢出屏幕底部、底下的项点不到 */
+  /* 菜单比窗口还长时（「文件」菜单 20 多项）就地出滚动条，不再整块溢出屏幕底部、底下的项点不到 */
   max-height: calc(100vh - 12px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2452,6 +2464,16 @@ html.nl-dragging * {
   height: 1px;
   background: var(--border);
   margin: 3px 4px;
+}
+/* 菜单条的下一级子菜单：body 级固定定位（顶层带 overflow 滚动，做成子元素会被裁掉） */
+.cv-menu.nl-menu-sub {
+  position: fixed;
+  z-index: 41;
+}
+.cv-menu-arrow {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 10px;
 }
 .cv-menu-row {
   display: flex;
