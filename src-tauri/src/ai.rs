@@ -231,18 +231,319 @@ pub async fn ai_models_list(base_url: String, api_key: Option<String>) -> Result
     Ok(ids)
 }
 
-/// 探测本机 Ollama（127.0.0.1:11434 /api/tags，1.2s 超时）。可达即视为已安装并运行。
-#[tauri::command]
-pub async fn ollama_probe() -> Result<bool, String> {
-    let client = reqwest::Client::builder()
+/// 本机 Ollama 的状态。state 四档：
+/// - `ready`：服务可达且至少有一个模型
+/// - `no_models`：服务可达但一个模型也没拉（首启最常见的那一档）
+/// - `stopped`：服务不可达，但本机找得到 ollama 可执行文件（装了没起）
+/// - `missing`：服务不可达且找不到可执行文件（没装）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaStatus {
+    pub state: String,
+    pub models: Vec<String>,
+}
+
+const OLLAMA_TAGS_URL: &str = "http://127.0.0.1:11434/api/tags";
+const OLLAMA_PULL_URL: &str = "http://127.0.0.1:11434/api/pull";
+
+/// 四档判定（纯函数，可单测）：可达性 + 模型数 + 是否装了
+pub fn ollama_state(reachable: bool, model_count: usize, installed: bool) -> &'static str {
+    if !reachable {
+        return if installed { "stopped" } else { "missing" };
+    }
+    if model_count == 0 {
+        "no_models"
+    } else {
+        "ready"
+    }
+}
+
+/// /api/tags 响应 → 模型名升序。`name` 缺则取 `model`；坏 JSON / 缺字段 / 空表回空 Vec
+/// （回空表与「不可达」在调用点是两回事，别在这里合并）
+pub fn parse_ollama_models(text: &str) -> Vec<String> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.get("models").and_then(|m| m.as_array()) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = arr
+        .iter()
+        .filter_map(|m| {
+            let pick = |k: &str| {
+                m.get(k)
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            };
+            // name 为空串也算没给（真见过），继续试 model
+            pick("name").or_else(|| pick("model"))
+        })
+        .collect();
+    names.sort_by_key(|a| a.to_lowercase());
+    names
+}
+
+/// 候选可执行文件路径（纯函数：env 取值与平台名都注入，方便单测）。
+/// PATH 扫描是主力——自定义安装目录（如 D:\Ollama\setup）通常只出现在 PATH 里。
+pub fn ollama_exe_candidates(env: impl Fn(&str) -> Option<String>, os: &str) -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let exe = if os == "windows" { "ollama.exe" } else { "ollama" };
+    let sep = if os == "windows" { ';' } else { ':' };
+    let mut out = Vec::new();
+    if let Some(path) = env("PATH") {
+        for dir in path.split(sep) {
+            let d = dir.trim();
+            if !d.is_empty() {
+                out.push(PathBuf::from(d).join(exe));
+            }
+        }
+    }
+    match os {
+        "windows" => {
+            for key in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
+                if let Some(base) = env(key).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) {
+                    out.push(PathBuf::from(base).join("Ollama").join(exe));
+                }
+            }
+        }
+        "macos" => {
+            out.push(PathBuf::from("/Applications/Ollama.app/Contents/Resources/ollama"));
+            out.push(PathBuf::from("/usr/local/bin/ollama"));
+            out.push(PathBuf::from("/opt/homebrew/bin/ollama"));
+        }
+        _ => {
+            out.push(PathBuf::from("/usr/local/bin/ollama"));
+            out.push(PathBuf::from("/usr/bin/ollama"));
+            out.push(PathBuf::from("/bin/ollama"));
+            if let Some(home) = env("HOME").map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) {
+                out.push(PathBuf::from(home).join(".ollama/bin/ollama"));
+            }
+        }
+    }
+    out
+}
+
+fn ollama_installed() -> bool {
+    let os = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    ollama_exe_candidates(|k| std::env::var(k).ok(), os)
+        .iter()
+        .any(|p| p.is_file())
+}
+
+/// 探测本机 Ollama：先摸 /api/tags，摸不到再分「装了没起」与「没装」。
+/// 此前只回 bool（可达即算已装已运行），把 /api/tags 响应里本来就带的模型表丢了，
+/// 「起了但零模型」这一档首用户最需要的提示也就做不出来。
+pub async fn ollama_status() -> OllamaStatus {
+    let mut reachable = false;
+    let mut models = Vec::new();
+    if let Ok(client) = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(1200))
         .build()
+    {
+        if let Ok(resp) = client.get(OLLAMA_TAGS_URL).send().await {
+            if resp.status().is_success() {
+                reachable = true;
+                models = parse_ollama_models(&resp.text().await.unwrap_or_default());
+            }
+        }
+    }
+    let state = ollama_state(reachable, models.len(), ollama_installed());
+    OllamaStatus {
+        state: state.to_string(),
+        models,
+    }
+}
+
+#[tauri::command]
+pub async fn ollama_probe() -> Result<OllamaStatus, String> {
+    Ok(ollama_status().await)
+}
+
+/// 拉取进度事件：kind = 'progress'（status 有值）| 'done' | 'error'（error 有值）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PullEvent {
+    req_id: String,
+    model: String,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+type PullEmit<'a> = dyn Fn(&str, Option<String>, Option<u64>, Option<u64>, Option<String>) + Send + Sync + 'a;
+
+#[derive(Debug, PartialEq)]
+pub enum PullLine {
+    Progress {
+        status: String,
+        completed: Option<u64>,
+        total: Option<u64>,
+    },
+    Failed(String),
+    Skip,
+}
+
+/// /api/pull 的一行 NDJSON → PullLine。真实形状：
+/// `{"status":"pulling manifest"}`、`{"status":"Downloading 47%","digest":...,"completed":123,"total":456}`、
+/// `{"status":"success"}`，出错是 `{"error":"..."}`。
+pub fn parse_pull_line(line: &[u8]) -> PullLine {
+    let text = String::from_utf8_lossy(line);
+    let t = text.trim();
+    if t.is_empty() {
+        return PullLine::Skip;
+    }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(t) else {
+        return PullLine::Skip;
+    };
+    if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
+        let s = err.trim();
+        if !s.is_empty() {
+            return PullLine::Failed(s.to_string());
+        }
+    }
+    let Some(status) = v.get("status").and_then(|s| s.as_str()).map(|s| s.trim().to_string()) else {
+        return PullLine::Skip;
+    };
+    if status.is_empty() {
+        return PullLine::Skip;
+    }
+    let num = |k: &str| v.get(k).and_then(|x| x.as_u64());
+    PullLine::Progress {
+        status,
+        completed: num("completed"),
+        total: num("total"),
+    }
+}
+
+/// 模型名白名单：ASCII 字母数字与 `: . _ - /`，长度 ≤ 120，禁 `..`。
+/// `/` 要收（带命名空间的写法如 `library/foo:latest`、`docker.io/x/y`），所以越界靠 `..`
+/// 单独拦；名字直接进请求体，界面只给我们自己建议的那一个，这里防的是以后放开手输时的怪输入。
+pub fn pull_model_name_ok(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 120
+        && !s.contains("..")
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-' | '/'))
+}
+
+/// 起一个 Ollama 模型拉取。立即返回；进度走 nl:ollama-pull 事件。
+/// reqId 登记进与对话同一张任务表，`ai_chat_cancel` 同样能中止它（拉取没有整体超时，
+/// 取消是唯一出口，界面上必须给停止按钮或至少告知可取消）。
+#[tauri::command]
+pub fn ollama_pull(app: tauri::AppHandle, req_id: String, model: String) -> Result<(), String> {
+    let req_id = req_id.trim().to_string();
+    if req_id.is_empty() {
+        return Err("req_id is empty".into());
+    }
+    let model = model.trim().to_string();
+    if !pull_model_name_ok(&model) {
+        return Err(format!("模型名不合法：{model}"));
+    }
+    {
+        let mut map = running().lock().map_err(|_| "任务表损坏")?;
+        if let Some(old) = map.remove(&req_id) {
+            old.handle.abort();
+        }
+    }
+
+    use tauri::Emitter;
+    let emit_app = app.clone();
+    let rid = req_id.clone();
+    let mid = model.clone();
+    let finished = Arc::new(AtomicBool::new(false));
+    let finished_task = finished.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        let emit = move |kind: &str, status: Option<String>, completed: Option<u64>, total: Option<u64>, error: Option<String>| {
+            let _ = emit_app.emit(
+                "nl:ollama-pull",
+                PullEvent {
+                    req_id: rid.clone(),
+                    model: mid.clone(),
+                    kind: kind.to_string(),
+                    status,
+                    completed,
+                    total,
+                    error,
+                },
+            );
+        };
+        match run_pull(&model, &emit).await {
+            Ok(()) => emit("done", None, None, None, None),
+            Err(e) => emit("error", None, None, None, Some(e)),
+        }
+        finished_task.store(true, Ordering::Relaxed);
+    });
+
+    let mut map = running().lock().map_err(|_| "任务表损坏")?;
+    map.retain(|_, t| !t.finished.load(Ordering::Relaxed));
+    map.insert(req_id, RunningTask { handle, finished });
+    Ok(())
+}
+
+async fn run_pull(model: &str, emit: &PullEmit<'_>) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        // 只设连接超时：几 GB 的拉取没有合理的整体上限，卡住靠 ai_chat_cancel 中止
+        .connect_timeout(std::time::Duration::from_secs(3))
+        .build()
         .map_err(|e| format!("HTTP client: {e}"))?;
-    let resp = client
-        .get("http://127.0.0.1:11434/api/tags")
+    let mut resp = client
+        .post(OLLAMA_PULL_URL)
+        .json(&serde_json::json!({ "model": model, "stream": true }))
         .send()
-        .await;
-    Ok(resp.map(|r| r.status().is_success()).unwrap_or(false))
+        .await
+        .map_err(|e| format!("连接失败: {e}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        let via_json = extract_error_body(&text);
+        return Err(format!(
+            "HTTP {status}: {}",
+            via_json.unwrap_or_else(|| truncate_utf8(text.trim(), 300))
+        ));
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let chunk = resp.chunk().await.map_err(|e| format!("读取流失败: {e}"))?;
+        let Some(bytes) = chunk else { break };
+        buf.extend_from_slice(&bytes);
+        while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = buf.drain(..=pos).collect();
+            if let Some(e) = handle_pull_line(&line, emit) {
+                return Err(e); // 流内报错（模型名不存在 / 磁盘满）直接收，不再读下去
+            }
+        }
+    }
+    if !buf.is_empty() {
+        if let Some(e) = handle_pull_line(&buf, emit) {
+            return Err(e);
+        } // 末行没带换行也要走一趟，别让最后一段进度或错误消失
+    }
+    Ok(())
+}
+
+/// 一行 NDJSON → 进度的 emit 或错误文案（Progress 回 None，Failed 回 Some，Skip 回 None）
+fn handle_pull_line(line: &[u8], emit: &PullEmit<'_>) -> Option<String> {
+    match parse_pull_line(line) {
+        PullLine::Progress { status, completed, total } => {
+            emit("progress", Some(status), completed, total, None);
+            None
+        }
+        PullLine::Failed(e) => Some(e),
+        PullLine::Skip => None,
+    }
 }
 
 /// SSE 行 → data 载荷。非 data: 行（空行 / 注释 / event: 等字段）回 None；
@@ -847,5 +1148,96 @@ mod tests {
         assert!(build_chat_body("m", None, &msgs, None).get("tools").is_none());
         assert!(build_chat_body("m", None, &msgs, Some(&serde_json::json!([]))).get("tools").is_none());
         assert!(build_chat_body("m", None, &msgs, Some(&serde_json::json!("x"))).get("tools").is_none());
+    }
+
+    #[test]
+    fn ollama_state_four_tiers() {
+        assert_eq!(ollama_state(true, 2, true), "ready");
+        assert_eq!(ollama_state(true, 0, true), "no_models");
+        assert_eq!(ollama_state(true, 0, false), "no_models"); // 可达优先于可执行文件探测
+        assert_eq!(ollama_state(false, 0, true), "stopped");
+        assert_eq!(ollama_state(false, 0, false), "missing");
+    }
+
+    #[test]
+    fn ollama_models_parsing() {
+        // 真机 /api/tags 形态（name 与 model 同值，还带 capabilities 等一堆字段）
+        let real = r#"{"models":[{"name":"qwen3:1.7b","model":"qwen3:1.7b","size":1359293444},{"name":"tinyllama:latest","model":"tinyllama:latest"}]}"#;
+        assert_eq!(parse_ollama_models(real), vec!["qwen3:1.7b", "tinyllama:latest"]);
+        // 零模型：空数组与缺字段都是空表（与「不可达」在调用点分开判）
+        assert!(parse_ollama_models(r#"{"models":[]}"#).is_empty());
+        assert!(parse_ollama_models("{}").is_empty());
+        assert!(parse_ollama_models("not json").is_empty());
+        // name 缺时取 model；大小写升序
+        let alt = r#"{"models":[{"model":"Zeta:1"},{"model":"alpha:2"},{"name":"","model":"fallback:1"}]}"#;
+        assert_eq!(parse_ollama_models(alt), vec!["alpha:2", "fallback:1", "Zeta:1"]);
+    }
+
+    #[test]
+    fn ollama_exe_candidates_per_platform() {
+        let env = |k: &str| match k {
+            "PATH" => Some("D:\\Ollama\\setup;C:\\Windows".to_string()),
+            "LOCALAPPDATA" => Some("C:\\Users\\me\\AppData\\Local".to_string()),
+            "HOME" => Some("/home/me".to_string()),
+            _ => None,
+        };
+        let win = ollama_exe_candidates(env, "windows");
+        assert!(win.iter().any(|p| p.ends_with("setup\\ollama.exe") || p.to_string_lossy().ends_with("setup/ollama.exe")), "PATH 里的自定义安装目录要扫到：{:?}", win);
+        assert!(win.iter().any(|p| p.to_string_lossy().contains("AppData") && p.to_string_lossy().contains("Ollama")), "LOCALAPPDATA 常规位置：{:?}", win);
+        let lin = ollama_exe_candidates(|k| if k == "HOME" { Some("/home/me".into()) } else { None }, "linux");
+        // 在 Windows 上跑 linux 分支时 join 会混进反斜杠，比的是逻辑路径不是分隔符
+        let norm = |p: &std::path::PathBuf| p.to_string_lossy().replace('\\', "/");
+        assert!(lin.iter().any(|p| norm(p) == "/usr/bin/ollama"));
+        assert!(lin.iter().any(|p| norm(p) == "/home/me/.ollama/bin/ollama"), "HOME 候选没拼对：{:?}", lin.iter().map(norm).collect::<Vec<_>>());
+        // PATH 空段不产生「./ollama」这种脏候选
+        let empty = ollama_exe_candidates(|_| Some("  ;;".into()), "windows");
+        assert!(empty.iter().all(|p| !p.to_string_lossy().trim().is_empty()));
+    }
+
+    #[test]
+    fn pull_line_parsing() {
+        // 真机 NDJSON：manifest / 百分比进度 / success / error 四种
+        assert_eq!(
+            parse_pull_line(br#"{"status":"pulling manifest"}"#),
+            PullLine::Progress { status: "pulling manifest".into(), completed: None, total: None }
+        );
+        assert_eq!(
+            parse_pull_line(br#"{"status":"Downloading 47%","digest":"abc","completed":123,"total":456}"#),
+            PullLine::Progress { status: "Downloading 47%".into(), completed: Some(123), total: Some(456) }
+        );
+        assert_eq!(
+            parse_pull_line(br#"{"error":"file not found for model nope:latest"}"#),
+            PullLine::Failed("file not found for model nope:latest".into())
+        );
+        assert_eq!(parse_pull_line(b""), PullLine::Skip);
+        assert_eq!(parse_pull_line(b"not json"), PullLine::Skip);
+        assert_eq!(parse_pull_line(br#"{"status":""}"#), PullLine::Skip);
+        // error 字段存在但空：不判失败，接着看 status
+        assert_eq!(
+            parse_pull_line(br#"{"error":"","status":"verifying sha256"}"#),
+            PullLine::Progress { status: "verifying sha256".into(), completed: None, total: None }
+        );
+    }
+
+    #[test]
+    fn pull_model_name_guard() {
+        assert!(pull_model_name_ok("qwen3:1.7b"));
+        assert!(pull_model_name_ok("library/foo:latest"));
+        assert!(pull_model_name_ok("bar-baz_1"));
+        assert!(!pull_model_name_ok(""));
+        assert!(!pull_model_name_ok("qwen3 1.7b")); // 空白
+        assert!(!pull_model_name_ok("../etc/passwd")); // 上跳单独拦，`/` 本身是合法的
+        assert!(!pull_model_name_ok("模型:latest")); // 非 ASCII
+        assert!(!pull_model_name_ok(&"a".repeat(121)));
+    }
+
+    /// 真机跑一次本机 Ollama 探测（手动：`cargo test --lib -- --ignored ollama_status_live`）。
+    /// 没装 Ollama 的机器只会得到 missing / stopped，所以不断言具体档位，只验接线通不通。
+    #[test]
+    #[ignore]
+    fn ollama_status_live() {
+        let s = tauri::async_runtime::block_on(ollama_status());
+        println!("state = {}, models = {:?}", s.state, s.models);
+        assert!(matches!(s.state.as_str(), "ready" | "no_models" | "stopped" | "missing"));
     }
 }

@@ -168,14 +168,48 @@ export function aiConfigured(cfg) {
   return !!(cfg && isHttpUrl(cfg.baseUrl) && String(cfg.model || '').trim())
 }
 
+/** 零模型时建议拉的本地模型：中文强、体积 1.3 GB 量级、capabilities 带 tools（本机 qwen3:1.7b 实测），
+ *  小内存机器也跑得动。换型号只改这里——预设行与首启引导的文案都跟着它走。
+ *  与 AI_PRESETS 的 ollama 行同一个值：选了本地预设又建议另一个模型，两个口径迟早漂移。 */
+export const OLLAMA_SUGGEST_MODEL = 'qwen3:1.7b'
+
 /** 常见 OpenAI 兼容服务预设：设置面板一键填充地址 + 模型名（Key 仍需用户自填） */
 export const AI_PRESETS = [
   { id: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { id: 'zhipu', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4' },
   { id: 'kimi', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2' },
   { id: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  { id: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: 'llama3.1' },
+  { id: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: OLLAMA_SUGGEST_MODEL },
 ]
+
+// —— Ollama 首启引导：探测四档 → 该走哪条动作（纯映射，Node 可单测）——
+
+/**
+ * `ollama_probe` 的返回值 → 该走的引导。四档各一条，不再把「没装 / 装了没起 / 起了零模型」
+ * 挤成同一句话（此前只回 bool，后两档根本分不开）。
+ * 坏数据（老版本回 true、探测抛错回 null）一律 kind 'none'——探测本身出问题时不打扰用户。
+ * 返回 { kind: 'none'|'install'|'start'|'pull'|'ready', bodyKey, titleKey, model? }
+ */
+export function ollamaFlowFor(status) {
+  switch (String((status && status.state) || '')) {
+    case 'missing':
+      return { kind: 'install', bodyKey: 'ollama.missingBody', titleKey: 'ollama.installBtn', model: '' }
+    case 'stopped':
+      return { kind: 'start', bodyKey: 'ollama.stoppedBody', titleKey: 'ollama.retryBtn', model: '' }
+    case 'no_models':
+      return { kind: 'pull', bodyKey: 'ollama.pullAsk', titleKey: 'ollama.pullBtn', model: OLLAMA_SUGGEST_MODEL }
+    case 'ready':
+      return { kind: 'ready', bodyKey: '', titleKey: '', model: '' }
+    default:
+      return { kind: 'none', bodyKey: '', titleKey: '', model: '' }
+  }
+}
+
+/** 探测结果能不能用（服务可达）：没装 / 装了没起都算不能用，别把连不上的地址填进预设 */
+export function ollamaUsable(status) {
+  const st = String((status && status.state) || '')
+  return st === 'ready' || st === 'no_models'
+}
 
 // —— Agent 模式：回答落点协议（自然语言锚点） ——
 

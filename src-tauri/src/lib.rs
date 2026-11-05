@@ -4599,11 +4599,12 @@ pub fn run() {
             // 网页剪藏：本地 HTTP 服务（只绑 127.0.0.1，令牌闸门）
             clip_server_apply,
             clip_server_status,
-            // 大模型接入（AI）：流式对话 + 取消；模型列表 / Ollama 探测 / 本机技能自动探测
+            // 大模型接入（AI）：流式对话 + 取消；模型列表 / Ollama 状态探测与拉取 / 本机技能自动探测
             ai::ai_chat_stream,
             ai::ai_chat_cancel,
             ai::ai_models_list,
             ai::ollama_probe,
+            ai::ollama_pull,
             ai_skills_scan,
             ai_chat_save,
             ai_chat_read,

@@ -627,9 +627,21 @@ export function aiModelsList(baseUrl, apiKey) {
   return invoke('ai_models_list', { baseUrl, apiKey: apiKey || null })
 }
 
-/** 探测本机 Ollama（127.0.0.1:11434）：true = 已安装并运行 */
+/** 探测本机 Ollama：{ state: 'ready'|'no_models'|'stopped'|'missing', models: string[] }（四档含义见 ai-tasks.ollamaFlowFor） */
 export function ollamaProbe() {
   return invoke('ollama_probe', {})
+}
+
+/** 起一个 Ollama 模型拉取（POST /api/pull）；进度走 nl:ollama-pull 事件，可经 aiChatCancel(reqId) 中止 */
+export function ollamaPull(reqId, model) {
+  return invoke('ollama_pull', { reqId, model })
+}
+
+/** 订阅拉取事件：payload = { reqId, model, kind:'progress'|'done'|'error', status?, completed?, total?, error? }。
+ *  返回退订函数（异步订阅，用法与 aiChatListen 同口径）；纯网页预览无 Tauri 时给空实现。 */
+export function ollamaPullListen(handler) {
+  if (!window.__TAURI_INTERNALS__) return Promise.resolve(() => {})
+  return listen('nl:ollama-pull', (e) => handler(e.payload))
 }
 
 /** 用系统默认浏览器打开 http(s) 链接 */

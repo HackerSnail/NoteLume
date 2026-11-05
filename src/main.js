@@ -115,7 +115,8 @@ import {
   THEME_ICON,
 } from './appearance-settings.js'
 import { createClipSettings, normalizeClip } from './clip-settings.js'
-import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS, resolveAnchorPos, aiQueryTerms, buildVaultContext } from './ai-tasks.js'
+import { buildTaskMessages, buildDocContext, normalizeAiConfig, aiConfigured, AI_TASK_IDS, resolveAnchorPos, aiQueryTerms, buildVaultContext, ollamaFlowFor } from './ai-tasks.js'
+import { createOllamaPull } from './ollama-pull.js'
 import { createAiSettings } from './ai-settings.js'
 import { createAiPanel } from './ai-panel.js'
 import { normalizeReadPath, truncateToolResult, canRevert, revertRange } from './ai-agent.js'
@@ -1071,6 +1072,48 @@ function aiSelection(inst) {
     rect = { x: c.left, y: c.top, bottom: c.bottom }
   } catch { rect = null }
   return { text, rect, from, to, inst: target }
+}
+
+// —— 本机 Ollama：首启引导与模型拉取 ——
+
+// 拉取编排只一份：AI 设置那一行与首启引导共用同一个实例，进度不会各拉各的
+const ollamaPullCtl = createOllamaPull()
+
+/**
+ * 探测结果 → 具体动作。四档各走各的，不再把「没装 / 装了没起 / 起了零模型」挤成一句话。
+ * 拒过的记 nl-ollama-skip，之后不主动再提（设置页里选 Ollama 预设时还会再给一次机会）。
+ * @param {object} status ollamaProbe 的返回值
+ * @returns {Promise<object|null>} 最终探测到的状态（设置页据此决定要不要把预设地址填进去）
+ */
+async function ollamaGuide(status) {
+  let st = status
+  let flow = ollamaFlowFor(st)
+  if (flow.kind === 'start') {
+    // 装了但没起：给的是「重新探测」而不是下载页，确认完只重探一次，不弹第二轮
+    const yes = await confirmDialog(t(flow.bodyKey), t(flow.titleKey)).catch(() => false)
+    if (!yes) { markOllamaSkipped(); return st }
+    st = await ollamaProbe().catch(() => null)
+    flow = ollamaFlowFor(st)
+  }
+  if (flow.kind === 'install') {
+    const yes = await confirmDialog(t(flow.bodyKey), t(flow.titleKey)).catch(() => false)
+    if (yes) openUrl('https://ollama.com/download').catch(() => {})
+    else markOllamaSkipped()
+    return st
+  }
+  if (flow.kind === 'pull') {
+    const yes = await confirmDialog(t(flow.bodyKey, { model: flow.model }), t(flow.titleKey)).catch(() => false)
+    if (!yes) { markOllamaSkipped(); return st }
+    // 进度得看得见：开设置面板挂上那一行再起拉取，状态栏本身早就不显示字了
+    if (aiSettings) aiSettings.open()
+    ollamaPullCtl.start(flow.model)
+    return st
+  }
+  return st
+}
+
+function markOllamaSkipped() {
+  try { localStorage.setItem('nl-ollama-skip', '1') } catch { /* 存不上就只当没记 */ }
 }
 
 /** 选区 AI 入口：未配置先开设置；custom 走提示词输入框；其余直接起浮层流式请求 */
@@ -5081,19 +5124,12 @@ async function boot() {
   applyStaticDom(document)
   // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
   if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
-  // —— Ollama 首启探测（主窗口只做一次）：没装则问一次是否打开下载页；拒绝就记住，
-  // 之后不再主动打扰，等用户在 AI 设置里主动选 Ollama 时再提示一次 ——
+  // —— Ollama 首启探测（主窗口只做一次）：四档各走各的引导——没装给下载页、装了没起给重新
+  // 探测、起了但零模型问一句就在「AI 设置」里拉建议模型；拒过就记住，之后不再主动打扰，
+  // 等用户在 AI 设置里主动选 Ollama 时再提示一次 ——
   if (IS_PRIMARY_WINDOW && window.__TAURI_INTERNALS__ && !localStorage.getItem('nl-ollama-probed')) {
     localStorage.setItem('nl-ollama-probed', '1')
-    ollamaProbe().then(async (ok) => {
-      if (ok) return
-      const yes = await confirmDialog(t('ollama.missingBody'), t('ollama.installBtn'))
-      if (yes) {
-        openUrl('https://ollama.com/download').catch(() => {})
-      } else {
-        localStorage.setItem('nl-ollama-skip', '1')
-      }
-    }).catch(() => {})
+    ollamaProbe().then(ollamaGuide).catch(() => {})
   }
   // 应用设置（settings.json）：先读回再装配界面。外观状态（主题 / 颜色 / 字体 /
   // 字号 / 行高 / 自动换行 / 侧栏比例）恢复到上次保存的样子；文件不存在或损坏
@@ -5344,6 +5380,9 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     apply: (cfg) => { persistAi(cfg); if (aiPanel) aiPanel.refresh() },
     flush: () => settingsStore.flush(),
     setStatus,
+    // 本机 Ollama：设置里那一行要能拉模型（进度与首启引导共用同一个实例），四档引导也复用同一段逻辑
+    ollamaPull: ollamaPullCtl,
+    ollamaGuide,
   })
   aiPanel = createAiPanel({
     root: els.aiPanel,

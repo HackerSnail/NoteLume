@@ -7,8 +7,8 @@
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel } from './ai-tasks.js'
-import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridge.js'
+import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel, ollamaFlowFor, ollamaUsable } from './ai-tasks.js'
+import { ollamaProbe, openUrl, aiModelsList } from './tauri-bridge.js'
 
 /**
  * 「AI 设置」面板。
@@ -17,9 +17,11 @@ import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridg
  * @param {(next: object) => void} deps.apply 应用改动：main.js 负责写 settings.json 的 ai 段
  * @param {() => Promise} [deps.flush] 立即落盘（不等防抖）
  * @param {(msg: string) => void} deps.setStatus
+ * @param {object} [deps.ollamaPull] 本机模型拉取编排（createOllamaPull 实例，进度可订阅）
+ * @param {(status: object) => Promise<object>} [deps.ollamaGuide] 四档首启引导（main.js 一份，别抄两遍）
  */
 export function createAiSettings(deps) {
-  const { getAi, apply, flush, setStatus } = deps
+  const { getAi, apply, flush, setStatus, ollamaPull, ollamaGuide } = deps
   let overlay = null
   let bodyEl = null
   let statusEl = null
@@ -37,6 +39,9 @@ export function createAiSettings(deps) {
   let baseUrlInputEl = null // 接口地址输入框：点「自定义」后把光标交给它
   let presetBtnEls = [] // 预设行的 [id, button]，选中态按当前地址同步
   let customMemory = null // 面板这一次会话里「自定义」那格的地址与模型名
+  let ollamaWrapEl = null // 本机 Ollama 那一块的容器（探测与拉取进度都只重画这一块）
+  let ollamaState = null // 最近一次 ollamaProbe 结果（{ state, models }）
+  let offPull = null // 拉取进度订阅的退订
 
   // —— 地址与 Key 是一对 ——
   // Key 存在 ai.keys 里按 host:port 分格，切服务商不会把上一家的 Key 带过去。
@@ -244,6 +249,64 @@ export function createAiSettings(deps) {
     }
   }
 
+  // —— 本机 Ollama：状态一行 + 零模型时一键拉取（进度只重画这一块，不打断地址框输入）——
+
+  function paintOllama() {
+    if (!ollamaWrapEl) return
+    ollamaWrapEl.innerHTML = ''
+    const flow = ollamaFlowFor(ollamaState)
+    const cur = ollamaPull ? ollamaPull.current() : null
+    const head = document.createElement('div')
+    head.className = 'nl-ap-row'
+    const label = document.createElement('span')
+    label.className = 'nl-ap-label'
+    label.textContent = t('ai.set.ollama')
+    const btns = document.createElement('div')
+    btns.className = 'nl-ai-presets'
+    const add = (key, fn) => {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'nl-ks-btn'
+      b.textContent = t(key)
+      b.addEventListener('click', fn)
+      btns.appendChild(b)
+    }
+    // 拉取中只给「取消」（同一个模型同时间只能拉一份，重复点没意义）
+    if (cur && cur.state === 'pulling' && ollamaPull) add('common.cancel', () => ollamaPull.stop())
+    else if (flow.kind === 'pull' && ollamaPull) add('ollama.pullBtn', () => ollamaPull.start(flow.model))
+    else if (flow.kind === 'install') add('ollama.installBtn', () => openUrl('https://ollama.com/download').catch(() => {}))
+    else if (flow.kind === 'start') add('ollama.retryBtn', () => probeOllama())
+    head.append(label, btns)
+    ollamaWrapEl.appendChild(head)
+    const line = document.createElement('div')
+    line.className = 'nl-ap-hint'
+    line.textContent = ollamaStatusText(flow, cur)
+    ollamaWrapEl.appendChild(line)
+  }
+
+  function ollamaStatusText(flow, cur) {
+    if (cur && cur.state === 'pulling') {
+      return t('ollama.pullProgress', { model: cur.model, status: cur.status || '', pct: cur.pct ? cur.pct + '%' : '' })
+    }
+    if (cur && cur.state === 'done') return t('ollama.pullDone', { model: cur.model })
+    if (cur && cur.state === 'error') {
+      // 取消走面板上已有的「已停止」文案，只有真失败才拼服务端原文
+      if (cur.error === 'cancelled') return t('ai.stopped')
+      return t('ollama.pullFail', { err: cur.error || t('common.unknownErr') })
+    }
+    switch (flow.kind) {
+      case 'ready': return t('ai.set.ollamaReady', { n: (ollamaState && ollamaState.models ? ollamaState.models.length : 0) })
+      case 'pull': return t('ai.set.ollamaNoModels')
+      case 'start': return t('ai.set.ollamaStopped')
+      default: return t('ai.set.ollamaMissing') // install 与探测抛错（null）都是「没检测到」
+    }
+  }
+
+  async function probeOllama() {
+    try { ollamaState = await ollamaProbe() } catch { ollamaState = null }
+    paintOllama()
+  }
+
   function render() {
     bodyEl.innerHTML = ''
     section('ai.set.section')
@@ -265,18 +328,15 @@ export function createAiSettings(deps) {
       b.className = 'nl-ks-btn'
       b.textContent = t('ai.set.preset.' + p.id)
       b.addEventListener('click', async () => {
-        // 选 Ollama 预设且此前拒绝过安装：再探一次并提示（刚装好的用户探测通过就不再烦）
+        // 选 Ollama 预设且此前拒过引导：再走一遍四档引导（没装 / 没起 / 零模型各走各的），
+        // 探测仍不可达就不把地址填进去——填了也是个连不上的配置
         if (p.id === 'ollama' && localStorage.getItem('nl-ollama-skip') === '1') {
           localStorage.removeItem('nl-ollama-skip')
-          let ok = false
-          try { ok = await ollamaProbe() } catch { ok = false }
-          if (!ok) {
-            const yes = await confirmDialog(t('ollama.retryBody'), t('ollama.installBtn'))
-            if (yes) {
-              openUrl('https://ollama.com/download').catch(() => {})
-              return
-            }
-          }
+          let st = null
+          try { st = await ollamaProbe() } catch { st = null }
+          ollamaState = st
+          if (typeof ollamaGuide === 'function') st = await ollamaGuide(st)
+          if (!ollamaUsable(st)) return
         }
         // 先换地址再改模型名：换地址时要把「自定义」那格此刻的模型名记下来，顺序反了就记成预设的
         syncKeyWithBaseUrl(p.baseUrl)
@@ -313,6 +373,12 @@ export function createAiSettings(deps) {
     bodyEl.appendChild(presetRow)
     syncPresetActive()
     hint('ai.set.presetHint')
+
+    // 本机 Ollama 那一块：先按上一次探测结果画出来，再异步重探一次补上
+    ollamaWrapEl = document.createElement('div')
+    bodyEl.appendChild(ollamaWrapEl)
+    paintOllama()
+    probeOllama()
 
     baseUrlInputEl = textRow('ai.set.baseUrl', draft.baseUrl, (v) => { syncKeyWithBaseUrl(v); syncPresetActive(); models = []; modelsError = ''; loadModels() }, {
       placeholder: 'https://api.deepseek.com/v1',
@@ -424,6 +490,14 @@ export function createAiSettings(deps) {
     offLocale = onLocaleChange(() => {
       if (overlay.parentNode) render()
     })
+    // 拉取进度：面板开着就重画那一块；拉完顺手重拉模型列表，新模型直接可选
+    if (ollamaPull && !offPull) {
+      offPull = ollamaPull.subscribe(() => {
+        paintOllama()
+        const c = ollamaPull.current()
+        if (c && c.state === 'done') loadModels()
+      })
+    }
     render()
   }
 
@@ -432,6 +506,11 @@ export function createAiSettings(deps) {
     if (offLocale) {
       offLocale()
       offLocale = null
+    }
+    // 只摘本面板的进度订阅；拉取本身在 ollamaPull 里接着跑，重开面板还能看到进度
+    if (offPull) {
+      offPull()
+      offPull = null
     }
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay)
   }

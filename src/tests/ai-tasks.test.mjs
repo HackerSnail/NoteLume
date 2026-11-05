@@ -16,6 +16,9 @@ import {
   parseAgentReply,
   stripInsertMarkers,
   isPlaceholderReply,
+  ollamaFlowFor,
+  ollamaUsable,
+  OLLAMA_SUGGEST_MODEL,
   resolveAnchorPos,
   modelSupportsVision,
   aiQueryTerms,
@@ -26,6 +29,7 @@ import {
   AI_CTX_WINDOW_TOKENS,
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
+import { LOCALES, MESSAGES } from '../locales/index.js'
 
 let pass = 0
 let fail = 0
@@ -266,6 +270,44 @@ t('parseAgentReply：首个标记之前的残渣整段丢弃', () => {
   const r = parseAgentReply('</insert>\n<insert after="引言">正文')
   assert.deepStrictEqual(r.anchor, { dir: 'after', target: '引言' })
   assert.strictEqual(r.body, '正文')
+})
+
+t('ollamaFlowFor：四档各一条，坏数据不打扰', () => {
+  assert.strictEqual(ollamaFlowFor({ state: 'missing' }).kind, 'install')
+  assert.strictEqual(ollamaFlowFor({ state: 'stopped' }).kind, 'start')
+  const pull = ollamaFlowFor({ state: 'no_models', models: [] })
+  assert.strictEqual(pull.kind, 'pull')
+  assert.strictEqual(pull.model, OLLAMA_SUGGEST_MODEL)
+  assert.ok(pull.model && !/\s/.test(pull.model), '建议模型名要能直接进请求体')
+  assert.strictEqual(ollamaFlowFor({ state: 'ready', models: ['a'] }).kind, 'ready')
+  // 老版本返回 true / 探测抛错返回 null / 没见过的档位：一律不打扰，不能弹空文案的框
+  for (const bad of [true, false, null, undefined, {}, { state: 'weird' }]) {
+    assert.strictEqual(ollamaFlowFor(bad).kind, 'none', JSON.stringify(bad) + ' 应判 none')
+  }
+})
+
+t('ollamaUsable：可达（含零模型）算可用，没装与没起都不能填预设', () => {
+  assert.strictEqual(ollamaUsable({ state: 'ready', models: ['a'] }), true)
+  assert.strictEqual(ollamaUsable({ state: 'no_models', models: [] }), true)
+  assert.strictEqual(ollamaUsable({ state: 'stopped' }), false)
+  assert.strictEqual(ollamaUsable({ state: 'missing' }), false)
+  assert.strictEqual(ollamaUsable(null), false)
+})
+
+t('Ollama 引导引用的词条五种语言都齐', () => {
+  const keys = [
+    'ollama.missingBody', 'ollama.installBtn', 'ollama.stoppedBody', 'ollama.retryBtn',
+    'ollama.pullAsk', 'ollama.pullBtn', 'ollama.pullProgress', 'ollama.pullDone', 'ollama.pullFail',
+    'ai.set.ollama', 'ai.set.ollamaReady', 'ai.set.ollamaNoModels', 'ai.set.ollamaStopped', 'ai.set.ollamaMissing',
+    'common.cancel', 'ai.stopped',
+  ]
+  for (const loc of LOCALES) {
+    const m = MESSAGES[loc.id]
+    assert.ok(m, loc.id + ' 语言包没登记')
+    for (const k of keys) assert.ok(typeof m[k] === 'string' && m[k].trim(), loc.id + ' 缺词条：' + k)
+  }
+  // 不再被引用的键该删干净（留着就是漂移源）
+  for (const loc of LOCALES) assert.ok(!('ollama.retryBody' in MESSAGES[loc.id]), loc.id + ' 还留着 ollama.retryBody')
 })
 
 t('parseAgentReply：只吐 <empty> 这类占位标记时 body 为空串（不进气泡、不写进文档）', () => {
