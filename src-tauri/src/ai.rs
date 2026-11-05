@@ -181,9 +181,13 @@ pub fn chat_url(base_url: &str) -> String {
     format!("{b}/chat/completions")
 }
 
-/// 模型列表 URL：与 chat_url 同口径（剥尾斜杠；用户填到 /models 就不重复追加）
+/// 模型列表 URL：与 chat_url 同口径（剥尾斜杠；填到 /models 就不重复追加；
+/// 填到 /chat/completions 时剥回上一级再挂 /models，否则拼出 …/chat/completions/models 必 404）
 pub fn models_url(base_url: &str) -> String {
-    let b = base_url.trim().trim_end_matches('/');
+    let mut b = base_url.trim().trim_end_matches('/');
+    if let Some(up) = b.strip_suffix("/chat/completions") {
+        b = up.trim_end_matches('/');
+    }
     if b.ends_with("/models") {
         return b.to_string();
     }
@@ -569,6 +573,9 @@ mod tests {
         assert_eq!(models_url(" https://api.deepseek.com/v1/ "), "https://api.deepseek.com/v1/models");
         // 用户直接填到端点：不重复追加
         assert_eq!(models_url("https://x/v1/models"), "https://x/v1/models");
+        // 填到 /chat/completions：剥回上一级，不再挂出 …/chat/completions/models
+        assert_eq!(models_url("https://api.siliconflow.cn/v1/chat/completions"), "https://api.siliconflow.cn/v1/models");
+        assert_eq!(models_url("https://api.moonshot.cn/v1/chat/completions/"), "https://api.moonshot.cn/v1/models");
     }
 
     #[test]
