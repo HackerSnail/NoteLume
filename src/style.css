@@ -4755,7 +4755,9 @@ html.nl-dragging * {
 }
 .nl-git-commit-row {
   display: flex;
-  align-items: stretch;
+  /* flex-start 而非 stretch：草稿写多了输入框会长高，按钮跟着长会拉成一条蓝色竖块（观感很怪）；
+     按钮按自身高度钉在右上，输入框长多高都不影响它 */
+  align-items: flex-start;
   gap: 6px;
 }
 .nl-git-commit-input {
@@ -4771,7 +4773,8 @@ html.nl-dragging * {
   font-size: 13px;
   line-height: 1.5;
   padding: 5px 8px;
-  overflow: hidden;
+  /* 长草稿超过自适应上限时能滚着看，而不是被 overflow:hidden 裁掉看不见 */
+  overflow-y: auto;
   box-sizing: border-box;
 }
 .nl-git-commit-input:focus {
@@ -4781,6 +4784,8 @@ html.nl-dragging * {
 .nl-git-commit-btn {
   flex: none;
   padding: 5px 12px;
+  /* 与输入框单行时同高，长草稿时也不再跟着长（见 .nl-git-commit-row 的 align-items） */
+  min-height: 30px;
 }
 .nl-git-commit-btn:disabled {
   opacity: 0.4;

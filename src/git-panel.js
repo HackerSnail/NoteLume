@@ -185,7 +185,8 @@ export function createGitPanel(deps) {
     btn.title = t('git.commitCtrlEnter')
     const autosize = () => {
       ta.style.height = 'auto'
-      ta.style.height = Math.min(120, ta.scrollHeight) + 'px'
+      // 上限 160px（约 7 行）：再长就停在上限内滚动，把变更列表留在视野里
+      ta.style.height = Math.min(160, ta.scrollHeight) + 'px'
     }
     const syncState = () => {
       btn.disabled = busy || !ta.value.trim() || !items.length

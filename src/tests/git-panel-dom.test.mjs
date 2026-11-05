@@ -5,7 +5,12 @@
 // 只在 __TAURI_INTERNALS__.invoke 打桩；断言「IPC 命令与参数」「确认框文案」「草稿清空时机」。
 // 注意：tauri-bridge 的 invoke 在模块加载时取 window.__TAURI_INTERNALS__，所以打桩要在 import 前装好。
 import assert from 'node:assert'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { JSDOM } from 'jsdom'
+
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const dom = new JSDOM('<!doctype html><html><body><div id="git"></div></body></html>', {
   url: 'http://localhost/',
@@ -184,6 +189,17 @@ await test('放弃失败：弹错误框，不吞异常', async () => {
   } finally {
     discardOk = true
   }
+})
+
+await test('提交框样式：按钮不被拉成竖条，长草稿能滚不被裁', () => {
+  const css = fs.readFileSync(path.join(SRC, 'style.css'), 'utf8')
+  const block = (sel) => {
+    const m = css.match(new RegExp('(^|\\n)' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*\\}'))
+    return m ? m[0] : ''
+  }
+  assert.match(block('.nl-git-commit-row'), /align-items:\s*flex-start/, 'stretch 会让按钮跟着输入框长高，拉成一条蓝色竖块')
+  assert.match(block('.nl-git-commit-input'), /overflow-y:\s*auto/, '超过自适应上限的草稿要能滚着看')
+  assert.match(block('.nl-git-commit-btn'), /min-height:\s*30px/, '按钮与单行输入框同高')
 })
 
 console.log(`\ngit-panel-dom: ${pass} passed, ${fail} failed`)
