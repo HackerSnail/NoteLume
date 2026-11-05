@@ -1184,7 +1184,7 @@ export default {
   'ai.set.presetHint': 'Les préréglages remplissent l’URL de base et le modèle ; la clé API reste à saisir',
   'ai.set.baseUrl': 'URL de base',
   'ai.set.apiKey': 'Clé API',
-  'ai.set.keyHint': 'La clé est enregistrée dans le settings.json local, uniquement pour les appels API ; laissez vide pour Ollama en local',
+  'ai.set.keyHint': 'Les clés sont stockées par URL de base dans le settings.json local ; laissez vide pour Ollama en local',
   'ai.set.model': 'Nom du modèle',
   'ai.set.hint': 'Tout service compatible OpenAI /chat/completions convient : DeepSeek / Zhipu GLM / Kimi / OpenAI / Ollama local, etc.',
   'ai.set.context': 'Fenêtre de contexte (tokens)',

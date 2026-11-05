@@ -9,6 +9,7 @@ import {
   normalizeAiConfig,
   validateAiConfig,
   isHttpUrl,
+  aiKeyHost,
   aiConfigured,
   AI_PRESETS,
   AI_LIMITS,
@@ -109,8 +110,8 @@ t('buildDocContext：带标题与正文，超长截断', () => {
 })
 
 t('normalizeAiConfig：坏类型回落默认，字符串 trim + 限长；contextTokens 非负整数才收', () => {
-  assert.deepStrictEqual(normalizeAiConfig(null), { baseUrl: '', apiKey: '', model: '', contextTokens: 0 })
-  assert.deepStrictEqual(normalizeAiConfig(42), { baseUrl: '', apiKey: '', model: '', contextTokens: 0 })
+  assert.deepStrictEqual(normalizeAiConfig(null), { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {} })
+  assert.deepStrictEqual(normalizeAiConfig(42), { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {} })
   const long = 'u'.repeat(400)
   const n = normalizeAiConfig({ baseUrl: '  https://a.b/v1  ', apiKey: long, model: 123 })
   assert.strictEqual(n.baseUrl, 'https://a.b/v1')
@@ -120,6 +121,50 @@ t('normalizeAiConfig：坏类型回落默认，字符串 trim + 限长；context
   assert.strictEqual(normalizeAiConfig({ contextTokens: -5 }).contextTokens, 0)
   assert.strictEqual(normalizeAiConfig({ contextTokens: 'abc' }).contextTokens, 0)
   assert.strictEqual(normalizeAiConfig({ contextTokens: 1e99 }).contextTokens, 10000000)
+})
+
+t('aiKeyHost：取 host:port 小写；非 http(s) 与坏地址回空串', () => {
+  assert.strictEqual(aiKeyHost('https://api.deepseek.com/v1'), 'api.deepseek.com')
+  assert.strictEqual(aiKeyHost('https://API.DeepSeek.com/V1'), 'api.deepseek.com')
+  assert.strictEqual(aiKeyHost('http://127.0.0.1:11434/v1'), '127.0.0.1:11434')
+  assert.strictEqual(aiKeyHost('  https://a.b/p  '), 'a.b')
+  assert.strictEqual(aiKeyHost('ftp://a.b'), '')
+  assert.strictEqual(aiKeyHost('not a url'), '')
+  assert.strictEqual(aiKeyHost(''), '')
+  assert.strictEqual(aiKeyHost(undefined), '')
+})
+
+t('Key 分格：apiKey 是当前地址那一格的镜像，换地址不串 Key', () => {
+  const deep = 'sk-deepseek-1'
+  const base = { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
+  // 旧版单 Key：首次分格归到当时地址，升级后不用重填
+  const migrated = normalizeAiConfig({ ...base, apiKey: deep })
+  assert.deepStrictEqual(migrated.keys, { 'api.deepseek.com': deep })
+  assert.strictEqual(migrated.apiKey, deep)
+  // 同一张表换到 Kimi：那一格没填过就是空，DeepSeek 的值留在原格
+  const kimi = normalizeAiConfig({ ...migrated, baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2' })
+  assert.strictEqual(kimi.apiKey, '')
+  assert.strictEqual(kimi.keys['api.deepseek.com'], deep)
+  // 填了 Kimi 再切回来，两家各自独立（面板口径：格子与镜像成对写）
+  const filled = normalizeAiConfig({ ...kimi, apiKey: 'sk-kimi-2', keys: { ...kimi.keys, 'api.moonshot.cn': 'sk-kimi-2' } })
+  assert.deepStrictEqual(filled.keys, { 'api.deepseek.com': deep, 'api.moonshot.cn': 'sk-kimi-2' })
+  assert.strictEqual(filled.apiKey, 'sk-kimi-2')
+  const back = normalizeAiConfig({ ...filled, baseUrl: base.baseUrl })
+  assert.strictEqual(back.apiKey, deep)
+  // 只改镜像不改格子不生效：换地址时不能把上一家的 Key 自动带进新格
+  const mirrorOnly = normalizeAiConfig({ ...filled, apiKey: 'sk-串台' })
+  assert.strictEqual(mirrorOnly.apiKey, 'sk-kimi-2')
+  assert.strictEqual(mirrorOnly.keys['api.moonshot.cn'], 'sk-kimi-2')
+  // 本机端口也算两格；坏类型与空格名被丢掉，格子名统一小写
+  const dirty = normalizeAiConfig({
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    keys: { '127.0.0.1:11434': '  a  ', '127.0.0.1:11435': 42, '': 'c', 'API.OpenAI.com': 'd' },
+  })
+  assert.deepStrictEqual(dirty.keys, { '127.0.0.1:11434': 'a', 'api.openai.com': 'd' })
+  assert.strictEqual(dirty.apiKey, 'a')
+  // 地址还没填合法：Key 留在 apiKey 字段，不被任何格子吞掉
+  const pending = normalizeAiConfig({ baseUrl: '', apiKey: 'sk-x', keys: { 'api.deepseek.com': deep } })
+  assert.strictEqual(pending.apiKey, 'sk-x')
 })
 
 t('aiContextWindow：填了用真实窗口，未填（0/坏值）回落参考值', () => {

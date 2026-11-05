@@ -126,5 +126,40 @@ t('别的 reqId 的事件不吃（浮层只认自己那一路请求）', () => {
   closeAiInline()
 })
 
+t('连点重试只留一个「重试」按钮：失败态复用同一颗，不在底行铺一排', () => {
+  streamCalls.length = 0
+  closeAiInline()
+  const unconfigured = { baseUrl: '', apiKey: '', model: '' }
+  openAiInline({ ...baseOpts(buildTaskMessages('polish', '旧的句子', '')), getConfig: () => unconfigured })
+  const retries = () => [...pop().querySelectorAll('.nl-ai-pop-foot button')].filter((b) => b.textContent === '重试')
+  assert.strictEqual(retries().length, 1, '失败后底行只有一颗重试')
+  assert.ok(!retries()[0].classList.contains('hidden'), '失败态要可见')
+  for (const n of [2, 3, 4]) {
+    retries()[0].click()
+    assert.strictEqual(retries().length, 1, `第 ${n} 次失败后仍只有一颗`)
+  }
+  closeAiInline()
+})
+
+t('重试按钮随状态显隐：请求中收起，失败显形，成功后再收起', () => {
+  streamCalls.length = 0
+  closeAiInline()
+  const fire = (payload) => handlers.forEach((h) => h({ payload }))
+  openAiInline(baseOpts(buildTaskMessages('summarize', '一段长文', '')))
+  const btn = [...pop().querySelectorAll('.nl-ai-pop-foot button')].find((b) => b.textContent === '重试')
+  assert.ok(btn.classList.contains('hidden'), '刚发起时不该有重试')
+  fire({ reqId: streamCalls[0].reqId, kind: 'error', error: '上游 500' })
+  assert.ok(!btn.classList.contains('hidden'), '失败后显形')
+  btn.click()
+  assert.ok(btn.classList.contains('hidden'), '重发即收起')
+  assert.strictEqual(streamCalls.length, 2, '点击重试重发一次请求')
+  assert.notStrictEqual(streamCalls[1].reqId, streamCalls[0].reqId, '重发要换 reqId，否则旧流事件会串进来')
+  fire({ reqId: streamCalls[1].reqId, kind: 'chunk', delta: '补上了' })
+  fire({ reqId: streamCalls[1].reqId, kind: 'done' })
+  assert.ok(btn.classList.contains('hidden'), '成功收尾后保持收起')
+  assert.strictEqual(pop().querySelector('.nl-ai-pop-body').textContent, '补上了')
+  closeAiInline()
+})
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exitCode = fail ? 1 : 0

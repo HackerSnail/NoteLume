@@ -73,7 +73,13 @@ export function openAiInline(opts) {
   copyBtn.type = 'button'
   copyBtn.className = 'nl-ks-btn'
   copyBtn.textContent = t('ai.copy')
-  foot.append(statusEl, replaceBtn, insertBtn, copyBtn)
+  // 重试常驻一个，失败才显形：每次失败新建一个按钮会在底行铺出一排「重试」
+  const retryBtn = document.createElement('button')
+  retryBtn.type = 'button'
+  retryBtn.className = 'nl-ks-btn hidden'
+  retryBtn.textContent = t('ai.popRetry')
+  retryBtn.addEventListener('click', start)
+  foot.append(statusEl, retryBtn, replaceBtn, insertBtn, copyBtn)
   overlay.append(head, body, foot)
   document.body.appendChild(overlay)
 
@@ -126,15 +132,11 @@ export function openAiInline(opts) {
     if (ok) {
       statusEl.textContent = t('ai.popDone')
       body.textContent = stripFences(text)
+      retryBtn.classList.add('hidden')
     } else {
       statusEl.textContent = t('ai.errRequest', { err: err || t('ai.errUnknown') })
       statusEl.classList.add('err')
-      const retry = document.createElement('button')
-      retry.type = 'button'
-      retry.className = 'nl-ks-btn'
-      retry.textContent = t('ai.popRetry')
-      retry.addEventListener('click', start)
-      statusEl.after(retry)
+      retryBtn.classList.remove('hidden')
     }
     syncButtons()
   }
@@ -144,6 +146,7 @@ export function openAiInline(opts) {
     body.textContent = ''
     statusEl.classList.remove('err')
     statusEl.textContent = t('ai.thinking')
+    retryBtn.classList.add('hidden')
     running = true
     reqId = nextReqId()
     syncButtons()

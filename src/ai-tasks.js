@@ -77,7 +77,7 @@ export function buildDocContext(title, text) {
 
 // —— AI 设置（settings.json 的 ai 段）——
 
-export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0 }
+export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {} }
 
 /** 字段上限。保存前由 validateAiConfig 拒绝超长，normalizeAiConfig 只做存储层兜底截断。 */
 export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
@@ -85,16 +85,52 @@ export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
 /** 上下文窗口手填上限（防手滑填天文数字）；0 表示未设，回落到参考值 */
 export const AI_CTX_WINDOW_MAX = 10000000
 
+/**
+ * 接口地址对应的 Key 分格名：host:port（含端口，本机不同端口的服务算两格）。
+ * 地址非法 / 空 → 空串，表示这一条还没有归属。
+ */
+export function aiKeyHost(baseUrl) {
+  const s = String(baseUrl || '').trim()
+  if (!s) return ''
+  try {
+    const u = new URL(s)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
+    return u.host.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/** Key 表归一化：只收字符串值、去空、限长；旧版单 Key 首次分格时归到当时地址那一格 */
+function normalizeAiKeys(raw, host, legacy) {
+  const out = {}
+  const src = raw && typeof raw === 'object' ? raw.keys : null
+  if (src && typeof src === 'object' && !Array.isArray(src)) {
+    for (const [k, v] of Object.entries(src)) {
+      if (typeof v !== 'string') continue
+      const name = String(k).trim().toLowerCase()
+      const val = v.trim().slice(0, AI_LIMITS.apiKey)
+      if (name && val) out[name] = val
+    }
+  }
+  if (!Object.keys(out).length && legacy && host) out[host] = legacy
+  return out
+}
+
 /** 任意来源的原始设置 → 合法 AI 设置（坏类型回落默认；trim + 限长防呆） */
 export function normalizeAiConfig(raw) {
-  const s = { ...DEFAULT_AI }
+  const s = { ...DEFAULT_AI, keys: {} }
   if (!raw || typeof raw !== 'object') return s
   if (typeof raw.baseUrl === 'string') s.baseUrl = raw.baseUrl.trim().slice(0, AI_LIMITS.baseUrl)
-  if (typeof raw.apiKey === 'string') s.apiKey = raw.apiKey.trim().slice(0, AI_LIMITS.apiKey)
   if (typeof raw.model === 'string') s.model = raw.model.trim().slice(0, AI_LIMITS.model)
   // 上下文窗口：非负整数才收，其余（缺字段 / 坏型 / 负数 / NaN）一律回 0 = 用参考值
   const ct = Number(raw.contextTokens)
   if (Number.isFinite(ct) && ct >= 0) s.contextTokens = Math.min(AI_CTX_WINDOW_MAX, Math.floor(ct))
+  const legacy = typeof raw.apiKey === 'string' ? raw.apiKey.trim().slice(0, AI_LIMITS.apiKey) : ''
+  const host = aiKeyHost(s.baseUrl)
+  s.keys = normalizeAiKeys(raw, host, legacy)
+  // apiKey 是当前地址那一格的镜像：调用方（面板 / 浮层 / IPC）照旧只读 cfg.apiKey
+  s.apiKey = host ? (s.keys[host] || '') : legacy
   return s
 }
 

@@ -1186,7 +1186,7 @@ export default {
   'ai.set.presetHint': '预设一键填好接口地址与模型名；API Key 仍需自填',
   'ai.set.baseUrl': '接口地址',
   'ai.set.apiKey': 'API Key',
-  'ai.set.keyHint': 'Key 保存在本机 settings.json，仅调用接口时使用；本地 Ollama 可留空',
+  'ai.set.keyHint': 'Key 按接口地址分开存在本机 settings.json，换服务商互不影响；本地 Ollama 可留空',
   'ai.set.model': '模型名',
   'ai.set.hint': '任何兼容 OpenAI /chat/completions 的服务均可：DeepSeek / 智谱 GLM / Kimi / OpenAI / 本地 Ollama 等',
   'ai.set.context': '上下文窗口（token）',

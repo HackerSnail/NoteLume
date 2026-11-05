@@ -1,12 +1,13 @@
 // ai-settings.js —— 「AI 设置」面板：接口地址 / API Key / 模型名（OpenAI 兼容）
 //
 // 持久化并进 settings.json 的 ai 段（settings-store.js 读写）；归一化与预设表在
-// ai-tasks.js（纯逻辑，Node 单测）。Rust 侧不存任何配置，调用时前端经 IPC 传参。
+// ai-tasks.js（纯逻辑，Node 单测）。Key 按接口地址的 host:port 分格存在 ai.keys，
+// 切服务商互不影响。Rust 侧不存任何配置，调用时前端经 IPC 传参。
 // 模态壳沿用 appearance-settings.js / clip-settings.js 的模式。
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, validateAiConfig, isHttpUrl, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
+import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
 import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridge.js'
 
 /**
@@ -29,6 +30,36 @@ export function createAiSettings(deps) {
   let modelsError = ''
   let modelRowEl = null // 模型行控制容器（下拉 / 手输 + 刷新钮）
   let modelStatusEl = null // 模型行下方的状态行（拉取中 / 失败）
+  let apiKeyInputEl = null // Key 输入框：改地址后按新地址那一格回填
+
+  // —— 地址与 Key 是一对 ——
+  // Key 存在 ai.keys 里按 host:port 分格，切服务商不会把上一家的 Key 带过去。
+  // draft.apiKey 始终是当前地址那一格的镜像，调用方与落盘口径都照旧读它。
+
+  /** 改地址时换到那一格的 Key；地址还没填合法就敲的 Key 归到新地址 */
+  function syncKeyWithBaseUrl(nextUrl) {
+    const prevHost = aiKeyHost(draft.baseUrl)
+    const pending = prevHost ? '' : draft.apiKey
+    draft.baseUrl = nextUrl
+    const host = aiKeyHost(nextUrl)
+    if (!host) {
+      draft.apiKey = pending
+    } else {
+      if (pending && !draft.keys[host]) draft.keys[host] = pending
+      draft.apiKey = draft.keys[host] || ''
+    }
+    if (apiKeyInputEl) apiKeyInputEl.value = draft.apiKey
+  }
+
+  function setApiKey(value) {
+    draft.apiKey = value
+    const host = aiKeyHost(draft.baseUrl)
+    if (host) {
+      const val = String(value || '').trim()
+      if (val) draft.keys[host] = val
+      else delete draft.keys[host]
+    }
+  }
 
   function section(titleKey) {
     const head = document.createElement('div')
@@ -186,8 +217,8 @@ export function createAiSettings(deps) {
             }
           }
         }
-        draft.baseUrl = p.baseUrl
         draft.model = p.model
+        syncKeyWithBaseUrl(p.baseUrl)
         render()
       })
       btns.appendChild(b)
@@ -196,10 +227,10 @@ export function createAiSettings(deps) {
     bodyEl.appendChild(presetRow)
     hint('ai.set.presetHint')
 
-    textRow('ai.set.baseUrl', draft.baseUrl, (v) => { draft.baseUrl = v; models = []; modelsError = ''; loadModels() }, {
+    textRow('ai.set.baseUrl', draft.baseUrl, (v) => { syncKeyWithBaseUrl(v); models = []; modelsError = ''; loadModels() }, {
       placeholder: 'https://api.deepseek.com/v1',
     })
-    textRow('ai.set.apiKey', draft.apiKey, (v) => { draft.apiKey = v; models = []; modelsError = ''; loadModels() }, { password: true })
+    apiKeyInputEl = textRow('ai.set.apiKey', draft.apiKey, (v) => { setApiKey(v); models = []; modelsError = ''; loadModels() }, { password: true })
     hint('ai.set.keyHint')
 
     // 模型名：自动检测 /models 出下拉选择，检测不到才回落手动输入。外层 wrap 纵放：上行控制 + 下行状态。
