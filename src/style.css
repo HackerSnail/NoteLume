@@ -381,10 +381,15 @@ body {
   display: none;
 }
 .toolbar .nl-menubar-item {
-  padding: 4px 8px;
+  padding: 4px 6px;
   flex: none;
-  /* 定高：纯拉丁文的一级项（Git）行盒比中文矮 3px，居中后高一块低一块 */
+  /* 定高：一级格现在是纯图标，26px 与工具条其余按钮同一条基线 */
   height: 26px;
+}
+/* 图标按格子定尺寸（1em 在 13px 工具条里偏小） */
+.toolbar .nl-menubar-item .nl-ico {
+  width: 15px;
+  height: 15px;
 }
 .toolbar .nl-menubar-item[aria-expanded="true"] {
   background: var(--hover);

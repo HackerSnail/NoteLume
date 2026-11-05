@@ -4,7 +4,8 @@
 // 现象：win/linux 的工具条是一排平铺图标 + 一个把三十来条混在一起的「更多」菜单，看不出分类。
 // 现在一级 = app-menu.js 的分组（与 mac 原生菜单栏同源），操作进下一级；执行仍走注册表那条链路。
 // 这一支要钉住三件事：
-// 1) 分组与顺序不在菜单条里重写第二份，一级完全跟着 spec 走（app 组改名「帮助」）；
+// 1) 分组内容不在菜单条里重写第二份，一级完全跟着 spec 走（app 组改名「帮助」，只把它从 mac 的
+//    第一格挪到 win/linux 的最后一格，排在「窗口」右边）；
 // 2) spec 里的 mac 系统项在这侧要么有真实动作（剪切/最小化/关于），要么整项不出（服务/隐藏），
 //    不能挂出一个点了没反应的项；
 // 3) 勾选、置灰、快捷键后缀、动态子菜单（最近 / 主题 / 导出）与 mac 同一份数据。
@@ -29,7 +30,7 @@ global.CustomEvent = dom.window.CustomEvent
 global.Event = dom.window.Event
 dom.window.localStorage.setItem('nl-lang', 'zh-CN')
 
-const { createMenuBar, DROP_ROLES, ROLE_COMMAND } = await import('../menu-bar.js')
+const { createMenuBar, DROP_ROLES, ROLE_COMMAND, GROUP_ICON } = await import('../menu-bar.js')
 const { buildMacMenuSpec } = await import('../app-menu.js')
 const { setLocale } = await import('../i18n.js')
 
@@ -146,8 +147,9 @@ function makeBar(spec = SPEC) {
 }
 
 const topBtns = () => [...document.querySelectorAll('.nl-menubar-item')]
-const topTexts = () => topBtns().map((b) => b.textContent)
-const btn = (text) => topBtns().find((b) => b.textContent === text)
+// 一级格是图标，分类名在 aria-label / title 上
+const topTexts = () => topBtns().map((b) => b.getAttribute('aria-label'))
+const btn = (text) => topBtns().find((b) => b.getAttribute('aria-label') === text)
 const root = () => document.querySelector('.nl-menu-pop:not(.nl-menu-sub)')
 const rows = (el) => [...(el || root()).querySelectorAll(':scope > .cv-menu-item')]
 const labels = (el) => rows(el).map((b) => b.textContent)
@@ -161,10 +163,31 @@ function down(el) {
 }
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-await t('一级分类完全跟 spec：app 组改名「帮助」，其余按分组标题与顺序', () => {
+await t('一级分类完全跟 spec，app 组改名「帮助」并收尾（排在窗口右边）', () => {
   makeBar()
-  assert.deepStrictEqual(topTexts(), ['帮助', '文件', '编辑', '窗口'])
-  assert.deepStrictEqual(topBtns().map((b) => b.dataset.group), ['app', 'file', 'edit', 'window'])
+  assert.deepStrictEqual(topTexts(), ['文件', '编辑', '窗口', '帮助'])
+  assert.deepStrictEqual(topBtns().map((b) => b.dataset.group), ['file', 'edit', 'window', 'app'])
+})
+
+await t('一级格只出图标：格内没有文字节点，分类名挂在 title 与 aria-label 上', () => {
+  makeBar()
+  for (const b of topBtns()) {
+    assert.strictEqual(b.textContent, '', `一级格不该留文字：${b.dataset.group}`)
+    assert.strictEqual(b.title, b.getAttribute('aria-label'), 'title 与 aria-label 要同一个分类名')
+    const use = b.querySelector('svg.nl-ico use')
+    assert.ok(use, `一级格要画图标：${b.dataset.group}`)
+    assert.strictEqual(use.getAttribute('href'), '#i-' + GROUP_ICON[b.dataset.group])
+  }
+})
+
+await t('图标映射覆盖 app-menu.js 声明的每个分组，且符号都在 sprite 里（新增分组漏配图要在这里失败）', () => {
+  const src = fs.readFileSync(path.join(SRC, 'app-menu.js'), 'utf8')
+  const declared = [...new Set([...src.matchAll(/\bgroup\('([a-z]+)'/g)].map((m) => m[1]))]
+  const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf8')
+  assert.deepStrictEqual(Object.keys(GROUP_ICON).sort(), [...declared].sort(), '映射的分组要和 spec 声明的一一对应')
+  for (const id of declared) {
+    assert.ok(html.includes(`symbol id="i-${GROUP_ICON[id]}"`), `分组 ${id} 的图标 #i-${GROUP_ICON[id]} 不在 sprite 里`)
+  }
 })
 
 await t('点一级出下一级：文案带快捷键后缀，勾选与置灰照 spec，分隔线在位', () => {

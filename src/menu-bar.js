@@ -6,11 +6,24 @@
 // 与命令面板、mac 原生菜单同一条链路。
 // spec 里的 role(...) 是 mac 系统预定义项，这里按平台表决定落地或丢弃（纯数据，可 Node 单测）。
 import { onLocaleChange } from './i18n.js'
+import { setIcon } from './icons.js'
 
 // mac 才有意义的系统项：win/linux 出不了「服务 / 隐藏 / 全部显示」，整项丢弃
 export const DROP_ROLES = new Set(['Services', 'Hide', 'HideOthers', 'ShowAll'])
 // 有等价注册表命令的 role：About 在 win/linux 就是命令面板里那条「关于 NoteLume」
 export const ROLE_COMMAND = { About: 'app.about' }
+// 一级格出图标不出文字（分类名进 title / aria-label）。图标只是这一侧的呈现，mac 的系统菜单栏仍是文字，
+// 所以映射留在菜单条里，不进与 mac 同源的 app-menu.js。
+export const GROUP_ICON = {
+  file: 'file',
+  edit: 'pen',
+  format: 'type',
+  paragraph: 'pilcrow',
+  view: 'monitor',
+  git: 'branch',
+  window: 'window',
+  app: 'info',
+}
 
 const SUB_CLOSE_DELAY = 320
 
@@ -26,12 +39,20 @@ export function createMenuBar(opts) {
 
   function render() {
     mount.innerHTML = ''
-    for (const g of buildSpec().groups) {
+    // 分组顺序仍与 mac 同源，只在这里调尾：mac 系统栏把应用菜单放第一格，
+    // win/linux 的菜单条惯例是「帮助」收尾（排在「窗口」右边），故把 app 组挪到最后。
+    const groups = buildSpec().groups
+    const rest = groups.filter((g) => g.id !== 'app')
+    const help = groups.filter((g) => g.id === 'app')
+    for (const g of [...rest, ...help]) {
       const b = document.createElement('button')
       b.type = 'button'
       b.className = 'nl-menubar-item'
       b.dataset.group = g.id
-      b.textContent = groupLabel(g)
+      const label = groupLabel(g)
+      setIcon(b, GROUP_ICON[g.id], '')
+      b.title = label
+      b.setAttribute('aria-label', label)
       b.setAttribute('aria-haspopup', 'menu')
       b.setAttribute('aria-expanded', 'false')
       b.addEventListener('click', () => {
