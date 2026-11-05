@@ -1240,4 +1240,31 @@ mod tests {
         println!("state = {}, models = {:?}", s.state, s.models);
         assert!(matches!(s.state.as_str(), "ready" | "no_models" | "stopped" | "missing"));
     }
+
+    /// 真机跑一次 /api/pull 的 NDJSON 读取（手动：`cargo test --lib -- --ignored ollama_pull_live`）。
+    /// 默认拿本机已有的模型名——已拉过就不下载，秒回 success，刚好把 run_pull 的流式读取与
+    /// 逐行解析跑完。要真下一个就 `NL_TEST_OLLAMA_MODEL=xxx cargo test --lib -- --ignored ollama_pull_live`。
+    #[test]
+    #[ignore]
+    fn ollama_pull_live() {
+        let model = std::env::var("NL_TEST_OLLAMA_MODEL").unwrap_or_else(|_| "qwen3:1.7b".into());
+        let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = lines.clone();
+        let res = tauri::async_runtime::block_on(run_pull(&model, &move |kind, status, completed, total, error| {
+            sink.lock().unwrap().push(format!(
+                "{}|{}|{:?}|{:?}|{}",
+                kind,
+                status.unwrap_or_default(),
+                completed,
+                total,
+                error.unwrap_or_default()
+            ));
+        }));
+        let got = lines.lock().unwrap().clone();
+        println!("run_pull({}) -> {:?}\n{}", model, res, got.join("\n"));
+        assert!(res.is_ok(), "已装模型不该报错：{:?}", res);
+        assert!(!got.is_empty(), "应至少收到一条进度");
+        assert!(got.iter().any(|l| l.contains("success")), "末条应是 success：{:?}", got);
+        assert!(got.iter().all(|l| l.starts_with("progress|")), "只该有 progress 类型");
+    }
 }
