@@ -69,7 +69,11 @@
     "test:ai-panel-error": "node tests/ai-panel-error.test.mjs",
     "test:ai-skill-consume": "node tests/ai-skill-consume.test.mjs",
     "test:ai-settings-model": "node tests/ai-settings-model.test.mjs",
-    "test:gettext-atoms": "node tests/gettext-atoms.test.mjs"
+    "test:gettext-atoms": "node tests/gettext-atoms.test.mjs",
+    "test:clipboard-paste": "node tests/clipboard-paste.test.mjs",
+    "test:file-association-icons": "node tests/file-association-icons.test.mjs",
+    "test:windows-bundle-targets": "node tests/windows-bundle-targets.test.mjs",
+    "test:find-bar-narrow-pane": "node tests/find-bar-narrow-pane.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
