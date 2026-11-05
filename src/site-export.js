@@ -507,7 +507,7 @@ function buildPage({ title, bodyHtml, sidebar, backlinks, fromDir, toolbar }) {
 <html lang="zh-CN"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.11/dist/katex.min.css">
 <link rel="stylesheet" href="${escAttr(toRoot + 'assets/site.css')}">
 </head><body class="site">
 <div class="nl-layout">
@@ -523,7 +523,7 @@ function buildHome({ vaultTitle, docs, backlinks }) {
 <html lang="${getLocale()}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(vaultTitle)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.11/dist/katex.min.css">
 <link rel="stylesheet" href="./assets/site.css">
 </head><body class="site">
 <div class="nl-home">${toolbar}<h1>${esc(vaultTitle)}</h1>${sidebar}</div>

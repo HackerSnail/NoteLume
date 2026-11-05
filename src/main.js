@@ -3867,7 +3867,7 @@ function buildExportHtml(title, body, headingNumbering = false) {
 <html lang="zh-CN"><head>
 <meta charset="UTF-8">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.11/dist/katex.min.css">
 <style>
   body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.75; color: #24292e; }
   ${headingNumbering ? numberingCss('') : ''}

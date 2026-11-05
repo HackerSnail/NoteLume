@@ -77,7 +77,8 @@
     "test:file-association-icons": "node tests/file-association-icons.test.mjs",
     "test:app-icon": "node tests/app-icon.test.mjs",
     "test:windows-bundle-targets": "node tests/windows-bundle-targets.test.mjs",
-    "test:find-bar-narrow-pane": "node tests/find-bar-narrow-pane.test.mjs"
+    "test:find-bar-narrow-pane": "node tests/find-bar-narrow-pane.test.mjs",
+    "audit:osv": "node tools/osv-audit.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
@@ -93,8 +94,8 @@
     "@tauri-apps/plugin-dialog": "^2",
     "highlight.js": "^11.9.0",
     "js-yaml": "^5.4.3",
-    "katex": "^0.16.9",
-    "markdown-it": "^14.1.0",
+    "katex": "^0.18.2",
+    "markdown-it": "^14.3.3",
     "markdown-it-emoji": "^3.1.0",
     "markdown-it-footnote": "^4.0.0",
     "mermaid": "^12.2.0",
@@ -115,6 +116,6 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "jsdom": "^29.1.1",
-    "vite": "^5.4.8"
+    "vite": "^6.4.5"
   }
 }

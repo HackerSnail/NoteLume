@@ -353,6 +353,13 @@ Rust 侧新命令六个（`git_discard` / `git_r_branch_list` / `git_r_checkout`
 - **Phase 4 已完成（2026-11-01，除真机验收）**：虚拟开关进设置页——`features.virtualLargeMd`（`feature-flags.js` 注册表 + `appearance-settings.js` 的 FEATURE_ROWS，默认关，五语言词条「超大文件窗口化编辑（实验，下次打开生效）」），`main.js` 的 `virtualEnabled()` 改读设置项（原 localStorage `nl-virtual` 实验口径废弃，无存量用户不迁移）；开关是装载路径开关，不消费 `nl-features` 装饰广播，改动在下次打开超大文件时生效、不实时迁移已打开文档。内存与缓存收尾口径：窗口固定 60 块 + overscan 8（重切频率由可视区已覆盖短路压低）；`heights` Map 条目数 = 全文块数（10MB ≈ 2 万个数字），无上限问题；`linePrefix` / `heightFor` 的 O(n) 扫描只在重切与装订线重算时跑，微秒级。测试 `tests/feature-flags.test.mjs` 3 组（键集与默认值、坏数据逐键回落、setFeature 浅合并语义）。CHANGELOG 补四期总条目。
 - **待做（需实机，代码侧已完）**：真机验收——Ubuntu 24.04/X11 与 Windows 各用 10MB 样例验：设置页开 virtualLargeMd 后打开首屏时长（目标 <1s）、滚动帧率（spacer 高度是否随实测校准不跳）、编辑即时性（IME / 撤销跨窗口）、库内查找跨窗跳转、大纲跳转、折叠行为、保存与原 JS 路径逐字节一致、内存峰值（master doc + 窗口 DOM）。
 
+## 依赖与安全（2026-11-05）
+
+- `npm audit` 在本机跑不通：registry 是 npmmirror，它的 `/-/npm/v1/security/*` 端点没实现，直接 404。扫描落到 `src/tools/osv-audit.mjs`（`npm run audit:osv`）——`npm ls --all --json` 取实际安装版本，逐个问 api.osv.dev，prod、dev 与传递依赖一起算，命中就列 GHSA 编号、CVSS 与修复版本并退 1。它靠网络，所以不进 `tests/*.test.mjs` 那批离线用例（CI 会把整批跑一遍），要挂闸口就在发版流程里单独调这条。
+- 2026-11-05 一轮清了 25 条公告，四包：katex `^0.16.9` → `^0.18.2`（实装 0.18.11，六条——`\edef` 与 Unicode 上下标绕过 `maxExpand` 的 DoS 两条、URL 协议不归一化绕过 `trust` 白名单、`\htmlData` 不校验属性名、`\includegraphics` 文件名不转义、原型污染绕过 trust 限制。最后一条只在 0.18.2 修，留在 0.16 线打补丁清不掉；mermaid 12 本来就要求 `katex ^0.18.0`，换完两份合成一份，bundle 没翻倍）；markdown-it `^14.1.0` → `^14.3.3`（两条二次方时间 DoS：默认选项下单个多行链接引用定义、开 `html` 后的行内 HTML 解析；14.3.3 是 v14 最后一版，同修复的 15.0.3 不收——prosemirror-markdown 依赖 `markdown-it ^14.1.0`，markdown-it-emoji / markdown-it-footnote 在 15 上没验过）；vite `^5.4.8` → `^6.4.5`（八条 dev server 公告加 esbuild 0.21.5 那条跨站读响应，全部只在 `vite dev` 的本机端口上成立，不进产物；v5 线没有修复版，最低要求 6.4.4）；undici 7.30.0 → 7.30.2（jsdom 的传递依赖，八条 DoS 与 TLS 证书校验绕过，`npm update undici` 在 `^7.25.0` 范围内即得）。
+- 导出件的 KaTeX CSS 走 CDN、公式 HTML 由本地 katex 预渲染，两处版本必须对齐：`main.js` 单篇 HTML、`slides-export.js`、`site-export.js` 整站两页共四条 CDN 链接随包版本一起改；`tests/slides-export.test.mjs` 读 `node_modules/katex/package.json` 断言 CDN 版本等于本地版本，漂移即红。
+- 升级后的验证口径：前端 69 个测试文件全过；`npm run build:web`（vite 6）无错，产物模块数 2903 → 2776；`vite dev` 起得来，`/`、`/main.js`、`/math-nodeviews.js`、katex 的 css 与 mjs 全 200，math-nodeviews 走 `.vite/deps/katex.js` 预打包；katex 冒烟按 `renderToString` 跑八组（行内 / 块 / 矩阵 / CJK / `\href` / 未知命令），`throwOnError` 两向行为与 0.16 一致，`\href{javascript:...}` 不再落 href。
+
 ## 架构设计
 
 ### Rust（src-tauri）职责

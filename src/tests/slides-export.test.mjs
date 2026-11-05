@@ -5,8 +5,12 @@
 //  --- 优先 / ## 兜底 / 引言首页 / fence 与引用内不切 / ::: notes 摘取 / 产物自包含。
 
 import assert from 'node:assert'
+import { readFileSync } from 'node:fs'
 import { JSDOM } from 'jsdom'
 import { splitSlides, buildSlidesHtml, buildVaultSlidesHtml } from '../slides-export.js'
+
+// 导出件里的 KaTeX CSS 走 CDN，公式 HTML 是本地 katex 预渲染的，两者版本必须对上
+const KATEX_VER = JSON.parse(readFileSync(new URL('../node_modules/katex/package.json', import.meta.url), 'utf8')).version
 
 // buildSlidesHtml 里 renderSite → sanitizeHtml 用 DOMParser，离线断言补一份 jsdom
 const jsdom = new JSDOM('<!doctype html><html><body></body></html>')
@@ -76,7 +80,7 @@ check('产物结构：section 数、内联资源、notes aside', () => {
   assert.strictEqual((html.match(/<section>/g) || []).length, 2)
   assert.ok(html.includes('<reveal-js>') && html.includes('<theme-css>'))
   assert.ok(/<aside class="notes"><p>n1<\/p>\s*<\/aside>/.test(html)) // notes 也走渲染，段落包 <p>
-  assert.ok(html.includes('cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'))
+  assert.ok(html.includes(`cdn.jsdelivr.net/npm/katex@${KATEX_VER}/dist/katex.min.css`), `katex CSS 应为本地版本 ${KATEX_VER}`)
 })
 
 check('装不下的页自身纵向滚，不静默裁掉靠后的图片 / 代码块', () => {

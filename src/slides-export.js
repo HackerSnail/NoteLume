@@ -122,7 +122,7 @@ function slidesShell(title, inner, opts = {}) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.11/dist/katex.min.css">
 <style>${assets.revealCss || ''}</style>
 <style>${assets.themeCss || ''}</style>
 <style>${slidesCss()}${opts.headingNumbering ? '\n' + numberingCss('.reveal .slides') : ''}</style>
