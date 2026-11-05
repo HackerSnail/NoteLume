@@ -143,5 +143,51 @@ await t('自定义地址保存：按 host:port 分格存 Key，切回预设还�
   s.close()
 })
 
+await t('切走再点回「自定义」：地址、模型名、Key 都还在（没保存也不该空）', async () => {
+  const { s, state } = makeStore({ baseUrl: DEEP, keys: { 'api.deepseek.com': DEEP_KEY }, model: 'deepseek-chat' })
+  s.open()
+  await until(() => chips().length === 6)
+  chip('自定义').click()
+  setValue(urlInput(), SELF)
+  setValue(keyInput(), 'sk-silicon-CCCCCC')
+  setValue(modelInput(), 'Qwen/Qwen2.5-7B-Instruct')
+  chip('Kimi').click()
+  assert.strictEqual(urlInput().value, KIMI, '切到 Kimi 应换成它的地址')
+  assert.strictEqual(modelInput().value, 'kimi-k2', '模型名跟着预设走')
+  chip('自定义').click()
+  assert.strictEqual(urlInput().value, SELF, '点回自定义要拿回刚才那个地址')
+  assert.strictEqual(modelInput().value, 'Qwen/Qwen2.5-7B-Instruct', '模型名不该记成预设的那個')
+  assert.strictEqual(keyInput().value, 'sk-silicon-CCCCCC', 'Key 按 host 回填')
+  assert.deepStrictEqual(active(), ['自定义'])
+  assert.strictEqual(state.applied.length, 0, '全程没点保存，不该写设置')
+  s.close()
+})
+
+await t('已经在自定义时再点「自定义」：已填的内容不清掉', async () => {
+  const { s } = makeStore({ baseUrl: SELF, keys: { 'api.siliconflow.cn': 'sk-silicon-CCCCCC' }, model: 'BAAI/bge-m3' })
+  s.open()
+  await until(() => chips().length === 6)
+  assert.deepStrictEqual(active(), ['自定义'], '打开就该亮自定义')
+  chip('自定义').click()
+  assert.strictEqual(urlInput().value, SELF, '重复点不该把地址清了')
+  assert.strictEqual(modelInput().value, 'BAAI/bge-m3')
+  assert.strictEqual(keyInput().value, 'sk-silicon-CCCCCC')
+  s.close()
+})
+
+await t('手输把自定义地址改成某家预设再点回自定义：同样拿回原来自定义那一格', async () => {
+  const { s } = makeStore({ baseUrl: SELF, keys: { 'api.siliconflow.cn': 'sk-silicon-CCCCCC' }, model: 'BAAI/bge-m3' })
+  s.open()
+  await until(() => chips().length === 6)
+  setValue(urlInput(), DEEP) // 直接在地址框改成 DeepSeek 预设地址
+  assert.ok(await until(() => active()[0] === 'DeepSeek'), '实际亮的是：' + active().join(','))
+  chip('自定义').click()
+  assert.strictEqual(urlInput().value, SELF, '切走前那一格要能点回来')
+  assert.strictEqual(modelInput().value, 'BAAI/bge-m3')
+  assert.strictEqual(keyInput().value, 'sk-silicon-CCCCCC')
+  s.close()
+})
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
+

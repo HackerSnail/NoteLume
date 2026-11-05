@@ -1188,6 +1188,7 @@ export default {
   'ai.set.apiKey': 'API Key',
   'ai.set.keyHint': 'Key 依介面位址分開存在本機 settings.json，換服務商互不影響；本機 Ollama 可留空',
   'ai.set.model': '模型名稱',
+  'ai.set.modelPick': '從清單選擇',
   'ai.set.hint': '任何相容 OpenAI /chat/completions 的服務皆可：DeepSeek / 智譜 GLM / Kimi / OpenAI / 本機 Ollama 等',
   'ai.set.context': '上下文視窗（token）',
   'ai.set.contextHint': '留空依 32768 估算；本機小視窗模型（如 Ollama 2048 / 4096）填真實值，圓環會在接近超限前轉熱提醒',

@@ -29,10 +29,14 @@ export function createAiSettings(deps) {
   let modelsLoading = false
   let modelsError = ''
   let modelRowEl = null // 模型行控制容器（下拉 / 手输 + 刷新钮）
+  let modelInputEl = null // 模型名输入框：下拉选中后回填它
+  let modelPickEl = null // 候选下拉所在那一行（拉到列表才显示）
+  let modelPickSel = null // 候选下拉本体：手输改了值要同步它的选中态
   let modelStatusEl = null // 模型行下方的状态行（拉取中 / 失败）
   let apiKeyInputEl = null // Key 输入框：改地址后按新地址那一格回填
   let baseUrlInputEl = null // 接口地址输入框：点「自定义」后把光标交给它
   let presetBtnEls = [] // 预设行的 [id, button]，选中态按当前地址同步
+  let customMemory = null // 面板这一次会话里「自定义」那格的地址与模型名
 
   // —— 地址与 Key 是一对 ——
   // Key 存在 ai.keys 里按 host:port 分格，切服务商不会把上一家的 Key 带过去。
@@ -54,6 +58,11 @@ export function createAiSettings(deps) {
   function syncKeyWithBaseUrl(nextUrl) {
     const prevHost = aiKeyHost(draft.baseUrl)
     const pending = prevHost ? '' : draft.apiKey
+    // 从「自定义」那格切走前把它记下：切到某家预设再点回「自定义」不该是空白的
+    // （设置里那份还在，不落盘也该看得见）。点「自定义」清成空地址不算切走。
+    if (prevHost && activePresetId(draft.baseUrl) === 'custom' && activePresetId(nextUrl) !== 'custom') {
+      customMemory = { baseUrl: draft.baseUrl, model: draft.model }
+    }
     draft.baseUrl = nextUrl
     const host = aiKeyHost(nextUrl)
     if (!host) {
@@ -140,6 +149,42 @@ export function createAiSettings(deps) {
     renderModelRow()
   }
 
+  /** 手输敲了列表里没有的名字：下拉退回占位项，不谎报选中了某个模型 */
+  function syncPick() {
+    if (modelPickSel) modelPickSel.value = models.includes(draft.model) ? draft.model : ''
+  }
+
+  // 候选下拉单独占一行，拉到列表才出现：点开就是全部模型，选一项同时回填输入框。
+  function renderModelPick() {
+    if (!modelPickEl) return
+    modelPickEl.innerHTML = ''
+    modelPickSel = null
+    modelPickEl.classList.toggle('hidden', !models.length)
+    if (!models.length) return
+    const sel = document.createElement('select')
+    sel.className = 'nl-ap-select'
+    sel.setAttribute('aria-label', t('ai.set.model'))
+    const ph = document.createElement('option')
+    ph.value = ''
+    ph.textContent = t('ai.set.modelPick')
+    sel.appendChild(ph)
+    for (const m of models) {
+      const o = document.createElement('option')
+      o.value = m
+      o.textContent = m
+      sel.appendChild(o)
+    }
+    sel.addEventListener('change', () => {
+      if (!sel.value) return
+      draft.model = sel.value
+      if (modelInputEl) modelInputEl.value = sel.value
+    })
+    if (modelsLoading) sel.disabled = true
+    modelPickEl.appendChild(sel)
+    modelPickSel = sel
+    syncPick()
+  }
+
   function renderModelRow() {
     if (!modelRowEl) return
     modelRowEl.innerHTML = ''
@@ -148,11 +193,9 @@ export function createAiSettings(deps) {
     label.textContent = t('ai.set.model')
     modelRowEl.appendChild(label)
 
-    // 输入框随时可敲，候选另画一层可点列表（拉到 /models 才出）。旧版拉取失败时会把草稿里
-    // 那个模型名塞成唯一选项的下拉，看着可选实际改不动；换成 datalist 后 WKWebView 基本不弹
-    // 候选表，等于把选项弄丢了。自己画列表，mac 与 Windows 两侧行为一致。
-    const combo = document.createElement('div')
-    combo.className = 'nl-ap-combo'
+    // 输入框随时可敲；候选另起一行常显一个原生下拉（拉到 /models 才出这一行）。
+    // 旧版两处都不对：拉取失败时把草稿里那个名字塞成唯一选项的下拉，看着可选实际改不动；
+    // 换成 datalist 后 WKWebView 基本不弹候选表，选项等于没了。
     const input = document.createElement('input')
     input.type = 'text'
     input.className = 'nl-ap-text'
@@ -161,66 +204,10 @@ export function createAiSettings(deps) {
     input.autocomplete = 'off'
     input.spellcheck = false
     input.setAttribute('aria-label', t('ai.set.model'))
-    input.addEventListener('change', () => { draft.model = input.value })
+    input.addEventListener('change', () => { draft.model = input.value; syncPick() })
     if (modelsLoading) input.disabled = true
-    combo.appendChild(input)
-
-    if (models.length) {
-      const listEl = document.createElement('div')
-      listEl.className = 'nl-ap-combo-list hidden'
-      const items = []
-      const close = () => listEl.classList.add('hidden')
-      // 聚焦 / 点输入框 = 看全部候选，只有敲字才按片段筛；否则一打开就被当前值筛成一条，
-      // 和「没有选项」看不出区别。
-      const showAll = () => {
-        for (const it of items) it.el.classList.remove('hidden')
-        listEl.classList.remove('hidden')
-      }
-      /** 按输入框里的片段（不分大小写）筛；一条都不剩就收起 */
-      const refilter = () => {
-        const q = input.value.trim().toLowerCase()
-        let any = false
-        for (const it of items) {
-          const hit = !q || it.name.toLowerCase().includes(q)
-          it.el.classList.toggle('hidden', !hit)
-          if (hit) any = true
-        }
-        listEl.classList.toggle('hidden', !any)
-      }
-      const markActive = () => {
-        for (const it of items) it.el.classList.toggle('active', it.name === input.value)
-      }
-      const pick = (name) => {
-        input.value = name
-        draft.model = name
-        markActive()
-        close()
-      }
-      for (const m of models) {
-        const it = document.createElement('button')
-        it.type = 'button'
-        it.className = 'nl-ap-combo-item'
-        it.textContent = m
-        it.addEventListener('mousedown', (e) => e.preventDefault()) // 点候选先把输入框挤失焦会立刻收列表
-        it.addEventListener('click', () => pick(m))
-        listEl.appendChild(it)
-        items.push({ name: m, el: it })
-      }
-      combo.appendChild(listEl)
-      input.addEventListener('focus', showAll)
-      input.addEventListener('click', showAll) // 光标已在框里时，再点一次也要唤得回列表
-      input.addEventListener('blur', close)
-      input.addEventListener('input', () => { draft.model = input.value; markActive(); refilter() })
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { close(); return }
-        if (e.key !== 'Enter') return
-        const first = items.find((it) => !it.el.classList.contains('hidden'))
-        if (first) pick(first.name)
-        e.preventDefault()
-      })
-      markActive()
-    }
-    modelRowEl.appendChild(combo)
+    modelRowEl.appendChild(input)
+    modelInputEl = input
 
     // 刷新：改完地址 / Key 后手动重拉（模型启动晚了、首次打开时还没起来）
     const btn = document.createElement('button')
@@ -232,6 +219,8 @@ export function createAiSettings(deps) {
     btn.setAttribute('aria-label', t('ai.set.modelRefresh'))
     btn.addEventListener('click', () => loadModels())
     modelRowEl.appendChild(btn)
+
+    renderModelPick()
 
     if (modelStatusEl) {
       modelStatusEl.textContent = modelsLoading ? t('ai.set.modelsLoading') : (modelsError ? t('ai.set.modelFail') : '')
@@ -274,8 +263,9 @@ export function createAiSettings(deps) {
             }
           }
         }
-        draft.model = p.model
+        // 先换地址再改模型名：换地址时要把「自定义」那格此刻的模型名记下来，顺序反了就记成预设的
         syncKeyWithBaseUrl(p.baseUrl)
+        draft.model = p.model
         render()
       })
       btns.appendChild(b)
@@ -286,8 +276,19 @@ export function createAiSettings(deps) {
     customBtn.className = 'nl-ks-btn'
     customBtn.textContent = t('ai.set.preset.custom')
     customBtn.addEventListener('click', () => {
-      draft.model = ''
-      syncKeyWithBaseUrl('') // 地址清空后当前 Key 归回原格留着，这一格从空开始
+      if (!draft.baseUrl || activePresetId(draft.baseUrl) === 'custom') {
+        // 已经在自定义：已填的内容不动，只把光标交给地址框
+        if (baseUrlInputEl) baseUrlInputEl.focus()
+        return
+      }
+      const mem = customMemory
+      if (mem && mem.baseUrl) {
+        syncKeyWithBaseUrl(mem.baseUrl) // Key 按 host 回填，那一格切走时没删
+        draft.model = mem.model || ''
+      } else {
+        draft.model = ''
+        syncKeyWithBaseUrl('') // 地址清空后当前 Key 归回原格留着，这一格从空开始
+      }
       render()
       if (baseUrlInputEl) baseUrlInputEl.focus()
     })
@@ -304,12 +305,15 @@ export function createAiSettings(deps) {
     apiKeyInputEl = textRow('ai.set.apiKey', draft.apiKey, (v) => { setApiKey(v); models = []; modelsError = ''; loadModels() }, { password: true })
     hint('ai.set.keyHint')
 
-    // 模型名：一个可手输的输入框，拉到 /models 时把列表挂成候选。外层 wrap 纵放：上行控制 + 下行状态。
+    // 模型名：输入框可直接敲，下面一行是候选下拉。外层 wrap 纵放：控制行 + 下拉行 + 状态行。
     const modelWrap = document.createElement('div')
     modelWrap.className = 'nl-ap-model'
     modelRowEl = document.createElement('div')
     modelRowEl.className = 'nl-ap-row'
     modelWrap.appendChild(modelRowEl)
+    modelPickEl = document.createElement('div')
+    modelPickEl.className = 'nl-ap-row nl-ap-model-pick hidden'
+    modelWrap.appendChild(modelPickEl)
     modelStatusEl = document.createElement('div')
     modelStatusEl.className = 'nl-ap-hint hidden'
     modelWrap.appendChild(modelStatusEl)
@@ -399,6 +403,7 @@ export function createAiSettings(deps) {
     if (!overlay) buildDom()
     if (overlay.parentNode) return
     draft = normalizeAiConfig(getAi())
+    customMemory = null // 每次打开都从设置重读，会话内的暂存不跨面板留
     document.body.appendChild(overlay)
     document.addEventListener('keydown', onEsc, true)
     offLocale = onLocaleChange(() => {

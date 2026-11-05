@@ -1187,6 +1187,7 @@ export default {
   'ai.set.apiKey': 'Clé API',
   'ai.set.keyHint': 'Les clés sont stockées par URL de base dans le settings.json local ; laissez vide pour Ollama en local',
   'ai.set.model': 'Nom du modèle',
+  'ai.set.modelPick': 'Choisir dans la liste',
   'ai.set.hint': 'Tout service compatible OpenAI /chat/completions convient : DeepSeek / Zhipu GLM / Kimi / OpenAI / Ollama local, etc.',
   'ai.set.context': 'Fenêtre de contexte (tokens)',
   'ai.set.contextHint': 'Laisser vide pour estimer sur 32768. Pour un modèle local à petite fenêtre (ex. Ollama 2048 / 4096), saisir la valeur réelle pour que le cercle alerte avant le dépassement',

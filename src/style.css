@@ -1669,50 +1669,9 @@ details.panel[open] > summary::before {
   flex-direction: column;
   gap: 4px;
 }
-/* 模型名候选：贴着输入框下方画一层可点列表。输入框全程可敲，敲字即筛，点一项即选中。 */
-.nl-ap-combo {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-}
-.nl-ap-combo .nl-ap-text {
-  flex: 1;
-}
-.nl-ap-combo-list {
-  position: absolute;
-  top: calc(100% + 3px);
-  left: 0;
-  right: 0;
-  z-index: 6;
-  max-height: 168px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 3px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
-}
-.nl-ap-combo-item {
-  flex: none;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--fg);
-  background: none;
-  border: none;
-  border-radius: 4px;
-  padding: 3px 6px;
-  cursor: pointer;
-}
-.nl-ap-combo-item:hover {
-  background: var(--hover);
-}
-.nl-ap-combo-item.active {
-  color: var(--accent);
+/* 候选下拉那一行：贴着输入框下方，不再重复一行的上间距 */
+.nl-ap-model-pick {
+  padding-top: 0;
 }
 .nl-ap-hint.err { color: #c0341d; }
 .nl-ap-range {

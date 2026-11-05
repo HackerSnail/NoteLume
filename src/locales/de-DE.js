@@ -1187,6 +1187,7 @@ export default {
   'ai.set.apiKey': 'API-Schlüssel',
   'ai.set.keyHint': 'Schlüssel werden je Basis-URL in der lokalen settings.json gespeichert; bei lokalem Ollama leer lassen',
   'ai.set.model': 'Modellname',
+  'ai.set.modelPick': 'Aus Liste wählen',
   'ai.set.hint': 'Jeder OpenAI-/chat/completions-kompatible Dienst funktioniert: DeepSeek / Zhipu GLM / Kimi / OpenAI / lokales Ollama usw.',
   'ai.set.context': 'Kontextfenster (Tokens)',
   'ai.set.contextHint': 'Leer lassen schätzt gegen 32768. Für kleine lokale Modelle (z. B. Ollama 2048 / 4096) das echte Fenster eintragen, damit der Ring vor dem Überlauf warnt',

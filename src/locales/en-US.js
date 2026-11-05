@@ -1189,6 +1189,7 @@ export default {
   'ai.set.apiKey': 'API Key',
   'ai.set.keyHint': 'Keys are stored per base URL in local settings.json; leave empty for local Ollama',
   'ai.set.model': 'Model name',
+  'ai.set.modelPick': 'Select from list',
   'ai.set.hint': 'Any OpenAI /chat/completions-compatible service works: DeepSeek / Zhipu GLM / Kimi / OpenAI / local Ollama, etc.',
   'ai.set.context': 'Context window (tokens)',
   'ai.set.contextHint': 'Leave blank to estimate against 32768. For small local models (e.g. Ollama 2048 / 4096), set the real window so the ring warns before the context overflows',
