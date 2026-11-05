@@ -143,6 +143,12 @@ t('工具行 running→done，点击展开结果；无空气泡；回答按锚�
     assert.ok(bubbles.length >= 1)
     for (const b of bubbles) assert.ok(b.textContent.trim().length > 0, 'assistant 气泡不应为空')
     assert.ok(bubbles.some((b) => b.textContent.includes('新内容')))
+    // 操作行：Agent 已把回答写进文档，不该再给同一段内容一个第二次插入的入口
+    const lastBot = bubbles[bubbles.length - 1]
+    const actsBtns = [...lastBot.querySelectorAll('.ai-actions button')]
+    assert.strictEqual(actsBtns.length, 1, '已应用的回答只剩复制一个按钮，实际：' + actsBtns.map((b) => b.textContent).join('/'))
+    assert.ok(actsBtns[0].textContent.includes('复制'))
+    assert.ok(!lastBot.querySelector('.ai-insert'), '不该出「插入到文档」')
     // 应用 + 撤销按钮
     assert.strictEqual(applied.length, 1)
     assert.strictEqual(applied[0], '新内容') // 锚点标记已剥
@@ -232,6 +238,10 @@ t('流式中取消：半截回答保留、出「已停止」标签、不自动�
     await until(() => [...root.querySelectorAll('.ai-stopped')].some((el) => el.textContent === '已停止'))
     assert.strictEqual(applied.length, 0)
     assert.ok(root.querySelector('.ai-bot').textContent.includes('半截回答'))
+    // 半截回答没写进文档，「插入到文档」这一击要留着作补插入口
+    const cancelBtns = [...root.querySelectorAll('.ai-actions button')]
+    assert.strictEqual(cancelBtns.length, 2, '停止这一路两个按钮都该在，实际：' + cancelBtns.map((b) => b.textContent).join('/'))
+    assert.ok(root.querySelector('.ai-insert'), '未自动应用时该留着插入入口')
   } finally {
     panel.destroy()
     root.remove()

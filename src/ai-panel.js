@@ -629,9 +629,13 @@ export function createAiPanel(deps) {
     const prefixLen = streaming.text.length - finalText.length
     const shown = stripInsertMarkers((prefixLen > 0 ? streaming.text.slice(0, prefixLen) : '') + body).trim()
     paintAssistant(el, shown.trim(), reasoning, false)
-    if (body) el.appendChild(assistantActions(body))
-    // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
-    if (!res.stopped && !res.maxed && body) autoApply(body, el, anchor)
+    const acts = body ? assistantActions(body) : null
+    if (acts) el.appendChild(acts)
+    // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）；
+    // 真写进去了就摘掉「插入到文档」，避免同一段内容被插第二次
+    if (!res.stopped && !res.maxed && body) {
+      if (autoApply(body, el, anchor) && acts) acts.hideInsert()
+    }
     if (res.maxed) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -666,9 +670,13 @@ export function createAiPanel(deps) {
     if (hasReasoning) histMsg._reasoning = reasoning
     history.push(histMsg)
     // 没有正文时不画操作行：思考过程不是回答，不该提供「插入到文档」
-    if (body) el.appendChild(assistantActions(body))
-    // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）
-    if (mode === 'agent' && !stopped && body) autoApply(body, el, anchor, anchorBroken)
+    const acts = body ? assistantActions(body) : null
+    if (acts) el.appendChild(acts)
+    // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）；
+    // 真写进去了就摘掉「插入到文档」，避免同一段内容被插第二次
+    if (mode === 'agent' && !stopped && body) {
+      if (autoApply(body, el, anchor, anchorBroken) && acts) acts.hideInsert()
+    }
     if (stopped) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -725,13 +733,15 @@ export function createAiPanel(deps) {
     scrollEnd()
   }
 
-  /** 助手气泡尾部的操作行：插入到文档 / 复制 */
+  /** 助手气泡尾部的操作行：插入到文档 / 复制。
+   *  hideInsert() 给 Agent 模式收尾用：回答已经由 autoApply 写进文档，再留「插入到文档」就是给
+   *  同一段内容一个第二次插入的入口；没写成的那几条路径（手动停止 / 步数到顶 / 写入失败）照旧留着。*/
   function assistantActions(text) {
     const row = document.createElement('div')
     row.className = 'ai-actions'
     const ins = document.createElement('button')
     ins.type = 'button'
-    ins.className = 'nl-ks-btn'
+    ins.className = 'nl-ks-btn ai-insert'
     ins.textContent = t('ai.insertDoc')
     ins.addEventListener('click', () => {
       insertToDoc(text)
@@ -748,13 +758,15 @@ export function createAiPanel(deps) {
       } catch { setStatus(t('ai.copyFail')) }
     })
     row.append(ins, copy)
+    row.hideInsert = () => ins.remove()
     return row
   }
 
   /** Agent 模式收尾：按锚点（自然语言位置）或光标智能落点写进文档，结果都给一条小标签；
-   *  应用带回退记录时标签上加「撤销」按钮（pos 是会话内坐标，切文档 / 重启后校验不过自然置灰） */
+   *  应用带回退记录时标签上加「撤销」按钮（pos 是会话内坐标，切文档 / 重启后校验不过自然置灰）。
+   *  返回是否真写进去了，调用点据此决定还留不留「插入到文档」 */
   function autoApply(text, el, anchor, anchorBroken) {
-    if (!appendToDoc) return
+    if (!appendToDoc) return false
     let res = null
     try { res = appendToDoc(text, anchor || null) } catch { res = null }
     const tag = document.createElement('div')
@@ -804,6 +816,7 @@ export function createAiPanel(deps) {
     }
     el.appendChild(tag)
     setStatus(tag.textContent)
+    return ok
   }
 
   // —— 多模态附件（图片）：选图 / 粘贴 → dataURL，发送时随 content 数组一起走 ——
