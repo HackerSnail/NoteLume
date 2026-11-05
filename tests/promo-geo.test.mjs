@@ -87,6 +87,19 @@ check('head：description 长度在 100–180 字之间（手册要求 120–160
   assert.ok(d.length >= 100 && d.length <= 180, `实为 ${d.length} 字`)
 })
 
+check('OG 图：og:image:width / height 与图片真实尺寸一致', () => {
+  const url = attrOf(/<meta property="og:image" content="([^"]+)">/)
+  const m = /@master\/(.+)$/.exec(url)
+  if (!m) { console.log('   （og:image 不指仓库内文件，跳过尺寸核对）'); return }
+  const file = path.join(ROOT, m[1])
+  if (!fs.existsSync(file)) { console.log(`   （${m[1]} 不在本地，跳过）`); return }
+  const b = fs.readFileSync(file)
+  assert.equal(b.slice(1, 4).toString('ascii'), 'PNG', 'og:image 指向的不是 PNG')
+  const w = b.readUInt32BE(16), h = b.readUInt32BE(20)
+  assert.equal(Number(attrOf(/<meta property="og:image:width" content="([^"]+)">/)), w, `og:image:width 应为 ${w}`)
+  assert.equal(Number(attrOf(/<meta property="og:image:height" content="([^"]+)">/)), h, `og:image:height 应为 ${h}`)
+})
+
 check('head：title 带品类词与差异词，不再只有产品名', () => {
   const t = attrOf(/<title>([^<]+)<\/title>/)
   assert.match(t, /Markdown 编辑器/, 'title 缺品类词')
