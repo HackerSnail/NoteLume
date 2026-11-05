@@ -10,8 +10,6 @@ import { setIcon } from './icons.js'
 import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
 import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridge.js'
 
-const MODEL_DATALIST_ID = 'nl-ap-model-list' // 模型名候选表：与输入框同面板内唯一
-
 /**
  * 「AI 设置」面板。
  * @param {object} deps
@@ -150,8 +148,11 @@ export function createAiSettings(deps) {
     label.textContent = t('ai.set.model')
     modelRowEl.appendChild(label)
 
-    // 一个输入框走到底：列表拉得到就挂成候选，拉不到照样能敲。旧版拉取失败时会把草稿里
-    // 那个模型名当成唯一选项塞进下拉，界面上看着可选、实际改不动任何值。
+    // 输入框随时可敲，候选另画一层可点列表（拉到 /models 才出）。旧版拉取失败时会把草稿里
+    // 那个模型名塞成唯一选项的下拉，看着可选实际改不动；换成 datalist 后 WKWebView 基本不弹
+    // 候选表，等于把选项弄丢了。自己画列表，mac 与 Windows 两侧行为一致。
+    const combo = document.createElement('div')
+    combo.className = 'nl-ap-combo'
     const input = document.createElement('input')
     input.type = 'text'
     input.className = 'nl-ap-text'
@@ -160,20 +161,66 @@ export function createAiSettings(deps) {
     input.autocomplete = 'off'
     input.spellcheck = false
     input.setAttribute('aria-label', t('ai.set.model'))
-    if (models.length) {
-      const list = document.createElement('datalist')
-      list.id = MODEL_DATALIST_ID
-      for (const m of models) {
-        const o = document.createElement('option')
-        o.value = m
-        list.appendChild(o)
-      }
-      modelRowEl.appendChild(list)
-      input.setAttribute('list', MODEL_DATALIST_ID)
-    }
     input.addEventListener('change', () => { draft.model = input.value })
     if (modelsLoading) input.disabled = true
-    modelRowEl.appendChild(input)
+    combo.appendChild(input)
+
+    if (models.length) {
+      const listEl = document.createElement('div')
+      listEl.className = 'nl-ap-combo-list hidden'
+      const items = []
+      const close = () => listEl.classList.add('hidden')
+      // 聚焦 / 点输入框 = 看全部候选，只有敲字才按片段筛；否则一打开就被当前值筛成一条，
+      // 和「没有选项」看不出区别。
+      const showAll = () => {
+        for (const it of items) it.el.classList.remove('hidden')
+        listEl.classList.remove('hidden')
+      }
+      /** 按输入框里的片段（不分大小写）筛；一条都不剩就收起 */
+      const refilter = () => {
+        const q = input.value.trim().toLowerCase()
+        let any = false
+        for (const it of items) {
+          const hit = !q || it.name.toLowerCase().includes(q)
+          it.el.classList.toggle('hidden', !hit)
+          if (hit) any = true
+        }
+        listEl.classList.toggle('hidden', !any)
+      }
+      const markActive = () => {
+        for (const it of items) it.el.classList.toggle('active', it.name === input.value)
+      }
+      const pick = (name) => {
+        input.value = name
+        draft.model = name
+        markActive()
+        close()
+      }
+      for (const m of models) {
+        const it = document.createElement('button')
+        it.type = 'button'
+        it.className = 'nl-ap-combo-item'
+        it.textContent = m
+        it.addEventListener('mousedown', (e) => e.preventDefault()) // 点候选先把输入框挤失焦会立刻收列表
+        it.addEventListener('click', () => pick(m))
+        listEl.appendChild(it)
+        items.push({ name: m, el: it })
+      }
+      combo.appendChild(listEl)
+      input.addEventListener('focus', showAll)
+      input.addEventListener('click', showAll) // 光标已在框里时，再点一次也要唤得回列表
+      input.addEventListener('blur', close)
+      input.addEventListener('input', () => { draft.model = input.value; markActive(); refilter() })
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { close(); return }
+        if (e.key !== 'Enter') return
+        const first = items.find((it) => !it.el.classList.contains('hidden'))
+        if (first) pick(first.name)
+        e.preventDefault()
+      })
+      markActive()
+    }
+    modelRowEl.appendChild(combo)
 
     // 刷新：改完地址 / Key 后手动重拉（模型启动晚了、首次打开时还没起来）
     const btn = document.createElement('button')
