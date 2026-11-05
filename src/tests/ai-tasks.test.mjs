@@ -15,6 +15,7 @@ import {
   AI_LIMITS,
   parseAgentReply,
   stripInsertMarkers,
+  isPlaceholderReply,
   resolveAnchorPos,
   modelSupportsVision,
   aiQueryTerms,
@@ -265,6 +266,32 @@ t('parseAgentReply：首个标记之前的残渣整段丢弃', () => {
   const r = parseAgentReply('</insert>\n<insert after="引言">正文')
   assert.deepStrictEqual(r.anchor, { dir: 'after', target: '引言' })
   assert.strictEqual(r.body, '正文')
+})
+
+t('parseAgentReply：只吐 <empty> 这类占位标记时 body 为空串（不进气泡、不写进文档）', () => {
+  // 真机形状：Agent 模式问「你好」，模型想完「应该输出空字符串」后把占位标记当正文吐出来
+  assert.strictEqual(parseAgentReply('<empty>').body, '')
+  assert.strictEqual(parseAgentReply('  <empty>  ').body, '')
+  assert.strictEqual(parseAgentReply('[empty]').body, '')
+  assert.strictEqual(parseAgentReply('“空”').body, '')
+  assert.strictEqual(parseAgentReply('```md\n<empty>\n```').body, '')
+  const withAnchor = parseAgentReply('<insert after="引言">\n\n<empty>')
+  assert.deepStrictEqual(withAnchor.anchor, { dir: 'after', target: '引言' })
+  assert.strictEqual(withAnchor.body, '', '带锚点的占位也不该写任何东西进文档')
+})
+
+t('parseAgentReply：占位标记只在整段等于它时才吞，裸的「无 / None」可能是真回答', () => {
+  assert.strictEqual(parseAgentReply('结论：<empty> 这一项空缺').body, '结论：<empty> 这一项空缺')
+  assert.strictEqual(parseAgentReply('无').body, '无')
+  assert.strictEqual(parseAgentReply('None').body, 'None')
+})
+
+t('isPlaceholderReply：界符必需，成对包着一个空词才判占位', () => {
+  assert.strictEqual(isPlaceholderReply('<empty>'), true)
+  assert.strictEqual(isPlaceholderReply('<NONE>'), true)
+  assert.strictEqual(isPlaceholderReply('（无内容）'), true)
+  assert.strictEqual(isPlaceholderReply('<empty> 后面还有话'), false)
+  assert.strictEqual(isPlaceholderReply(''), false)
 })
 
 t('stripInsertMarkers：大小写不敏感、成对剥、残留不粘字', () => {

@@ -1111,7 +1111,7 @@ export default {
   'ai.insertDoc': 'Insérer dans le document',
   'ai.modeAskTip': 'Discussion seule — le document n\'est pas modifié',
   'ai.modeAgentTip': 'Ajoute automatiquement la réponse à la fin du document',
-  'ai.agentHint': 'Mode Agent : donnez uniquement le contenu à écrire dans le document. Pas de salutations, pas de reformulation de la question, pas de description de vos actions. Si l\'utilisateur précise un emplacement d\'insertion, commencez par une ligne <insert after="emplacement"> ou <insert before="emplacement"> citant un titre ou un paragraphe existant du document, puis donnez le contenu à la ligne suivante ; sans emplacement, omettez le marqueur.',
+  'ai.agentHint': 'Mode Agent : donnez uniquement le contenu à écrire dans le document. Pas de salutations, pas de reformulation de la question, pas de description de vos actions. Si l\'utilisateur précise un emplacement d\'insertion, commencez par une ligne <insert after="emplacement"> ou <insert before="emplacement"> citant un titre ou un paragraphe existant du document, puis donnez le contenu à la ligne suivante ; sans emplacement, omettez le marqueur. Si rien ne doit être écrit dans le document (salutation, question sur vos capacités, bavardage), répondez simplement en une ou deux phrases de conversation normale, sans réponse vide ni marqueur de remplissage comme <empty>.',
   'ai.applied': 'Appliqué au document',
   'ai.applyFail': 'Échec de l\'écriture dans le document',
   'ai.appliedAtAfter': 'Inséré après « {where} »',

@@ -10,6 +10,7 @@
 //  - 正文 + 思考 → 结束后收起思考块、正文与操作行都在；
 //  - 只有思考 → 思考块保持展开 + 原因提示，不提供「插入到文档」；
 //  - 什么都没回 → emptyReply 提示，不再空气泡；
+//  - 正文只是一个 <empty> 占位标记 → 按「仅思考无正文」兜底，不进气泡也不进存档正文；
 //  - _reasoning 进存档，恢复会话仍重绘；发给 API 前被剥掉。
 
 import assert from 'node:assert'
@@ -191,6 +192,25 @@ await t('完全没有内容：给可读提示，不留空气泡', async () => {
   const bot = lastBot()
   assert.ok(bot.querySelector('.ai-note').textContent.includes('没有返回内容'))
   assert.ok(!bot.querySelector('.ai-actions'), '空回答不应有操作行')
+})
+
+await t('正文只是一个 <empty> 占位标记：按「仅思考无正文」兜底，不当答案画', async () => {
+  // 真机形状：模型想完「应该输出空字符串」后把占位标记当正文吐出来
+  const rid = await ask('你好')
+  fire({ reqId: rid, kind: 'reasoning', delta: '用户只是打招呼，不需要往文档里写东西。' })
+  fire({ reqId: rid, kind: 'chunk', delta: '<empty>' })
+  fire({ reqId: rid, kind: 'done' })
+  assert.ok(await until(() => lastBot().querySelector('.ai-note')), '应出现兜底提示')
+  const bot = lastBot()
+  assert.ok(!bot.querySelector('.ai-answer'), '占位标记不该被画成正文')
+  assert.ok(!bot.textContent.includes('<empty>'), '占位标记不该出现在气泡里')
+  assert.ok(bot.querySelector('.ai-reasoning'), '思考内容仍应展示')
+  assert.ok(bot.querySelector('.ai-note').textContent.includes('只返回了思考过程'))
+  assert.ok(!bot.querySelector('.ai-actions'), '占位回答不该给插入 / 复制按钮')
+  // 存档里这条助手消息的正文是空串，不是 <empty>
+  assert.ok(await until(() => {
+    try { return JSON.parse(savedPayload).messages.at(-1).content === '' } catch { return false }
+  }), '存档正文应为空串：' + savedPayload.slice(-200))
 })
 
 await t('恢复会话：_reasoning 随存档重绘思考块（默认收起）', async () => {

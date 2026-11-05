@@ -1111,7 +1111,7 @@ export default {
   'ai.insertDoc': 'Ins Dokument einfügen',
   'ai.modeAskTip': 'Nur Chat – das Dokument wird nicht geändert',
   'ai.modeAgentTip': 'Antwort automatisch ans Ende des Dokuments anhängen',
-  'ai.agentHint': 'Agent-Modus: Gib ausschließlich den Inhalt aus, der ins Dokument geschrieben werden soll. Keine Grußformeln, keine Wiederholung der Frage, keine Beschreibung deiner Schritte. Gibt der Nutzer eine Einfügeposition an, beginne mit einer Zeile <insert after="Position"> oder <insert before="Position"> (zitiert eine vorhandene Überschrift oder einen Absatz des Dokuments) und gib den Inhalt in der nächsten Zeile aus; ohne Positionsangabe bleibt der Marker weg.',
+  'ai.agentHint': 'Agent-Modus: Gib ausschließlich den Inhalt aus, der ins Dokument geschrieben werden soll. Keine Grußformeln, keine Wiederholung der Frage, keine Beschreibung deiner Schritte. Gibt der Nutzer eine Einfügeposition an, beginne mit einer Zeile <insert after="Position"> oder <insert before="Position"> (zitiert eine vorhandene Überschrift oder einen Absatz des Dokuments) und gib den Inhalt in der nächsten Zeile aus; ohne Positionsangabe bleibt der Marker weg. Soll nichts ins Dokument geschrieben werden (Begrüßung, Frage nach deinen Fähigkeiten, Smalltalk), antworte einfach in ein bis zwei normalen Sätzen – kein leerer Inhalt und kein Platzhalter wie <empty>.',
   'ai.applied': 'Ins Dokument übernommen',
   'ai.applyFail': 'Schreiben ins Dokument fehlgeschlagen',
   'ai.appliedAtAfter': 'Nach „{where}“ eingefügt',

@@ -189,12 +189,25 @@ export function stripInsertMarkers(text) {
 }
 
 /**
+ * 模型认为「这句没有要写进文档的内容」时吐的占位标记：`<empty>` / `[empty]` / 「空」这类
+ * 成对界符包着一个空词的形状。界符不可省——裸的「无 / None」可能正是真回答（“文档里没提到”），不能吞。
+ */
+const EMPTY_MARK_RE = /^\s*[<[(（【「“‘"']\s*(?:empty|none|null|nil|无内容|空字符串|空)\s*[>\])）】」”’"']\s*$/i
+
+/** 整段正文只是一个占位标记时判为空回答 */
+export function isPlaceholderReply(text) {
+  return EMPTY_MARK_RE.test(String(text || '').trim())
+}
+
+/**
  * Agent 回答落点协议：模型在内容开头放 <insert after="位置"> 或 <insert before="位置">，
  * 「位置」引用文档中已有的标题或段落原文；正文跟在标记后（闭合 </insert> 可省）。
  * 标记前的文字一律视为客套引导剥掉。无标记时 anchor 为 null，body 走 stripFences。
  */
 export function parseAgentReply(raw) {
   const s = String(raw || '')
+  // 占位标记不是正文：换成空串，面板改走思考/空回答兜底，Agent 的自动写入跟着跳过
+  const bodyOf = (t) => { const b = stripFences(t); return isPlaceholderReply(b) ? '' : b }
   const strict = s.match(/<insert\s+(after|before)="([^"]{1,120})"\s*>/i)
   const target = strict ? strict[2].trim() : ''
   if (strict && target) {
@@ -202,17 +215,17 @@ export function parseAgentReply(raw) {
     body = stripInsertMarkers(body)
     return {
       anchor: { dir: strict[1].toLowerCase(), target },
-      body: stripFences(body),
+      body: bodyOf(body),
       anchorBroken: false,
     }
   }
   // 标记存在但目标不合法（超 120 字符 / 含双引号 / 属性残缺）：锚点放弃，标记本身
   // 仍要从正文里剥掉——模型写坏的标记不该连同内容一起写进用户文档。
   const loose = s.match(/<insert\b[^>]*>/i)
-  if (!loose) return { anchor: null, body: stripFences(s), anchorBroken: false }
+  if (!loose) return { anchor: null, body: bodyOf(s), anchorBroken: false }
   let body = s.slice(loose.index + loose[0].length)
   body = stripInsertMarkers(body)
-  return { anchor: null, body: stripFences(body), anchorBroken: true }
+  return { anchor: null, body: bodyOf(body), anchorBroken: true }
 }
 
 const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()

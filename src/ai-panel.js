@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -216,11 +216,13 @@ export function createAiPanel(deps) {
    * 绘制助手气泡内容：思考块在上，正文在下。
    * 正文为空时给可读兜底（有思考 → reasoningOnly，连思考都没有 → emptyReply），
    * 不再留下一个什么都没有的空气泡。live = 仍在流式中，此时不画兜底提示。
+   * 只吐一个占位标记（`<empty>` 之类）同样算没有正文：流式途中就不把它当答案画出来，
+   * 免得收尾前闪一记伪回答。
    */
   function paintAssistant(el, body, reasoning, live) {
     el.innerHTML = ''
     const hasReasoning = !!(reasoning && String(reasoning).trim())
-    const hasBody = !!(body && String(body).trim())
+    const hasBody = !!(body && String(body).trim()) && !isPlaceholderReply(body)
     if (hasReasoning) el.appendChild(reasoningBlock(String(reasoning), live || !hasBody))
     if (hasBody) {
       const ans = document.createElement('div')
@@ -462,8 +464,7 @@ export function createAiPanel(deps) {
       appendSkillEcho(userBubble, used) // 消息上回显用了哪些技能
       if (used.length) userMsg._skills = used // 记进 history，随存档持久化（重启后仍回显）
     }
-    // Agent 模式：让模型直接给可写进文档的内容本身（应用动作由本地收尾时执行）
-    if (mode === 'agent') messages.push({ role: 'system', content: t('ai.agentHint') })
+    // Agent 模式的提示词在 runAgentFlow 里注入（本函数在 mode === 'agent' 时已提前返回）
     // 全库检索：有知识库时按问题分词查索引注入相关片段；无知识库回 ''（只带当前文档上下文）
     if (typeof getVaultContext === 'function') {
       try {

@@ -157,6 +157,26 @@ t('工具行 running→done，点击展开结果；无空气泡；回答按锚�
   }
 })
 
+t('Agent 回答只是一个 <empty> 占位标记：不写进文档，气泡给兜底提示而不是伪回答', async () => {
+  // 真机形状：Agent 模式问「你好」，模型想完「应该输出空字符串」后把占位标记当正文吐出来
+  const { panel, root, applied } = makePanel({
+    streamRequest: async () => ({ text: '<empty>', toolCalls: null }),
+  })
+  try {
+    send(root, '你好')
+    await until(() => root.querySelector('.ai-note'))
+    assert.strictEqual(applied.length, 0, '占位标记不该写进文档')
+    const bot = [...root.querySelectorAll('.ai-bot')].pop()
+    assert.ok(!bot.querySelector('.ai-answer'), '<empty> 不该被画成正文')
+    assert.ok(!bot.querySelector('.ai-actions'), '占位回答不该给插入 / 复制按钮')
+    assert.ok(!bot.querySelector('.ai-applied'), '不该出现「已应用」标签')
+    assert.ok(bot.querySelector('.ai-note').textContent.includes('没有返回内容'))
+  } finally {
+    panel.destroy()
+    root.remove()
+  }
+})
+
 t('恢复重放：locale 重建后工具行从历史重放出来，仍无空气泡', async () => {
   let round = 0
   const { panel, root } = makePanel({

@@ -1113,7 +1113,7 @@ export default {
   'ai.insertDoc': 'Insert into document',
   'ai.modeAskTip': 'Chat only — the document is not modified',
   'ai.modeAgentTip': 'Automatically append the answer to the current document',
-  'ai.agentHint': 'Agent mode: output only the content to be written into the document. No greetings, no restating the question, no narration of your actions. If the user specifies an insertion location, start with a line <insert after="location"> or <insert before="location"> quoting an existing heading or paragraph from the document, then give the content on the next line; omit the marker when no location is specified.',
+  'ai.agentHint': 'Agent mode: output only the content to be written into the document. No greetings, no restating the question, no narration of your actions. If the user specifies an insertion location, start with a line <insert after="location"> or <insert before="location"> quoting an existing heading or paragraph from the document, then give the content on the next line; omit the marker when no location is specified. If the message needs nothing written into the document (a greeting, asking what you can do, small talk), just answer in one or two sentences of normal conversation — do not emit an empty reply or a placeholder such as <empty>.',
   'ai.applied': 'Applied to document',
   'ai.applyFail': 'Failed to write to the document',
   'ai.appliedAtAfter': 'Inserted after "{where}"',
