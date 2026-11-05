@@ -5984,6 +5984,11 @@ html.nl-dragging * {
 .nl-ai-presets .nl-ks-btn {
   font-size: 11px;
 }
+.nl-ai-presets .nl-ks-btn.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
 
 /* —— 选区 AI 浮层：选区附近的小结果卡（单例，流式预览） —— */
 .nl-ai-pop {

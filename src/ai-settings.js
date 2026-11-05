@@ -10,6 +10,8 @@ import { setIcon } from './icons.js'
 import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS } from './ai-tasks.js'
 import { ollamaProbe, openUrl, confirmDialog, aiModelsList } from './tauri-bridge.js'
 
+const MODEL_DATALIST_ID = 'nl-ap-model-list' // 模型名候选表：与输入框同面板内唯一
+
 /**
  * 「AI 设置」面板。
  * @param {object} deps
@@ -31,10 +33,24 @@ export function createAiSettings(deps) {
   let modelRowEl = null // 模型行控制容器（下拉 / 手输 + 刷新钮）
   let modelStatusEl = null // 模型行下方的状态行（拉取中 / 失败）
   let apiKeyInputEl = null // Key 输入框：改地址后按新地址那一格回填
+  let baseUrlInputEl = null // 接口地址输入框：点「自定义」后把光标交给它
+  let presetBtnEls = [] // 预设行的 [id, button]，选中态按当前地址同步
 
   // —— 地址与 Key 是一对 ——
   // Key 存在 ai.keys 里按 host:port 分格，切服务商不会把上一家的 Key 带过去。
   // draft.apiKey 始终是当前地址那一格的镜像，调用方与落盘口径都照旧读它。
+
+  /** 当前地址落在哪一格：等于某个预设就是它，其余（含空地址）都算自定义 */
+  function activePresetId(url) {
+    const v = String(url || '').trim()
+    const hit = AI_PRESETS.find((p) => p.baseUrl === v)
+    return hit ? hit.id : 'custom'
+  }
+
+  function syncPresetActive() {
+    const id = activePresetId(draft && draft.baseUrl)
+    for (const [btnId, el] of presetBtnEls) el.classList.toggle('active', btnId === id)
+  }
 
   /** 改地址时换到那一格的 Key；地址还没填合法就敲的 Key 归到新地址 */
   function syncKeyWithBaseUrl(nextUrl) {
@@ -96,7 +112,7 @@ export function createAiSettings(deps) {
     return input
   }
 
-  // —— 模型名：自动检测（GET /models）出下拉，检测不到才回落手动输入 ——
+  // —— 模型名：可手输，拉到 /models 时把列表挂成候选（datalist） ——
   async function loadModels() {
     const url = (draft && draft.baseUrl || '').trim()
     if (!isHttpUrl(url)) {
@@ -118,9 +134,9 @@ export function createAiSettings(deps) {
       modelsError = (e && e.message) || String(e)
     }
     modelsLoading = false
-    // 草稿里的模型不在列表（手动留的旧值 / 预设默认值）时仍保留为一个选项，避免一保存就被换掉
+    // 草稿里的模型不在列表（手动留的旧值 / 预设默认值）时也算一个候选，别从候选里消失
     if (draft.model && !list.includes(draft.model)) list.unshift(draft.model)
-    // 有列表而草稿为空：选第一个，省一次点击
+    // 有列表而草稿为空：填第一个，省一次输入
     if (!draft.model && list.length) draft.model = list[0]
     models = list
     renderModelRow()
@@ -134,39 +150,30 @@ export function createAiSettings(deps) {
     label.textContent = t('ai.set.model')
     modelRowEl.appendChild(label)
 
-    if (modelsLoading) {
-      const st = document.createElement('input')
-      st.type = 'text'
-      st.className = 'nl-ap-text'
-      st.value = draft.model || ''
-      st.disabled = true
-      modelRowEl.appendChild(st)
-    } else if (models.length) {
-      const sel = document.createElement('select')
-      sel.className = 'nl-ap-select'
-      sel.setAttribute('aria-label', t('ai.set.model'))
+    // 一个输入框走到底：列表拉得到就挂成候选，拉不到照样能敲。旧版拉取失败时会把草稿里
+    // 那个模型名当成唯一选项塞进下拉，界面上看着可选、实际改不动任何值。
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'nl-ap-text'
+    input.value = draft.model || ''
+    input.placeholder = 'deepseek-chat'
+    input.autocomplete = 'off'
+    input.spellcheck = false
+    input.setAttribute('aria-label', t('ai.set.model'))
+    if (models.length) {
+      const list = document.createElement('datalist')
+      list.id = MODEL_DATALIST_ID
       for (const m of models) {
         const o = document.createElement('option')
         o.value = m
-        o.textContent = m
-        if (m === draft.model) o.selected = true
-        sel.appendChild(o)
+        list.appendChild(o)
       }
-      sel.addEventListener('change', () => { draft.model = sel.value })
-      modelRowEl.appendChild(sel)
-    } else {
-      // 没拉到列表（地址未填 / 服务不提供 /models / 拉取失败）：回落手动输入
-      const input = document.createElement('input')
-      input.type = 'text'
-      input.className = 'nl-ap-text'
-      input.value = draft.model || ''
-      input.placeholder = 'deepseek-chat'
-      input.autocomplete = 'off'
-      input.spellcheck = false
-      input.setAttribute('aria-label', t('ai.set.model'))
-      input.addEventListener('change', () => { draft.model = input.value })
-      modelRowEl.appendChild(input)
+      modelRowEl.appendChild(list)
+      input.setAttribute('list', MODEL_DATALIST_ID)
     }
+    input.addEventListener('change', () => { draft.model = input.value })
+    if (modelsLoading) input.disabled = true
+    modelRowEl.appendChild(input)
 
     // 刷新：改完地址 / Key 后手动重拉（模型启动晚了、首次打开时还没起来）
     const btn = document.createElement('button')
@@ -191,6 +198,8 @@ export function createAiSettings(deps) {
     section('ai.set.section')
 
     // 预设：一键填地址 + 模型名（输入框的 change 监听读 DOM，先改 DOM 值再同步草稿）
+    // 预设：一键填地址 + 模型名。当前地址落在哪一格，哪颗就一直是选中态；
+    // 都不等于就是「自定义」（清空两项，等用户手填自己的兼容接口）。
     const presetRow = document.createElement('div')
     presetRow.className = 'nl-ap-row'
     const presetLabel = document.createElement('span')
@@ -198,6 +207,7 @@ export function createAiSettings(deps) {
     presetLabel.textContent = t('ai.set.presets')
     const btns = document.createElement('div')
     btns.className = 'nl-ai-presets'
+    presetBtnEls = []
     for (const p of AI_PRESETS) {
       const b = document.createElement('button')
       b.type = 'button'
@@ -222,18 +232,32 @@ export function createAiSettings(deps) {
         render()
       })
       btns.appendChild(b)
+      presetBtnEls.push([p.id, b])
     }
+    const customBtn = document.createElement('button')
+    customBtn.type = 'button'
+    customBtn.className = 'nl-ks-btn'
+    customBtn.textContent = t('ai.set.preset.custom')
+    customBtn.addEventListener('click', () => {
+      draft.model = ''
+      syncKeyWithBaseUrl('') // 地址清空后当前 Key 归回原格留着，这一格从空开始
+      render()
+      if (baseUrlInputEl) baseUrlInputEl.focus()
+    })
+    btns.appendChild(customBtn)
+    presetBtnEls.push(['custom', customBtn])
     presetRow.append(presetLabel, btns)
     bodyEl.appendChild(presetRow)
+    syncPresetActive()
     hint('ai.set.presetHint')
 
-    textRow('ai.set.baseUrl', draft.baseUrl, (v) => { syncKeyWithBaseUrl(v); models = []; modelsError = ''; loadModels() }, {
+    baseUrlInputEl = textRow('ai.set.baseUrl', draft.baseUrl, (v) => { syncKeyWithBaseUrl(v); syncPresetActive(); models = []; modelsError = ''; loadModels() }, {
       placeholder: 'https://api.deepseek.com/v1',
     })
     apiKeyInputEl = textRow('ai.set.apiKey', draft.apiKey, (v) => { setApiKey(v); models = []; modelsError = ''; loadModels() }, { password: true })
     hint('ai.set.keyHint')
 
-    // 模型名：自动检测 /models 出下拉选择，检测不到才回落手动输入。外层 wrap 纵放：上行控制 + 下行状态。
+    // 模型名：一个可手输的输入框，拉到 /models 时把列表挂成候选。外层 wrap 纵放：上行控制 + 下行状态。
     const modelWrap = document.createElement('div')
     modelWrap.className = 'nl-ap-model'
     modelRowEl = document.createElement('div')

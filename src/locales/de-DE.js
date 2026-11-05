@@ -1181,6 +1181,7 @@ export default {
   'ai.set.preset.kimi': 'Kimi',
   'ai.set.preset.openai': 'OpenAI',
   'ai.set.preset.ollama': 'Ollama (lokal)',
+  'ai.set.preset.custom': 'Benutzerdefiniert',
   'ai.set.presetHint': 'Voreinstellungen tragen Basis-URL und Modellnamen ein; den API-Schlüssel müssen Sie selbst ergänzen',
   'ai.set.baseUrl': 'Basis-URL',
   'ai.set.apiKey': 'API-Schlüssel',

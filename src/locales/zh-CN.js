@@ -1183,6 +1183,7 @@ export default {
   'ai.set.preset.kimi': 'Kimi',
   'ai.set.preset.openai': 'OpenAI',
   'ai.set.preset.ollama': 'Ollama（本机）',
+  'ai.set.preset.custom': '自定义',
   'ai.set.presetHint': '预设一键填好接口地址与模型名；API Key 仍需自填',
   'ai.set.baseUrl': '接口地址',
   'ai.set.apiKey': 'API Key',
