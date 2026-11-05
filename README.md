@@ -6,7 +6,9 @@
 </p>
 
 <p align="center">
-   ![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/HackerSnail/badge.svg)](https://hub.xerj.org/contributors/HackerSnail)
+<a href="https://hub.xerj.org/contributors/HackerSnail">
+  <img src="https://hub.xerj.org/contributors/HackerSnail/badge.svg" alt="XERJ Corpus Hub contributor">
+</a>
   <a href="https://github.com/HackerSnail/NoteLume"><img alt="platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6f6f6f?style=flat-square"></a>
   <a href="https://github.com/HackerSnail/NoteLume/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-2ea44f?style=flat-square"></a>
 </p>
