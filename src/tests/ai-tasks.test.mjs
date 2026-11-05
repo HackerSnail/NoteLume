@@ -19,6 +19,8 @@ import {
   ollamaFlowFor,
   ollamaUsable,
   OLLAMA_SUGGEST_MODEL,
+  sameModelName,
+  supportsToolCalling,
   resolveAnchorPos,
   modelSupportsVision,
   aiQueryTerms,
@@ -115,8 +117,10 @@ t('buildDocContext：带标题与正文，超长截断', () => {
 })
 
 t('normalizeAiConfig：坏类型回落默认，字符串 trim + 限长；contextTokens 非负整数才收', () => {
-  assert.deepStrictEqual(normalizeAiConfig(null), { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {} })
-  assert.deepStrictEqual(normalizeAiConfig(42), { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {} })
+  // 默认形状钉住：DEFAULT_AI 加字段时这里要跟着改（toolsCap 是 Agent 能力门控档，默认 auto）
+  const DEF = { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
+  assert.deepStrictEqual(normalizeAiConfig(null), DEF)
+  assert.deepStrictEqual(normalizeAiConfig(42), DEF)
   const long = 'u'.repeat(400)
   const n = normalizeAiConfig({ baseUrl: '  https://a.b/v1  ', apiKey: long, model: 123 })
   assert.strictEqual(n.baseUrl, 'https://a.b/v1')
@@ -294,12 +298,51 @@ t('ollamaUsable：可达（含零模型）算可用，没装与没起都不能�
   assert.strictEqual(ollamaUsable(null), false)
 })
 
+t('sameModelName：大小写、:latest 与只写仓库名都算同一个', () => {
+  assert.ok(sameModelName('qwen3:1.7b', 'Qwen3:1.7b'))
+  assert.ok(sameModelName('llama3.1', 'llama3.1:latest'))
+  assert.ok(sameModelName('qwen3', 'qwen3:1.7b'), '只写仓库名要能对上带 tag 的条目')
+  assert.ok(!sameModelName('qwen3:1.7b', 'qwen3:4b'), '两边都写了 tag 就不该跨 tag 认')
+  assert.ok(!sameModelName('', 'x'))
+  assert.ok(!sameModelName('x', null))
+})
+
+t('supportsToolCalling：三态——有信号才下结论，拿不到一律 null', () => {
+  const status = { state: 'ready', models: ['qwen3:1.7b', 'tinyllama:latest'], toolModels: ['qwen3:1.7b'], hasCaps: true }
+  const local = 'http://127.0.0.1:11434/v1'
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'qwen3:1.7b' }, status), true)
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'qwen3' }, status), true)
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'tinyllama:latest' }, status), false)
+  // 列表里没这个模型（刚手输的名字、拼错）：不猜，照现状发
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'not-pulled:1' }, status), null)
+  // 远程服务没有 capabilities 信号，status 是 Ollama 的也不能套用
+  assert.strictEqual(supportsToolCalling({ baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }, status), null)
+  // 旧版 Ollama 不返 capabilities：toolModels 空表不算「都不支持」
+  const old = { state: 'ready', models: ['llama3.1:latest'], toolModels: [], hasCaps: false }
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'llama3.1' }, old), null)
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'qwen3' }, null), null)
+  // 用户强制档压过判定
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'tinyllama:latest', toolsCap: 'on' }, status), true)
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'qwen3:1.7b', toolsCap: 'off' }, status), false)
+  assert.strictEqual(supportsToolCalling({ baseUrl: local, model: 'qwen3:1.7b', toolsCap: 'on' }, null), true)
+})
+
+t('normalizeAiConfig：toolsCap 只认三档，坏值回 auto', () => {
+  assert.strictEqual(normalizeAiConfig({}).toolsCap, 'auto')
+  assert.strictEqual(normalizeAiConfig({ toolsCap: 'on' }).toolsCap, 'on')
+  assert.strictEqual(normalizeAiConfig({ toolsCap: 'off' }).toolsCap, 'off')
+  assert.strictEqual(normalizeAiConfig({ toolsCap: 'yes' }).toolsCap, 'auto')
+  assert.strictEqual(normalizeAiConfig({ toolsCap: 42 }).toolsCap, 'auto')
+})
+
 t('Ollama 引导引用的词条五种语言都齐', () => {
   const keys = [
     'ollama.missingBody', 'ollama.installBtn', 'ollama.stoppedBody', 'ollama.retryBtn',
     'ollama.pullAsk', 'ollama.pullBtn', 'ollama.pullProgress', 'ollama.pullDone', 'ollama.pullFail',
     'ai.set.ollama', 'ai.set.ollamaReady', 'ai.set.ollamaNoModels', 'ai.set.ollamaStopped', 'ai.set.ollamaMissing',
     'common.cancel', 'ai.stopped',
+    'ai.set.toolsCap', 'ai.set.toolsCap.auto', 'ai.set.toolsCap.on', 'ai.set.toolsCap.off', 'ai.set.toolsCapHint',
+    'ai.suggestHint', 'ai.suggestOnly',
   ]
   for (const loc of LOCALES) {
     const m = MESSAGES[loc.id]

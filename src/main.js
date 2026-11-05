@@ -1116,6 +1116,15 @@ function markOllamaSkipped() {
   try { localStorage.setItem('nl-ollama-skip', '1') } catch { /* 存不上就只当没记 */ }
 }
 
+// 本机 Ollama 的探测结果（{ state, models, toolModels, hasCaps }）：首启引导、设置面板那一行与
+// Agent 模式的能力门控共用一份，不在每条发送路径上再发一次 IPC
+let ollamaStatusCache = null
+
+/** 设置面板探测 / 拉取完成后回推一次，不刷新缓存的话新拉的模型下一轮仍被判「未知」 */
+function noteOllamaStatus(st) {
+  if (st && st.state) ollamaStatusCache = st
+}
+
 /** 选区 AI 入口：未配置先开设置；custom 走提示词输入框；其余直接起浮层流式请求 */
 function runSelectionAi(taskId, inst) {
   const cfg = currentAi()
@@ -5124,12 +5133,18 @@ async function boot() {
   applyStaticDom(document)
   // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
   if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
-  // —— Ollama 首启探测（主窗口只做一次）：四档各走各的引导——没装给下载页、装了没起给重新
-  // 探测、起了但零模型问一句就在「AI 设置」里拉建议模型；拒过就记住，之后不再主动打扰，
+  // —— Ollama 首启探测：探测每次启动都跑（本机 HTTP、1.2s 超时、异步不挡启动），
+  // 能力门控要的 toolModels 不能只靠「首次那一次」的缓存，否则用户第二次启动起就再也没信号了；
+  // 会打扰人的引导弹框仍只一次（nl-ollama-probed），拒过记 nl-ollama-skip，
   // 等用户在 AI 设置里主动选 Ollama 时再提示一次 ——
-  if (IS_PRIMARY_WINDOW && window.__TAURI_INTERNALS__ && !localStorage.getItem('nl-ollama-probed')) {
-    localStorage.setItem('nl-ollama-probed', '1')
-    ollamaProbe().then(ollamaGuide).catch(() => {})
+  if (IS_PRIMARY_WINDOW && window.__TAURI_INTERNALS__) {
+    ollamaProbe().then((st) => {
+      noteOllamaStatus(st)
+      if (!localStorage.getItem('nl-ollama-probed')) {
+        localStorage.setItem('nl-ollama-probed', '1')
+        return ollamaGuide(st)
+      }
+    }).catch(() => {})
   }
   // 应用设置（settings.json）：先读回再装配界面。外观状态（主题 / 颜色 / 字体 /
   // 字号 / 行高 / 自动换行 / 侧栏比例）恢复到上次保存的样子；文件不存在或损坏
@@ -5383,6 +5398,7 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     // 本机 Ollama：设置里那一行要能拉模型（进度与首启引导共用同一个实例），四档引导也复用同一段逻辑
     ollamaPull: ollamaPullCtl,
     ollamaGuide,
+    noteOllamaStatus,
   })
   aiPanel = createAiPanel({
     root: els.aiPanel,
@@ -5402,6 +5418,8 @@ els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut(
     revertAgentEdit: (record) => (editor && editor.view ? revertRange(editor.view, record) : false),
     canRevertAgentEdit: (record) => (editor && editor.view ? canRevert(editor.view.state.doc, record) : false),
     insertToDoc: (text) => insertAiMarkdown(editor, text),
+    // 能力门控的数据源：本机 Ollama 的 /api/tags 结果（没探到就回 null，面板按现状发 tools）
+    getOllamaStatus: () => ollamaStatusCache,
     // Agent 模式收尾：锚点协议（自然语言位置）优先——模型回答里 <insert after="…"> 引用的
     // 标题/段落能在文档里找到就直接插到那，找不到回退光标落点并标 missed；
     // 无锚点时按光标智能落位（写到哪补到哪），光标在标题/代码块里插到该块之后，没动过编辑器才落文末

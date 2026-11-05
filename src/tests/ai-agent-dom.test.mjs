@@ -183,6 +183,53 @@ t('Agent 回答只是一个 <empty> 占位标记：不写进文档，气泡给�
   }
 })
 
+t('能力门控：模型被判定不支持工具时不发 tools、不自动写文档，气泡说明降级', async () => {
+  const seen = []
+  const status = { state: 'ready', models: ['qwen3:1.7b', 'tinyllama:latest'], toolModels: ['qwen3:1.7b'], hasCaps: true }
+  const { panel, root, applied } = makePanel({
+    getConfig: () => ({ baseUrl: 'http://127.0.0.1:11434/v1', apiKey: '', model: 'tinyllama:latest' }),
+    getOllamaStatus: () => status,
+    streamRequest: async (messages, tools) => {
+      seen.push({ messages, tools })
+      return { text: '建议在小节末尾补一段结论。', toolCalls: null }
+    },
+  })
+  try {
+    send(root, '帮我加个结论')
+    await until(() => root.querySelector('.ai-note'))
+    assert.strictEqual(seen.length, 1)
+    assert.ok(!seen[0].tools || seen[0].tools.length === 0, '不该发 tools：' + JSON.stringify(seen[0].tools))
+    assert.ok(seen[0].messages.some((m) => m.role === 'system' && m.content.includes('不支持工具调用')), '该换成只给建议的系统提示')
+    assert.strictEqual(applied.length, 0, '降级轮不该自动写文档')
+    assert.ok(root.querySelector('.ai-note').textContent.includes('只给建议'))
+    assert.ok(root.querySelector('.ai-insert'), '没写进文档，插入入口要留着')
+  } finally {
+    panel.destroy()
+    root.remove()
+  }
+})
+
+t('能力门控强制开启档：判定不支持也照发 tools（自建网关被误判的出路）', async () => {
+  const seen = []
+  const { panel, root, applied } = makePanel({
+    getConfig: () => ({ baseUrl: 'http://127.0.0.1:11434/v1', apiKey: '', model: 'tinyllama:latest', toolsCap: 'on' }),
+    getOllamaStatus: () => ({ state: 'ready', models: ['tinyllama:latest'], toolModels: [], hasCaps: true }),
+    streamRequest: async (messages, tools) => {
+      seen.push(tools)
+      return { text: '收尾一段。', toolCalls: null }
+    },
+  })
+  try {
+    send(root, '说一句')
+    await until(() => root.querySelector('.ai-applied'))
+    assert.ok(Array.isArray(seen[0]) && seen[0].length > 0, '强制开启档该发 tools')
+    assert.strictEqual(applied.length, 1, '强制开启后照旧自动应用')
+  } finally {
+    panel.destroy()
+    root.remove()
+  }
+})
+
 t('恢复重放：locale 重建后工具行从历史重放出来，仍无空气泡', async () => {
   let round = 0
   const { panel, root } = makePanel({

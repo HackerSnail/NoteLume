@@ -7,7 +7,7 @@
 
 import { t, onLocaleChange } from './i18n.js'
 import { setIcon } from './icons.js'
-import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel, ollamaFlowFor, ollamaUsable, aiEgressVars } from './ai-tasks.js'
+import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel, ollamaFlowFor, ollamaUsable, aiEgressVars, AI_TOOL_CAP_MODES } from './ai-tasks.js'
 import { TOOL_RESULT_MAX_CHARS } from './ai-agent.js'
 import { ollamaProbe, openUrl, aiModelsList } from './tauri-bridge.js'
 
@@ -20,9 +20,10 @@ import { ollamaProbe, openUrl, aiModelsList } from './tauri-bridge.js'
  * @param {(msg: string) => void} deps.setStatus
  * @param {object} [deps.ollamaPull] 本机模型拉取编排（createOllamaPull 实例，进度可订阅）
  * @param {(status: object) => Promise<object>} [deps.ollamaGuide] 四档首启引导（main.js 一份，别抄两遍）
+ * @param {(status: object) => void} [deps.noteOllamaStatus] 把探测结果回推给 main.js 的缓存（Agent 能力门控要读它）
  */
 export function createAiSettings(deps) {
-  const { getAi, apply, flush, setStatus, ollamaPull, ollamaGuide } = deps
+  const { getAi, apply, flush, setStatus, ollamaPull, ollamaGuide, noteOllamaStatus } = deps
   let overlay = null
   let bodyEl = null
   let statusEl = null
@@ -306,7 +307,11 @@ export function createAiSettings(deps) {
   }
 
   async function probeOllama() {
-    try { ollamaState = await ollamaProbe() } catch { ollamaState = null }
+    let st = null
+    try { st = await ollamaProbe() } catch { st = null }
+    ollamaState = st
+    // 回推一份给 main.js：Agent 能力门控读的是那个缓存，不是面板里这一行
+    if (typeof noteOllamaStatus === 'function') noteOllamaStatus(st)
     paintOllama()
   }
 
@@ -426,6 +431,28 @@ export function createAiSettings(deps) {
     }, { placeholder: String(32768) })
     hint('ai.set.contextHint')
 
+    // 工具调用能力档位：Agent 模式要不要给这个模型发 tools。自动档只在本机 Ollama 报出
+    // capabilities 时才下结论，远程服务一律按现状发；猜错了用户能在这里强制改回来
+    const capRow = document.createElement('div')
+    capRow.className = 'nl-ap-row'
+    const capLabel = document.createElement('span')
+    capLabel.className = 'nl-ap-label'
+    capLabel.textContent = t('ai.set.toolsCap')
+    const capSel = document.createElement('select')
+    capSel.className = 'nl-ap-select'
+    capSel.setAttribute('aria-label', t('ai.set.toolsCap'))
+    for (const m of AI_TOOL_CAP_MODES) {
+      const o = document.createElement('option')
+      o.value = m
+      o.textContent = t('ai.set.toolsCap.' + m)
+      if (m === (draft.toolsCap || 'auto')) o.selected = true
+      capSel.appendChild(o)
+    }
+    capSel.addEventListener('change', () => { draft.toolsCap = capSel.value })
+    capRow.append(capLabel, capSel)
+    bodyEl.appendChild(capRow)
+    hint('ai.set.toolsCapHint')
+
     // 数据流向：列全每次请求会带出去的内容，再按地址是不是回环给一句结论
     section('ai.set.egressSection')
     egressListEl = hint('ai.set.dataFlow')
@@ -517,7 +544,8 @@ export function createAiSettings(deps) {
       offPull = ollamaPull.subscribe(() => {
         paintOllama()
         const c = ollamaPull.current()
-        if (c && c.state === 'done') loadModels()
+        // 拉完重拉模型列表与新模型的能力表，Agent 门控下一轮就能认出它支持不支持 tools
+        if (c && c.state === 'done') { loadModels(); probeOllama() }
       })
     }
     render()

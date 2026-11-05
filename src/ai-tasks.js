@@ -77,10 +77,13 @@ export function buildDocContext(title, text) {
 
 // —— AI 设置（settings.json 的 ai 段）——
 
-export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {} }
+export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
 
 /** 字段上限。保存前由 validateAiConfig 拒绝超长，normalizeAiConfig 只做存储层兜底截断。 */
 export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
+
+/** Agent 工具调用的档位：auto = 有能力信号才判，on = 强制发，off = 强制不发 */
+export const AI_TOOL_CAP_MODES = ['auto', 'on', 'off']
 
 /** 一条消息最多带的附图数（ai-panel.js 的附件闸与「出机说明」共用这一个数，别抄两份） */
 export const AI_MAX_IMAGES = 4
@@ -131,6 +134,8 @@ export function normalizeAiConfig(raw) {
   if (Number.isFinite(ct) && ct >= 0) s.contextTokens = Math.min(AI_CTX_WINDOW_MAX, Math.floor(ct))
   const legacy = typeof raw.apiKey === 'string' ? raw.apiKey.trim().slice(0, AI_LIMITS.apiKey) : ''
   const host = aiKeyHost(s.baseUrl)
+  // 能力门控档位：只认三个值，坏值回 auto（自动判，猜不到就按现状发 tools）
+  s.toolsCap = AI_TOOL_CAP_MODES.includes(raw.toolsCap) ? raw.toolsCap : 'auto'
   s.keys = normalizeAiKeys(raw, host, legacy)
   // apiKey 是当前地址那一格的镜像：调用方（面板 / 浮层 / IPC）照旧只读 cfg.apiKey
   s.apiKey = host ? (s.keys[host] || '') : legacy
@@ -245,6 +250,43 @@ export function aiEgressVars(cfg) {
     vaultTotal: AI_VAULT_CONTEXT_MAX_CHARS,
     imgs: AI_MAX_IMAGES,
   }
+}
+
+// —— Agent 模式的能力门控：该不该给这个模型发 tools ——
+
+/**
+ * 模型名比对：大小写、`:latest` 尾巴与只写仓库名都算同一个。
+ * 用户在设置里敲 `qwen3` 而本机装的是 `qwen3:1.7b` 是常态，严格全等会把支持的模型误判成不支持。
+ */
+export function sameModelName(a, b) {
+  const norm = (s) => String(s || '').trim().toLowerCase().replace(/:latest$/, '')
+  const x = norm(a)
+  const y = norm(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  const repo = (s) => s.split(':')[0]
+  // 一边没写 tag：按仓库名比（qwen3 ↔ qwen3:1.7b）。写了 tag 的两边不等就不算同一个
+  if (!x.includes(':') || !y.includes(':')) return repo(x) === repo(y)
+  return false
+}
+
+/**
+ * 三态返回：true 支持 / false 明确不支持 / null 没有能力信号。
+ * null 一律按现状发 tools——远程 OpenAI 兼容服务不返 capabilities，猜它不支持比不猜更糟；
+ * 旧版 Ollama 不返该字段时 hasCaps 为 false，同样不算结论（空表 ≠ 都不支持）。
+ */
+export function supportsToolCalling(cfg, status) {
+  const mode = AI_TOOL_CAP_MODES.includes(cfg && cfg.toolsCap) ? cfg.toolsCap : 'auto'
+  if (mode === 'on') return true
+  if (mode === 'off') return false
+  const model = String((cfg && cfg.model) || '').trim()
+  if (!model || !status || !Array.isArray(status.models) || !status.models.length) return null
+  // 只有本机 Ollama 的探测结果里有能力表，远程地址拿到的 models 是 /models 的名字，没有 capabilities
+  if (!isLoopbackUrl((cfg && cfg.baseUrl) || '')) return null
+  if (!status.hasCaps || !Array.isArray(status.toolModels)) return null
+  const hit = status.models.filter((m) => sameModelName(m, model))
+  if (!hit.length) return null
+  return hit.some((m) => status.toolModels.some((t) => sameModelName(t, m)))
 }
 
 // —— Agent 模式：回答落点协议（自然语言锚点） ——

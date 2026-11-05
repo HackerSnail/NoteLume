@@ -241,6 +241,11 @@ pub async fn ai_models_list(base_url: String, api_key: Option<String>) -> Result
 pub struct OllamaStatus {
     pub state: String,
     pub models: Vec<String>,
+    /// 其中 `capabilities` 带 `tools` 的那几个（Agent 模式的能力门控用）。
+    /// 旧版 Ollama 不返这个字段，拿不到时表为空——空表不等于「都不支持」，调用方得区分「空」与「没这个字段」
+    pub tool_models: Vec<String>,
+    /// 响应里到底有没有 `capabilities` 字段（旧版 Ollama / 兼容网关不返），没分时 toolModels 为空不算结论
+    pub has_caps: bool,
 }
 
 const OLLAMA_TAGS_URL: &str = "http://127.0.0.1:11434/api/tags";
@@ -258,16 +263,17 @@ pub fn ollama_state(reachable: bool, model_count: usize, installed: bool) -> &'s
     }
 }
 
-/// /api/tags 响应 → 模型名升序。`name` 缺则取 `model`；坏 JSON / 缺字段 / 空表回空 Vec
-/// （回空表与「不可达」在调用点是两回事，别在这里合并）
-pub fn parse_ollama_models(text: &str) -> Vec<String> {
+/// /api/tags 响应 → (模型名, capabilities) 升序。`name` 缺则取 `model`；坏 JSON / 缺字段回空表。
+/// capabilities 缺失的条目给空表（不算支持工具，但也不能算不支持——看 has_capabilities）。
+pub fn parse_ollama_models_caps(text: &str) -> (Vec<(String, Vec<String>)>, bool) {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
-        return Vec::new();
+        return (Vec::new(), false);
     };
     let Some(arr) = v.get("models").and_then(|m| m.as_array()) else {
-        return Vec::new();
+        return (Vec::new(), false);
     };
-    let mut names: Vec<String> = arr
+    let mut has_caps = false;
+    let mut out: Vec<(String, Vec<String>)> = arr
         .iter()
         .filter_map(|m| {
             let pick = |k: &str| {
@@ -277,11 +283,40 @@ pub fn parse_ollama_models(text: &str) -> Vec<String> {
                     .filter(|s| !s.is_empty())
             };
             // name 为空串也算没给（真见过），继续试 model
-            pick("name").or_else(|| pick("model"))
+            let name = pick("name").or_else(|| pick("model"))?;
+            let caps = match m.get("capabilities").and_then(|c| c.as_array()) {
+                Some(list) => {
+                    has_caps = true;
+                    list.iter()
+                        .filter_map(|c| c.as_str().map(|s| s.trim().to_lowercase()))
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                }
+                None => Vec::new(),
+            };
+            Some((name, caps))
         })
         .collect();
-    names.sort_by_key(|a| a.to_lowercase());
-    names
+    out.sort_by_key(|(n, _)| n.to_lowercase());
+    (out, has_caps)
+}
+
+/// 其中支持工具调用的模型名
+pub fn models_with_tools(caps: &[(String, Vec<String>)]) -> Vec<String> {
+    caps.iter()
+        .filter(|(_, list)| list.iter().any(|c| c == "tools"))
+        .map(|(n, _)| n.clone())
+        .collect()
+}
+
+/// /api/tags 响应 → 模型名升序。`name` 缺则取 `model`；坏 JSON / 缺字段 / 空表回空 Vec
+/// （回空表与「不可达」在调用点是两回事，别在这里合并）
+pub fn parse_ollama_models(text: &str) -> Vec<String> {
+    parse_ollama_models_caps(text)
+        .0
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect()
 }
 
 /// 候选可执行文件路径（纯函数：env 取值与平台名都注入，方便单测）。
@@ -342,7 +377,8 @@ fn ollama_installed() -> bool {
 /// 「起了但零模型」这一档首用户最需要的提示也就做不出来。
 pub async fn ollama_status() -> OllamaStatus {
     let mut reachable = false;
-    let mut models = Vec::new();
+    let mut caps: Vec<(String, Vec<String>)> = Vec::new();
+    let mut has_caps = false;
     if let Ok(client) = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(1200))
         .build()
@@ -350,14 +386,20 @@ pub async fn ollama_status() -> OllamaStatus {
         if let Ok(resp) = client.get(OLLAMA_TAGS_URL).send().await {
             if resp.status().is_success() {
                 reachable = true;
-                models = parse_ollama_models(&resp.text().await.unwrap_or_default());
+                let (list, got) = parse_ollama_models_caps(&resp.text().await.unwrap_or_default());
+                caps = list;
+                has_caps = got;
             }
         }
     }
+    let models: Vec<String> = caps.iter().map(|(n, _)| n.clone()).collect();
+    let tool_models = if has_caps { models_with_tools(&caps) } else { Vec::new() };
     let state = ollama_state(reachable, models.len(), ollama_installed());
     OllamaStatus {
         state: state.to_string(),
         models,
+        tool_models,
+        has_caps,
     }
 }
 
@@ -1151,6 +1193,27 @@ mod tests {
     }
 
     #[test]
+    fn ollama_capabilities_parsing() {
+        // 真机 /api/tags 形态：qwen3 带 tools + thinking，tinyllama 只有 completion
+        let real = r#"{"models":[{"name":"qwen3:1.7b","capabilities":["completion","tools","thinking"]},{"name":"tinyllama:latest","capabilities":["completion"]}]}"#;
+        let (caps, has) = parse_ollama_models_caps(real);
+        assert!(has);
+        assert_eq!(models_with_tools(&caps), vec!["qwen3:1.7b".to_string()]);
+        assert_eq!(parse_ollama_models(real), vec!["qwen3:1.7b", "tinyllama:latest"]);
+        // 旧版不返 capabilities：has_caps = false，调用方不能据此判「都不支持」
+        let old = r#"{"models":[{"name":"llama3.1:latest"}]}"#;
+        let (caps2, has2) = parse_ollama_models_caps(old);
+        assert!(!has2);
+        assert!(models_with_tools(&caps2).is_empty());
+        // capabilities 的大小写与空白归一；空串不算能力
+        let messy = r#"{"models":[{"name":"m:1","capabilities":[" Tools ",""]}]}"#;
+        assert_eq!(
+            models_with_tools(&parse_ollama_models_caps(messy).0),
+            vec!["m:1".to_string()]
+        );
+    }
+
+    #[test]
     fn ollama_state_four_tiers() {
         assert_eq!(ollama_state(true, 2, true), "ready");
         assert_eq!(ollama_state(true, 0, true), "no_models");
@@ -1237,8 +1300,16 @@ mod tests {
     #[ignore]
     fn ollama_status_live() {
         let s = tauri::async_runtime::block_on(ollama_status());
-        println!("state = {}, models = {:?}", s.state, s.models);
+        println!(
+            "state = {}, models = {:?}, toolModels = {:?}, hasCaps = {}",
+            s.state, s.models, s.tool_models, s.has_caps
+        );
         assert!(matches!(s.state.as_str(), "ready" | "no_models" | "stopped" | "missing"));
+        // 本机跑着 qwen3 的话，新版 Ollama 应该报得出 tools 能力（报不出就是字段改了形状，门控会退成「未知」）
+        if s.models.iter().any(|m| m.starts_with("qwen3")) {
+            assert!(s.has_caps, "本机有 qwen3 却没拿到 capabilities 字段");
+            assert!(!s.tool_models.is_empty(), "qwen3 应被列为支持 tools");
+        }
     }
 
     /// 真机跑一次 /api/pull 的 NDJSON 读取（手动：`cargo test --lib -- --ignored ollama_pull_live`）。

@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -37,9 +37,10 @@ let mode = (() => {
  * @param {(text: string, anchor?: {dir:'after'|'before', target:string}|null) => {ok:boolean, where?:string, missed?:boolean}|boolean} [deps.appendToDoc]
  *   Agent 模式收尾时把回答写进当前文档：有锚点先按 resolveAnchorPos 定位（未命中回退光标落点并标 missed）
  * @param {(msg: string) => void} deps.setStatus
+ * @param {() => object} [deps.getOllamaStatus] 本机 Ollama 探测结果（{ state, models, toolModels, hasCaps }），Agent 能力门控用；没有就当拿不到信号
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest, getRevertDoc } = deps
+  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest, getRevertDoc, getOllamaStatus } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -109,6 +110,7 @@ export function createAiPanel(deps) {
   let streaming = null // { reqId, el, text } 流式中的气泡（Agent 循环时 reqId 随轮次更新）
   // Agent 工具循环运行态：多轮流式请求共用一个气泡，事件按 agentReq.reqId 分发
   let agentActive = false
+  let agentUsesTools = true // 本轮 Agent 是否走工具循环；能力门控判出不支持时置 false，收尾不自动写文档
   let agentReq = null // { reqId, resolve, reject, text } 等待中的一轮流式请求
   let agentStopFlag = false
   let agentOnDelta = () => {}
@@ -540,6 +542,11 @@ export function createAiPanel(deps) {
   async function runAgentFlow(userBubble, userMsg) {
     agentActive = true
     agentStopFlag = false
+    // 能力门控：本机 Ollama 的 /api/tags 带 capabilities，明确不支持工具的模型不再发 tools，
+    // 也不再自动写文档（降级成「只给建议」）；拿不到信号（远程服务、旧版 Ollama、模型不在列表）
+    // 按现状走工具循环，不猜
+    const cap = supportsToolCalling(getConfig(), typeof getOllamaStatus === 'function' ? getOllamaStatus() : null)
+    agentUsesTools = cap !== false
     const rows = []
     let currentRow = null
     const base = []
@@ -558,12 +565,14 @@ export function createAiPanel(deps) {
       appendSkillEcho(userBubble, used) // 消息上回显用了哪些技能
       if (used.length) userMsg._skills = used // 记进 history，随存档持久化（重启后仍回显）
     }
-    base.push({ role: 'system', content: t('ai.agentHint') })
+    base.push({ role: 'system', content: agentUsesTools ? t('ai.agentHint') : t('ai.suggestHint') })
     // 循环返回的 seq = 系统前缀 + history + 本轮新增；newMsgs 的切片起点必须是
     // history 的结束位置。只记前缀长度会把旧历史当本轮新增二次追加（历史整段翻倍）
     base.push(...history.map(apiMsg))
     const histEnd = base.length
-    const tools = pickTools({ vaultReady: typeof vaultReady === 'function' ? !!vaultReady() : false })
+    const tools = agentUsesTools
+      ? pickTools({ vaultReady: typeof vaultReady === 'function' ? !!vaultReady() : false })
+      : []
     try {
       const res = await runAgentLoop({
         messages: base,
@@ -629,11 +638,18 @@ export function createAiPanel(deps) {
     const prefixLen = streaming.text.length - finalText.length
     const shown = stripInsertMarkers((prefixLen > 0 ? streaming.text.slice(0, prefixLen) : '') + body).trim()
     paintAssistant(el, shown.trim(), reasoning, false)
+    // 降级成本轮不自动应用：先给一句为什么，再给操作行（没写进文档，「插入到文档」得留着）
+    if (!agentUsesTools) {
+      const note = document.createElement('div')
+      note.className = 'ai-note'
+      note.textContent = t('ai.suggestOnly')
+      el.appendChild(note)
+    }
     const acts = body ? assistantActions(body) : null
     if (acts) el.appendChild(acts)
     // Agent 模式：回答完整结束才自动应用（手动停止说明用户想留半截自己处理）；
     // 真写进去了就摘掉「插入到文档」，避免同一段内容被插第二次
-    if (!res.stopped && !res.maxed && body) {
+    if (agentUsesTools && !res.stopped && !res.maxed && body) {
       if (autoApply(body, el, anchor) && acts) acts.hideInsert()
     }
     if (res.maxed) {
