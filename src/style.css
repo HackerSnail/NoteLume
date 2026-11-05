@@ -229,8 +229,10 @@ body {
   background: var(--bg-panel);
   font-size: 13px;
 }
-/* 工具条按钮：无边框无底色的幽灵样式，悬停才出底色（图标化后更接近 VS Code 工具条） */
-.toolbar button {
+/* 工具条按钮：无边框无底色的幽灵样式，悬停才出底色（图标化后更接近 VS Code 工具条）
+   :not(.side-corner-btn) —— 角标行 win/linux 也并进工具条，但它有自己的描边/半透明观感（见 .side-corner-btn），
+   幽灵样式选择器权重 (0,1,1) 高于 (0,1,0)，不排掉会把角标刷成无边框 */
+.toolbar button:not(.side-corner-btn) {
   border: 1px solid transparent;
   background: transparent;
   color: var(--fg);
@@ -244,10 +246,10 @@ body {
   align-items: center;
   gap: 5px;
 }
-.toolbar button:hover {
+.toolbar button:not(.side-corner-btn):hover {
   background: var(--hover);
 }
-.toolbar button.active {
+.toolbar button.active:not(.side-corner-btn) {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
@@ -611,6 +613,12 @@ body {
   z-index: 5;
   display: flex;
   gap: 3px;
+}
+/* win/linux：main.js 把这一排并进工具条后退出浮层定位，回到正常流（工具条即那条标题栏）。
+   mac 不搬，走上面 [data-mac] .side-corner 的 fixed；搬走之后 .body.inspector-on .side-corner 自然不再命中 */
+.toolbar .side-corner {
+  position: static;
+  z-index: auto;
 }
 .side-corner-btn {
   width: 26px;

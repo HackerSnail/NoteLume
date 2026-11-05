@@ -4293,6 +4293,12 @@ function menuBarRow(label, fn, opt = {}) {
 
 function initMenuBar() {
   if (IS_MAC || !els.menubar) return
+  // 角标行原本浮在 .body 右上（z-index 5），正好被不透明的窗格标签条（z-index 6）整片盖住：
+  // win/linux 有窗口内工具条，并进它右端即与 mac 标题条同一逻辑位置，不再与正文抢地方。
+  const corner = document.querySelector('.side-corner')
+  const toolbar = document.querySelector('.toolbar')
+  const winBtns = toolbar && toolbar.querySelector('.win-btns')
+  if (corner && toolbar && winBtns) toolbar.insertBefore(corner, winBtns)
   createMenuBar({
     mount: els.menubar,
     helpLabel: () => t('menu.group.help'),
