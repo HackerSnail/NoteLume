@@ -849,6 +849,11 @@ export function createEditor(opts) {
               getDoc: () => virtual.doc,
               toWin: (p) => virtual.masterToWinPos(p),
               jumpTo: (p) => jumpToPos(p),
+              // 命中已在窗内但被折叠藏起来：按窗口坐标展开（折叠集合存 master 坐标，经 foldCoord 对账）
+              unfoldAt: (p) => {
+                const open = unfoldCovering(view.state, p, foldCoord)
+                if (open) view.dispatch(open)
+              },
               getMasterState: () => virtual.masterState,
               applyMasterTr: (tr) => virtual.applyMasterTr(tr),
             }
