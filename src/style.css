@@ -3087,7 +3087,8 @@ html.nl-dragging * {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 12px 14px;
-  overflow-x: auto;
+  /* 横向滚动交给内层 code（见下方 .ProseMirror pre code）：pre 一滚，右上角的语言标签
+     就跟着正文一起滚走，长行滚到右边时标签跑出可视区。pre 不滚，标签才钉在块角上。 */
   position: relative;
   line-height: 1.5;
   font-family: var(--font-mono);
@@ -3187,6 +3188,9 @@ html.nl-dragging * {
   color: inherit;
   padding: 0;
   font-size: 0.88em;
+  /* 代码块内的横向滚动落在这里（块级滚动容器），pre 本身不滚 */
+  display: block;
+  overflow-x: auto;
 }
 .ProseMirror hr {
   border: none;
