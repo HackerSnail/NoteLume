@@ -387,12 +387,23 @@ pub const fn is_auto_end(code: i32) -> bool {
     matches!(code, 0 | 4 | 5 | 7 | 8)
 }
 
-/// 这条 Completed 该不该终止当前会话。刚 StartAsync 之后的窗口里，上一场 stop 的收尾
-/// 事件可能才派发过来，带的是 auto-ended 那类状态——按尾巴忽略，否则会把刚开好的会话
-/// 当成自终关掉。故障类（麦克风 / 网络 / 引擎）不受窗口限制：那种必须当场告诉用户，
+/// 这条 Completed 该不该终止当前会话。
+///
+/// 刚 StartAsync 之后的窗口里会收到两种收尾类事件：上一场 stop 迟到的尾巴（带
+/// Success / TimeoutExceeded 这类状态），与这一场真的秒自终。光看时间分不开——
+/// 装机版实测把尾巴挡掉的同时也把真的秒自终挡掉了，结果是 `running` 挂着 true、
+/// 引擎早停了，界面蓝着不出字，只能等用户再点一下。所以窗口内还要问一句引擎
+/// 还在不在收声：还在收 = 尾巴（不算）；已经 Idle = 真收完了（算）。
+/// 故障类（麦克风 / 网络 / 引擎）不受窗口限制：那种必须当场告诉用户，
 /// 不然界面停在听写态、下次点击只得到「已在听写中」。
-pub fn completed_counts(code: i32, just_started: bool) -> bool {
-    !(just_started && is_auto_end(code))
+pub fn completed_counts(code: i32, just_started: bool, engine_busy: bool) -> bool {
+    if !just_started {
+        return true
+    }
+    if !is_auto_end(code) {
+        return true
+    }
+    !engine_busy
 }
 
 /// 自终后引擎要不要留着。静默超时只是「这一局没说话」，session 还能接着用：留着它，
@@ -729,13 +740,16 @@ fn dictation_register_events(
         .map_err(|e| format!("听写事件挂载失败: {e}"))?;
 
     let app_h = app.clone();
+    let rec_h = recognizer.clone();
     session
         .Completed(&TypedEventHandler::<
             windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
             SpeechContinuousRecognitionCompletedEventArgs,
         >::new(move |_, e| {
             let code = e.ok().and_then(|c| c.Status()).map(|s| s.0).unwrap_or(-1);
-            // 槽位还在且标记 running、且不是上一场迟到的尾巴：才算引擎自终。
+            // 引擎此刻还在不在收声（State 是只读属性，先问再拿锁，不把 WinRT 调用带进锁里）
+            let busy = rec_h.State().map(|s| engine_is_busy(s.0)).unwrap_or(true);
+            // 槽位还在且标记 running、且这条 Completed 不是上一场迟到的尾巴：才算引擎自终。
             // （用户点停的收尾走 stop 路径，那边已先把 running 置假）
             let mut done = None;
             // 作废的引擎先取出来，锁放掉之后再 Close（WinRT 调用不进状态锁）
@@ -746,7 +760,7 @@ fn dictation_register_events(
                         .started_at
                         .map(|t| t.elapsed() < std::time::Duration::from_secs(DICT_START_GRACE_SECS))
                         .unwrap_or(false);
-                    if d.running && completed_counts(code, fresh) {
+                    if d.running && completed_counts(code, fresh, busy) {
                         d.running = false;
                         d.started_at = None;
                         let sig = dictation_done_signal(code);
@@ -989,16 +1003,23 @@ mod tests {
 
     #[test]
     fn completed_迟到的尾巴不算到新会话头上() {
-        // 正常跑了一场的自终：都算数
-        assert!(completed_counts(7, false));
-        assert!(completed_counts(10, false));
-        // 刚 start 之后的窗口里：自终类当尾巴丢掉，故障类仍当场报
+        // 不在启动窗口里：什么状态都算数
+        assert!(completed_counts(7, false, true));
+        assert!(completed_counts(7, false, false));
+        assert!(completed_counts(10, false, true));
+        // 窗口内且引擎还在收声：只能是上一场的尾巴
         for code in [0, 4, 5, 7, 8] {
-            assert!(!completed_counts(code, true), "状态 {code} 在窗口内不该算");
+            assert!(!completed_counts(code, true, true), "状态 {code} 在窗口内且还在收声，不该算");
         }
-        assert!(completed_counts(10, true));
-        assert!(completed_counts(9, true));
-        assert!(completed_counts(3, true));
+        // 窗口内但引擎已经不收了：这一场真的秒自终，必须算数——装机版实测就是因为
+        // 只按时间判，把这一拍当成尾巴挡掉，留下「蓝着不出字」的会话
+        for code in [0, 4, 5, 7, 8] {
+            assert!(completed_counts(code, true, false), "状态 {code} 引擎已停，该算");
+        }
+        // 故障类不受窗口与状态限制：当场就要报
+        assert!(completed_counts(10, true, true));
+        assert!(completed_counts(9, true, false));
+        assert!(completed_counts(3, true, true));
     }
 
     #[test]

@@ -290,12 +290,13 @@ document.querySelector('.ai-voice').click()
 4. 锁的形状是顺路发现的：`dictation_start_sync` 持 `dict_slot` 跨 `StartAsync()?.join()`，而 Completed 回调要同一把锁——回调等锁、建立会话的线程等回调，就死在那儿。两把锁分开（`DICT_OPS` 串行 start/stop/probe，状态锁只碰字段）后，又补上「启动后 2 秒窗口内的收尾类当上一场尾巴丢掉」，否则会话复用后迟到的 Completed 会把刚开好的那场关掉。
 5. 最后一轮才掉出来的：`Close()` 也不能在状态锁里做。改完锁之后有一轮验证里出现了新形状——点停止后状态不变、Rust 日志从此一行不出（`completed …` 与 `emit …` 都在锁后打），看起来像整个听写卡住。锁里剩的 WinRT 调用只剩 `recognizer.Close()`（在 Completed 回调里与 `discard_engine()` 里）——它一卡，stop 拿不到状态锁就永远不回来。改成「锁里只取走对象，锁放掉再 Close」。
 6. 同一个验证还扒出一个真卡死：那一轮 `StopAsync` 等了 12 秒没回来，而那之前所有点麦克风的操作都排在 `DICT_OPS` 后面——这就是用户视角的「彻底打不开」（为了验证是不是「复用引擎」导致的，还把 `dictation_keeps_engine` 装成「一律重建」重跑一轮，同样卡 → 排除复用，得是卡本身要上上限）。现在的处理：停止前先问 `recognizer.State()`，已经 Idle 就不等 StopAsync；真等不到（6 秒上限）就拆引擎、下一场重建，并把错误回给前端说一句「没响应」而不是静默蓝住。
+7. 最后一步是在装机版上才抵出来的：上一项那个「迟到尾巴窗口」本身会误事。日志里连着两行——`session self-terminated, status = 7 -> end/auto-ended` → `reused session` → 1 秒后 `completed status = 5 忽略（已停 / 上一场的尾巴）`，从此日志再无声响、按钮一直蓝着，直到 33 秒后点停止才灭（`引擎已经不在收声，跳过 StopAsync` 那一行就是证据：引擎早就停了，`running` 挂着 true）。原因：启动后 2 秒内只按时间判「算不算尾巴」，把这一场真的秒自终也挡掉了——而续场没收到 `end` 就不会重开。所以窗口内还要问一句 `State()`：还在收声 = 尾巴（不算），已经 Idle = 真自终（算）。改完后装机版跑 40 秒共 7 场场场当场续上，再无这种「蓝着不出字」的空档。
 
 ### 改法
 
 口径从「自终就是故障」改成「自终不是故障，是下一场的开始」：
 
-* `src-tauri/src/voice.rs`：纯函数 `dictation_done_signal`（0/4/5/7/8 → `end` + 哨兵 `auto-ended`，9 → `network-unavailable`，10 → `mic-unavailable`，其余 → `engine-error:{码}`）、`is_auto_end`、`completed_counts(code, just_started)`、`dictation_keeps_engine`、`engine_is_busy`；`dict_slot` 与 `DICT_OPS` 两把锁拆开，WinRT 调用（`StartAsync` / `StopAsync` / `CompileConstraintsAsync` / `Close`）全在锁外；复用路径 StartAsync 失败当场 `discard_engine()` 重建；`auto-ended` 不关引擎，留给下一次复用（实测复用 80ms、重建 0.5s）；阻塞等待走 `winrt_block`，启动/初始化上限 `DICT_START_WAIT_SECS=12s`、停止 `DICT_STOP_WAIT_SECS=6s`，停止前先问 `State()`。
+* `src-tauri/src/voice.rs`：纯函数 `dictation_done_signal`（0/4/5/7/8 → `end` + 哨兵 `auto-ended`，9 → `network-unavailable`，10 → `mic-unavailable`，其余 → `engine-error:{码}`）、`is_auto_end`、`completed_counts(code, just_started, engine_busy)`（窗口内靠 `State()` 区分尾巴与真的秒自终）、`dictation_keeps_engine`、`engine_is_busy`；`dict_slot` 与 `DICT_OPS` 两把锁拆开，WinRT 调用（`StartAsync` / `StopAsync` / `CompileConstraintsAsync` / `Close`）全在锁外；复用路径 StartAsync 失败当场 `discard_engine()` 重建；`auto-ended` 不关引擎，留给下一次复用（实测复用 80ms、重建 0.5s）；阻塞等待走 `winrt_block`，启动/初始化上限 `DICT_START_WAIT_SECS=12s`、停止 `DICT_STOP_WAIT_SECS=6s`，停止前先问 `State()`。
 * `src/ai-tasks.js`：`dictationDoneInfo(kind, text)` 把哨兵映射到词条；`shouldResumeDictation({text,state,now,deadline,resumes})` 四条件；`DICT_SESSION_MAX_MS = 120000`（与 Rust 的 `REC_MAX_SECS` 同源）、`DICT_RESUME_MAX = 25`（只当循环刹车）。
 * `src/ai-panel.js`：`voiceState` 多一个 `starting`，点击当场点亮并拦住第二下；`end` 分支先问要不要续场，续场时先挂新 `dictReqId` 再发 start；`result` 事件把续场计数归零。
 * 词条：`ai.voiceSessionEnd`（不再续场时说一句）、`ai.voiceNetwork`、`ai.voiceEngineErr` 五语言；`ai.voiceMicUnavailable` 从此只在真被拒时出。
@@ -304,15 +305,16 @@ document.querySelector('.ai-voice').click()
 
 * 单测：`cargo test --lib` 375 passed（voice:: +7）；`tests/ai-tasks.test.mjs` 49 passed（+2）；`tests/ai-panel-voice-ui.test.mjs` 16 passed（+7）；前端全量 94 个测试文件零失败（约 1073 条）；`npm run build` 出包正常（vite 38.53s、cargo release 1m21s、NSIS 8.24 MiB）。
 * 负向对照：同时摘掉 `toggleVoice` 与 `startVoice` 两道连点拦截 → 「一次会话只能有一个 start：2 !== 1」红；把续场判定装成永不续 → 「引擎自终不结束会话」「出字后计数归零」两条红；把 `auto-ended` 装回「麦克风故障」旧口径 → 「该说本场结束那句，实际：……拿不到麦克风」红；装回即绿。
-* 真机（`tmp/voice_ui.mjs` + `tmp/voice_stop.mjs`）：静默 40 秒共 8 场场场当场续上（约 80 毫秒）、麦克风全程蓝着不出故障提示；status 5 那档也被接住；点停止立刻灭灯，随后 20 秒会话建立次数不再增长（用户停的是 `end` + 空 text，不吃续场）；连点「开始 + 300ms 后停」最短周期不卡不残留。
-* 遗留：`StopAsync` 为什么在某些时刻不回来仍未查到底（同一轮里它又秒回），现在只有上限与 Idle 前置判定这两层兼底；`DICT_START_GRACE_SECS=2s` 窗口会把「启动后 2 秒内真的自终」误当尾巴丢，后果是那一拍不续场、下一次点击才能接上（不会卡死，因为有 State 判定）。真人开口后的转写质量仍未验——本机 WebView2 `speechSynthesis.getVoices()` 回 0 条，TTS 外放这条路取不到可识别的语音；WebAudio 噪声只能证明「引擎听得见」，证明不了「识别得对」。ASR 那一路真机一次仍未做（需服务商余额）。
+* 真机（`tmp/voice_ui.mjs` + `tmp/voice_stop.mjs`，最后一轮跑的是装机版 `d:\NoteLume\notelume.exe`，静默覆盖安装 `start /wait "" <setup.exe> /S /D=d:\NoteLume`）：静默 40 秒共 7 场场场当场续上（`reused session` 约 1 秒内接上）、麦克风全程蓝着不出故障提示；status 5 那档也被接住；点停止立刻灭灯，随后 20 秒会话建立次数不再增长（用户停的是 `end` + 空 text，不吃续场）；连点「开始 + 300ms 后停」最短周期不卡不残留。
+* 遗留：`StopAsync` 为什么在某些时刻不回来仍未查到底（同一轮里它又秒回），现在只有上限与 Idle 前置判定这两层兼底；`DICT_START_GRACE_SECS=2s` 这个窗口本身仍是时间启发法——靠 `State()` 能分对「尾巴 vs 秒自终」，但「尾巴到了而新一场恰好也已自终」这种叠映只能靠下一拍的事件纠回来。真人开口后的转写质量仍未验——本机 WebView2 `speechSynthesis.getVoices()` 回 0 条，TTS 外放这条路取不到可识别的语音；WebAudio 噪声只能证明「引擎听得见」，证明不了「识别得对」。ASR 那一路真机一次仍未做（需服务商余额）。
 
 ### 下次直接用
 
 * 遇到 WinRT 返回的状态码，先去 cargo registry 里看 `impl XxxStatus { pub const ... }`，不要按文档页的排列或直觉序猜；这一行的 value 与名字错一位，界面文案就整条错。
 * 判断听写引擎有没有收到声音：挂 `RecognitionQualityDegrading`（NoSignal 2 / TooQuiet 4）与 `StateChanged`；`voice.rs` 的 `dictation_register_diag` 默认就挂着这两条并打 stderr。
 * 别把 `AutoStopSilenceTimeout` 当连续听写的保底：设得再大（120s，回读也是 120s）引擎仍会几秒自终。能保住的只有「收到 `end` + `auto-ended` 就再 start 一场」。
-* 会话复用后，事件回调里的 `reqId` 与 `running` 都是共享单元，任何「上一场的迟到事件」都必须先问「刚 start 过没」再动手；否则会看到莫名「刚点亮就灭」。
+* 会话复用后，事件回调里的 `reqId` 与 `running` 都是共享单元，任何「上一场的迟到事件」都必须先问「刚 start 过没」再动手；否则会看到莫名「刚点亮就灭」。但「刚 start 过没」不能单独用——只用时间窗会把这一场真的秒自终也当尾巴丢，留下「蓝着不出字」的空档；窗口内还要问一句 `recognizer.State()` 还在不在收声。
+* 自己的 `running` 标记与引擎的真实状态会错位；凡「停止 / 下一场能不能起来」这类判断，都先问引擎（`State()`），不要只看自己记的旗。
 * WinRT 的 `join()` / `Close()` 一个都不能放在锁里：`join()` 不回来会把后面的命令全堵住，所以要有 `winrt_block` 这种带上限的等法；而「停止」这种操作不要相信自己的 `running` 标记，先问引擎 `State()` —— 它已经 Idle 时 `StopAsync` 根本不会回来。
 * 驱动脚本（`tmp/voice_cdp.mjs` / `voice_cdp2.mjs` / `voice_cdp3.mjs` / `voice_ui.mjs` / `voice_stop.mjs` / `voice_noise.mjs`）都在 gitignore 的 `tmp/` 下，不入库；CDP 收广播事件要 `plugin:event|listen` 带 `target: { kind: 'Any' }`；验证听写肯定要走 UI（直接调 IPC 不会触发前端的续场）。
 
