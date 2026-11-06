@@ -12,6 +12,7 @@ import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead, aiRecStart, aiRecStop, aiRecCancel, aiAsrTranscribe, aiDictationStart, aiDictationStop, aiDictationProbe, aiDictationListen } from './tauri-bridge.js'
 import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath, dictationDoneInfo, dictationAudioInfo, shouldResumeDictation, DICT_SESSION_MAX_MS } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
+import { detectIsMac } from './keymap.js'
 
 let reqSeq = 0
 function nextReqId() {
@@ -952,6 +953,10 @@ export function createAiPanel(deps) {
   // 在桌面上永远走不通。优先级见 ai-tasks.voicePath：服务商 ASR > Windows 原生听写 > Web Speech ——
 
   let voiceState = 'idle' // idle | starting（建立会话的 IPC 在飞）| rec（录等待 ASR）| native（原生听写中）| webspeech
+  // mac 桌面版把语音入口先藏掉：这条路上没配 ASR 模型时点了只会判 'none'，配了模型还要
+  // 服务商真有 /audio/transcriptions 才回得来，本机两样都凑不齐。状态机、词条、Rust 侧
+  // 全留着，Windows 的原生听写与纯网页预览（Chrome Web Speech）不受影响。
+  const hideVoice = !!window.__TAURI_INTERNALS__ && detectIsMac()
   let rec = null // Web Speech 的 SpeechRecognition 实例（浏览器版）
   let recTimer = null // 录音上限看门狗（120s 自动停并送识别）
   let committed = '' // 本次语音已定稿文本（interim 覆盖显示、final 逐段追加）
@@ -1633,7 +1638,7 @@ export function createAiPanel(deps) {
     ctxRing.circle = ringArc
     ctxRing.el.appendChild(ringSvg)
     // 整体排布：左组（模式 · 技能 · 模型）+ 右组（用量圆环 · 优化 · 语音 · 发送/停止）
-    bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, optBtn, voiceBtn, sendBtn, stopBtn)
+    bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, optBtn, ...(hideVoice ? [] : [voiceBtn]), sendBtn, stopBtn)
     composer.append(skillChips, inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)

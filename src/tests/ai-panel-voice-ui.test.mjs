@@ -289,6 +289,24 @@ await t('引擎异常带上状态码（旧代码把静默超时归成麦克风�
   assert.ok(s.includes('状态') && s.includes('3'), '要把状态码上屏，实际：' + s)
 })
 
+await t('mac 桌面版：麦克风不进底行（点了也只会判 none，入口先藏掉）', async () => {
+  const realNav = globalThis.navigator
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { platform: 'MacIntel', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15' },
+    configurable: true,
+  })
+  const M = mk({ baseUrl: 'http://x/v1', apiKey: 'k', model: 'm', asrModel: '', contextTokens: 0 })
+  await tick()
+  assert.ok(!M.root.querySelector('.ai-voice'), 'mac 上不该挂出麦克风')
+  assert.ok(M.root.querySelector('.ai-composer-bar button'), '底行其余按钮照旧')
+  Object.defineProperty(globalThis, 'navigator', { value: realNav, configurable: true })
+})
+
+await t('非 mac（Windows 桌面版那侧）麦克风照挂：藏图标不能把原生听写一起藏掉', async () => {
+  await tick()
+  assert.ok(A.mic(), '非 mac 应有麦克风入口')
+})
+
 console.log('')
 console.log(`${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

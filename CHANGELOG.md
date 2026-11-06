@@ -167,6 +167,8 @@
 
 ### Changed
 
+* **mac 桌面版把 AI 面板的语音入口藏掉**：这台机器上这条现在跑不通 —— 未配 ASR 模型时 `voicePath` 判 `'none'`，点下去只在面板内出一条提示，配了模型还要服务商真有 `/audio/transcriptions` 才回得来文字，本机两样都凑不齐，留着图标就是给人一个点不动的按钮。`src/ai-panel.js` 的 `createAiPanel` 加 `hideVoice = !!window.__TAURI_INTERNALS__ && detectIsMac()`（平台判定复用 `src/keymap.js` 的 `detectIsMac`，与 `main.js` 的 `IS_MAC` 同源），底行 `bar.append(...)` 按它决定挂不挂 `voiceBtn`。只藏入口：状态机（`voiceState` 与 `syncVoiceUi`）、五语言词条、Rust 侧 `src-tauri/src/voice.rs` 全部不动，Windows 的原生听写和纯网页预览（Chrome 的 Web Speech，那里点了真出字）不受影响，要在 mac 放开就去掉那一个条件。测试：`src/tests/ai-panel-voice-ui.test.mjs` 加 2 条——把 `navigator` 假成 mac 且 `__TAURI_INTERNALS__` 在时底行查不到 `.ai-voice` 而其余按钮照旧、非 mac 时麦克风照挂，该文件 11 passed；负向对照实测：把 `bar.append` 改回无条件挂 `voiceBtn` 跑一趟报「mac 上不该挂出麦克风」（10 passed 1 failed），改回来 11 passed；相邻四个文件 `ai-panel-ctx-ring` 4 条、`ai-panel-error` 2 条、`ai-panel-reasoning` 8 条、`keymap` 26 条全过，`npm run build` 无错。未实测：装机版里肉眼确认底行少一格；要不要在 mac 放回来——藏与放的条件目前都是平台而非「配了 ASR 模型」，改成按 `voicePath` 判定就得在装配时先探一次原生识别（`nativeAvailable()` 有 IPC 开销，当初特意留到点击时才判）。
+
 * **README 顶部导航挂官网地址**：`https://hackersnail.github.io/NoteLume/` 只出现在中英切换那一行（`<a href="…">官网</a> ·` 放在 `中文 · English` 之前）。中英两半的「快速开始」原先各加过一次，按同一个跳转目标在页面上只出现一次的口径收掉，那两处删回原文。纯文档改动，不涉及构建产物；官网地址在 GitHub Pages，页面本身在 `lumenote-promo-page` 分支。
 
 * **微信群二维码换新图**：`img/community/wechat.jpg` 删掉，换成新的 `img/community/wechat.png`（同一格位，群已换），README 中英两半的社区配图引用同步改到新文件。路径写裸形式、不带 `=Wx` 缩放后缀：仓库 markdown 里的真实配图一旦带该后缀，Gitee 与 GitHub 会把整行退化成纯文本显示（应用内拖拽缩放会把它写回来，所以这条得手动守着）。新图对着渲染出的位图解码，链接内容确实与旧图不同。未实测：手机扫码进群（二维码指向的群是否还活着、人数上限，本机验不了）。
