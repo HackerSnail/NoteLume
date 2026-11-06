@@ -287,7 +287,7 @@ Issue 和 PR 都欢迎，也欢迎任何形式的功能建议。
 <table align="center">
   <tr>
     <td width="50%" align="center"><img src="img/community/qq.jpg" alt="QQ 群二维码" width="240"><br>QQ 群 1084570261</td>
-    <td width="50%" align="center"><img src="img/community/wechat.jpg" alt="微信群二维码" width="240"><br>微信群</td>
+    <td width="50%" align="center"><img src="img/community/wechat.png" alt="微信群二维码" width="240"><br>微信群</td>
   </tr>
 </table>
 
@@ -491,7 +491,7 @@ Issues and PRs of every kind are welcome.
 <table align="center">
   <tr>
     <td width="50%" align="center"><img src="img/community/qq.jpg" alt="QQ group QR" width="240"><br>QQ group 1084570261</td>
-    <td width="50%" align="center"><img src="img/community/wechat.jpg" alt="WeChat group QR" width="240"><br>WeChat group</td>
+    <td width="50%" align="center"><img src="img/community/wechat.png" alt="WeChat group QR" width="240"><br>WeChat group</td>
   </tr>
 </table>
 
