@@ -30,6 +30,9 @@ import {
   aiContextWindow,
   AI_CTX_WINDOW_TOKENS,
   voicePath,
+  dictationDoneInfo,
+  shouldResumeDictation,
+  DICT_RESUME_MAX,
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
 import { LOCALES, MESSAGES } from '../locales/index.js'
@@ -494,10 +497,53 @@ t('voicePath：服务商 ASR 优先，原生回落，Web Speech 只在浏览器�
 
 t('voicePath 词条五语言齐全', () => {
   for (const [id, msgs] of Object.entries(MESSAGES)) {
-    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.voicePrivacy', 'ai.voiceMicUnavailable', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
+    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.voicePrivacy', 'ai.voiceMicUnavailable', 'ai.voiceSessionEnd', 'ai.voiceNetwork', 'ai.voiceEngineErr', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
       assert.ok(msgs[key], `${id} 缺 ${key}`)
     }
     assert.ok(msgs['ai.voiceErr'].includes('{err}'), `${id} ai.voiceErr 缺 {err} 占位符`)
+    assert.ok(msgs['ai.voiceEngineErr'].includes('{code}'), `${id} ai.voiceEngineErr 缺 {code} 占位符`)
+  }
+})
+
+t('shouldResumeDictation：引擎自终只在「用户没停 + 预算没完 + 循环没跑飞」时原地续场', () => {
+  const base = { text: 'auto-ended', state: 'native', now: 1000, deadline: 9000, resumes: 0 }
+  assert.strictEqual(shouldResumeDictation(base), true)
+  // 不是引擎自终（用户点停的 end / 各类故障）不续
+  assert.strictEqual(shouldResumeDictation({ ...base, text: '' }), false)
+  assert.strictEqual(shouldResumeDictation({ ...base, text: 'mic-unavailable' }), false)
+  // 用户已经点了停（状态不在 native）不续
+  assert.strictEqual(shouldResumeDictation({ ...base, state: 'idle' }), false)
+  // 总预算用完了不续——麦克风不能无限开着
+  assert.strictEqual(shouldResumeDictation({ ...base, now: 9000 }), false)
+  assert.strictEqual(shouldResumeDictation({ ...base, now: 9001 }), false)
+  // 循环刹车：到 DICT_RESUME_MAX 就不再试（引擎真的坏了时不能转圈）
+  assert.strictEqual(shouldResumeDictation({ ...base, resumes: DICT_RESUME_MAX - 1 }), true)
+  assert.strictEqual(shouldResumeDictation({ ...base, resumes: DICT_RESUME_MAX }), false)
+  // 坏数据不抛
+  assert.strictEqual(shouldResumeDictation(null), false)
+  assert.strictEqual(shouldResumeDictation({}), false)
+})
+
+t('dictationDoneInfo：Rust 的哨兵码各走各的文案，引擎自终不算故障', () => {
+  // 用户自己点的停（end 且没哨兵）不说话
+  assert.deepStrictEqual(dictationDoneInfo('end', ''), { key: null })
+  assert.deepStrictEqual(dictationDoneInfo('end', undefined), { key: null })
+  // 引擎自终：说一句「这一场结束了」，不是错误
+  assert.deepStrictEqual(dictationDoneInfo('end', 'auto-ended'), { key: 'ai.voiceSessionEnd' })
+  // 麦克风被拒与网不可用走各自的专项指引（旧代码把自终也归进麦克风那一档）
+  assert.deepStrictEqual(dictationDoneInfo('error', 'mic-unavailable'), { key: 'ai.voiceMicUnavailable' })
+  assert.deepStrictEqual(dictationDoneInfo('error', 'network-unavailable'), { key: 'ai.voiceNetwork' })
+  // 引擎异常带上状态码
+  assert.deepStrictEqual(dictationDoneInfo('error', 'engine-error:3'), { key: 'ai.voiceEngineErr', params: { code: '3' } })
+  assert.deepStrictEqual(dictationDoneInfo('error', 'engine-error:-1'), { key: 'ai.voiceEngineErr', params: { code: '-1' } })
+  // 其余（WinRT 原始文案）原样附上屏，不编造原因
+  assert.strictEqual(dictationDoneInfo('error', '听写启动失败: xxx').key, 'ai.voiceErr')
+  assert.strictEqual(dictationDoneInfo('error', '').params.err, 'unknown')
+  // 引用的词条五种语言都有
+  for (const [id, msgs] of Object.entries(MESSAGES)) {
+    for (const k of ['ai.voiceSessionEnd', 'ai.voiceNetwork', 'ai.voiceEngineErr']) {
+      assert.ok(msgs[k], `${id} 缺 ${k}`)
+    }
   }
 })
 

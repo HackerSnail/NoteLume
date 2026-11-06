@@ -10,6 +10,9 @@
 //    设置的 asrModel 字段，地址与对话同源（base_url 推导，见 asr_url）。
 // 2. Windows 原生听写（WinRT SpeechRecognizer 持续识别，事件经 nl:dictation 流回前端），
 //    未配 ASR 时的回落；依赖系统装了对应语言的语音识别包，mac/Linux 未做。
+//    听写的生命周期不看微软文档里的「静默上限」——真机实测持续识别只听得约 5 秒静默，
+//    到点就 `Completed`（状态码 7）自己收场；收场不是故障，得由前端再 start 一场接上
+//    （见 `dictation_done_signal` 的 `auto-ended`），否则用户点完麦克风还没来得及开口就没了。
 //
 // 浏览器版（Chrome）不经过本模块：前端 ai-panel.js 检测到无 Tauri IPC 时走 Web Speech API。
 
@@ -324,6 +327,8 @@ struct Dictation {
     running: bool,
     /// 当前会话 id（共享单元：会话复用后同一批事件回调要服务多个 reqId）
     rid: Arc<Mutex<String>>,
+    /// 本场 StartAsync 完成的一刻，用来认「上一场迟到的 Completed」（见 completed_counts）
+    started_at: Option<std::time::Instant>,
 }
 
 #[cfg(windows)]
@@ -332,6 +337,80 @@ static DICT: OnceLock<Mutex<Option<Dictation>>> = OnceLock::new();
 #[cfg(windows)]
 fn dict_slot() -> &'static Mutex<Option<Dictation>> {
     DICT.get_or_init(|| Mutex::new(None))
+}
+
+/// 建立 / 拆除 / 探测会话的串行锁。它和 dict_slot 分成两把是有意的：start/stop 要跨
+/// WinRT 的阻塞调用（`join()`），而 Completed 回调只碰状态锁——合成一把时回调等锁、
+/// 建立会话的那条线程等回调，整条语音链就死在那儿（此前是持状态跨 StartAsync().join()）。
+/// 加锁顺序永远是 ops → 状态，反向没有。
+#[cfg(windows)]
+static DICT_OPS: OnceLock<Mutex<()>> = OnceLock::new();
+
+#[cfg(windows)]
+fn dict_ops() -> &'static Mutex<()> {
+    DICT_OPS.get_or_init(|| Mutex::new(()))
+}
+
+/// 0x80045509 = SPERR_SPEECH_PRIVACY_POLICY_NOT_ACCEPTED
+#[cfg(windows)]
+const SPERR_SPEECH_PRIVACY: i32 = 0x80045509u32 as i32;
+
+#[cfg(windows)]
+fn is_speech_privacy(e: &windows::core::Error) -> bool {
+    e.code().0 == SPERR_SPEECH_PRIVACY
+}
+
+/// 启动后多久之内到的 Completed 算「上一场的尾巴」（秒）。见 completed_counts。
+pub const DICT_START_GRACE_SECS: u64 = 2;
+
+/// Completed 的状态码 → 发给前端的 (kind, text)。数字按 windows 0.62 的
+/// `SpeechRecognitionResultStatus` 常量表来，不是 MSDN 页面里的排列也不是直觉序：
+/// Success 0 / TopicLanguageNotSupported 1 / GrammarLanguageMismatch 2 /
+/// GrammarCompilationFailure 3 / AudioQualityFailure 4 / UserCanceled 5 / Unknown 6 /
+/// TimeoutExceeded 7 / PauseLimitExceeded 8 / NetworkFailure 9 / MicrophoneUnavailable 10。
+/// 分档口径来自真机：引擎在「没听到可用语音」时收场用的是 7（本机实测约 6 秒），
+/// 听到一段又没下文时收场用 5（本机实测约 22 秒）——两者都不是故障，而是「这一局完了、
+/// 下一局还听不听由用户决定」，所以归成一档 `auto-ended`，前端据此原地续场。
+/// 此前把 7 当成 MicrophoneUnavailable，于是每次静默自终都在界面上报「拿不到麦克风、
+/// 改用服务商 ASR」（看着像整个功能坏了），而真被拒的 10 反倒当正常收尾吞掉。
+pub fn dictation_done_signal(code: i32) -> (&'static str, String) {
+    match code {
+        0 | 4 | 5 | 7 | 8 => ("end", "auto-ended".into()),
+        9 => ("error", "network-unavailable".into()),
+        10 => ("error", "mic-unavailable".into()),
+        c => ("error", format!("engine-error:{c}")),
+    }
+}
+
+/// 引擎自己收场的那几种状态码（与 dictation_done_signal 的 0|4|5|7|8 同一口径）
+pub const fn is_auto_end(code: i32) -> bool {
+    matches!(code, 0 | 4 | 5 | 7 | 8)
+}
+
+/// 这条 Completed 该不该终止当前会话。刚 StartAsync 之后的窗口里，上一场 stop 的收尾
+/// 事件可能才派发过来，带的是 auto-ended 那类状态——按尾巴忽略，否则会把刚开好的会话
+/// 当成自终关掉。故障类（麦克风 / 网络 / 引擎）不受窗口限制：那种必须当场告诉用户，
+/// 不然界面停在听写态、下次点击只得到「已在听写中」。
+pub fn completed_counts(code: i32, just_started: bool) -> bool {
+    !(just_started && is_auto_end(code))
+}
+
+/// 自终后引擎要不要留着。静默超时只是「这一局没说话」，session 还能接着用：留着它，
+/// 前端原地续一场只要几十毫秒（重建要 0.5s）；麦克风 / 网络 / 引擎异常当它已废，整个
+/// 作废重建，否则下一次 start 就在同一条死路上再撞一回。
+pub fn dictation_keeps_engine(signal_text: &str) -> bool {
+    signal_text == "auto-ended"
+}
+
+/// 听写的静默上限（秒），取与 ASR 那路的录音上限同源。
+/// 口径说明：这是微软文档里控制「静默多久算说完」的属性，但本机实测它不是今天这个情形的
+/// 闸门——设成 120s 并回读到 120s，引擎仍在约 6 秒没有可用语音时自终（status 7）。真正
+/// 让听写能连续下去的是 Completed 后的续场，这里只是把能设的先设到位。
+pub const DICT_SILENCE_LIMIT_SECS: i64 = REC_MAX_SECS as i64;
+
+/// 秒 → WinRT TimeSpan 的步长数（100 纳秒一格，纯函数）
+pub const fn timespan_ticks(secs: i64) -> i64 {
+    secs * 10_000_000
 }
 
 #[cfg(windows)]
@@ -351,18 +430,28 @@ fn dictation_probe_sync(lang: &str) -> Result<bool, String> {
     use windows::core::HSTRING;
 
     com_init();
+    // 探测要另起一个 recognizer，与 start/stop 串行才不去抢正在跑的那场麦克风；
+    // 已经有会话在跑时直接回 true——引擎显然可用，再起一个只会徒增一次麦克风争用
+    //（那个失败会被前端缓存成 nativeDictOk = false，语音就再也排不上这条队）。
+    let _ops = dict_ops().lock().map_err(|_| "听写状态损坏")?;
+    if dict_running() {
+        return Ok(true);
+    }
     let l = Language::CreateLanguage(&HSTRING::from(lang))
         .map_err(|e| format!("语言代码无效: {e}"))?;
     let rec = match SpeechRecognizer::Create(&l) {
         Ok(r) => r,
         Err(_) => return Ok(false), // 没装该语言的语音包
     };
-    let ok = match rec.CompileConstraintsAsync() {
-        Ok(op) => match op.join() {
-            Ok(r) => r.Status().map(|s| s == SpeechRecognitionResultStatus::Success).unwrap_or(false),
-            Err(_) => false,
-        },
-        Err(_) => false,
+    let ok = {
+        let r = rec.clone();
+        winrt_block("识别引擎探测", DICT_START_WAIT_SECS, move || {
+            r.CompileConstraintsAsync().and_then(|op| op.join())
+        })
+        .ok()
+        .and_then(|inner| inner.ok())
+        .map(|rr| rr.Status().map(|s| s == SpeechRecognitionResultStatus::Success).unwrap_or(false))
+        .unwrap_or(false)
     };
     let _ = rec.Close();
     Ok(ok)
@@ -373,8 +462,7 @@ fn dictation_probe_sync(lang: &str) -> Result<bool, String> {
 /// 并回哨兵码 `speech-privacy` 让前端给本地化指引；其余原样透传。
 #[cfg(windows)]
 fn winrt_start_err(what: &str, e: windows::core::Error) -> String {
-    // 0x80045509 = SPERR_SPEECH_PRIVACY_POLICY_NOT_ACCEPTED
-    if e.code().0 == 0x80045509u32 as i32 {
+    if is_speech_privacy(&e) {
         let _ = std::process::Command::new("cmd")
             .args(["/c", "start", "", "ms-settings:privacy-speech"])
             .spawn();
@@ -383,50 +471,166 @@ fn winrt_start_err(what: &str, e: windows::core::Error) -> String {
     format!("{what}: {e}")
 }
 
+/// 建立一场会话的等待上限（秒）。
+/// 为什么要有这个数：`StartAsync()?.join()` 本身没有上限，而它跑在拿着 `DICT_OPS` 的那条
+/// 线程上——引擎真卡住时，之后每次点麦克风都排在这条锁后面，用户看到的就是「语音彻底点不动」。
+/// 超时就当场报错并把锁放掉：宁可这一次失败，不要把整个功能卡死。
+/// 真机实测确实会卡（2026-11-06）：连续四五场 5 秒自终后点停止，`StopAsync` 等了 12 秒
+/// 没回来；有了上限，界面 6 秒后回到空闲并说一句没响应，而不是蓝住再也不应。
+/// 停止的上限比启动短：点停要当场给反馈，而启动那一路带了引擎初始化，本来就要上百毫秒到秒级。
+pub const DICT_START_WAIT_SECS: u64 = 12;
+/// 停一场会话的等待上限（秒）
+pub const DICT_STOP_WAIT_SECS: u64 = 6;
+
+/// 把一场 WinRT 阻塞调用搬到独立线程上等，最多等 `secs` 秒。
+/// 超时后那条线程不会回来（它卡在 WinRT 里），但锁回来了——这是故意的取舍：
+/// 泄一条线程比泄掉整个语音输入便宜，而且下一次 start 失败时会当场作废引擎重建。
+#[cfg(windows)]
+fn winrt_block<T, F>(label: &str, secs: u64, f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel::<T>();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+        Ok(v) => Ok(v),
+        Err(_) => {
+            eprintln!("[voice] {label}超时（>{secs}s），放弃本次操作");
+            Err(format!("{label}超时（{secs} 秒），系统语音识别没响应"))
+        }
+    }
+}
+
+/// StartAsync 的两段（拿 op、等它完成）并成一个结果；错误串已经过 `winrt_start_err` 加工
+///（隐私未开时回哨兵 `speech-privacy`）。
+#[cfg(windows)]
+fn session_start(
+    session: &windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
+) -> Result<(), String> {
+    let s = session.clone();
+    winrt_block("听写启动", DICT_START_WAIT_SECS, move || s.StartAsync().and_then(|op| op.join()))
+        .and_then(|r| r.map_err(|e| winrt_start_err("听写启动失败", e)))
+}
+
+/// 引擎现在还在收声吗。按 windows 0.62 的 `SpeechRecognizerState`：Idle 0 / Capturing 1 /
+/// Processing 2 / SoundStarted 3 / SoundEnded 4 / SpeechDetected 5 / Paused 6——只有 Idle
+/// 算「没在收」。停止那一路靠它分情况，不靠自己的 running 标记（两者会错位）。
+pub const fn engine_is_busy(state: i32) -> bool {
+    state != 0
+}
+
+/// StopAsync 同样上上限；回 Err 的只是「等不到」，不是「没停」
+#[cfg(windows)]
+fn session_stop(
+    session: &windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
+    recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer,
+) -> Result<(), String> {
+    // 引擎早就自己收场了就不要等 StopAsync。真机实测：这种时候 StopAsync 永远不回来，
+    // 用户看到的就是「点了停止要等 6 秒才灭」（Completed 与本模块的 running 标记之间会有
+    // 错位：启动后短时间窗口内到的收尾类事件会被当成上一场的尾巴丢掉）。State 是只读属性，
+    // 不阻塞，问一句比等一个不会回来的操作便宜。
+    let busy = recognizer.State().map(|s| engine_is_busy(s.0)).unwrap_or(true);
+    if !busy {
+        eprintln!("[voice] 引擎已经不在收声，跳过 StopAsync");
+        return Ok(());
+    }
+    let s = session.clone();
+    winrt_block("听写停止", DICT_STOP_WAIT_SECS, move || s.StopAsync().and_then(|op| op.join()))
+        .map_err(|e| format!("{e}"))
+        .and_then(|r| r.map_err(|e| format!("听写停止失败: {e}")))
+}
+
+/// 把引擎从槽位里摘掉并关掉（下一次 start 走重建）。
+/// Close() 是 WinRT 调用，必须在状态锁外做：锁里只取走对象，否则这里一卡，
+/// stop 与 Completed 回调都拿不到状态锁，整个语音输入会从此不应答。
+#[cfg(windows)]
+fn discard_engine() {
+    let old = match dict_slot().lock() {
+        Ok(mut slot) => slot.take(),
+        Err(_) => None,
+    };
+    if let Some(d) = old {
+        let _ = d.recognizer.Close();
+    }
+}
+
+/// 现在有没有一场听写在跑
+#[cfg(windows)]
+fn dict_running() -> bool {
+    dict_slot().lock().map(|s| s.as_ref().map(|d| d.running).unwrap_or(false)).unwrap_or(false)
+}
+
 #[cfg(windows)]
 fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), String> {
     use windows::Globalization::Language;
-    use windows::Media::SpeechRecognition::{SpeechRecognitionResultStatus, SpeechRecognizer};
+    use windows::Media::SpeechRecognition::{
+        SpeechContinuousRecognitionSession, SpeechRecognitionResultStatus, SpeechRecognizer,
+    };
     use windows::core::HSTRING;
 
+    enum Plan {
+        Reuse(SpeechContinuousRecognitionSession),
+        Build,
+    }
+
     com_init();
-    let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
-    match slot.as_mut() {
-        // 会话常驻复用（2026-11-06）：每次点击销毁重建 recognizer 会跟引擎的麦克风
-        // 释放赛跑——上一场刚停、下一场立刻 Start，经常撞上 MicrophoneUnavailable(7)。
-        // 同一 session 反复 Start/Stop 是 WinRT 持续识别的设计用法；语言没变就一直复用。
-        Some(d) => {
-            if d.running {
-                return Err("已在听写中".into());
-            }
-            if d.lang != lang {
-                // 界面语言变了：旧引擎作废，走下面的重建路径
-                let _ = d.recognizer.Close();
-                *slot = None;
-            } else {
+    // 只串行 start/stop/probe；状态锁在下面只用于几行读写，WinRT 的阻塞调用一律在锁外。
+    let _ops = dict_ops().lock().map_err(|_| "听写状态损坏")?;
+
+    // 会话常驻复用：每次点击都销毁重建 recognizer 会跟引擎的麦克风释放赛跑。同一 session
+    // 反复 Start/Stop 是 WinRT 持续识别的设计用法；语言变了或引擎已不在了才重建。
+    let plan = {
+        let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
+        match slot.as_mut() {
+            Some(d) if d.running => return Err("已在听写中".into()),
+            Some(d) if d.lang == lang => {
                 *d.rid.lock().map_err(|_| "听写状态损坏")? = req_id.to_string();
-                d.session
-                    .StartAsync()
-                    .map_err(|e| winrt_start_err("听写启动失败", e))?
-                    .join()
-                    .map_err(|e| winrt_start_err("听写启动失败", e))?;
-                d.running = true;
+                Plan::Reuse(d.session.clone())
+            }
+            _ => Plan::Build,
+        }
+    };
+    if matches!(plan, Plan::Build) {
+        discard_engine(); // 语言变了或槽位已空：旧引擎不留，下一次从头建
+    }
+
+    // 复用那一路：StartAsync 失败不要把坏引擎留在槽位里——那之后每次点击都在同一条
+    // 死路上撞（用户视角＝语音彻底打不开），当场作废重建。
+    if let Plan::Reuse(session) = plan {
+        match session_start(&session) {
+            Ok(()) => {
+                let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
+                if let Some(d) = slot.as_mut() {
+                    d.running = true;
+                    d.started_at = Some(std::time::Instant::now());
+                }
                 eprintln!("[voice] reused session, req={req_id}");
                 return Ok(());
             }
+            Err(msg) => {
+                if msg == "speech-privacy" {
+                    return Err(msg);
+                }
+                eprintln!("[voice] reused session failed: {msg}；作废引擎重建");
+                discard_engine();
+            }
         }
-        None => {}
     }
 
     let l = Language::CreateLanguage(&HSTRING::from(lang))
         .map_err(|e| format!("语言代码无效: {e}"))?;
     let recognizer = SpeechRecognizer::Create(&l)
         .map_err(|e| format!("系统语音识别不可用（可能缺语言包）: {e}"))?;
-    let compiled = recognizer
-        .CompileConstraintsAsync()
-        .map_err(|e| winrt_start_err("语音引擎初始化失败", e))?
-        .join()
-        .map_err(|e| winrt_start_err("语音引擎初始化失败", e))?;
+    let compiled = {
+        let r = recognizer.clone();
+        winrt_block("语音引擎初始化", DICT_START_WAIT_SECS, move || {
+            r.CompileConstraintsAsync().and_then(|op| op.join())
+        })
+        .and_then(|inner| inner.map_err(|e| winrt_start_err("语音引擎初始化失败", e)))?
+    };
     let status_ok = compiled
         .Status()
         .map(|s| s == SpeechRecognitionResultStatus::Success)
@@ -439,29 +643,48 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
         .ContinuousRecognitionSession()
         .map_err(|e| format!("持续识别会话建立失败: {e}"))?;
 
+    // 静默上限：微软文档里「静默多久算说完」的那个开关。实测不是今天这个情形的闸门
+    //（见 DICT_SILENCE_LIMIT_SECS 的注释），但默认值确实比用户想一句话的时间短。
+    // 设完读回一次：这个属性接受写入但会被引擎自己夹到允许区间，不看回读值就不知道实际生效多少。
+    match session.SetAutoStopSilenceTimeout(windows::Foundation::TimeSpan {
+        Duration: timespan_ticks(DICT_SILENCE_LIMIT_SECS),
+    }) {
+        Ok(()) => {
+            let back = session
+                .AutoStopSilenceTimeout()
+                .map(|t| t.Duration / 10_000_000)
+                .unwrap_or(i64::MIN);
+            eprintln!("[voice] auto-stop silence limit: 请求 {DICT_SILENCE_LIMIT_SECS}s, 生效 {back}s")
+        }
+        Err(e) => eprintln!("[voice] 静默上限没设上（{e}），按系统默认继续"),
+    }
+
     let rid: Arc<Mutex<String>> = Arc::new(Mutex::new(req_id.to_string()));
     dictation_register_events(&app, &recognizer, &session, &rid)?;
-    dictation_register_state_log(&recognizer);
+    dictation_register_diag(&recognizer);
 
-    session
-        .StartAsync()
-        .map_err(|e| winrt_start_err("听写启动失败", e))?
-        .join()
-        .map_err(|e| winrt_start_err("听写启动失败", e))?;
+    if let Err(e) = session_start(&session) {
+        // 新引擎也起不来：当场就拆掉，不留一个半死的会话给下一次
+        let _ = recognizer.Close();
+        return Err(e);
+    }
 
+    let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
     *slot = Some(Dictation {
         recognizer,
         session,
         lang: lang.to_string(),
         running: true,
         rid,
+        started_at: Some(std::time::Instant::now()),
     });
+    eprintln!("[voice] new session, req={req_id}");
     Ok(())
 }
 
 /// 事件委托：hypothesis 是中间结果（interim），result 是逐段终稿，completed 收尾。
-/// 回调跑在系统线程池上，只做 emit，不碰长锁。rid 用共享单元而不是创建时快照——
-/// 会话复用后同一批回调要服务多个 reqId。
+/// 回调跑在系统线程池上，只在短锁里读改状态，不等 WinRT 的异步操作。rid 用共享单元
+/// 而不是创建时快照——会话复用后同一批回调要服务多个 reqId。
 #[cfg(windows)]
 fn dictation_register_events(
     app: &AppHandle,
@@ -512,43 +735,54 @@ fn dictation_register_events(
             SpeechContinuousRecognitionCompletedEventArgs,
         >::new(move |_, e| {
             let code = e.ok().and_then(|c| c.Status()).map(|s| s.0).unwrap_or(-1);
-            // 槽位还在且标记 running：引擎自己终止的会话（StopAsync 的正常收尾走
-            // stop 路径，已先置 running=false）。常见失败是无包身份被拒麦克风
-            // （状态码 7 MicrophoneUnavailable）——清掉死引擎，下次 start 重建。
-            let mut handled = None;
+            // 槽位还在且标记 running、且不是上一场迟到的尾巴：才算引擎自终。
+            // （用户点停的收尾走 stop 路径，那边已先把 running 置假）
+            let mut done = None;
+            // 作废的引擎先取出来，锁放掉之后再 Close（WinRT 调用不进状态锁）
+            let mut stale = None;
             if let Ok(mut slot) = dict_slot().lock() {
                 if let Some(d) = slot.as_mut() {
-                    if d.running {
+                    let fresh = d
+                        .started_at
+                        .map(|t| t.elapsed() < std::time::Duration::from_secs(DICT_START_GRACE_SECS))
+                        .unwrap_or(false);
+                    if d.running && completed_counts(code, fresh) {
                         d.running = false;
-                        let d = slot.take().unwrap();
-                        let _ = d.recognizer.Close();
+                        d.started_at = None;
+                        let sig = dictation_done_signal(code);
                         let rid = d.rid.lock().map(|s| s.clone()).unwrap_or_default();
-                        handled = Some((code, rid));
+                        if !dictation_keeps_engine(&sig.1) {
+                            stale = slot.take(); // 麦克风 / 网络 / 引擎异常：整个作废重建
+                        }
+                        done = Some((rid, sig));
                     }
                 }
             }
-            if let Some((code, rid)) = handled {
-                eprintln!("[voice] session self-terminated, status = {code}");
-                // 7 = MicrophoneUnavailable：引擎拿不到麦克风，给前端专项指引。
-                // 5 = PauseLimitReached：连续识别的累计时长上限，属正常收尾，发 end。
-                if code == 7 {
-                    emit_dictation(&app_h, &rid, "error", "mic-unavailable");
-                } else {
-                    emit_dictation(&app_h, &rid, "end", "");
-                }
+            if let Some(d) = stale {
+                let _ = d.recognizer.Close();
             }
-            // 槽位空或已停：end 由 stop 路径发，这里不重复
+            match done {
+                Some((rid, (kind, text))) => {
+                    eprintln!("[voice] session self-terminated, status = {code} -> {kind}/{text}");
+                    emit_dictation(&app_h, &rid, kind, &text);
+                }
+                None => eprintln!("[voice] completed status = {code} 忽略（已停 / 上一场的尾巴）"),
+            }
             Ok(())
         }))
         .map_err(|e| format!("听写事件挂载失败: {e}"))?;
     Ok(())
 }
 
-/// 状态变化日志（诊断：识别器是否真的在收音）
+/// 诊断日志挂载：状态变化看出「识别器到底在不在收声」，音频问题事件则把引擎看到的
+/// 音频状态直接吐出来（NoSignal / TooQuiet 这类）——没这两条时，「引擎自终」只能归给
+/// 麦克风，而 2026-11-06 那次误判就是把静默超时当成了麦克风被拒。
 #[cfg(windows)]
-fn dictation_register_state_log(recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer) {
+fn dictation_register_diag(recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer) {
     use windows::Foundation::TypedEventHandler;
-    use windows::Media::SpeechRecognition::{SpeechRecognizer, SpeechRecognizerStateChangedEventArgs};
+    use windows::Media::SpeechRecognition::{
+        SpeechRecognitionQualityDegradingEventArgs, SpeechRecognizer, SpeechRecognizerStateChangedEventArgs,
+    };
     let _ = recognizer.StateChanged(&TypedEventHandler::<
         SpeechRecognizer,
         SpeechRecognizerStateChangedEventArgs,
@@ -558,36 +792,63 @@ fn dictation_register_state_log(recognizer: &windows::Media::SpeechRecognition::
         }
         Ok(())
     }));
+    let _ = recognizer.RecognitionQualityDegrading(&TypedEventHandler::<
+        SpeechRecognizer,
+        SpeechRecognitionQualityDegradingEventArgs,
+    >::new(|_, e| {
+        if let Ok(p) = e.ok().and_then(|x| x.Problem()) {
+            eprintln!("[voice] audio problem -> {p:?} ({})", p.0);
+        }
+        Ok(())
+    }));
 }
 
 #[cfg(windows)]
 fn dictation_stop_sync(app: AppHandle) -> Result<(), String> {
-    let (rid, stop_op) = {
+    let _ops = dict_ops().lock().map_err(|_| "听写状态损坏")?;
+    let (rid, pair) = {
         let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
         match slot.as_mut() {
             Some(d) if d.running => {
                 d.running = false; // 先置位：Completed 回调看到非 running 就不按自终处理
-                let rid = d.rid.lock().map(|s| s.clone()).unwrap_or_default();
-                (rid, d.session.StopAsync().ok())
+                d.started_at = None;
+                (
+                    d.rid.lock().map(|s| s.clone()).unwrap_or_default(),
+                    Some((d.session.clone(), d.recognizer.clone())),
+                )
             }
             _ => (String::new(), None),
         }
     };
-    if let Some(op) = stop_op {
-        if let Err(e) = op.join() {
+    // StopAsync / join 都放在状态锁外：锁里只留几行字段读写
+    let mut stop_err = None;
+    if let Some((s, r)) = pair {
+        if let Err(e) = session_stop(&s, &r) {
             eprintln!("[voice] stop error: {e}");
+            stop_err = Some(e);
         }
     }
     if !rid.is_empty() {
         emit_dictation(&app, &rid, "end", "");
     }
-    // 引擎与 session 留在槽位里供下次 start 复用；引擎自终（Completed 时 running 仍
-    // 为 true）才整个作废重建
-    Ok(())
+    // 引擎与 session 留在槽位里供下次 start 复用；StartAsync 失败或引擎自终才整个作废重建
+    //
+    // 等不到停止也要把 end 发出去（上面那一行），让界面先回空闲；但错误得回给调用方——
+    // 引擎到底有没有停下来没人知道，前端据此说一句「没响应」比默不作声好。同时把引擎
+    // 拆掉：下一场从头建，不要在一个疑似卡死的 session 上再试一次 StartAsync（那会
+    // 把启动也等到超时）。
+    match stop_err {
+        Some(e) => {
+            discard_engine();
+            Err(e)
+        }
+        None => Ok(()),
+    }
 }
 
 #[tauri::command]
-pub async fn ai_dictation_start(app: AppHandle, req_id: String, lang: String) -> Result<(), String> {    #[cfg(windows)]
+pub async fn ai_dictation_start(app: AppHandle, req_id: String, lang: String) -> Result<(), String> {
+    #[cfg(windows)]
     {
         return tauri::async_runtime::spawn_blocking(move || dictation_start_sync(app, &req_id, &lang))
             .await
@@ -704,6 +965,101 @@ mod tests {
         println!("state at 10s: {:?}", rec.State());
         let _ = session.StopAsync().unwrap().join();
         let _ = rec.Close();
+    }
+
+    #[test]
+    fn dictation_done_signal_按枚举常量不按直觉序() {
+        // windows 0.62: Success 0 / AudioQualityFailure 4 / UserCanceled 5 / TimeoutExceeded 7 /
+        // PauseLimitExceeded 8 / NetworkFailure 9 / MicrophoneUnavailable 10。旧代码把 7 当成
+        // 麦克风被拒，于是「没听到语音的自终」在界面上变成「拿不到麦克风，改用服务商 ASR」。
+        // 真机实测：静默自终回 7，听到一段又没下文回 5，两者归同一档 auto-ended 交给前端续场。
+        for code in [0, 4, 5, 7, 8] {
+            assert_eq!(dictation_done_signal(code), ("end", "auto-ended".into()), "状态 {code}");
+            assert!(is_auto_end(code), "状态 {code} 该算自终");
+        }
+        assert!(!is_auto_end(10));
+        assert!(!is_auto_end(9));
+        assert_eq!(dictation_done_signal(9), ("error", "network-unavailable".into()));
+        // 真·麦克风被拒走专项指引（前端认这个哨兵）
+        assert_eq!(dictation_done_signal(10), ("error", "mic-unavailable".into()));
+        // 其余带上状态码，界面上至少能说出是哪个错
+        assert_eq!(dictation_done_signal(3), ("error", "engine-error:3".into()));
+        assert_eq!(dictation_done_signal(-1), ("error", "engine-error:-1".into()));
+    }
+
+    #[test]
+    fn completed_迟到的尾巴不算到新会话头上() {
+        // 正常跑了一场的自终：都算数
+        assert!(completed_counts(7, false));
+        assert!(completed_counts(10, false));
+        // 刚 start 之后的窗口里：自终类当尾巴丢掉，故障类仍当场报
+        for code in [0, 4, 5, 7, 8] {
+            assert!(!completed_counts(code, true), "状态 {code} 在窗口内不该算");
+        }
+        assert!(completed_counts(10, true));
+        assert!(completed_counts(9, true));
+        assert!(completed_counts(3, true));
+    }
+
+    #[test]
+    fn 静默超时留着引擎其余自终作废() {
+        // 前端靠 end/auto-ended 原地续场，复用路径比重建快一个量级
+        assert!(dictation_keeps_engine("auto-ended"));
+        assert!(!dictation_keeps_engine(""));
+        assert!(!dictation_keeps_engine("mic-unavailable"));
+        assert!(!dictation_keeps_engine("network-unavailable"));
+        assert!(!dictation_keeps_engine("engine-error:3"));
+        // 表与信号函数对得上：只有自终那几档留着引擎
+        for code in [1, 3, 6, 9, 10] {
+            assert!(!dictation_keeps_engine(&dictation_done_signal(code).1), "状态 {code} 不该留");
+        }
+        for code in [0, 4, 5, 7, 8] {
+            assert!(dictation_keeps_engine(&dictation_done_signal(code).1), "状态 {code} 该留");
+        }
+    }
+
+    #[test]
+    fn 静默上限与录音上限同源且换算成_time_span_步长() {
+        // TimeSpan.Duration 以 100 纳秒为一格
+        assert_eq!(DICT_SILENCE_LIMIT_SECS, REC_MAX_SECS as i64);
+        assert_eq!(timespan_ticks(1), 10_000_000);
+        assert_eq!(timespan_ticks(DICT_SILENCE_LIMIT_SECS), 1_200_000_000);
+        // 比微软文档里的默认值 5 秒长：用户想一句措辞就不该被当成「说完了」
+        assert!(DICT_SILENCE_LIMIT_SECS > 5);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn winrt_block_到点就报错而不是把调用方卡死() {
+        // 正常那条：回值原样拿到
+        assert_eq!(winrt_block("快", 2, || 7u8).unwrap(), 7);
+        // 卡住那条：到上限就当场报错——拿锁的线程必须能回来，否则之后每次点麦克风
+        // 都排在这条锁后面（真机见过一次这种卡死，日志里从此没有会话建立）
+        let t = std::time::Instant::now();
+        let e = winrt_block("卡住", 1, || std::thread::sleep(std::time::Duration::from_secs(30))).unwrap_err();
+        assert!(e.contains("超时"), "实际：{e}");
+        assert!(t.elapsed() < std::time::Duration::from_secs(5), "没在超时点回来");
+    }
+
+    #[test]
+    fn 会话等待上限比用户耐心短() {
+        // 启动带了引擎初始化，上限可以宽松；停止要点完就给反馈，上限必须短
+        assert_eq!(DICT_STOP_WAIT_SECS, 6);
+        assert!(DICT_STOP_WAIT_SECS < DICT_START_WAIT_SECS);
+        // 上限也不能太短：正常一场启动只要 0.1-0.6 秒，但引擎初始化慢时能到秒级
+        assert!(DICT_START_WAIT_SECS >= 8);
+    }
+
+    #[test]
+    fn 引擎状态idle才算空闲() {
+        // SpeechRecognizerState: Idle 0 / Capturing 1 / Processing 2 / SoundStarted 3 /
+        // SoundEnded 4 / SpeechDetected 5 / Paused 6
+        assert!(!engine_is_busy(0));
+        for s in [1, 2, 3, 4, 5, 6] {
+            assert!(engine_is_busy(s), "状态 {s} 该算在收声");
+        }
+        // 读不到状态时按「在收声」处理：宁可照旧等 StopAsync，不要直接当已停
+        assert!(engine_is_busy(-1));
     }
 
     #[test]

@@ -1,14 +1,15 @@
 // ai-panel-voice-ui.test.mjs —— 语音按钮的点亮 / 灭灯只跟 voiceState 走
 // 运行：cd src && node tests/ai-panel-voice-ui.test.mjs
-//
 // 约定：麦克风不录音时与同行其他图标一样是灰的（不带 .active），只有真在用
 // （录音中 / 原生听写中 / Web Speech 中）才点成 accent 蓝。CSS 只有
 // `.ai-icon-btn{color:var(--muted)}` 与 `.ai-icon-btn.active{color:var(--accent)}`
 // 两条规则，所以按钮上有没有 `.active` 就是全部判据。
-// 这里盯的是三个会把类和状态拆开的口子：
+// 这里盯的是几个会把类和状态拆开的口子：
 // ① 录音收尾（识别请求还在飞）→ 类要立刻摘掉；
 // ② 原生听写靠 Rust 的 end 事件灭灯，而停命令本身失败时那个事件永远不会来；
-// ③ 换语言重建 DOM 后新按钮默认不带类，会话还在跑就变成灰着听。
+// ③ 换语言重建 DOM 后新按钮默认不带类，会话还在跑就变成灰着听；
+// ④ 会话建立中的连点（Rust 那边只允许一场）；
+// ⑤ Rust 的各类自终哨兵该对上各自的文案，引擎自终还要能原地续场（自终不是故障）。
 
 import assert from 'node:assert'
 import { JSDOM } from 'jsdom'
@@ -81,9 +82,12 @@ let dictStopFails = false
 
 const { createAiPanel } = await import('../ai-panel.js')
 const { setLocale } = await import('../i18n.js')
+const { DICT_RESUME_MAX } = await import('../ai-tasks.js')
 
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms))
 const emit = (ev) => { for (const fn of dictHandlers) fn({ payload: ev }); return tick() }
+// 面板附件条上那条可见提示（语音的状态与错误全走它，不再只进 console）
+const noteOf = (pane) => { const n = pane.root.querySelector('.ai-att-note'); return n ? n.textContent : null }
 
 // 两个面板：A 配了 ASR 模型（走录音 + 服务商识别），B 没配（回落系统原生听写）
 const mk = (cfg) => {
@@ -184,12 +188,93 @@ await t('别的 reqId 的 end 事件不动当前状态（重新点亮后不误�
   assert.ok(B.mic().classList.contains('active'), 'reqId 不匹配的事件不该灭灯')
 })
 
-await t('停命令本身失败时就地灭灯：那种情况不会再有 end 事件', async () => {
+await t('停命令本身失败时就地灭灯并说出原因（引擎卡住时停止会等到超时）', async () => {
   dictStopFails = true
   B.mic().click() // 走 native 分支的停止
   await tick()
   assert.ok(!B.mic().classList.contains('active'), '停不下来时不该蓝住')
+  assert.ok(String(noteOf(B) || '').includes('语音识别失败'), '要说出来为什么没停成，实际：' + noteOf(B))
   dictStopFails = false
+})
+
+// —— 2026-11-06 补：探测与 StartAsync 要几百毫秒，期间按钮没反应就会招来第二次点击；
+//    Rust 那边回「已在听写中」，用户看到的就是「语音功能打不开」。同样在这一天补上的
+//    还有引擎自终的续场与停止的等待上限。
+
+await t('第一下就点亮（不等 IPC），连点两下只发一次 start', async () => {
+  cmds.length = 0
+  B.mic().click()
+  assert.ok(B.mic().classList.contains('active'), '点击当场就该点亮，不能等探测与启动跑完')
+  B.mic().click() // 同步第二下：会话还在建立中，这一下必须就地丢掉
+  await tick()
+  assert.strictEqual(cmds.filter((c) => c === 'ai_dictation_start').length, 1, '一次会话只能有一个 start')
+  assert.ok(!String(noteOf(B) || '').includes('已在听写中'), '不该出「已在听写中」，实际：' + noteOf(B))
+  await emit({ reqId: dictReqId, kind: 'end', text: '' })
+})
+
+await t('引擎自终不结束会话：原地续一场，灯不灭、也不出错', async () => {
+  B.mic().click()
+  await tick()
+  assert.ok(B.mic().classList.contains('active'), '先进入听写')
+  const rid1 = dictReqId
+  cmds.length = 0
+  await emit({ reqId: rid1, kind: 'end', text: 'auto-ended' })
+  assert.ok(B.mic().classList.contains('active'), '引擎几秒听不到可用语音就自终，这时候用户还没说完，不该灭灯')
+  assert.ok(cmds.includes('ai_dictation_start'), '要再发一次 start 把这一场接上')
+  assert.notStrictEqual(dictReqId, rid1, '续场得换新会话 id，否则新会话的收尾会被旧 id 过滤掉')
+  assert.ok(!String(noteOf(B) || '').includes('到此结束'), '续场不该收场，实际：' + noteOf(B))
+})
+
+await t('用户点停的 end 不续场：那个 text 是空的，收尾就收尾', async () => {
+  B.mic().click()
+  await tick()
+  const rid = dictReqId
+  cmds.length = 0
+  await emit({ reqId: rid, kind: 'end', text: '' })
+  assert.ok(!B.mic().classList.contains('active'), '用户自己停的就该灭灯')
+  assert.ok(!cmds.includes('ai_dictation_start'), '停完不能再偷偷开一场')
+})
+
+await t('续场有循环刹车：次数用完才真收场，并说一句结束', async () => {
+  B.mic().click()
+  await tick()
+  assert.ok(B.mic().classList.contains('active'), '重新进入听写（续场计数归零）')
+  for (let i = 0; i <= DICT_RESUME_MAX; i++) {
+    await emit({ reqId: dictReqId, kind: 'end', text: 'auto-ended' })
+  }
+  assert.ok(!B.mic().classList.contains('active'), '到刹车次数就该停下，不能围着麦克风转圈')
+  assert.ok(String(noteOf(B) || '').includes('到此结束'), '真收场时要说一句，实际：' + noteOf(B))
+})
+
+await t('续场计数在出字后归零：说一段停一段不会把刹车用完', async () => {
+  B.mic().click()
+  await tick()
+  for (let i = 0; i < DICT_RESUME_MAX - 5; i++) await emit({ reqId: dictReqId, kind: 'end', text: 'auto-ended' })
+  await emit({ reqId: dictReqId, kind: 'result', text: '今天试验一下语音输入' })
+  await tick()
+  for (let i = 0; i < DICT_RESUME_MAX - 5; i++) await emit({ reqId: dictReqId, kind: 'end', text: 'auto-ended' })
+  assert.ok(B.mic().classList.contains('active'), '说过话之后计数清零，刹车不该在这一轮用完')
+  assert.ok(String((B.root.querySelector('.ai-input') || {}).value || '').includes('语音输入'), '识别出的字要留在输入框')
+})
+
+await t('麦克风被拒与网络不可用各说一条，不再共用一句', async () => {
+  B.mic().click()
+  await tick()
+  await emit({ reqId: dictReqId, kind: 'error', text: 'network-unavailable' })
+  assert.ok(String(noteOf(B) || '').includes('联网'), '网络那一档要说联网，实际：' + noteOf(B))
+  assert.ok(!B.mic().classList.contains('active'), '出错就回空闲态')
+  B.mic().click()
+  await tick()
+  await emit({ reqId: dictReqId, kind: 'error', text: 'mic-unavailable' })
+  assert.ok(String(noteOf(B) || '').includes('拿不到麦克风'), '麦克风那一档才是专项指引，实际：' + noteOf(B))
+})
+
+await t('引擎异常带上状态码（旧代码把静默超时归成麦克风被拒，缺的就是这一档）', async () => {
+  B.mic().click()
+  await tick()
+  await emit({ reqId: dictReqId, kind: 'error', text: 'engine-error:3' })
+  const s = String(noteOf(B) || '')
+  assert.ok(s.includes('状态') && s.includes('3'), '要把状态码上屏，实际：' + s)
 })
 
 console.log('')

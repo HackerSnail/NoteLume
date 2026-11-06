@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead, aiRecStart, aiRecStop, aiRecCancel, aiAsrTranscribe, aiDictationStart, aiDictationStop, aiDictationProbe, aiDictationListen } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath, dictationDoneInfo, shouldResumeDictation, DICT_SESSION_MAX_MS } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -951,13 +951,15 @@ export function createAiPanel(deps) {
   // 桌面 WebView2 没有可用的 Web Speech 识别后端（Chrome 专属云服务），此前这条路
   // 在桌面上永远走不通。优先级见 ai-tasks.voicePath：服务商 ASR > Windows 原生听写 > Web Speech ——
 
-  let voiceState = 'idle' // idle | rec（录等待 ASR）| native（原生听写中）| webspeech
+  let voiceState = 'idle' // idle | starting（建立会话的 IPC 在飞）| rec（录等待 ASR）| native（原生听写中）| webspeech
   let rec = null // Web Speech 的 SpeechRecognition 实例（浏览器版）
   let recTimer = null // 录音上限看门狗（120s 自动停并送识别）
   let committed = '' // 本次语音已定稿文本（interim 覆盖显示、final 逐段追加）
   let dictReqId = null // 原生听写会话 id（事件广播到所有窗口，按它过滤）
   let nativeDictOk = null // 原生识别探测缓存：null 没探过 / true / false（探测有 IPC 开销）
   let offDictation = null
+  let dictDeadline = 0 // 本场听写的总预算到期时刻（自动续场不能把麦克风无限开着）
+  let dictResumes = 0 // 连续自动续场次数（真说过话就清零，它只是循环刹车）
 
   function webspeechSupported() {
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
@@ -1057,16 +1059,29 @@ export function createAiPanel(deps) {
   }
 
   async function toggleVoice() {
+    if (voiceState === 'starting') return // 探测 + StartAsync 还在飞：这一下不再发第二个 start，
+                                          // 否则 Rust 回「已在听写中」，看着像语音整个打不开
     if (voiceState === 'rec') { finishAsr(); return }
     if (voiceState === 'native') {
-      // 原生听写靠 Rust 的 end 事件收尾；停不下来（没有会话可停 / IPC 报错）就不会再有那个事件，就地灭灯
-      aiDictationStop().catch(() => { dictReqId = null; stopVoiceUi(); setStatus('') })
+      // 原生听写靠 Rust 的 end 事件收尾；停不下来（没有会话可停 / IPC 报错 / 引擎卡住
+      // 而停止等到超时）那个事件可能永远不会来，所以就地灭灯并把原因说出来
+      aiDictationStop().catch((e) => {
+        dictReqId = null
+        stopVoiceUi()
+        setStatus('')
+        showAttNote(t('ai.voiceErr', { err: errText(e) }))
+      })
     }
     else if (voiceState === 'webspeech') { if (rec) rec.stop() }
     else await startVoice()
   }
 
   async function startVoice() {
+    if (voiceState !== 'idle') return
+    // 灯在探测之前点亮：探测与建立会话要几百毫秒，期间按钮没反应用户就连点，
+    // 第二下落到 Rust 上是「已在听写中」（原生）或「已在录音中」（ASR）
+    voiceState = 'starting'
+    syncVoiceUi()
     const tauri = !!window.__TAURI_INTERNALS__
     let native = false
     if (tauri) native = await nativeAvailable()
@@ -1078,6 +1093,7 @@ export function createAiPanel(deps) {
       try {
         await aiRecStart()
       } catch (e) {
+        stopVoiceUi()
         showAttNote(t('ai.voiceErr', { err: errText(e) }))
         return
       }
@@ -1092,6 +1108,7 @@ export function createAiPanel(deps) {
         await aiDictationStart(rid, voiceLang())
       } catch (e) {
         const msg = errText(e)
+        stopVoiceUi()
         // speech-privacy：系统「在线语音识别」没开，Rust 侧已代为打开设置页。
         // 引擎本身在（probe 是过的），不污染探测缓存，用户开完开关下次点击就能用
         if (msg.includes('speech-privacy')) showAttNote(t('ai.voicePrivacy'))
@@ -1102,12 +1119,41 @@ export function createAiPanel(deps) {
       voiceState = 'native'
       syncVoiceUi()
       committed = inputEl.value
+      dictDeadline = Date.now() + DICT_SESSION_MAX_MS
+      dictResumes = 0
       showAttNote(t('ai.voiceListening'))
     } else if (path === 'webspeech') {
       startWebSpeech()
     } else {
+      stopVoiceUi()
       showAttNote(t('ai.voiceNo'))
     }
+  }
+
+  /** 引擎自终后原地续一场：先挂上新 reqId 再发 start——反过来写的话，新会话的收尾事件
+   *  可能比本地 id 先到，被 reqId 过滤掉，按钮就蓝住不灭（引擎已经停了） */
+  async function resumeDictation() {
+    const rid = 'dict-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
+    dictReqId = rid
+    try {
+      await aiDictationStart(rid, voiceLang())
+      return true
+    } catch (e) {
+      dictReqId = null
+      dictDeadline = 0
+      stopVoiceUi()
+      showAttNote(t('ai.voiceErr', { err: errText(e) }))
+      return false
+    }
+  }
+
+  /** 该续就续：回 true 表示这一场 end 已被续场吃掉，调用方不再收尾 */
+  async function maybeResumeDictation(text) {
+    if (!shouldResumeDictation({
+      text, state: voiceState, now: Date.now(), deadline: dictDeadline, resumes: dictResumes,
+    })) return false
+    dictResumes += 1
+    return await resumeDictation()
   }
 
   // —— 输入卡浮层小菜单（模式切换 / 技能共用）：点外 / Esc 关闭，贴底往上弹 ——
@@ -1670,7 +1716,7 @@ export function createAiPanel(deps) {
       else offEvent = un
     })
     // 原生听写事件：事件广播到所有窗口，按本会话 reqId 过滤
-    aiDictationListen((ev) => {
+    aiDictationListen(async (ev) => {
       if (!ev || ev.reqId !== dictReqId) return
       if (ev.kind === 'hypothesis') {
         const interim = String(ev.text || '')
@@ -1678,18 +1724,28 @@ export function createAiPanel(deps) {
         autosize()
       } else if (ev.kind === 'result') {
         appendVoiceText(ev.text)
+        dictResumes = 0 // 真说过话：循环刹车松掉，下一段静默还可以接着续
       } else if (ev.kind === 'end') {
+        // 引擎几秒听不到可用语音就会自己收场（真机实测 status 7 约 6 秒、status 5 约 22 秒），
+        // 而 Rust 对这一档把引擎留着了：就地续一场，灯不灭，用户看不出中间断过。
+        // 不续的情形（用户已停 / 预算用完 / 循环跑飞）才走下面的收尾。
+        if (await maybeResumeDictation(ev.text)) return
         dictReqId = null
+        dictDeadline = 0
         inputEl.value = committed
         autosize()
         stopVoiceUi()
         setStatus('')
+        // 引擎自己收的场也走 end，靠 text 分：自终说一句就够，不是故障
+        const info = dictationDoneInfo('end', ev.text)
+        if (info.key) showAttNote(t(info.key, info.params))
       } else if (ev.kind === 'error') {
         dictReqId = null
         stopVoiceUi()
-        // mic-unavailable：无包身份的应用在新版 Windows 上被语音引擎拒了麦克风
-        if (ev.text === 'mic-unavailable') showAttNote(t('ai.voiceMicUnavailable'))
-        else showAttNote(t('ai.voiceErr', { err: ev.text || t('common.unknownErr') }))
+        // 哨兵码由 voice.rs 的 dictation_done_signal 给齐：麦克风被拒 / 网络不可用 /
+        // 引擎异常都各有句话说，不能统一成一句「拿不到麦克风」
+        const info = dictationDoneInfo('error', ev.text)
+        showAttNote(t(info.key, info.params))
       }
     }).then((un) => {
       if (eventStreamDisposed) un()
@@ -1725,7 +1781,8 @@ export function createAiPanel(deps) {
       if (voiceState === 'rec') {
         if (recTimer) clearTimeout(recTimer)
         aiRecCancel().catch(() => {})
-      } else if (voiceState === 'native') {
+      } else if (voiceState === 'native' || voiceState === 'starting') {
+        // starting 也得停：不然 start 随后成了，会话挂在后台收音，面板已经没了
         aiDictationStop().catch(() => {})
       } else if (voiceState === 'webspeech' && rec) {
         rec.stop()

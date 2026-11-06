@@ -196,6 +196,47 @@ export function voicePath(cfg, env) {
   return 'none'
 }
 
+/**
+ * 原生听写的一场结束时 Rust 给的信号 → 该上屏哪条文案（纯函数，可单测）。
+ * kind 是 'end' | 'error'，text 是 voice.rs 里 dictation_done_signal 给的哨兵码，两头是
+ * 同一张表的两侧。关键口径：`auto-ended` 是引擎自己收的场（没听到语音 / 停顿到期 /
+ * 音频质量不够），不是故障；不单独说一句就只是静默灭灯。真拿不到麦克风才给「改用
+ * 服务商转写」的专项指引。回 { key, params }，key 为 null 表示不说话（用户自己点的停）。
+ * 未知形态落 ai.voiceErr 并原样把串附上屏，不编造原因。
+ */
+export function dictationDoneInfo(kind, text) {
+  const s = String(text || '')
+  if (kind === 'end') {
+    return s === 'auto-ended' ? { key: 'ai.voiceSessionEnd' } : { key: null }
+  }
+  if (s === 'mic-unavailable') return { key: 'ai.voiceMicUnavailable' }
+  if (s === 'network-unavailable') return { key: 'ai.voiceNetwork' }
+  const m = /^engine-error:(-?\d+)$/.exec(s)
+  if (m) return { key: 'ai.voiceEngineErr', params: { code: m[1] } }
+  return { key: 'ai.voiceErr', params: { err: s || 'unknown' } }
+}
+
+/** 原生听写一场的总预算（毫秒）：与 Rust 侧 ASR 那路的录音上限同源（voice.rs 的
+ *  REC_MAX_SECS），免得麦克风一直开着收声。 */
+export const DICT_SESSION_MAX_MS = 120000
+/** 连续自动续场的次数闸。真机实测：静默时引擎每约 5 秒自终一场，120 秒预算走完要 24 次左
+ *  右，所以这个数比预算大一点——日常由 DICT_SESSION_MAX_MS 定终点，这一档只当循环刹车：
+ *  引擎当场就死（续一次死一次）时不能无限转圈。 */
+export const DICT_RESUME_MAX = 25
+
+/**
+ * 引擎自终后要不要原地续一场（纯函数，可单测）。四个条件全过才续：
+ * 信号是引擎自终（auto-ended）、用户没点停（还在 native 态）、总时长还在预算内、循环没跑飞。
+ * Rust 那侧对这一档留着引擎，所以续场只是一次 start IPC（本机实测约 80ms，重建要 0.5s）。
+ */
+export function shouldResumeDictation(s) {
+  if (!s) return false
+  return s.text === 'auto-ended'
+    && s.state === 'native'
+    && s.now < s.deadline
+    && s.resumes < DICT_RESUME_MAX
+}
+
 /** 零模型时建议拉的本地模型：中文强、体积 1.3 GB 量级、capabilities 带 tools（本机 qwen3:1.7b 实测），
  *  小内存机器也跑得动。换型号只改这里——预设行与首启引导的文案都跟着它走。
  *  与 AI_PRESETS 的 ollama 行同一个值：选了本地预设又建议另一个模型，两个口径迟早漂移。 */
