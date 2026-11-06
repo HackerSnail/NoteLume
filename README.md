@@ -12,7 +12,7 @@
   <a href="https://github.com/HackerSnail/NoteLume"><img alt="platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6f6f6f?style=flat-square"></a>
   <a href="https://github.com/HackerSnail/NoteLume/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-2ea44f?style=flat-square"></a>
 </p>
-官网： <a href="https://hackersnail.github.io/NoteLume/ "></a>
+
 <p align="center">
   <a href="#中文">中文</a> ·
   <a href="#english">English</a>
