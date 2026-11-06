@@ -2,7 +2,7 @@
 
 <p align="center">
   为「嫌 <strong>Typora</strong> 没组织、嫌 <strong>Obsidian</strong> 太重」的人做的本地 Markdown 编辑器。<br>
-  约 6 MB 的单体安装包，编辑手感第一；你的笔记就是一堆标准 <code>.md</code> 文件躺在自己的文件夹里：秒开、离线、零格式锁定。
+  约 8–9 MB 的单体安装包，编辑手感第一；你的笔记就是一堆标准 <code>.md</code> 文件躺在自己的文件夹里：秒开、离线、零格式锁定。
 </p>
 
 <p align="center">
@@ -110,15 +110,16 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 
 * ✍️ **所写即所得**：Markdown 与富文本双向无损往返；KaTeX 公式、Mermaid 图表、callout 卡片、合并单元格表格、块级裸 HTML、脚注、代码块子语言高亮，全都在渲染态直接编辑
 * ✂️ **粘贴自动清理**：从 AI 对话框、飞书、公众号复制的内容直接粘——代码块头部的「复制」按钮、行号装订线、空段落串联在进编辑器前就摘掉，不用粘完再手修第二次
-* 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 力导向图谱、全库搜索、版本快照一键回滚；文件树右键直接在系统文件管理器里显示
-* 🔒 **完全本地、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；整库可一键导出为标准 Markdown 副本（callout、`![[嵌入]]`、`[[双链]]` 写出时降级），任何编辑器能开；不联网也绝不上传，删除进系统回收站
+* 🗂 **文件夹即知识库**：`[[wikilink]]` 输入补全与悬浮预览、`#tag` 全局视图、双向链接面板、Canvas 便签板与力导向知识图谱、全库搜索、版本快照一键回滚；文件树右键直接在系统文件管理器里显示
+* 🔒 **本地优先、零锁定**：纯 GFM 文件，Typora / Obsidian 可直接打开同一份库；整库可一键导出为标准 Markdown 副本（callout、`![[嵌入]]`、`[[双链]]` 写出时降级），任何编辑器能开；删除进系统回收站。默认不联网——只有你在「AI 设置」里接入服务商时，请求才会把当前文档片段、检索命中的笔记与会话历史发到该地址（本机 Ollama 不出机），发什么在设置页「数据流向」逐项列清
+* 🤖 **AI 可选接入，不配也能用**：选区润色 / 续写 / 中英互译 / 摘要 / 自定义提示词，侧栏对话可带当前文档与全库检索；Agent 模式能查库、读笔记、提议改写，自动写入可整轮撤销。任意 OpenAI 兼容服务与本地 Ollama 共用一套设置，模型名自动检测；不配置时应用完全离线
 * 📥 **Word 导入不坏版式**：`.docx` 拖进来，纯 Rust 离线直读 OOXML——标题、列表、超链接、合并单元格表、脚注、图片、公式尽量保真；落库前可视化校对（左预览右源码、降级项列清），图片按内容全库去重，反向还能导出 .docx
 * ⚡ **Quarkdown 引擎（对官方 stdlib 差集清零）**：`.var` / `.function` / `.if` / `.foreach` 这套 Turing-complete 语法直接写进 md，快照式预览不碰源文件；约 200 个内置函数——正则替换、表格计算、CSV/JSON 读取、Mermaid 与 xychart 图表、交叉引用与编号系统（`.numbering` 格式串）、BibTeX 参考文献、多语言本地化、emoji 短代码、Bootstrap 图标、`Libraries/` 库目录、atoms 包安装、`.extend` 函数扩展。不用 Quarkdown 语法的文档仍是纯 GFM，Typora / Obsidian 照常打开
 * 🎬 **导出一族**：单篇 / 整库幻灯片（自包含 reveal.js HTML，整库按文档分章）、整站静态站、打印排版（Paged.js 预分页：目录页、页码与页眉、H1 分页、封面）、Word .docx、标准 Markdown 副本（Obsidian 私有语法降级）
-* 🔄 **Git 内置**：状态 / 历史 / 单文件 diff / 提交 / 推送 / 合并冲突解决全部内建（`git2` 引擎，没装 git 也能 fetch/pull）
+* 🔄 **Git 内置**：状态 / 历史 / 单文件 diff / 提交 / 推送 / 合并冲突解决全部内建（系统 git 与内嵌 libgit2 双引擎，没装 git 也能 fetch/pull）
 * 🌐 **网页剪藏**：浏览器扩展（`extension/`，MV3）把网页正文 POST 给本机服务，Rust 按模板落盘、图片可选本地化进 `assets/`，并自动在文末关联库内相关笔记；只绑 127.0.0.1，只收扩展来源的请求
 * 🧩 **功能开关与五语言**：`[[toc]]` 目录块、CSV 表格渲染、emoji 短代码、标题自动编号都是设置里的开关项，全关即标准模式；界面内置简体中文 / 繁體中文 / English / Français / Deutsch
-* 📦 **轻**：macOS DMG 约 6 MB；插件系统（`.notelume-plugins/`）内建
+* 📦 **轻**：macOS DMG 与 Windows 安装包都在 8–9 MB；插件系统（`.notelume-plugins/`）内建
 
 ### 快速开始
 
@@ -197,7 +198,7 @@ node scripts/wrap-mac-dmg.mjs                                           # 补 ad
 把浏览器里的网页正文存进知识库：按模板落盘成标准 md，图片进 `assets/`，文末自动关联库内相关笔记。
 
 1. **装扩展**：Edge 地址栏输 `edge://extensions`，打开左下角「开发人员模式」，点「加载已解压缩的扩展」选仓库里的 `extension/` 目录（Chrome 是 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」）。加载后建议在工具栏拼图菜单里把「NoteLume 剪藏」固定出来。
-2. **NoteLume 里开服务**：mac 从菜单栏「NoteLume → 网页剪藏设置」进入，Windows / Linux 走工具条「更多 → 网页剪藏设置」；勾选「启用剪藏服务」后保存，状态栏显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
+2. **NoteLume 里开服务**：mac 从菜单栏「NoteLume → 网页剪藏设置」进入，Windows / Linux 走工具条「更多 → 网页剪藏设置」；勾选「启用剪藏服务」后保存，设置面板底部显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
 3. **扩展里填地址**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），「测试连接」应回「连接正常 · 已打开知识库」。填这一项就够了。
 4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段（用内置 highlight 模板落盘，来源行进引用块）。
 
@@ -226,7 +227,7 @@ mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置�
 | `Ctrl+Shift+P`                | 命令面板（模糊搜命令 / 文档）       |
 | `Ctrl+E`                      | 正文与 Markdown 源码整篇互切    |
 | `Ctrl+F`                      | 本篇文档内查找                |
-| `Ctrl+H`                      | 本篇文档内查找替换              |
+| `Ctrl+H`（mac：`⌥⌘F`）        | 本篇文档内查找替换（mac 的 ⌘H 归系统「隐藏」） |
 | `Ctrl+Shift+F`                | 聚焦侧栏全局搜索               |
 | `Ctrl+Shift+V`                | 粘贴为纯文本                 |
 | `Ctrl+Shift+I`                | 插入图片（自动入库 `assets/`）   |
@@ -314,15 +315,16 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 
 * ✍️ **True WYSIWYG**: lossless Markdown round-trip; edit KaTeX math, Mermaid diagrams, callouts, merged-cell tables, literal HTML blocks, footnotes, and syntax-highlighted code blocks right in the rendered view
 * ✂️ **Paste auto-clean**: content copied from AI chat apps, Feishu, or WeChat pastes clean — copy buttons, line-number gutters, and chains of empty paragraphs are stripped before the editor sees them, no second-pass fixing
-* 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, Canvas-based knowledge graph, vault-wide search, snapshot history with one-click rollback; right-click any tree entry to reveal it in your system file manager
-* 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; export the whole vault as a plain-Markdown copy with Obsidian-specific syntax (callouts, `![[embeds]]`, `[[wikilinks]]`) downgraded on the way out, readable in any editor; nothing ever leaves your machine; deletions go to the system trash
+* 🗂 **A folder is a vault**: `[[wikilink]]` autocomplete with hover preview, global tag view, backlinks panel, a Canvas board and a force-directed knowledge graph, vault-wide search, snapshot history with one-click rollback; right-click any tree entry to reveal it in your system file manager
+* 🔒 **Local-first, no lock-in**: pure GFM — Typora and Obsidian can open the same vault; export the whole vault as a plain-Markdown copy with Obsidian-specific syntax (callouts, `![[embeds]]`, `[[wikilinks]]`) downgraded on the way out, readable in any editor; deletions go to the system trash. Offline by default — only when you configure a provider under AI settings does a request carry the current document excerpt, retrieved notes and chat history to that address (a local Ollama stays on the machine), and the "Data flow" section lists exactly what is sent
+* 🤖 **AI is optional, never required**: polish / continue / translate / summarize / custom prompts on a selection; the sidebar chat can carry the current document plus vault-wide search; Agent mode can query the vault, read notes and propose edits, with auto-applied changes undoable as a whole. Any OpenAI-compatible service and a local Ollama share one settings page with model auto-detection — with no provider configured the app stays fully offline
 * 📥 **Word imports intact**: drop in a `.docx` and a pure-Rust OOXML reader maps it to Markdown offline — headings, lists, hyperlinks, merged-cell tables, footnotes, images, even math survive; proofread in a side-by-side review modal before it lands in your vault, with images deduplicated by content hash; export back to .docx works too
 * ⚡ **Quarkdown engine (feature-complete against the official stdlib)**: Turing-complete `.var` / `.function` / `.if` / `.foreach` macros live right in your Markdown, snapshot-previewed without touching the source; about 200 builtins — regex replace, table computation, CSV/JSON readers, Mermaid & xychart diagrams, cross-references and numbering (`.numbering` formats), BibTeX bibliographies, localization tables, emoji shortcodes, Bootstrap icons, a `Libraries/` folder, atoms package installs, and `.extend` function wrapping. Documents without Quarkdown syntax stay pure GFM that Typora and Obsidian open as-is
 * 🎬 **Export family**: single-document and whole-vault slide decks (self-contained reveal.js HTML, one chapter per document), static-site export, paged print & PDF (Paged.js pre-pagination: TOC page, page numbers & running heads, H1 page breaks, cover page), Word .docx, and a plain-Markdown vault copy with Obsidian-specific syntax downgraded
-* 🔄 **Git built in**: status / history / per-file diff / commit / push / merge-conflict resolution, powered by embedded `git2` — works even without a system Git installed
+* 🔄 **Git built in**: status / history / per-file diff / commit / push / merge-conflict resolution, using system Git when present and embedded libgit2 otherwise — works even without a system Git installed
 * 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, can localize images under `assets/` (off by default), and appends links to related notes — loopback-only, extension-origin gated
 * 🧩 **Feature flags & five languages**: `[[toc]]` blocks, CSV table rendering, emoji shortcodes, and heading numbering are all toggles — everything off means standard mode; the UI ships in 简体中文 / 繁體中文 / English / Français / Deutsch
-* 📦 **Featherweight**: the macOS DMG is about 6 MB; a plugin system (`.notelume-plugins/`) comes standard
+* 📦 **Featherweight**: the macOS DMG and the Windows installer are both in the 8–9 MB range; a plugin system (`.notelume-plugins/`) comes standard
 
 ### Quick Start
 
@@ -401,7 +403,7 @@ About 200 builtins: regex replace, CSV / JSON readers, table computation, BibTeX
 Save web pages into your vault: content lands as standard Markdown per your template, images go to `assets/`, and related notes are linked at the end of the clip.
 
 1. **Install the extension**: open `edge://extensions` (Chrome: `chrome://extensions`), turn on developer mode, click "Load unpacked" and pick the `extension/` folder in this repo. Pin "NoteLume 剪藏" to the toolbar from the puzzle menu.
-2. **Start the server in NoteLume**: on macOS use the menu bar → NoteLume → Web clipping settings; on Windows / Linux use toolbar → More → Web clipping settings. Check "Enable clipping server" and save. The status bar shows the actual address (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`), how many related notes to link, and the two switches for image localization and whole-page fallback.
+2. **Start the server in NoteLume**: on macOS use the menu bar → NoteLume → Web clipping settings; on Windows / Linux use toolbar → More → Web clipping settings. Check "Enable clipping server" and save; the settings panel shows the running address at its foot (default `http://127.0.0.1:3210`) — the port may shift if 3210 is taken. The same panel picks the template (a Markdown file under `Templates/`), the target folder (default `Clippings/`), the filename pattern (default `{{date}}-{{title}}`), how many related notes to link, and the two switches for image localization and whole-page fallback.
 3. **Point the extension at it**: right-click the extension icon → Options, fill in the address shown in NoteLume (default `http://127.0.0.1:3210`), then "Test connection" should report OK with an open vault. That's the only field you need — no token.
 4. **Clip**: click the pinned icon for the whole page, or select text first and right-click → "剪藏选中内容到 NoteLume" for just the selection (which lands through the built-in highlight template, with the source as a block quote).
 
@@ -430,7 +432,7 @@ On macOS, `Ctrl` means `⌘`. Everything below follows Typora / Obsidian convent
 | `Ctrl+Shift+P`                | Command palette (fuzzy-search commands & docs)            |
 | `Ctrl+E`                      | Toggle between WYSIWYG and Markdown source                |
 | `Ctrl+F`                      | Find in document                                          |
-| `Ctrl+H`                      | Find & replace in document                                |
+| `Ctrl+H` (mac: `⌥⌘F`)          | Find & replace in document (⌘H is taken by system Hide)  |
 | `Ctrl+Shift+F`                | Focus vault-wide search                                   |
 | `Ctrl+Shift+V`                | Paste as plain text                                       |
 | `Ctrl+Shift+I`                | Insert image (auto-saved to `assets/`)                    |
