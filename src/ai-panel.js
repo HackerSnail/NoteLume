@@ -957,7 +957,11 @@ export function createAiPanel(deps) {
   // 桌面版（mac / Windows / Linux）把语音入口整个藏掉：三条路现在都没跑通——mac 没配 ASR 模型时
   // 点了只会判 'none'，配了模型还要服务商真有 /audio/transcriptions 才回得来；Windows 那条原生
   // 听写与 Linux 也各自有问题。状态机、词条、Rust 侧全留着，纯网页预览（Chrome Web Speech）不受影响。
-  const hideVoice = voiceUiHidden !== undefined ? !!voiceUiHidden : !!window.__TAURI_INTERNALS__
+  const desktopApp = !!window.__TAURI_INTERNALS__
+  const hideVoice = voiceUiHidden !== undefined ? !!voiceUiHidden : desktopApp
+  // 「AI 优化输入」同一口径藏掉：这个钮是就地润色的唯一入口（`buildTaskMessages('polish')`
+  // 全仓库只有这一处调用），所以藏掉就等于桌面版没有这条功能，不是挪到别处还能用。
+  const hideOptimize = desktopApp
   let rec = null // Web Speech 的 SpeechRecognition 实例（浏览器版）
   let recTimer = null // 录音上限看门狗（120s 自动停并送识别）
   let committed = '' // 本次语音已定稿文本（interim 覆盖显示、final 逐段追加）
@@ -1575,7 +1579,7 @@ export function createAiPanel(deps) {
     // 底行：左侧模式菜单 + AI 优化输入 + 语音输入，右侧圆形发送/停止（互斥同位）；图片只收粘贴
     optBtn = document.createElement('button')
     optBtn.type = 'button'
-    optBtn.className = 'ai-icon-btn'
+    optBtn.className = 'ai-icon-btn ai-optimize'
     optBtn.title = t('ai.optimize')
     optBtn.setAttribute('aria-label', t('ai.optimize'))
     setIcon(optBtn, 'pen')
@@ -1639,9 +1643,9 @@ export function createAiPanel(deps) {
     ctxRing.circle = ringArc
     ctxRing.el.appendChild(ringSvg)
     // 整体排布：左组（模式 · 技能 · 模型）+ 右组（用量圆环 · 优化 · 语音 · 发送/停止）。
-    // 圆环那条 margin-left:auto 吃掉中段留白，所以右组恒贴右边缘：语音入口藏掉后
-    // 圆环与优化钮各自右移一格补上，不会在发送钮左边留出一个空位。
-    bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, optBtn, ...(hideVoice ? [] : [voiceBtn]), sendBtn, stopBtn)
+    // 圆环那条 margin-left:auto 吃掉中段留白，所以右组恒贴右边缘：优化与语音藏掉后
+    // 圆环自己右移补位，不会在发送钮左边留出两个空档。
+    bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, ...(hideOptimize ? [] : [optBtn]), ...(hideVoice ? [] : [voiceBtn]), sendBtn, stopBtn)
     composer.append(skillChips, inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)

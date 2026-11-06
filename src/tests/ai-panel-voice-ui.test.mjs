@@ -10,8 +10,9 @@
 // ③ 换语言重建 DOM 后新按钮默认不带类，会话还在跑就变成灰着听；
 // ④ 会话建立中的连点（Rust 那边只允许一场）；
 // ⑤ Rust 的各类自终哨兵该对上各自的文案，引擎自终还要能原地续场（自终不是故障）。
-// 桌面版（三个平台）默认把麦克风入口藏掉了，所以这一批用例都显式传 voiceUiHidden:false
-// 把入口摆回来——藏的是图标，不是那条走 IPC 的路，路本身还得测。
+// 桌面版（三个平台）默认把麦克风与优化输入两个入口藏掉了，所以这一批用例都显式传
+// voiceUiHidden:false 把麦克风摆回来——藏的是图标，不是那条走 IPC 的路，路本身还得测。
+// （优化钮没有这种路要测，就没开接缝，桌面版一律不挂。）
 
 import assert from 'node:assert'
 import { JSDOM } from 'jsdom'
@@ -135,7 +136,7 @@ console.log('ai-panel 语音按钮：不用时灰、用时蓝，且类与状态�
 await t('刚挂上（没录过音）：麦克风不带 .active，与同行其他图标同基准', () => {
   assert.ok(A.mic(), '麦克风按钮应存在')
   assert.ok(!A.mic().classList.contains('active'), '空闲态不该带 .active')
-  assert.ok(A.others().length >= 2, '同行应还有其他图标按钮')
+  assert.ok(A.others().length >= 1, '同行应还有其他图标按钮（技能钮；优化钮在桌面版已同语音一起藏掉）')
   for (const b of A.others()) assert.ok(!b.classList.contains('active'), '空闲态其他按钮也不该带 .active')
 })
 
@@ -295,31 +296,33 @@ await t('引擎异常带上状态码（旧代码把静默超时归成麦克风�
   assert.ok(s.includes('状态') && s.includes('3'), '要把状态码上屏，实际：' + s)
 })
 
-await t('桌面版默认不挂麦克风（三个平台同一口径，与 navigator 无关）', async () => {
+await t('桌面版默认不挂麦克风与优化钮（三个平台同一口径，与 navigator 无关）', async () => {
   // 这里 jsdom 的 navigator 是 Win 形态，照样藏——证明藏不藏只看「是不是桌面版」，不看哪个平台
   const D = mk({ baseUrl: 'http://x/v1', apiKey: 'k', model: 'm', asrModel: '', contextTokens: 0 }, { voiceUiHidden: undefined })
   await tick()
   assert.ok(!D.root.querySelector('.ai-voice'), '桌面版不该挂出麦克风（本机跑的是 jsdom 的 Win 形态 navigator）')
+  assert.ok(!D.root.querySelector('.ai-optimize'), '桌面版不该挂出优化输入钮（与语音同一口径）')
   assert.ok(D.root.querySelector('.ai-composer-bar button'), '底行其余按钮照旧')
 })
 
-await t('麦克风藏掉后不留空位：优化钮就贴在发送钮左边', async () => {
+await t('两个入口藏掉后不留空位：圆环就贴在发送钮左边', async () => {
   const D = mk({ baseUrl: 'http://x/v1', apiKey: 'k', model: 'm', asrModel: '', contextTokens: 0 }, { voiceUiHidden: undefined })
   await tick()
   const bar = D.root.querySelector('.ai-composer-bar')
   const kids = [...bar.children]
   const send = kids.find((el) => el.classList.contains('ai-send') && !el.classList.contains('hidden'))
   assert.ok(send, '发送钮要在底行')
-  assert.ok(!kids.some((el) => el.classList.contains('ai-voice')), '语音那一格是整块拿掉，不是留个空元素')
-  assert.strictEqual(kids[kids.indexOf(send) - 1].className, 'ai-icon-btn', '发送钮左边直接是优化钮（右组靠 margin-left:auto 恒贴右缘，少一格就整体右移一格）')
+  assert.ok(!kids.some((el) => el.classList.contains('ai-voice') || el.classList.contains('ai-optimize')), '语音与优化那两格是整块拿掉，不是留空元素')
+  assert.strictEqual(kids[kids.indexOf(send) - 1].className, 'ai-ctx-ring', '发送钮左边直接是圆环（右组靠 margin-left:auto 恒贴右缘，少两格就整体右移两格）')
 })
 
-await t('纯网页预览（没有 Tauri）麦克风照挂：藏入口只藏桌面版', async () => {
+await t('纯网页预览（没有 Tauri）麦克风与优化钮照挂：藏入口只藏桌面版', async () => {
   const internals = window.__TAURI_INTERNALS__
   delete window.__TAURI_INTERNALS__
   const W = mk({ baseUrl: 'http://x/v1', apiKey: 'k', model: 'm', asrModel: '', contextTokens: 0 }, { voiceUiHidden: undefined })
   await tick()
   assert.ok(W.mic(), '网页版应有麦克风入口（Chrome Web Speech 那条路是通的）')
+  assert.ok(W.root.querySelector('.ai-optimize'), '网页版应有优化输入入口')
   window.__TAURI_INTERNALS__ = internals
 })
 
