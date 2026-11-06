@@ -2437,8 +2437,10 @@ html.nl-dragging * {
   position: fixed;
   z-index: 40;
   min-width: 132px;
-  /* 菜单比窗口还长时（「文件」菜单 20 多项）就地出滚动条，不再整块溢出屏幕底部、底下的项点不到 */
-  max-height: calc(100vh - 12px);
+  /* 上限 60vh：「段落」菜单 20 多项按全窗口高放正好撑满一屏、滚动条无从出现，观感是一根
+   * 长条糊到底；收成 60vh 后超出的项就地滚动（极矮窗口下 60vh 也仍小于视口，不会溢出）。
+   * 菜单条八格的下拉与 main.js 的右键菜单共用这个类，行为一致 */
+  max-height: 60vh;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
