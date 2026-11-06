@@ -309,16 +309,6 @@ pub fn models_with_tools(caps: &[(String, Vec<String>)]) -> Vec<String> {
         .collect()
 }
 
-/// /api/tags 响应 → 模型名升序。`name` 缺则取 `model`；坏 JSON / 缺字段 / 空表回空 Vec
-/// （回空表与「不可达」在调用点是两回事，别在这里合并）
-pub fn parse_ollama_models(text: &str) -> Vec<String> {
-    parse_ollama_models_caps(text)
-        .0
-        .into_iter()
-        .map(|(n, _)| n)
-        .collect()
-}
-
 /// 候选可执行文件路径（纯函数：env 取值与平台名都注入，方便单测）。
 /// PATH 扫描是主力——自定义安装目录（如 D:\Ollama\setup）通常只出现在 PATH 里。
 pub fn ollama_exe_candidates(env: impl Fn(&str) -> Option<String>, os: &str) -> Vec<std::path::PathBuf> {
@@ -1199,7 +1189,13 @@ mod tests {
         let (caps, has) = parse_ollama_models_caps(real);
         assert!(has);
         assert_eq!(models_with_tools(&caps), vec!["qwen3:1.7b".to_string()]);
-        assert_eq!(parse_ollama_models(real), vec!["qwen3:1.7b", "tinyllama:latest"]);
+        assert_eq!(
+            parse_ollama_models_caps(real).0,
+            vec![
+                ("qwen3:1.7b".to_string(), vec!["completion".to_string(), "tools".to_string(), "thinking".to_string()]),
+                ("tinyllama:latest".to_string(), vec!["completion".to_string()])
+            ]
+        );
         // 旧版不返 capabilities：has_caps = false，调用方不能据此判「都不支持」
         let old = r#"{"models":[{"name":"llama3.1:latest"}]}"#;
         let (caps2, has2) = parse_ollama_models_caps(old);
@@ -1224,16 +1220,17 @@ mod tests {
 
     #[test]
     fn ollama_models_parsing() {
+        let names = |text: &str| -> Vec<String> { parse_ollama_models_caps(text).0.into_iter().map(|(n, _)| n).collect() };
         // 真机 /api/tags 形态（name 与 model 同值，还带 capabilities 等一堆字段）
         let real = r#"{"models":[{"name":"qwen3:1.7b","model":"qwen3:1.7b","size":1359293444},{"name":"tinyllama:latest","model":"tinyllama:latest"}]}"#;
-        assert_eq!(parse_ollama_models(real), vec!["qwen3:1.7b", "tinyllama:latest"]);
+        assert_eq!(names(real), vec!["qwen3:1.7b", "tinyllama:latest"]);
         // 零模型：空数组与缺字段都是空表（与「不可达」在调用点分开判）
-        assert!(parse_ollama_models(r#"{"models":[]}"#).is_empty());
-        assert!(parse_ollama_models("{}").is_empty());
-        assert!(parse_ollama_models("not json").is_empty());
+        assert!(names(r#"{"models":[]}"#).is_empty());
+        assert!(names("{}").is_empty());
+        assert!(names("not json").is_empty());
         // name 缺时取 model；大小写升序
         let alt = r#"{"models":[{"model":"Zeta:1"},{"model":"alpha:2"},{"name":"","model":"fallback:1"}]}"#;
-        assert_eq!(parse_ollama_models(alt), vec!["alpha:2", "fallback:1", "Zeta:1"]);
+        assert_eq!(names(alt), vec!["alpha:2", "fallback:1", "Zeta:1"]);
     }
 
     #[test]
