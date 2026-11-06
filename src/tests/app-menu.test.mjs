@@ -74,6 +74,7 @@ const base = () => [
   C('editor.footnoteDelete', '删除脚注'),
   C('editor.exitBlock', '离开代码块'),
   C('app.pastePlain', '粘贴为纯文本', { accelerator: 'Cmd+Shift+V' }),
+  C('app.selectAll', '全选', { accelerator: 'Cmd+A' }),
   C('editor.mathInline', '行内公式', { accelerator: 'Cmd+M' }),
   C('editor.mathBlock', '块级公式', { accelerator: 'Cmd+Shift+M' }),
   C('editor.block.para', '段落：正文', { checked: false }),
@@ -186,7 +187,7 @@ t('编辑组含剪贴板角色，查找 / 替换在组尾', () => {
   const spec = specOf()
   assert.deepEqual(ids(group(spec, 'edit')), [
     'editor.undo', 'editor.redo', 'sep', 'Cut', 'Copy', 'Paste', 'app.pastePlain', 'sep',
-    'SelectAll', 'app.insertImage', 'editor.deleteLine', 'sep', 'app.findInDoc', 'app.replace', 'app.search',
+    'app.selectAll', 'app.insertImage', 'editor.deleteLine', 'sep', 'app.findInDoc', 'app.replace', 'app.search',
   ])
 })
 
@@ -317,7 +318,7 @@ t('空注册表：应用组仍给出关于/服务/隐藏/退出，编辑组仍�
   assert.deepEqual(group(spec, 'app').items.filter((i) => i.type === 'role').map((i) => i.role),
     ['About', 'Services', 'Hide', 'HideOthers', 'ShowAll', 'Quit'])
   assert.deepEqual(group(spec, 'edit').items.filter((i) => i.type === 'role').map((i) => i.role),
-    ['Cut', 'Copy', 'Paste', 'SelectAll'])
+    ['Cut', 'Copy', 'Paste'])
 })
 
 t('appName 覆盖应用组标题', () => {
@@ -339,7 +340,6 @@ t('角色项带中文标题（不留 muda 默认英文），应用名跟随 appN
     Cut: '剪切',
     Copy: '复制',
     Paste: '粘贴',
-    SelectAll: '全选',
     Minimize: '最小化',
     Maximize: '缩放',
     Fullscreen: '进入全屏幕',

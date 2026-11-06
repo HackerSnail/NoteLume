@@ -315,7 +315,10 @@ export function createEditor(opts) {
   }
   const nlKeymapPlugin = buildEditorKeymap(opts.keymapOverrides || {}, virtualApi)
   nlKeymapPlugin.__nlKeymap = true
-  const base = keymap(baseKeymap)
+  // Mod-a 让路（返回 false 即不消费，事件继续冒泡到应用级分发器）：全选由 main.js 的
+  // app.selectAll 统一接，它在表格 / 代码块这类容器里先只选这一层。baseKeymap 那条
+  // selectAll 留着的话会在编辑器里抢先整篇全选并 preventDefault，分段这一档永远轮不到。
+  const base = keymap({ ...baseKeymap, 'Mod-a': () => false })
 
   // 插件全集：普通模式窗口 doc = 整篇。虚拟模式的窗口 state 复用同一批插件但去掉
   // history（历史在 master 上）——装饰/交互插件对窗口 doc 计算即天然「按窗口区间」，

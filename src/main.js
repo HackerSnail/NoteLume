@@ -1,7 +1,7 @@
 // main.js —— 应用装配：布局、知识库文件树、大纲、标签、主题、快捷键、打开/保存/跳转
 // P1 追加：Rust 索引触发与轮询、双向链接面板、全局搜索、悬浮预览（在 editor-view 里挂）、
 // 自动保存 + 库内备份、HTML 导出、打印。
-import { selectAll } from 'prosemirror-commands'
+import { selectAllStaged } from './select-all.js'
 import { createEditor, editorCommandDefs } from './editor-view.js'
 import { createFindBar } from './find-in-doc.js'
 import { createFrontmatterPanel } from './frontmatter-panel.js'
@@ -2154,7 +2154,7 @@ function pmClipboardOps(inst) {
     },
     selectAll: () => {
       inst.focusEditor()
-      selectAll(view.state, view.dispatch)
+      selectAllStaged(view.state, view.dispatch, view)
       view.focus()
     },
   }
@@ -3927,6 +3927,15 @@ function registerAppCommands() {
     if (editor && state.mode === 'md') editor.insertPlainText(text)
     else setStatus(t('status.noPasteDoc'))
   })
+  // 全选（Ctrl/Cmd+A）：Typora 式分段——光标在表格 / 代码块 / 引用这类容器里时先只选
+  // 这一层，再按一次才整篇（机制见 select-all.js）。焦点在输入框或源码态时按原生口径
+  // 选当前那一块；画布态留给 canvas-view.js 自己的 Ctrl+A（它选全部节点），这里不抢。
+  app('app.selectAll', 'Mod-a', () => {
+    if (state.mode === 'canvas') return
+    const ops = menuEditOps()
+    if (ops) ops.selectAll()
+    else document.execCommand('selectAll')
+  })
   // Ctrl+E = 编辑 / 预览互切（Typora 语义，即源码 ⇄ 所见即所得）；Ctrl+/ 不再占默认键
   app('app.sourceMode', 'Mod-e', () => toggleSourceMode())
   // 打印保留 Ctrl+P（用户明确要求）；命令面板回 Ctrl+Shift+P
@@ -4219,13 +4228,14 @@ function runViaShortcut(id) {
 // —— Windows / Linux：窗口内菜单条 ——
 // 一级分类与 macOS 原生菜单栏取同一份 spec（app-menu.js 的 buildMacMenuSpec），下一级在
 // WebView2 / WebKitGTK 里自绘 .cv-menu；mac 那侧走系统菜单栏，这里不挂载，两边不同时出入口。
-// spec 里的 role(...) 在这一侧要有真实动作：剪贴板四项接右键菜单那份实现（按当前焦点目标
+// spec 里的 role(...) 在这一侧要有真实动作：剪贴板三项接右键菜单那份实现（按当前焦点目标
 // 分派），窗口四项接 plugin-window，纯 mac 的系统项由 menu-bar.js 整项丢弃。
+// 全选不在这里：它已从原生 role 改成注册表命令 app.selectAll，原生那条不回前端。
 
-const MOD_KEY = { Cut: 'X', Copy: 'C', Paste: 'V', SelectAll: 'A' }
+const MOD_KEY = { Cut: 'X', Copy: 'C', Paste: 'V' }
 const WINDOW_ROLES = new Set(['Minimize', 'Maximize', 'Fullscreen', 'CloseWindow', 'Quit'])
-// 只有这四项要看「当前焦点落在哪块可编辑区」；其余 role（About 那类走注册表命令的）不能拿它当判据，否则会被误置灰
-const EDIT_ROLES = new Set(['Cut', 'Copy', 'Paste', 'SelectAll'])
+// 只有这三项要看「当前焦点落在哪块可编辑区」；其余 role（About 那类走注册表命令的）不能拿它当判据，否则会被误置灰
+const EDIT_ROLES = new Set(['Cut', 'Copy', 'Paste'])
 
 function instOwning(el) {
   for (const inst of panes.editors.values()) {
