@@ -3086,7 +3086,9 @@ html.nl-dragging * {
   background: var(--pre-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 12px 14px;
+  /* 底部不留 padding：横向滚动条落在内层 code 上，padding 挪到 code 里（见下），
+     滚动条才贴着块底边，而不是浮在离底边 12px 的地方。 */
+  padding: 12px 14px 0;
   /* 横向滚动交给内层 code（见下方 .ProseMirror pre code）：pre 一滚，右上角的语言标签
      就跟着正文一起滚走，长行滚到右边时标签跑出可视区。pre 不滚，标签才钉在块角上。 */
   position: relative;
@@ -3191,6 +3193,25 @@ html.nl-dragging * {
   /* 代码块内的横向滚动落在这里（块级滚动容器），pre 本身不滚 */
   display: block;
   overflow-x: auto;
+  /* 原 pre 的 12px 底 padding 挪进来：滚动条压在 padding 的下沿，正文与条之间仍留白 */
+  padding-bottom: 12px;
+  /* 全局 `* { scrollbar-width: thin }` 一旦生效，Chromium / WebKit 就忽略同元素的
+     ::-webkit-scrollbar 尺寸规则（实测条厚恒 11px）。这里退回 auto，让下面 4px 那条说话。 */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+/* 代码块的横向滚动条：比全局的 10px 细一档，且不带全局那 2px 透明描边（4px 高的条会被描边吃干净） */
+.ProseMirror pre code::-webkit-scrollbar {
+  height: 4px;
+}
+.ProseMirror pre code::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ProseMirror pre code::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border: none;
+  border-radius: 2px;
+  background-clip: padding-box;
 }
 .ProseMirror hr {
   border: none;
