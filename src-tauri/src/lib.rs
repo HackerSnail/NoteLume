@@ -4154,23 +4154,29 @@ fn set_ui_lang(lang: String) -> bool {
 
 // ==================== P5 §6.6 文件打开链路 ====================
 //
-// 四条入口汇到一条交付通道（deliver_open_targets）：
+// 三条入口汇到一条交付通道（deliver_open_targets）：
 //  · 启动参数（`note.exe x.md`，Windows 双击关联文件同条）：setup 前收进 LaunchPaths，前端
 //    boot 时经 take_launch_paths 取走。这里不用事件推是防竞态——setup 执行时页面 JS 还没
-//    跑起来，emit 出去没人听；拉取式没有时序问题。
+//    跑起来，emit 出去没人听；拉取式没有时序问题。应用多开（2026-11-06 起不挂
+//    single-instance）后每个实例各走各的这条，第二次双击就是新窗口，不再转发给旧实例。
 //  · macOS LaunchServices：双击关联文件、右键「打开方式」、把文件拖到 Dock 图标。
 //    路径只经 application:openURLs: 递来、不进 argv，要 run callback 接 RunEvent::Opened，
 //    不接就只剩「唤起应用、文件没打开」。
-//  · 单实例二次唤起：第二个进程把新路径交给第一个进程的 argv 回调。
 //  · 拖入窗口：桌面版由 wry 原生事件递绝对路径（HTML5 的 drop 在拦截下收不到），前端按平台
 //    补类型后分流——文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；
 //    纯 web 构建没有事件通道，走 HTML5 的 DataTransfer。
 // 交付通道只做两件事：目标排进 LaunchPaths，再 emit 一次 file-opened 叫前端来取。
 // 两条都不能省：冷启动时前端监听未必就绪，排着等它 boot 来取；应用常驻时前端不再主动
 // 取，得靠这次 emit 叫醒。emit 不带路径（同一条走队列只出一份，不会开两遍）。
+//
+// 多实例的已知取舍：settings.json（工作区 / 标签列 / AI / 剪藏配置）单份文件、各实例
+// 整份读改写，后写者赢——两个实例同时改设置时后保存的覆盖先保存的，属接受的行为；
+// 剪藏 HTTP 服务按端口顺延规则各自监听（3210 起 +1 至多 10 个），浏览器扩展打到哪个
+// 端口就落到哪个实例；全文检索索引 IndexState 与文件监听 FsWatcherState 本就是进程内
+// 状态，多实例天然各一份、互不干扰。
 
-/// 启动 / 二次唤起的参数里挑出真实存在的文件或目录。exe 自身按路径比对剔除
-/// （不按位置 skip：std::env::args 与单实例插件的 argv 首元素是否 exe 并不保证）；
+/// 启动参数里挑出真实存在的文件或目录。exe 自身按路径比对剔除
+/// （不按位置 skip：std::env::args 的 argv 首元素是否 exe 并不保证）；
 /// `-` 开头的是 CLI 开关，不要。
 fn launch_targets<I: IntoIterator<Item = String>>(argv: I) -> Vec<LaunchTarget> {
     let argv: Vec<String> = argv.into_iter().collect();
@@ -4316,6 +4322,9 @@ fn take_window_vault(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Opt
 }
 
 /// 打开目标交给前端的唯一通道：排进队列 + 敲一次 file-opened（详见本节抬头）。
+/// 单实例摘除后（应用多开）只剩 macOS 的 RunEvent::Opened 分支调用，Windows / Linux
+/// 的打开目标全走各实例自己的冷启动 LaunchPaths。
+#[cfg(target_os = "macos")]
 fn deliver_open_targets(app: &tauri::AppHandle, targets: Vec<LaunchTarget>) {
     use tauri::{Emitter, Manager};
     if targets.is_empty() {
@@ -4448,10 +4457,10 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
-        // 单实例（P5 §6.6）：第二个进程把新文件路径经本回调交给第一个进程。
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            deliver_open_targets(app, launch_targets(argv));
-        }))
+        // 应用多开（2026-11-06 起）：不挂 single-instance，第二次启动起独立实例、各开各的库。
+        // 已关联文件的路径各实例自己消化（上面的 launch_targets 冷启动路径 + mac 的
+        // RunEvent::Opened），不需要进程间转发。已知取舍：settings.json 各实例整份覆写、
+        // 后写者赢；剪藏 HTTP 服务端口被先启动的实例占着时按既有规则顺延。
         .manage(LaunchPaths(std::sync::Mutex::new(launch)))
         .manage(WindowVaults::default())
         .manage(IndexState(Arc::new(Mutex::new(VaultIndex::default()))))

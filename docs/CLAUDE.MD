@@ -441,13 +441,15 @@ Rust 侧新命令六个（`git_discard` / `git_r_branch_list` / `git_r_checkout`
 
 6. 提供invoke接口，给前端调用知识库API
 
-7. 文件打开链路的原生侧（P5 §6.6）：四条入口——启动参数、macOS 的 `application:openURLs:`、单实例二次唤起、窗口内拖入——汇到 `deliver_open_targets` 一条交付通道：目标排进 `LaunchPaths` 队列，再 emit 一次不带路径的 `file-opened`，前端 boot 主动取、常驻时被动叫醒，两条时序都不丢。mac 的双击关联文件、右键「打开方式」、把文件拖到 Dock 图标都只以 `RunEvent::Opened` 递 URL、不进 argv，要用 `build(context)?.run(callback)` 才接得到；目录也收（`Info.macOS.plist` 声明 `public.folder`），前端按 `isDir` 分流 `openVaultPath` / `openAbsPath`。
+7. 文件打开链路的原生侧（P5 §6.6）：三条入口——启动参数、macOS 的 `application:openURLs:`、窗口内拖入——汇到 `deliver_open_targets` 一条交付通道：目标排进 `LaunchPaths` 队列，再 emit 一次不带路径的 `file-opened`，前端 boot 主动取、常驻时被动叫醒，两条时序都不丢。mac 的双击关联文件、右键「打开方式」、把文件拖到 Dock 图标都只以 `RunEvent::Opened` 递 URL、不进 argv，要用 `build(context)?.run(callback)` 才接得到；目录也收（`Info.macOS.plist` 声明 `public.folder`），前端按 `isDir` 分流 `openVaultPath` / `openAbsPath`。
+
+   应用多开（2026-11-06 起）：不挂 `tauri-plugin-single-instance`（依赖与注册一并摘除），第二次启动起独立实例、各开各的库，已关联文件的启动参数每实例自己走冷启动 `LaunchPaths`，`deliver_open_targets` 因此只剩 mac 分支在调（cfg 限到 macos，Windows / Linux 无这条路径）。多实例的已知取舍：`settings.json` 单份文件各实例整份读改写、后写者赢；剪藏 HTTP 服务按端口顺延规则各自监听（扩展打到哪个端口就落进哪个实例）；`IndexState` / `FsWatcherState` 是进程内状态，多实例天然各一份。
 
    窗口内拖入：桌面版两端都留着 Tauri 的拖放拦截（`dragDropEnabled` 默认开，主窗口与 Rust 建的 `vault-*` 窗口同一口径；装了拦截就一定收不到 HTML5 事件，dev 与打包一致），事件只以 `tauri://drag-*` 给前端且只带绝对路径。mac 由 `bindNativeDrop` 调 `probe_external_drop` 补名字与 `isDir`；Windows / Linux 走 `tauri-drag-open.js` 的 `onDragDropEvent`，目录判定走 `drop_path_is_dir`（lib.rs，`Path::is_dir`），落点窗格按物理坐标 ÷ devicePixelRatio 后 `elementFromPoint` 判定。两条都汇到 `handleDropTargets`：文件在当前窗口（分栏时落点窗格）开预览，文件夹调 `open_vault_window` 另开一个 `vault-*` 窗口，库路径按窗口标签存 `WindowVaults`、新窗口 boot 调 `take_window_vault` 取走（排进 `LaunchPaths` 会让新窗口抢走主窗口待开的目标）。纯 web 构建没有事件通道，仍走 `drop-open.js` 的 HTML5 `dragover` / `drop`，`webkitGetAsEntry().fullPath` 给 `/C:/a/b.md` 形态、`normDropPath` 剥前导斜杠。
 
    一度按平台分置过 `dragDropEnabled`（`tauri.conf.json` 设 `false`，mac 用 `tauri.macos.conf.json` 覆盖回 `true`），那是让 Windows 走 HTML5 的第一版方案：WebView2 的 `entry.fullPath` 只有文件名，打开报 os error 3，已废弃，平台覆盖文件也一并删除。
 
-   多窗口写盘约束：`settings.json` 单份，`persistWorkspace` / `persistPanes` 与 `file-opened` 只认主窗口；`IndexState` / `FsWatcherState` 仍是应用级单份，两窗口开两库时后 boot 的接管索引。
+   多窗口写盘约束：`settings.json` 单份，`persistWorkspace` / `persistPanes` 与 `file-opened` 只认主窗口；`IndexState` / `FsWatcherState` 仍是应用级单份，两窗口开两库时后 boot 的接管索引。应用多开是另一层：跨实例没有「主窗口」协调，`settings.json` 后写者赢（见上条）。
 
 ### 前端 src/ 职责
 
