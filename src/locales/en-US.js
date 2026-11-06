@@ -1143,6 +1143,7 @@ export default {
   'ai.voiceAsrBusy': 'Transcribing…',
   'ai.voiceErr': 'Voice recognition failed: {err}',
   'ai.voicePrivacy': 'Online speech recognition is off in Windows: the Settings app has been opened — allow it under Privacy & security > Speech, then click the microphone again',
+  'ai.voiceMicUnavailable': 'System speech recognition cannot access the microphone (unpackaged apps are denied on newer Windows). Fill in a speech recognition model in AI Settings (e.g. FunAudioLLM/SenseVoiceSmall on SiliconFlow) to use provider transcription instead',
   'ai.optimize': 'Refine with AI',
   'ai.optimizeEmpty': 'Write something first',
   'ai.skills': 'Skills',

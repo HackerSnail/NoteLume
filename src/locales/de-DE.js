@@ -1141,6 +1141,7 @@ export default {
   'ai.voiceAsrBusy': 'Transkription…',
   'ai.voiceErr': 'Spracherkennung fehlgeschlagen: {err}',
   'ai.voicePrivacy': 'Die Onlinespracherkennung ist in Windows deaktiviert: die Einstellungen wurden geöffnet – erlauben Sie sie unter Datenschutz und Sicherheit > Sprache und klicken Sie das Mikrofon erneut an',
+  'ai.voiceMicUnavailable': 'Die Systemspracherkennung erhält keinen Mikrofonzugriff (unverpackte Apps werden auf neueren Windows-Versionn abgelehnt). Tragen Sie in den KI-Einstellungen ein Spracherkennungsmodell ein (z. B. FunAudioLLM/SenseVoiceSmall bei SiliconFlow), um die Anbieter-Transkription zu nutzen',
   'ai.optimize': 'Mit KI überarbeiten',
   'ai.optimizeEmpty': 'Zuerst etwas eingeben',
   'ai.skills': 'Fähigkeiten',

@@ -1687,7 +1687,9 @@ export function createAiPanel(deps) {
       } else if (ev.kind === 'error') {
         dictReqId = null
         stopVoiceUi()
-        showAttNote(t('ai.voiceErr', { err: ev.text || t('common.unknownErr') }))
+        // mic-unavailable：无包身份的应用在新版 Windows 上被语音引擎拒了麦克风
+        if (ev.text === 'mic-unavailable') showAttNote(t('ai.voiceMicUnavailable'))
+        else showAttNote(t('ai.voiceErr', { err: ev.text || t('common.unknownErr') }))
       }
     }).then((un) => {
       if (eventStreamDisposed) un()

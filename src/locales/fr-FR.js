@@ -1141,6 +1141,7 @@ export default {
   'ai.voiceAsrBusy': 'Transcription…',
   'ai.voiceErr': 'Échec de la reconnaissance vocale : {err}',
   'ai.voicePrivacy': 'La reconnaissance vocale en ligne est désactivée dans Windows : les Paramètres ont été ouverts — autorisez-la dans Confidentialité et sécurité > Voix, puis recliquez sur le micro',
+  'ai.voiceMicUnavailable': 'La reconnaissance vocale système n’accède pas au micro (applications non empaquetées refusées sur les versions récentes de Windows). Renseignez un modèle de reconnaissance vocale dans les paramètres IA (ex. FunAudioLLM/SenseVoiceSmall sur SiliconFlow) pour passer par la transcription du fournisseur',
   'ai.optimize': 'Affiner avec l\'IA',
   'ai.optimizeEmpty': 'Écrivez d\'abord quelque chose',
   'ai.skills': 'Compétences',

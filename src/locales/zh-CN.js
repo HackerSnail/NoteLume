@@ -1143,6 +1143,7 @@ export default {
   'ai.voiceAsrBusy': '识别中…',
   'ai.voiceErr': '语音识别失败：{err}',
   'ai.voicePrivacy': '系统「在线语音识别」未开启：已为你打开系统设置，请在「隐私和安全性 → 语音」中允许在线语音识别，然后回应用里再点一次麦克风',
+  'ai.voiceMicUnavailable': '系统语音识别拿不到麦克风（未打包应用在新版 Windows 上被拒）。可在「AI 设置」里填「语音识别模型」（如 SiliconFlow 的 FunAudioLLM/SenseVoiceSmall），改用服务商转写',
   'ai.optimize': 'AI 优化输入',
   'ai.optimizeEmpty': '先输入内容再优化',
   'ai.skills': '技能',

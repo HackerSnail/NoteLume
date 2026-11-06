@@ -309,6 +309,7 @@ pub struct DictationEvent {
 }
 
 fn emit_dictation(app: &AppHandle, req_id: &str, kind: &str, text: &str) {
+    eprintln!("[voice] emit req={req_id} kind={kind} text={text:?}");
     let _ = app.emit(
         "nl:dictation",
         DictationEvent { req_id: req_id.to_string(), kind: kind.to_string(), text: text.to_string() },
@@ -319,6 +320,10 @@ fn emit_dictation(app: &AppHandle, req_id: &str, kind: &str, text: &str) {
 struct Dictation {
     recognizer: windows::Media::SpeechRecognition::SpeechRecognizer,
     session: windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
+    lang: String,
+    running: bool,
+    /// 当前会话 id（共享单元：会话复用后同一批事件回调要服务多个 reqId）
+    rid: Arc<Mutex<String>>,
 }
 
 #[cfg(windows)]
@@ -380,23 +385,39 @@ fn winrt_start_err(what: &str, e: windows::core::Error) -> String {
 
 #[cfg(windows)]
 fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), String> {
-    use windows::Foundation::TypedEventHandler;
     use windows::Globalization::Language;
-    use windows::Media::SpeechRecognition::{
-        SpeechContinuousRecognitionCompletedEventArgs, SpeechContinuousRecognitionSession,
-        SpeechContinuousRecognitionResultGeneratedEventArgs,
-        SpeechRecognitionHypothesisGeneratedEventArgs, SpeechRecognitionResultStatus,
-        SpeechRecognizer,
-    };
+    use windows::Media::SpeechRecognition::{SpeechRecognitionResultStatus, SpeechRecognizer};
     use windows::core::HSTRING;
 
     com_init();
-    {
-        let slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
-        if slot.is_some() {
-            return Err("已在听写中".into());
+    let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
+    match slot.as_mut() {
+        // 会话常驻复用（2026-11-06）：每次点击销毁重建 recognizer 会跟引擎的麦克风
+        // 释放赛跑——上一场刚停、下一场立刻 Start，经常撞上 MicrophoneUnavailable(7)。
+        // 同一 session 反复 Start/Stop 是 WinRT 持续识别的设计用法；语言没变就一直复用。
+        Some(d) => {
+            if d.running {
+                return Err("已在听写中".into());
+            }
+            if d.lang != lang {
+                // 界面语言变了：旧引擎作废，走下面的重建路径
+                let _ = d.recognizer.Close();
+                *slot = None;
+            } else {
+                *d.rid.lock().map_err(|_| "听写状态损坏")? = req_id.to_string();
+                d.session
+                    .StartAsync()
+                    .map_err(|e| winrt_start_err("听写启动失败", e))?
+                    .join()
+                    .map_err(|e| winrt_start_err("听写启动失败", e))?;
+                d.running = true;
+                eprintln!("[voice] reused session, req={req_id}");
+                return Ok(());
+            }
         }
+        None => {}
     }
+
     let l = Language::CreateLanguage(&HSTRING::from(lang))
         .map_err(|e| format!("语言代码无效: {e}"))?;
     let recognizer = SpeechRecognizer::Create(&l)
@@ -414,51 +435,13 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
         let _ = recognizer.Close();
         return Err("语音引擎初始化失败（该语言可能缺识别引擎）".into());
     }
-    let session: SpeechContinuousRecognitionSession = recognizer
+    let session = recognizer
         .ContinuousRecognitionSession()
         .map_err(|e| format!("持续识别会话建立失败: {e}"))?;
 
-    // 事件委托：hypothesis 是中间结果（interim），result 是逐段终稿，completed 收尾。
-    // 回调跑在系统线程池上，只做 emit，不碰任何锁。
-    let app_h = app.clone();
-    let rid = req_id.to_string();
-    recognizer
-        .HypothesisGenerated(&TypedEventHandler::<
-            SpeechRecognizer,
-            SpeechRecognitionHypothesisGeneratedEventArgs,
-        >::new(move |_, e| {
-            if let Ok(t) = e.ok().and_then(|x| x.Hypothesis()).and_then(|h| h.Text()) {
-                emit_dictation(&app_h, &rid, "hypothesis", &t.to_string_lossy());
-            }
-            Ok(())
-        }))
-        .map_err(|e| format!("听写事件挂载失败: {e}"))?;
-
-    let app_h = app.clone();
-    let rid = req_id.to_string();
-    session
-        .ResultGenerated(&TypedEventHandler::<
-            SpeechContinuousRecognitionSession,
-            SpeechContinuousRecognitionResultGeneratedEventArgs,
-        >::new(move |_, e| {
-            if let Ok(t) = e.ok().and_then(|x| x.Result()).and_then(|r| r.Text()) {
-                emit_dictation(&app_h, &rid, "result", &t.to_string_lossy());
-            }
-            Ok(())
-        }))
-        .map_err(|e| format!("听写事件挂载失败: {e}"))?;
-
-    let app_h = app.clone();
-    let rid = req_id.to_string();
-    session
-        .Completed(&TypedEventHandler::<
-            SpeechContinuousRecognitionSession,
-            SpeechContinuousRecognitionCompletedEventArgs,
-        >::new(move |_, _e| {
-            emit_dictation(&app_h, &rid, "end", "");
-            Ok(())
-        }))
-        .map_err(|e| format!("听写事件挂载失败: {e}"))?;
+    let rid: Arc<Mutex<String>> = Arc::new(Mutex::new(req_id.to_string()));
+    dictation_register_events(&app, &recognizer, &session, &rid)?;
+    dictation_register_state_log(&recognizer);
 
     session
         .StartAsync()
@@ -466,34 +449,145 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
         .join()
         .map_err(|e| winrt_start_err("听写启动失败", e))?;
 
-    let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
-    if slot.is_some() {
-        // 竞态兜底：两次 start 都过了前面的检查（理论上门锁够用），后到的直接退
-        let _ = session.StopAsync().and_then(|op| op.join());
-        let _ = recognizer.Close();
-        return Err("已在听写中".into());
-    }
-    *slot = Some(Dictation { recognizer, session });
+    *slot = Some(Dictation {
+        recognizer,
+        session,
+        lang: lang.to_string(),
+        running: true,
+        rid,
+    });
     Ok(())
 }
 
+/// 事件委托：hypothesis 是中间结果（interim），result 是逐段终稿，completed 收尾。
+/// 回调跑在系统线程池上，只做 emit，不碰长锁。rid 用共享单元而不是创建时快照——
+/// 会话复用后同一批回调要服务多个 reqId。
 #[cfg(windows)]
-fn dictation_stop_sync() -> Result<(), String> {
-    let job = {
-        let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
-        slot.take()
+fn dictation_register_events(
+    app: &AppHandle,
+    recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer,
+    session: &windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
+    rid: &Arc<Mutex<String>>,
+) -> Result<(), String> {
+    use windows::Foundation::TypedEventHandler;
+    use windows::Media::SpeechRecognition::{
+        SpeechContinuousRecognitionCompletedEventArgs, SpeechContinuousRecognitionResultGeneratedEventArgs,
+        SpeechRecognitionHypothesisGeneratedEventArgs,
     };
-    if let Some(d) = job {
-        // 先停会话（Completed 事件在停止前发出 end），再关 recognizer
-        let _ = d.session.StopAsync().and_then(|op| op.join());
-        let _ = d.recognizer.Close();
+
+    let app_h = app.clone();
+    let rid_h = rid.clone();
+    recognizer
+        .HypothesisGenerated(&TypedEventHandler::<
+            windows::Media::SpeechRecognition::SpeechRecognizer,
+            SpeechRecognitionHypothesisGeneratedEventArgs,
+        >::new(move |_, e| {
+            if let Ok(t) = e.ok().and_then(|x| x.Hypothesis()).and_then(|h| h.Text()) {
+                let rid = rid_h.lock().map(|s| s.clone()).unwrap_or_default();
+                emit_dictation(&app_h, &rid, "hypothesis", &t.to_string_lossy());
+            }
+            Ok(())
+        }))
+        .map_err(|e| format!("听写事件挂载失败: {e}"))?;
+
+    let app_h = app.clone();
+    let rid_h = rid.clone();
+    session
+        .ResultGenerated(&TypedEventHandler::<
+            windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
+            SpeechContinuousRecognitionResultGeneratedEventArgs,
+        >::new(move |_, e| {
+            if let Ok(t) = e.ok().and_then(|x| x.Result()).and_then(|r| r.Text()) {
+                let rid = rid_h.lock().map(|s| s.clone()).unwrap_or_default();
+                emit_dictation(&app_h, &rid, "result", &t.to_string_lossy());
+            }
+            Ok(())
+        }))
+        .map_err(|e| format!("听写事件挂载失败: {e}"))?;
+
+    let app_h = app.clone();
+    session
+        .Completed(&TypedEventHandler::<
+            windows::Media::SpeechRecognition::SpeechContinuousRecognitionSession,
+            SpeechContinuousRecognitionCompletedEventArgs,
+        >::new(move |_, e| {
+            let code = e.ok().and_then(|c| c.Status()).map(|s| s.0).unwrap_or(-1);
+            // 槽位还在且标记 running：引擎自己终止的会话（StopAsync 的正常收尾走
+            // stop 路径，已先置 running=false）。常见失败是无包身份被拒麦克风
+            // （状态码 7 MicrophoneUnavailable）——清掉死引擎，下次 start 重建。
+            let mut handled = None;
+            if let Ok(mut slot) = dict_slot().lock() {
+                if let Some(d) = slot.as_mut() {
+                    if d.running {
+                        d.running = false;
+                        let d = slot.take().unwrap();
+                        let _ = d.recognizer.Close();
+                        let rid = d.rid.lock().map(|s| s.clone()).unwrap_or_default();
+                        handled = Some((code, rid));
+                    }
+                }
+            }
+            if let Some((code, rid)) = handled {
+                eprintln!("[voice] session self-terminated, status = {code}");
+                // 7 = MicrophoneUnavailable：引擎拿不到麦克风，给前端专项指引。
+                // 5 = PauseLimitReached：连续识别的累计时长上限，属正常收尾，发 end。
+                if code == 7 {
+                    emit_dictation(&app_h, &rid, "error", "mic-unavailable");
+                } else {
+                    emit_dictation(&app_h, &rid, "end", "");
+                }
+            }
+            // 槽位空或已停：end 由 stop 路径发，这里不重复
+            Ok(())
+        }))
+        .map_err(|e| format!("听写事件挂载失败: {e}"))?;
+    Ok(())
+}
+
+/// 状态变化日志（诊断：识别器是否真的在收音）
+#[cfg(windows)]
+fn dictation_register_state_log(recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer) {
+    use windows::Foundation::TypedEventHandler;
+    use windows::Media::SpeechRecognition::{SpeechRecognizer, SpeechRecognizerStateChangedEventArgs};
+    let _ = recognizer.StateChanged(&TypedEventHandler::<
+        SpeechRecognizer,
+        SpeechRecognizerStateChangedEventArgs,
+    >::new(|_, e| {
+        if let Ok(s) = e.ok().and_then(|x| x.State()) {
+            eprintln!("[voice] recognizer state -> {s:?}");
+        }
+        Ok(())
+    }));
+}
+
+#[cfg(windows)]
+fn dictation_stop_sync(app: AppHandle) -> Result<(), String> {
+    let (rid, stop_op) = {
+        let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
+        match slot.as_mut() {
+            Some(d) if d.running => {
+                d.running = false; // 先置位：Completed 回调看到非 running 就不按自终处理
+                let rid = d.rid.lock().map(|s| s.clone()).unwrap_or_default();
+                (rid, d.session.StopAsync().ok())
+            }
+            _ => (String::new(), None),
+        }
+    };
+    if let Some(op) = stop_op {
+        if let Err(e) = op.join() {
+            eprintln!("[voice] stop error: {e}");
+        }
     }
+    if !rid.is_empty() {
+        emit_dictation(&app, &rid, "end", "");
+    }
+    // 引擎与 session 留在槽位里供下次 start 复用；引擎自终（Completed 时 running 仍
+    // 为 true）才整个作废重建
     Ok(())
 }
 
 #[tauri::command]
-pub async fn ai_dictation_start(app: AppHandle, req_id: String, lang: String) -> Result<(), String> {
-    #[cfg(windows)]
+pub async fn ai_dictation_start(app: AppHandle, req_id: String, lang: String) -> Result<(), String> {    #[cfg(windows)]
     {
         return tauri::async_runtime::spawn_blocking(move || dictation_start_sync(app, &req_id, &lang))
             .await
@@ -507,15 +601,16 @@ pub async fn ai_dictation_start(app: AppHandle, req_id: String, lang: String) ->
 }
 
 #[tauri::command]
-pub async fn ai_dictation_stop() -> Result<(), String> {
+pub async fn ai_dictation_stop(app: AppHandle) -> Result<(), String> {
     #[cfg(windows)]
     {
-        return tauri::async_runtime::spawn_blocking(dictation_stop_sync)
+        return tauri::async_runtime::spawn_blocking(move || dictation_stop_sync(app))
             .await
             .map_err(|e| format!("听写任务异常: {e}"))?;
     }
     #[cfg(not(windows))]
     {
+        let _ = app;
         Ok(())
     }
 }
@@ -540,6 +635,76 @@ pub async fn ai_dictation_probe(lang: String) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 临时排查：独立进程里起 WinRT 持续识别 10 秒，观察状态与事件（需要出声才有 result）
+    #[test]
+    #[ignore]
+    fn dictation_live_diagnose() {
+        use windows::Foundation::TypedEventHandler;
+        use windows::Globalization::Language;
+        use windows::Media::SpeechRecognition::{
+            SpeechContinuousRecognitionCompletedEventArgs, SpeechContinuousRecognitionSession,
+            SpeechContinuousRecognitionResultGeneratedEventArgs,
+            SpeechRecognitionHypothesisGeneratedEventArgs, SpeechRecognizer, SpeechRecognizerStateChangedEventArgs,
+        };
+        use windows::core::HSTRING;
+
+        com_init();
+        let lang = std::env::var("DICT_LANG").unwrap_or_else(|_| "zh-CN".into());
+        let l = Language::CreateLanguage(&HSTRING::from(lang.as_str())).unwrap();
+        let rec = SpeechRecognizer::Create(&l).unwrap();
+        let compiled = rec.CompileConstraintsAsync().unwrap().join().unwrap();
+        println!("compile status: {:?}", compiled.Status());
+        let _ = rec.StateChanged(&TypedEventHandler::<
+            SpeechRecognizer,
+            SpeechRecognizerStateChangedEventArgs,
+        >::new(|_, e| {
+            if let Ok(s) = e.ok().and_then(|x| x.State()) {
+                println!("state -> {s:?}");
+            }
+            Ok(())
+        }));
+        let _ = rec.HypothesisGenerated(&TypedEventHandler::<
+            SpeechRecognizer,
+            SpeechRecognitionHypothesisGeneratedEventArgs,
+        >::new(|_, e| {
+            if let Ok(t) = e.ok().and_then(|x| x.Hypothesis()).and_then(|h| h.Text()) {
+                println!("hypothesis: {t}");
+            }
+            Ok(())
+        }));
+        let session = rec.ContinuousRecognitionSession().unwrap();
+        let _ = session.ResultGenerated(&TypedEventHandler::<
+            SpeechContinuousRecognitionSession,
+            SpeechContinuousRecognitionResultGeneratedEventArgs,
+        >::new(|_, e| {
+            if let Ok(t) = e.ok().and_then(|x| x.Result()).and_then(|r| r.Text()) {
+                println!("result: {t}");
+            }
+            Ok(())
+        }));
+        let _ = session.Completed(&TypedEventHandler::<
+            SpeechContinuousRecognitionSession,
+            SpeechContinuousRecognitionCompletedEventArgs,
+        >::new(|_, e| {
+            if let Ok(c) = e.ok() {
+                println!("completed: {:?}", c.Status());
+            }
+            Ok(())
+        }));
+        match session.StartAsync().unwrap().join() {
+            Ok(_) => println!("started"),
+            Err(e) => {
+                println!("start failed: {e} hr={:?}", e.code().0);
+                return;
+            }
+        }
+        println!("state after start: {:?}", rec.State());
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        println!("state at 10s: {:?}", rec.State());
+        let _ = session.StopAsync().unwrap().join();
+        let _ = rec.Close();
+    }
 
     #[test]
     fn asr_url_variants() {
