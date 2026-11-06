@@ -387,6 +387,21 @@ pub const fn is_auto_end(code: i32) -> bool {
     matches!(code, 0 | 4 | 5 | 7 | 8)
 }
 
+/// 引擎报的音频问题码 → 给前端的哨兵。windows 0.62 的 `SpeechRecognitionAudioProblem`：
+/// None 0 / TooNoisy 1 / NoSignal 2 / TooLoud 3 / TooQuiet 4 / TooFast 5 / TooSlow 6。
+/// None 不算问题（回空串）；其余都是「引擎听见了但用不了」，得由前端说出来。
+pub fn audio_problem_signal(code: i32) -> &'static str {
+    match code {
+        0 => "",
+        1 => "too-noisy",
+        2 => "no-signal",
+        3 => "too-loud",
+        4 => "too-quiet",
+        c if c > 0 => "bad-input-speed",
+        _ => "",
+    }
+}
+
 /// 这条 Completed 该不该终止当前会话。
 ///
 /// 刚 StartAsync 之后的窗口里会收到两种收尾类事件：上一场 stop 迟到的尾巴（带
@@ -437,7 +452,7 @@ fn com_init() {
 #[cfg(windows)]
 fn dictation_probe_sync(lang: &str) -> Result<bool, String> {
     use windows::Globalization::Language;
-    use windows::Media::SpeechRecognition::{SpeechRecognitionResultStatus, SpeechRecognizer};
+    use windows::Media::SpeechRecognition::SpeechRecognizer;
     use windows::core::HSTRING;
 
     com_init();
@@ -454,6 +469,11 @@ fn dictation_probe_sync(lang: &str) -> Result<bool, String> {
         Ok(r) => r,
         Err(_) => return Ok(false), // 没装该语言的语音包
     };
+    // 探测也要拿听写语法去编译，不然探到的与真正听写用的不是同一套语法
+    if let Err(e) = add_dictation_constraint(&rec) {
+        let _ = rec.Close();
+        return Err(e);
+    }
     let ok = {
         let r = rec.clone();
         winrt_block("识别引擎探测", DICT_START_WAIT_SECS, move || {
@@ -461,12 +481,57 @@ fn dictation_probe_sync(lang: &str) -> Result<bool, String> {
         })
         .ok()
         .and_then(|inner| inner.ok())
-        .map(|rr| rr.Status().map(|s| s == SpeechRecognitionResultStatus::Success).unwrap_or(false))
+        .map(|rr| {
+            let st = rr.Status().map(|s| s.0).unwrap_or(-999);
+            let good = st == 0;
+            // 把探测到的编译状态打出来：探到 false 会让整条语音输入判成「不可用」并缓存，
+            // 没有这一行日志就只能看到「点了不亮」而不知道为什么
+            eprintln!("[voice] probe compile status = {st} → {}", if good { "可用" } else { "不可用" });
+            good
+        })
         .unwrap_or(false)
     };
     let _ = rec.Close();
     Ok(ok)
 }
+
+/// 把识别场景切成听写（Dictation）。
+///
+/// 不加这条约束时用的是系统语法（`WebSearch` 场景，面向搜索短查询）：引擎确实收到了声音
+///（状态机走 Capturing → SoundStarted → SpeechDetected → SoundEnded），但 `HypothesisGenerated`
+/// 与 `ResultGenerated` 一个也不发、也不报错——用户看到的就是「点了麦克风、话说完了，
+/// 输入框一个字也没有，也没任何提示」。微软自己的 DictClient 听写示例就是先 Append
+/// 一条 Dictation 的 topic constraint 再 CompileConstraints，这里补上同一个动作。
+#[cfg(windows)]
+fn add_dictation_constraint(
+    recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer,
+) -> Result<(), String> {
+    use windows::Media::SpeechRecognition::{
+        ISpeechRecognitionConstraint, SpeechRecognitionScenario, SpeechRecognitionTopicConstraint,
+    };
+    use windows::core::{HSTRING, Interface};
+
+    let hint = HSTRING::from(DICT_TOPIC_HINT);
+    let constraint = SpeechRecognitionTopicConstraint::Create(SpeechRecognitionScenario::Dictation, &hint)
+        .map_err(|e| format!("听写语法建立失败: {e}"))?;
+    let constraints = recognizer.Constraints().map_err(|e| format!("听写语法读取失败: {e}"))?;
+    // 重入保护：复用会话不重建引擎，但 start 里只在新建时走到这里；万一条目已存在就换掉而不是叠加
+    while constraints.Size().map_err(|e| format!("听写语法条目读取失败: {e}"))? > 0 {
+        constraints.RemoveAt(0).map_err(|e| format!("听写语法条目清除失败: {e}"))?;
+    }
+    let item: ISpeechRecognitionConstraint = constraint
+        .cast()
+        .map_err(|e| format!("听写语法类型转换失败: {e}"))?;
+    constraints
+        .Append(&item)
+        .map_err(|e| format!("听写语法挂载失败: {e}"))?;
+    eprintln!("[voice] dictation grammar on, topic hint = {DICT_TOPIC_HINT}");
+    Ok(())
+}
+
+/// topic constraint 的提示语（只是给引擎的文本标签，不进识别结果；照微软 DictClient 示例给个
+/// ASCII 值，免得中文标签在 HSTRING 转换那条链上多一个变量）
+pub const DICT_TOPIC_HINT: &str = "Dictation";
 
 /// WinRT 错误 → 给前端的错误串。语音隐私政策未接受（0x80045509）是常见首启障碍：
 /// 系统「在线语音识别」开关没开。按微软官方 UWP 示例的动作直接打开对应设置页，
@@ -635,6 +700,8 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
         .map_err(|e| format!("语言代码无效: {e}"))?;
     let recognizer = SpeechRecognizer::Create(&l)
         .map_err(|e| format!("系统语音识别不可用（可能缺语言包）: {e}"))?;
+    // 听写语法必须在 Compile 之前挂上（见 add_dictation_constraint）
+    add_dictation_constraint(&recognizer)?;
     let compiled = {
         let r = recognizer.clone();
         winrt_block("语音引擎初始化", DICT_START_WAIT_SECS, move || {
@@ -672,7 +739,7 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
 
     let rid: Arc<Mutex<String>> = Arc::new(Mutex::new(req_id.to_string()));
     dictation_register_events(&app, &recognizer, &session, &rid)?;
-    dictation_register_diag(&recognizer);
+    dictation_register_diag(&app, &recognizer, &rid);
 
     if let Err(e) = session_start(&session) {
         // 新引擎也起不来：当场就拆掉，不留一个半死的会话给下一次
@@ -791,8 +858,16 @@ fn dictation_register_events(
 /// 诊断日志挂载：状态变化看出「识别器到底在不在收声」，音频问题事件则把引擎看到的
 /// 音频状态直接吐出来（NoSignal / TooQuiet 这类）——没这两条时，「引擎自终」只能归给
 /// 麦克风，而 2026-11-06 那次误判就是把静默超时当成了麦克风被拒。
+///
+/// TooQuiet / NoSignal 不只记日志：它们会转成 `audio` 事件上屏（同一个值只发一次）。
+/// 本机实测麦克风录进来的峰值只到满量程的 3.7%（约 -40 dBFS），引擎就是靠这两个事件
+/// 说「声音太轻」的——不接的话，用户看到的就是「说了话、一个字不出、也没任何提示」。
 #[cfg(windows)]
-fn dictation_register_diag(recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer) {
+fn dictation_register_diag(
+    app: &AppHandle,
+    recognizer: &windows::Media::SpeechRecognition::SpeechRecognizer,
+    rid: &Arc<Mutex<String>>,
+) {
     use windows::Foundation::TypedEventHandler;
     use windows::Media::SpeechRecognition::{
         SpeechRecognitionQualityDegradingEventArgs, SpeechRecognizer, SpeechRecognizerStateChangedEventArgs,
@@ -806,13 +881,23 @@ fn dictation_register_diag(recognizer: &windows::Media::SpeechRecognition::Speec
         }
         Ok(())
     }));
+    let app_h = app.clone();
+    let rid_h = rid.clone();
+    let last = Arc::new(std::sync::atomic::AtomicI32::new(i32::MIN));
     let _ = recognizer.RecognitionQualityDegrading(&TypedEventHandler::<
         SpeechRecognizer,
         SpeechRecognitionQualityDegradingEventArgs,
-    >::new(|_, e| {
-        if let Ok(p) = e.ok().and_then(|x| x.Problem()) {
-            eprintln!("[voice] audio problem -> {p:?} ({})", p.0);
+    >::new(move |_, e| {
+        let Ok(p) = e.ok().and_then(|x| x.Problem()) else { return Ok(()) };
+        eprintln!("[voice] audio problem -> {p:?} ({})", p.0);
+        // None(0) 不告知；同一个问题也只告知一次，不然会反复弹
+        let sig = audio_problem_signal(p.0);
+        if sig.is_empty() || last.swap(p.0, Ordering::Relaxed) == p.0 {
+            return Ok(());
         }
+        // reqId 用共享单元：前端按它过滤，给空串会被当成无关事件丢调
+        let rid = rid_h.lock().map(|s| s.clone()).unwrap_or_default();
+        emit_dictation(&app_h, &rid, "audio", sig);
         Ok(())
     }));
 }
@@ -1081,6 +1166,21 @@ mod tests {
         }
         // 读不到状态时按「在收声」处理：宁可照旧等 StopAsync，不要直接当已停
         assert!(engine_is_busy(-1));
+    }
+
+    #[test]
+    fn 音频问题码分档只认表里的值() {
+        // SpeechRecognitionAudioProblem: None 0 / TooNoisy 1 / NoSignal 2 / TooLoud 3 /
+        // TooQuiet 4 / TooFast 5 / TooSlow 6
+        assert_eq!(audio_problem_signal(0), "");
+        assert_eq!(audio_problem_signal(1), "too-noisy");
+        assert_eq!(audio_problem_signal(2), "no-signal");
+        assert_eq!(audio_problem_signal(3), "too-loud");
+        // 本机实测最常出的就是这一档
+        assert_eq!(audio_problem_signal(4), "too-quiet");
+        assert_eq!(audio_problem_signal(5), "bad-input-speed");
+        assert_eq!(audio_problem_signal(6), "bad-input-speed");
+        assert_eq!(audio_problem_signal(-1), "");
     }
 
     #[test]

@@ -320,6 +320,58 @@ document.querySelector('.ai-voice').click()
 
 ---
 
+## 六、语音听写说话不出字：缺「听写语法」+ 输入增益太低（仅 Windows 原生听写）
+
+### 现象
+
+第五节那条修完之后，用户回报的是下一层：「开口后仍不出字，没有中间字，也没有报错条」。也就是麦克风点亮、会话也在续（第五节的现象已消失），但 `hypothesis`（中间字）与 `result`（终稿）一个都不来，界面也不出错——完全无声的失败。
+
+只影响 Windows 原生听写。填了 `asrModel` 走服务商转写那条路不经过这里。
+
+### 复现
+
+本机 SAPI5 有中文桌面语音（`Microsoft Huihui Desktop / zh-CN`），可以用扬声器外放当"有人说话"：
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tmp\speak.ps1 -Text 今天天气不错
+```
+
+应用侧走 CDP：`tmp/voice_speak.mjs` 起打包版 → 点真麦克风 → 每 5 秒念一句、共 12 句，同时把 Rust stderr 逐行打时间戳。同时用应用自己的录音链路量信号强度：`tmp/voice_mic_level.mjs`（`ai_rec_start` → 念话 → `ai_rec_stop` → 读回 16-bit PCM 算 peak/RMS）。实测：
+
+```
+静默 4 秒         peak 3    rms 1
+念话 32.6 秒      peak 111  rms 8        ← 约 -40 dBFS
+[voice] audio problem -> SpeechRecognitionAudioProblem(4)   TooQuiet
+```
+
+对照量：人正常对笔记本麦克风说话，peak 应在 3000–15000 一档。
+
+### 定位
+
+1. 第一半是代码缺东西：`voice.rs` 从 `SpeechRecognizer::Create` 到 `CompileConstraintsAsync` 全程没碰过 `Constraints`，也就是编译的是**系统语法**（默认 `WebSearch` 场景，面向搜索框那种短查询）。听写要的是 `SpeechRecognitionScenario::Dictation` 的 topic constraint——微软官方 DictClient 示例的顺序就是「Append topic constraint → CompileConstraints → StartAsync」。缺这一条，引擎"听到有声音但不认词"是预期行为，而且它不报错：结果列表就是空的。查值同样别按文档页猜，`SpeechRecognitionScenario` 在 crate 里是 WebSearch 0 / Dictation 1 / FormFilling 2。
+2. 第二半是系统层面的信号强度：上面那串 peak 就是证据，同期引擎报 `TooQuiet(4)`。这解释了"为什么连中间字都没有"——识别需要的信噪比没到。这一半不是应用代码能替他兜住的，但应用可以**把它说出来**：`RecognitionQualityDegrading` 一直在发，之前只进了 stderr。
+3. 顺手补的现场：`probe compile status = {码}`。探测（`ai_dictation_probe`）探到 false 会被前端缓存成 `nativeDictOk=false`，之后 `voicePath` 直接判 `none`——「点了不亮」这类问题第一现场就在这行，没有它只能靠猜。
+
+### 改法
+
+* `src-tauri/src/voice.rs`：新增 `add_dictation_constraint(recognizer)`（先清空 `Constraints()` 再 Append 一条 `SpeechRecognitionTopicConstraint::Create(Dictation, "Dictation")`），在 start 的重建路径与 probe 两条路径上都在 `CompileConstraintsAsync` 之前调用；hint 用 ASCII，别引入中文标签这种额外变量。
+* 音频质量从"只进日志"变成"上屏"：纯函数 `audio_problem_signal(code)`（None 0 → 空串不告知，1 → too-noisy，2 → no-signal，3 → too-loud，4 → too-quiet，5/6 → bad-input-speed）+ 新事件 `kind: "audio"`（带当前 reqId，`AtomicI32` 记住上一个值，同一个问题只发一次）+ 前端 `ai-tasks.dictationAudioInfo(text)` 分三档词条：`ai.voiceAudioQuiet` / `ai.voiceAudioNoisy` / `ai.voiceAudioOther`（五语言）。这一档不改 `voiceState`——灯不灭、会话不断，只是把原因讲出来。
+
+### 验证与遗留
+
+* `cargo test --lib` 376 passed（voice:: +1 音频问题分档）；`tests/ai-tasks.test.mjs` 50 passed（`dictationAudioInfo` 全表 + 三个新键五语言齐全）；`tests/ai-panel-voice-ui.test.mjs` 17 passed（新增「收到 audio 事件说一句原因、灯不灭、不重开会话」）；前端全量 94 个文件零失败。
+* 装机版实测：`probe compile status = 0 → 可用`、`dictation grammar on` 之后会话照常场场续上、点停立刻灭灯；语法加上后并没有引入新的自终或错误。
+* 遗留（关键）：**真人开口的转写质量仍未验**。本机能产生的最强语音信号就是扬声器外放，而它只有 peak 111——不足以证明"说话能出字"，只证明"引擎听得见声音"。需要使用者对麦克风说一句：出字即闭环；若先出"麦克风几乎收不到声音"那句提示，就是输入增益/输入设备的问题（`系统设置 → 声音 → 输入`），不在此节代码范围内。ASR 那一路真机一次仍未做（需服务商余额）。
+
+### 下次直接用
+
+* 「点亮了、也在续场，但一个字都不出、也没报错」优先怀疑**语法场景**：WinRT 的 `SpeechRecognizer` 默认是系统语法（WebSearch），听写必须 Append `SpeechRecognitionScenario::Dictation` 的 topic constraint 再 Compile。
+* 判断"是不是根本没信号"最省事的办法不是猜，是量：用应用自己的 `ai_rec_start` / `ai_rec_stop` 录一段，读回 WAV 的 data 段算 peak 与 RMS（16-bit 满量程 32767；正常人声 peak 3000–15000，几十以下就是没信号）。同期看 `RecognitionQualityDegrading` 报的 NoSignal / TooQuiet。
+* 引擎报的音频问题码表：None 0 / TooNoisy 1 / NoSignal 2 / TooLoud 3 / TooQuiet 4 / TooFast 5 / TooSlow 6；场景表：WebSearch 0 / Dictation 1 / FormFilling 2。都在 crate 的 `pub const` 里，不在文档页的顺序里。
+* 无声失败是不该存在的UX：凡是引擎已经给出原因（音频质量、编译状态、探测结果）的地方，都要落一行日志或一条提示——`probe compile status` 这一行就是为了让"点了不亮"不再无从下手。
+
+---
+
 ## 空白模板
 
 ```

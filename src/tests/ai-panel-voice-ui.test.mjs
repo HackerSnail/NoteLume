@@ -257,6 +257,18 @@ await t('续场计数在出字后归零：说一段停一段不会把刹车用�
   assert.ok(String((B.root.querySelector('.ai-input') || {}).value || '').includes('语音输入'), '识别出的字要留在输入框')
 })
 
+await t('引擎报音频问题：说一句原因，但会话不断、灯不灭、也不报错', async () => {
+  B.mic().click()
+  await tick()
+  assert.ok(B.mic().classList.contains('active'), '先进入听写')
+  cmds.length = 0
+  await emit({ reqId: dictReqId, kind: 'audio', text: 'too-quiet' })
+  assert.ok(B.mic().classList.contains('active'), '音频质量提示不是会话结束，灯不该灭')
+  assert.ok(!cmds.includes('ai_dictation_start'), '也不该因此重开一场')
+  assert.ok(String(noteOf(B) || '').includes('几乎收不到声音'), '要把原因说出来，实际：' + noteOf(B))
+  await emit({ reqId: dictReqId, kind: 'end', text: '' })
+})
+
 await t('麦克风被拒与网络不可用各说一条，不再共用一句', async () => {
   B.mic().click()
   await tick()

@@ -10,7 +10,7 @@ import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead, aiRecStart, aiRecStop, aiRecCancel, aiAsrTranscribe, aiDictationStart, aiDictationStop, aiDictationProbe, aiDictationListen } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath, dictationDoneInfo, shouldResumeDictation, DICT_SESSION_MAX_MS } from './ai-tasks.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath, dictationDoneInfo, dictationAudioInfo, shouldResumeDictation, DICT_SESSION_MAX_MS } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -1718,7 +1718,12 @@ export function createAiPanel(deps) {
     // 原生听写事件：事件广播到所有窗口，按本会话 reqId 过滤
     aiDictationListen(async (ev) => {
       if (!ev || ev.reqId !== dictReqId) return
-      if (ev.kind === 'hypothesis') {
+      if (ev.kind === 'audio') {
+        // 引擎报的音频质量问题（声音太轻 / 没信号 / 太吵…）：会话继续、灯不灭，但得把
+        // 「为什么不出字」说出来——不说的话就是「说了话、一个字没、也没提示」
+        const key = dictationAudioInfo(ev.text)
+        if (key) showAttNote(t(key))
+      } else if (ev.kind === 'hypothesis') {
         const interim = String(ev.text || '')
         inputEl.value = interim ? (committed ? committed + ' ' + interim : interim) : committed
         autosize()

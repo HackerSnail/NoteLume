@@ -216,6 +216,20 @@ export function dictationDoneInfo(kind, text) {
   return { key: 'ai.voiceErr', params: { err: s || 'unknown' } }
 }
 
+/**
+ * 引擎报的音频质量问题（voice.rs 的 audio_problem_signal）→ 该上屏哪条文案（纯函数）。
+ * 这一类不说就是「话说完了、一个字不出、也没任何提示」——引擎其实已经把原因
+ * 说出来了（声音太轻 / 没信号 / 太吵 / 输入信号异常），只是之前只进了日志。
+ * 灯不灭、会话继续，这里只负责把原因告知。回 null = 不是问题（None）或认不出的值。
+ */
+export function dictationAudioInfo(text) {
+  const s = String(text || '')
+  if (s === 'too-quiet' || s === 'no-signal') return 'ai.voiceAudioQuiet'
+  if (s === 'too-noisy') return 'ai.voiceAudioNoisy'
+  if (s === 'too-loud' || s === 'bad-input-speed') return 'ai.voiceAudioOther'
+  return null
+}
+
 /** 原生听写一场的总预算（毫秒）：与 Rust 侧 ASR 那路的录音上限同源（voice.rs 的
  *  REC_MAX_SECS），免得麦克风一直开着收声。 */
 export const DICT_SESSION_MAX_MS = 120000

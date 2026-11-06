@@ -31,6 +31,7 @@ import {
   AI_CTX_WINDOW_TOKENS,
   voicePath,
   dictationDoneInfo,
+  dictationAudioInfo,
   shouldResumeDictation,
   DICT_RESUME_MAX,
 } from '../ai-tasks.js'
@@ -497,11 +498,30 @@ t('voicePath：服务商 ASR 优先，原生回落，Web Speech 只在浏览器�
 
 t('voicePath 词条五语言齐全', () => {
   for (const [id, msgs] of Object.entries(MESSAGES)) {
-    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.voicePrivacy', 'ai.voiceMicUnavailable', 'ai.voiceSessionEnd', 'ai.voiceNetwork', 'ai.voiceEngineErr', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
+    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.voicePrivacy', 'ai.voiceMicUnavailable', 'ai.voiceSessionEnd', 'ai.voiceNetwork', 'ai.voiceEngineErr', 'ai.voiceAudioQuiet', 'ai.voiceAudioNoisy', 'ai.voiceAudioOther', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
       assert.ok(msgs[key], `${id} 缺 ${key}`)
     }
     assert.ok(msgs['ai.voiceErr'].includes('{err}'), `${id} ai.voiceErr 缺 {err} 占位符`)
     assert.ok(msgs['ai.voiceEngineErr'].includes('{code}'), `${id} ai.voiceEngineErr 缺 {code} 占位符`)
+  }
+})
+
+t('dictationAudioInfo：引擎报的音频问题都有话说（不出字不再是无声的失败）', () => {
+  // 本机实测最多的就是这两档：麦克风几乎收不到声音
+  assert.strictEqual(dictationAudioInfo('too-quiet'), 'ai.voiceAudioQuiet')
+  assert.strictEqual(dictationAudioInfo('no-signal'), 'ai.voiceAudioQuiet')
+  assert.strictEqual(dictationAudioInfo('too-noisy'), 'ai.voiceAudioNoisy')
+  assert.strictEqual(dictationAudioInfo('too-loud'), 'ai.voiceAudioOther')
+  assert.strictEqual(dictationAudioInfo('bad-input-speed'), 'ai.voiceAudioOther')
+  // None 与认不出的值不开口
+  assert.strictEqual(dictationAudioInfo(''), null)
+  assert.strictEqual(dictationAudioInfo(undefined), null)
+  assert.strictEqual(dictationAudioInfo('too-something-else'), null)
+  // 引用的词条五种语言都有
+  for (const [id, msgs] of Object.entries(MESSAGES)) {
+    for (const k of ['ai.voiceAudioQuiet', 'ai.voiceAudioNoisy', 'ai.voiceAudioOther']) {
+      assert.ok(msgs[k], `${id} 缺 ${k}`)
+    }
   }
 })
 
