@@ -978,9 +978,15 @@ export function createAiPanel(deps) {
     return nativeDictOk
   }
 
+  /** 语音按钮的蓝色只跟 voiceState 走：置灰 / 点亮都从这里出，
+   *  buildDom 重建 DOM（换语言）后也按它回灌一次，否则类和状态会各说各话 */
+  function syncVoiceUi() {
+    if (voiceBtn) voiceBtn.classList.toggle('active', voiceState !== 'idle')
+  }
+
   function stopVoiceUi() {
     voiceState = 'idle'
-    if (voiceBtn) voiceBtn.classList.remove('active')
+    syncVoiceUi()
   }
 
   function appendVoiceText(text) {
@@ -1042,7 +1048,7 @@ export function createAiPanel(deps) {
       if (e.error !== 'aborted' && e.error !== 'no-speech') setStatus(t('ai.voiceFail'))
     }
     voiceState = 'webspeech'
-    voiceBtn.classList.add('active')
+    syncVoiceUi()
     try {
       rec.start()
     } catch {
@@ -1053,7 +1059,10 @@ export function createAiPanel(deps) {
 
   async function toggleVoice() {
     if (voiceState === 'rec') { finishAsr(); return }
-    if (voiceState === 'native') { aiDictationStop().catch(() => {}) } // end 事件收尾
+    if (voiceState === 'native') {
+      // 原生听写靠 Rust 的 end 事件收尾；停不下来（没有会话可停 / IPC 报错）就不会再有那个事件，就地灭灯
+      aiDictationStop().catch(() => { dictReqId = null; stopVoiceUi(); setStatus('') })
+    }
     else if (voiceState === 'webspeech') { if (rec) rec.stop() }
     else await startVoice()
   }
@@ -1072,7 +1081,7 @@ export function createAiPanel(deps) {
         return
       }
       voiceState = 'rec'
-      voiceBtn.classList.add('active')
+      syncVoiceUi()
       committed = inputEl.value
       setStatus(t('ai.voiceRec'))
       recTimer = setTimeout(() => { if (voiceState === 'rec') finishAsr() }, 120000)
@@ -1087,7 +1096,7 @@ export function createAiPanel(deps) {
       }
       dictReqId = rid
       voiceState = 'native'
-      voiceBtn.classList.add('active')
+      syncVoiceUi()
       committed = inputEl.value
       setStatus(t('ai.voiceListening'))
     } else if (path === 'webspeech') {
@@ -1583,6 +1592,7 @@ export function createAiPanel(deps) {
     setStreamingUi(false)
     updateCtxRing()
     renderSkillChips()
+    syncVoiceUi() // 换语言重建 DOM 时若还在录音 / 听写，新按钮要点回蓝色
     // 技能无感探测：面板建好就静默扫一次（本地几个目录，毫秒级）
     aiSkillsScan().then((r) => {
       if (Array.isArray(r)) skills = r
