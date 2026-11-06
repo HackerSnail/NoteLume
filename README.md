@@ -122,7 +122,7 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 
 ### 快速开始
 
-**安装**：介绍与演示在 [官网](https://hackersnail.github.io/NoteLume/)；安装包到 [Releases](https://github.com/HackerSnail/NoteLume/releases) 下载对应平台的安装包，国内网络改走 [Gitee 发行版](https://gitee.com/hackerSnail/note-lume/releases)（同一批安装包）——
+**安装**：到 [Releases](https://github.com/HackerSnail/NoteLume/releases) 下载对应平台的安装包；国内网络改走 [Gitee 发行版](https://gitee.com/hackerSnail/note-lume/releases)（同一批安装包）——
 
 | 平台      | 文件                              | 安装方式            |
 | ------- | ------------------------------- | --------------- |
@@ -326,7 +326,7 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 
 ### Quick Start
 
-**Install**: intro and demos live on the [project site](https://hackersnail.github.io/NoteLume/); grab the package for your platform from [Releases](https://github.com/HackerSnail/NoteLume/releases) —
+**Install**: grab the package for your platform from [Releases](https://github.com/HackerSnail/NoteLume/releases) —
 
 | Platform | File                            | How                  |
 | -------- | ------------------------------- | -------------------- |
