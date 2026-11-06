@@ -12,7 +12,6 @@ import MarkdownIt from 'markdown-it'
 import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead, aiRecStart, aiRecStop, aiRecCancel, aiAsrTranscribe, aiDictationStart, aiDictationStop, aiDictationProbe, aiDictationListen } from './tauri-bridge.js'
 import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath, dictationDoneInfo, dictationAudioInfo, shouldResumeDictation, DICT_SESSION_MAX_MS } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
-import { detectIsMac } from './keymap.js'
 
 let reqSeq = 0
 function nextReqId() {
@@ -39,9 +38,11 @@ let mode = (() => {
  *   Agent 模式收尾时把回答写进当前文档：有锚点先按 resolveAnchorPos 定位（未命中回退光标落点并标 missed）
  * @param {(msg: string) => void} deps.setStatus
  * @param {() => object} [deps.getOllamaStatus] 本机 Ollama 探测结果（{ state, models, toolModels, hasCaps }），Agent 能力门控用；没有就当拿不到信号
+ * @param {boolean} [deps.voiceUiHidden] 语音入口是否藏掉。默认桌面版（三个平台）全藏、纯网页预览留着；
+ *   留这一格是给语音状态机的测试接缝——藏了入口也要能按桌面那条路（走 IPC）测下去
  */
 export function createAiPanel(deps) {
-  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest, getRevertDoc, getOllamaStatus } = deps
+  const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest, getRevertDoc, getOllamaStatus, voiceUiHidden } = deps
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -953,10 +954,10 @@ export function createAiPanel(deps) {
   // 在桌面上永远走不通。优先级见 ai-tasks.voicePath：服务商 ASR > Windows 原生听写 > Web Speech ——
 
   let voiceState = 'idle' // idle | starting（建立会话的 IPC 在飞）| rec（录等待 ASR）| native（原生听写中）| webspeech
-  // mac 桌面版把语音入口先藏掉：这条路上没配 ASR 模型时点了只会判 'none'，配了模型还要
-  // 服务商真有 /audio/transcriptions 才回得来，本机两样都凑不齐。状态机、词条、Rust 侧
-  // 全留着，Windows 的原生听写与纯网页预览（Chrome Web Speech）不受影响。
-  const hideVoice = !!window.__TAURI_INTERNALS__ && detectIsMac()
+  // 桌面版（mac / Windows / Linux）把语音入口整个藏掉：三条路现在都没跑通——mac 没配 ASR 模型时
+  // 点了只会判 'none'，配了模型还要服务商真有 /audio/transcriptions 才回得来；Windows 那条原生
+  // 听写与 Linux 也各自有问题。状态机、词条、Rust 侧全留着，纯网页预览（Chrome Web Speech）不受影响。
+  const hideVoice = voiceUiHidden !== undefined ? !!voiceUiHidden : !!window.__TAURI_INTERNALS__
   let rec = null // Web Speech 的 SpeechRecognition 实例（浏览器版）
   let recTimer = null // 录音上限看门狗（120s 自动停并送识别）
   let committed = '' // 本次语音已定稿文本（interim 覆盖显示、final 逐段追加）
@@ -1637,7 +1638,9 @@ export function createAiPanel(deps) {
     ringSvg.append(ringBg, ringArc)
     ctxRing.circle = ringArc
     ctxRing.el.appendChild(ringSvg)
-    // 整体排布：左组（模式 · 技能 · 模型）+ 右组（用量圆环 · 优化 · 语音 · 发送/停止）
+    // 整体排布：左组（模式 · 技能 · 模型）+ 右组（用量圆环 · 优化 · 语音 · 发送/停止）。
+    // 圆环那条 margin-left:auto 吃掉中段留白，所以右组恒贴右边缘：语音入口藏掉后
+    // 圆环与优化钮各自右移一格补上，不会在发送钮左边留出一个空位。
     bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, optBtn, ...(hideVoice ? [] : [voiceBtn]), sendBtn, stopBtn)
     composer.append(skillChips, inputEl, bar)
 
