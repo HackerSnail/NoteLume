@@ -161,5 +161,46 @@ t('重试按钮随状态显隐：请求中收起，失败显形，成功后再�
   closeAiInline()
 })
 
+// 结果卡的落位：按满高预留选边，流式长起来之后整张卡（连同底行按钮）都必须在窗口内
+const openAt = (anchorRect, vh) => {
+  Object.defineProperty(window, 'innerHeight', { value: vh, configurable: true, writable: true })
+  closeAiInline()
+  openAiInline({ ...baseOpts(buildTaskMessages('polish', '旧的句子', '')), anchorRect })
+  return pop().style
+}
+const fits = (st, vh) => {
+  const h = parseFloat(st.maxHeight)
+  const top = st.top ? parseFloat(st.top) : vh - parseFloat(st.bottom) - h
+  return top >= 8 && top + h <= vh - 8
+}
+
+t('选区在上方、下方空间够：卡开在下方，且预留满高 340 也不出窗口', () => {
+  streamCalls.length = 0
+  const st = openAt({ x: 40, y: 60, bottom: 80 }, 760)
+  assert.strictEqual(st.top, '86px')
+  assert.strictEqual(st.bottom, '', '下方放得下就不该用 bottom 锚定')
+  assert.strictEqual(st.maxHeight, '340px')
+  assert.ok(fits(st, 760))
+  closeAiInline()
+})
+
+t('选区贴窗口底部时结果卡翻到上方：底行三颗按钮不能出窗口', () => {
+  streamCalls.length = 0
+  const st = openAt({ x: 40, y: 700, bottom: 720 }, 760)
+  assert.strictEqual(st.top, '', '该走上方，不该留 top')
+  assert.strictEqual(st.bottom, '66px')
+  assert.ok(fits(st, 760), `满高 ${st.maxHeight} 应落在窗口内`)
+  closeAiInline()
+})
+
+t('窗口压到最小高度、选区在中间：取宽的一侧并把 max-height 收到该侧可视高度', () => {
+  streamCalls.length = 0
+  const st = openAt({ x: 40, y: 300, bottom: 320 }, 560)
+  assert.strictEqual(st.bottom, '266px')
+  assert.strictEqual(st.maxHeight, '286px', '上方 286 比下方 226 宽，按上方留')
+  assert.ok(fits(st, 560))
+  closeAiInline()
+})
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exitCode = fail ? 1 : 0

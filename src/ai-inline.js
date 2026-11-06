@@ -83,19 +83,22 @@ export function openAiInline(opts) {
   overlay.append(head, body, foot)
   document.body.appendChild(overlay)
 
-  // 定位：优先选区下方，放不下翻上方；x 钳在窗口内
+  // 定位：选边按满高 POP_MAX_H 预留（流式会长到那个高度，旧的 probeH=120 猜小了，
+  // 结果卡下半截连同三颗按钮一起出窗口）。下方放不下就改用 bottom 锚定贴选区上沿
+  // 向上长，两侧都紧时取宽的一侧，并把 max-height 收到那一侧的可视高度内。
   {
     const w = Math.min(POP_W, window.innerWidth - 24)
     let x = anchorRect.x
-    let y = anchorRect.bottom + 6
     if (x + w > window.innerWidth - 8) x = Math.max(8, window.innerWidth - w - 8)
-    const probeH = 120
-    if (y + probeH > window.innerHeight - 8) {
-      y = Math.max(8, anchorRect.y - POP_MAX_H - 6)
-    }
+    const vh = window.innerHeight
+    const belowRoom = vh - anchorRect.bottom - 14
+    const aboveRoom = anchorRect.y - 14
+    const below = belowRoom >= aboveRoom
     overlay.style.left = x + 'px'
-    overlay.style.top = y + 'px'
     overlay.style.width = w + 'px'
+    overlay.style.maxHeight = Math.min(POP_MAX_H, below ? belowRoom : aboveRoom) + 'px'
+    if (below) overlay.style.top = anchorRect.bottom + 6 + 'px'
+    else overlay.style.bottom = vh - anchorRect.y + 6 + 'px'
   }
 
   let reqId = nextReqId()
