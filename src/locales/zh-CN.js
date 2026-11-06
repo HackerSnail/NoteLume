@@ -1142,6 +1142,7 @@ export default {
   'ai.voiceListening': '正在听写，再次点击停止',
   'ai.voiceAsrBusy': '识别中…',
   'ai.voiceErr': '语音识别失败：{err}',
+  'ai.voicePrivacy': '系统「在线语音识别」未开启：已为你打开系统设置，请在「隐私和安全性 → 语音」中允许在线语音识别，然后回应用里再点一次麦克风',
   'ai.optimize': 'AI 优化输入',
   'ai.optimizeEmpty': '先输入内容再优化',
   'ai.skills': '技能',

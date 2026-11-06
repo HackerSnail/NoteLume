@@ -1140,6 +1140,7 @@ export default {
   'ai.voiceListening': 'Dictée en cours — cliquer à nouveau pour arrêter',
   'ai.voiceAsrBusy': 'Transcription…',
   'ai.voiceErr': 'Échec de la reconnaissance vocale : {err}',
+  'ai.voicePrivacy': 'La reconnaissance vocale en ligne est désactivée dans Windows : les Paramètres ont été ouverts — autorisez-la dans Confidentialité et sécurité > Voix, puis recliquez sur le micro',
   'ai.optimize': 'Affiner avec l\'IA',
   'ai.optimizeEmpty': 'Écrivez d\'abord quelque chose',
   'ai.skills': 'Compétences',

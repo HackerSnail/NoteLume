@@ -1142,6 +1142,7 @@ export default {
   'ai.voiceListening': 'Dictating — click again to stop',
   'ai.voiceAsrBusy': 'Transcribing…',
   'ai.voiceErr': 'Voice recognition failed: {err}',
+  'ai.voicePrivacy': 'Online speech recognition is off in Windows: the Settings app has been opened — allow it under Privacy & security > Speech, then click the microphone again',
   'ai.optimize': 'Refine with AI',
   'ai.optimizeEmpty': 'Write something first',
   'ai.skills': 'Skills',

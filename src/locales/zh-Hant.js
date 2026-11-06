@@ -1141,6 +1141,7 @@ export default {
   'ai.voiceListening': '聽寫中，再次點擊停止',
   'ai.voiceAsrBusy': '辨識中…',
   'ai.voiceErr': '語音辨識失敗：{err}',
+  'ai.voicePrivacy': '系統「線上語音辨識」未開啟：已為你開啟系統設定，請在「隱私權和安全性 → 語音」允許線上語音辨識，然後回到應用再點一次麥克風',
   'ai.optimize': 'AI 最佳化輸入',
   'ai.optimizeEmpty': '先輸入內容再最佳化',
   'ai.skills': '技能',

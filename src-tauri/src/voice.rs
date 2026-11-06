@@ -363,6 +363,21 @@ fn dictation_probe_sync(lang: &str) -> Result<bool, String> {
     Ok(ok)
 }
 
+/// WinRT 错误 → 给前端的错误串。语音隐私政策未接受（0x80045509）是常见首启障碍：
+/// 系统「在线语音识别」开关没开。按微软官方 UWP 示例的动作直接打开对应设置页，
+/// 并回哨兵码 `speech-privacy` 让前端给本地化指引；其余原样透传。
+#[cfg(windows)]
+fn winrt_start_err(what: &str, e: windows::core::Error) -> String {
+    // 0x80045509 = SPERR_SPEECH_PRIVACY_POLICY_NOT_ACCEPTED
+    if e.code().0 == 0x80045509u32 as i32 {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "", "ms-settings:privacy-speech"])
+            .spawn();
+        return "speech-privacy".into();
+    }
+    format!("{what}: {e}")
+}
+
 #[cfg(windows)]
 fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), String> {
     use windows::Foundation::TypedEventHandler;
@@ -388,9 +403,9 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
         .map_err(|e| format!("系统语音识别不可用（可能缺语言包）: {e}"))?;
     let compiled = recognizer
         .CompileConstraintsAsync()
-        .map_err(|e| format!("语音引擎初始化失败: {e}"))?
+        .map_err(|e| winrt_start_err("语音引擎初始化失败", e))?
         .join()
-        .map_err(|e| format!("语音引擎初始化失败: {e}"))?;
+        .map_err(|e| winrt_start_err("语音引擎初始化失败", e))?;
     let status_ok = compiled
         .Status()
         .map(|s| s == SpeechRecognitionResultStatus::Success)
@@ -447,9 +462,9 @@ fn dictation_start_sync(app: AppHandle, req_id: &str, lang: &str) -> Result<(), 
 
     session
         .StartAsync()
-        .map_err(|e| format!("听写启动失败: {e}"))?
+        .map_err(|e| winrt_start_err("听写启动失败", e))?
         .join()
-        .map_err(|e| format!("听写启动失败: {e}"))?;
+        .map_err(|e| winrt_start_err("听写启动失败", e))?;
 
     let mut slot = dict_slot().lock().map_err(|_| "听写状态损坏")?;
     if slot.is_some() {

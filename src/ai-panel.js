@@ -1005,23 +1005,22 @@ export function createAiPanel(deps) {
     if (voiceState !== 'rec') return
     if (recTimer) { clearTimeout(recTimer); recTimer = null }
     stopVoiceUi()
-    setStatus(t('ai.voiceAsrBusy'))
+    showAttNote(t('ai.voiceAsrBusy'))
     let wavPath = null
     try {
       wavPath = await aiRecStop()
       const cfg = getConfig ? getConfig() : {}
       const text = await aiAsrTranscribe(cfg.baseUrl, cfg.apiKey, cfg.asrModel, wavPath)
       appendVoiceText(text)
-      setStatus('')
     } catch (e) {
-      setStatus(t('ai.voiceErr', { err: errText(e) }))
+      showAttNote(t('ai.voiceErr', { err: errText(e) }))
     }
   }
 
   /** 浏览器版 Web Speech（Chrome）。桌面 WebView2 没有识别后端，不会走到这里 */
   function startWebSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { setStatus(t('ai.voiceNo')); return }
+    if (!SR) { showAttNote(t('ai.voiceNo')); return }
     rec = new SR()
     rec.lang = voiceLang()
     rec.interimResults = true
@@ -1045,7 +1044,7 @@ export function createAiPanel(deps) {
       stopVoiceUi()
     }
     rec.onerror = (e) => {
-      if (e.error !== 'aborted' && e.error !== 'no-speech') setStatus(t('ai.voiceFail'))
+      if (e.error !== 'aborted' && e.error !== 'no-speech') showAttNote(t('ai.voiceFail'))
     }
     voiceState = 'webspeech'
     syncVoiceUi()
@@ -1073,36 +1072,41 @@ export function createAiPanel(deps) {
     if (tauri) native = await nativeAvailable()
     const cfg = getConfig ? getConfig() : { asrModel: '' }
     const path = voicePath(cfg, { tauri, webSpeech: webspeechSupported(), native })
+    // 语音的状态与错误一律走面板内可见提示（showAttNote）：main.js 的 setStatus 只写
+    // console 不上屏，走它用户看到的就是「点了没反应」
     if (path === 'asr') {
       try {
         await aiRecStart()
       } catch (e) {
-        setStatus(t('ai.voiceErr', { err: errText(e) }))
+        showAttNote(t('ai.voiceErr', { err: errText(e) }))
         return
       }
       voiceState = 'rec'
       syncVoiceUi()
       committed = inputEl.value
-      setStatus(t('ai.voiceRec'))
+      showAttNote(t('ai.voiceRec'))
       recTimer = setTimeout(() => { if (voiceState === 'rec') finishAsr() }, 120000)
     } else if (path === 'native') {
       const rid = 'dict-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
       try {
         await aiDictationStart(rid, voiceLang())
       } catch (e) {
-        nativeDictOk = false // 起不来（缺语言包 / 授权被拒）就别再撞同一面墙
-        setStatus(t('ai.voiceErr', { err: errText(e) }))
+        const msg = errText(e)
+        // speech-privacy：系统「在线语音识别」没开，Rust 侧已代为打开设置页。
+        // 引擎本身在（probe 是过的），不污染探测缓存，用户开完开关下次点击就能用
+        if (msg.includes('speech-privacy')) showAttNote(t('ai.voicePrivacy'))
+        else showAttNote(t('ai.voiceErr', { err: msg }))
         return
       }
       dictReqId = rid
       voiceState = 'native'
       syncVoiceUi()
       committed = inputEl.value
-      setStatus(t('ai.voiceListening'))
+      showAttNote(t('ai.voiceListening'))
     } else if (path === 'webspeech') {
       startWebSpeech()
     } else {
-      setStatus(t('ai.voiceNo'))
+      showAttNote(t('ai.voiceNo'))
     }
   }
 
@@ -1683,7 +1687,7 @@ export function createAiPanel(deps) {
       } else if (ev.kind === 'error') {
         dictReqId = null
         stopVoiceUi()
-        setStatus(t('ai.voiceErr', { err: ev.text || t('common.unknownErr') }))
+        showAttNote(t('ai.voiceErr', { err: ev.text || t('common.unknownErr') }))
       }
     }).then((un) => {
       if (eventStreamDisposed) un()

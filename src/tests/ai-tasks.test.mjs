@@ -494,7 +494,7 @@ t('voicePath：服务商 ASR 优先，原生回落，Web Speech 只在浏览器�
 
 t('voicePath 词条五语言齐全', () => {
   for (const [id, msgs] of Object.entries(MESSAGES)) {
-    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
+    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.voicePrivacy', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
       assert.ok(msgs[key], `${id} 缺 ${key}`)
     }
     assert.ok(msgs['ai.voiceErr'].includes('{err}'), `${id} ai.voiceErr 缺 {err} 占位符`)
