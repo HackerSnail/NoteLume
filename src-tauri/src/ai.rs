@@ -870,7 +870,7 @@ async fn run_stream(
 }
 
 /// 错误响应体截断（按字符截，chars().take 天然不切坏多字节字符）；空体给占位文案
-fn truncate_utf8(t: &str, max_chars: usize) -> String {
+pub fn truncate_utf8(t: &str, max_chars: usize) -> String {
     if t.is_empty() {
         return "无响应体".to_string();
     }

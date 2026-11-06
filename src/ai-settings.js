@@ -431,6 +431,13 @@ export function createAiSettings(deps) {
     }, { placeholder: String(32768) })
     hint('ai.set.contextHint')
 
+    // 语音识别模型：AI 面板麦克风按钮走服务商 ASR 时用的 model 参数（/audio/transcriptions）。
+    // 留空 = 不走服务商，语音输入回落系统原生识别（Windows）；填了才需要服务商支持音频接口。
+    textRow('ai.set.asrModel', draft.asrModel, (v) => { draft.asrModel = v }, {
+      placeholder: 'FunAudioLLM/SenseVoiceSmall',
+    })
+    hint('ai.set.asrModelHint')
+
     // 工具调用能力档位：Agent 模式要不要给这个模型发 tools。自动档只在本机 Ollama 报出
     // capabilities 时才下结论，远程服务一律按现状发；猜错了用户能在这里强制改回来
     const capRow = document.createElement('div')

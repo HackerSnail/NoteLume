@@ -9,8 +9,8 @@
 import { t, onLocaleChange, getLocale } from './i18n.js'
 import { setIcon } from './icons.js'
 import MarkdownIt from 'markdown-it'
-import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead } from './tauri-bridge.js'
-import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling } from './ai-tasks.js'
+import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, aiChatSave, aiChatRead, aiRecStart, aiRecStop, aiRecCancel, aiAsrTranscribe, aiDictationStart, aiDictationStop, aiDictationProbe, aiDictationListen } from './tauri-bridge.js'
+import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
 let reqSeq = 0
@@ -49,7 +49,7 @@ export function createAiPanel(deps) {
   let sendBtn = null
   let stopBtn = null
   let optBtn = null // 「AI 优化输入」按钮（流式润色回填）
-  let voiceBtn = null // 语音输入按钮（Web Speech API，环境不支持则置灰）
+  let voiceBtn = null // 语音输入按钮（桌面走 Rust 录音 + 服务商 ASR / 原生听写，浏览器走 Web Speech）
   let skillBtn = null // 技能按钮（自动探测本机 AI skills，选中后注入对话）
   let skillChips = null // 选中技能的回显 chip 行（composer 内 textarea 上方，可多个、可删）
   let skills = [] // 探测到的技能 [{id,name,description,source,path,content}]
@@ -947,12 +947,19 @@ export function createAiPanel(deps) {
     })
   }
 
-  // —— 语音输入（Web Speech API）：识别文本实时追加进输入框；环境不支持则按钮置灰 ——
+  // —— 语音输入：桌面版录音与识别都在 Rust 侧（voice.rs），浏览器版退回 Web Speech API。
+  // 桌面 WebView2 没有可用的 Web Speech 识别后端（Chrome 专属云服务），此前这条路
+  // 在桌面上永远走不通。优先级见 ai-tasks.voicePath：服务商 ASR > Windows 原生听写 > Web Speech ——
 
-  let rec = null // SpeechRecognition 实例
-  let listening = false
+  let voiceState = 'idle' // idle | rec（录等待 ASR）| native（原生听写中）| webspeech
+  let rec = null // Web Speech 的 SpeechRecognition 实例（浏览器版）
+  let recTimer = null // 录音上限看门狗（120s 自动停并送识别）
+  let committed = '' // 本次语音已定稿文本（interim 覆盖显示、final 逐段追加）
+  let dictReqId = null // 原生听写会话 id（事件广播到所有窗口，按它过滤）
+  let nativeDictOk = null // 原生识别探测缓存：null 没探过 / true / false（探测有 IPC 开销）
+  let offDictation = null
 
-  function voiceSupported() {
+  function webspeechSupported() {
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
   }
 
@@ -961,21 +968,59 @@ export function createAiPanel(deps) {
     return loc === 'zh-Hant' ? 'zh-TW' : (loc || 'zh-CN')
   }
 
-  function toggleVoice() {
-    if (listening) {
-      if (rec) rec.stop() // onend 收尾
-      return
+  async function nativeAvailable() {
+    if (nativeDictOk !== null) return nativeDictOk
+    try {
+      nativeDictOk = await aiDictationProbe(voiceLang())
+    } catch {
+      nativeDictOk = false
     }
+    return nativeDictOk
+  }
+
+  function stopVoiceUi() {
+    voiceState = 'idle'
+    if (voiceBtn) voiceBtn.classList.remove('active')
+  }
+
+  function appendVoiceText(text) {
+    const s = String(text || '').trim()
+    if (!s) return
+    committed = committed ? committed + ' ' + s : s
+    inputEl.value = committed
+    autosize()
+    inputEl.focus()
+  }
+
+  const errText = (e) => (e && e.message) || String(e)
+
+  /** ASR 路径收尾：停录、上传、结果追加进输入框。上限看门狗与手动点击可能都触发，只放行第一个 */
+  async function finishAsr() {
+    if (voiceState !== 'rec') return
+    if (recTimer) { clearTimeout(recTimer); recTimer = null }
+    stopVoiceUi()
+    setStatus(t('ai.voiceAsrBusy'))
+    let wavPath = null
+    try {
+      wavPath = await aiRecStop()
+      const cfg = getConfig ? getConfig() : {}
+      const text = await aiAsrTranscribe(cfg.baseUrl, cfg.apiKey, cfg.asrModel, wavPath)
+      appendVoiceText(text)
+      setStatus('')
+    } catch (e) {
+      setStatus(t('ai.voiceErr', { err: errText(e) }))
+    }
+  }
+
+  /** 浏览器版 Web Speech（Chrome）。桌面 WebView2 没有识别后端，不会走到这里 */
+  function startWebSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) {
-      setStatus(t('ai.voiceNo'))
-      return
-    }
+    if (!SR) { setStatus(t('ai.voiceNo')); return }
     rec = new SR()
     rec.lang = voiceLang()
     rec.interimResults = true
     rec.continuous = true
-    let committed = inputEl.value // 已定稿文本（final 逐段追加）
+    committed = inputEl.value
     rec.onresult = (e) => {
       let final = ''
       let interim = ''
@@ -990,20 +1035,65 @@ export function createAiPanel(deps) {
       inputEl.focus()
     }
     rec.onend = () => {
-      listening = false
       rec = null
-      if (voiceBtn) voiceBtn.classList.remove('active')
+      stopVoiceUi()
     }
     rec.onerror = (e) => {
       if (e.error !== 'aborted' && e.error !== 'no-speech') setStatus(t('ai.voiceFail'))
     }
-    listening = true
+    voiceState = 'webspeech'
     voiceBtn.classList.add('active')
     try {
       rec.start()
     } catch {
-      listening = false
-      voiceBtn.classList.remove('active')
+      rec = null
+      stopVoiceUi()
+    }
+  }
+
+  async function toggleVoice() {
+    if (voiceState === 'rec') { finishAsr(); return }
+    if (voiceState === 'native') { aiDictationStop().catch(() => {}) } // end 事件收尾
+    else if (voiceState === 'webspeech') { if (rec) rec.stop() }
+    else await startVoice()
+  }
+
+  async function startVoice() {
+    const tauri = !!window.__TAURI_INTERNALS__
+    let native = false
+    if (tauri) native = await nativeAvailable()
+    const cfg = getConfig ? getConfig() : { asrModel: '' }
+    const path = voicePath(cfg, { tauri, webSpeech: webspeechSupported(), native })
+    if (path === 'asr') {
+      try {
+        await aiRecStart()
+      } catch (e) {
+        setStatus(t('ai.voiceErr', { err: errText(e) }))
+        return
+      }
+      voiceState = 'rec'
+      voiceBtn.classList.add('active')
+      committed = inputEl.value
+      setStatus(t('ai.voiceRec'))
+      recTimer = setTimeout(() => { if (voiceState === 'rec') finishAsr() }, 120000)
+    } else if (path === 'native') {
+      const rid = 'dict-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)
+      try {
+        await aiDictationStart(rid, voiceLang())
+      } catch (e) {
+        nativeDictOk = false // 起不来（缺语言包 / 授权被拒）就别再撞同一面墙
+        setStatus(t('ai.voiceErr', { err: errText(e) }))
+        return
+      }
+      dictReqId = rid
+      voiceState = 'native'
+      voiceBtn.classList.add('active')
+      committed = inputEl.value
+      setStatus(t('ai.voiceListening'))
+    } else if (path === 'webspeech') {
+      startWebSpeech()
+    } else {
+      setStatus(t('ai.voiceNo'))
     }
   }
 
@@ -1431,7 +1521,8 @@ export function createAiPanel(deps) {
     voiceBtn.title = t('ai.voice')
     voiceBtn.setAttribute('aria-label', t('ai.voice'))
     setIcon(voiceBtn, 'mic')
-    if (!voiceSupported()) voiceBtn.disabled = true // 无语音引擎的环境（如无头/部分 WebView）置灰
+    // 不在创建时置灰：走哪条路（ASR / 原生听写 / Web Speech / 都不行）到点击时才判定，
+    // 原生识别探测有 IPC 开销且配置中途会变，按钮常亮、不可用时给状态行提示
     voiceBtn.addEventListener('click', toggleVoice)
     skillBtn = document.createElement('button')
     skillBtn.type = 'button'
@@ -1564,6 +1655,30 @@ export function createAiPanel(deps) {
       if (eventStreamDisposed) un()
       else offEvent = un
     })
+    // 原生听写事件：事件广播到所有窗口，按本会话 reqId 过滤
+    aiDictationListen((ev) => {
+      if (!ev || ev.reqId !== dictReqId) return
+      if (ev.kind === 'hypothesis') {
+        const interim = String(ev.text || '')
+        inputEl.value = interim ? (committed ? committed + ' ' + interim : interim) : committed
+        autosize()
+      } else if (ev.kind === 'result') {
+        appendVoiceText(ev.text)
+      } else if (ev.kind === 'end') {
+        dictReqId = null
+        inputEl.value = committed
+        autosize()
+        stopVoiceUi()
+        setStatus('')
+      } else if (ev.kind === 'error') {
+        dictReqId = null
+        stopVoiceUi()
+        setStatus(t('ai.voiceErr', { err: ev.text || t('common.unknownErr') }))
+      }
+    }).then((un) => {
+      if (eventStreamDisposed) un()
+      else offDictation = un
+    })
     offLocale = onLocaleChange(() => {
       buildDom()
     })
@@ -1586,9 +1701,19 @@ export function createAiPanel(deps) {
       eventStreamDisposed = true
       clearRestoredRevert()
       if (typeof offEvent === 'function') offEvent()
+      if (offDictation) offDictation()
       if (offLocale) offLocale()
       if (agentReq) aiChatCancel(agentReq.reqId).catch(() => {})
       if (streaming && streaming.reqId) aiChatCancel(streaming.reqId).catch(() => {})
+      // 语音收尾：录音丢弃、原生听写停止、Web Speech 停止
+      if (voiceState === 'rec') {
+        if (recTimer) clearTimeout(recTimer)
+        aiRecCancel().catch(() => {})
+      } else if (voiceState === 'native') {
+        aiDictationStop().catch(() => {})
+      } else if (voiceState === 'webspeech' && rec) {
+        rec.stop()
+      }
     },
   }
 }

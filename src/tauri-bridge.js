@@ -644,6 +644,50 @@ export function ollamaPullListen(handler) {
   return listen('nl:ollama-pull', (e) => handler(e.payload))
 }
 
+// ==================== 语音输入（录音与识别都在 Rust 侧，voice.rs） ====================
+
+/** 开始录音（Rust 用 cpal 采默认输入设备，绕开 WebView2 的麦克风权限）。失败抛可读错误 */
+export function aiRecStart() {
+  return invoke('ai_rec_start', {})
+}
+
+/** 停止录音：返回 WAV 临时文件路径（送 aiAsrTranscribe 用完即删） */
+export function aiRecStop() {
+  return invoke('ai_rec_stop', {})
+}
+
+/** 丢弃进行中的录音 */
+export function aiRecCancel() {
+  return invoke('ai_rec_cancel', {})
+}
+
+/** 上传 WAV 到服务商的 OpenAI 兼容 /audio/transcriptions，返回识别文本 */
+export function aiAsrTranscribe(baseUrl, apiKey, model, wavPath) {
+  return invoke('ai_asr_transcribe', { baseUrl, apiKey: apiKey || null, model, wavPath })
+}
+
+/** 启动 Windows 原生听写（WinRT SpeechRecognizer 持续识别）；结果经 nl:dictation 事件流回 */
+export function aiDictationStart(reqId, lang) {
+  return invoke('ai_dictation_start', { reqId, lang })
+}
+
+/** 停止原生听写 */
+export function aiDictationStop() {
+  return invoke('ai_dictation_stop', {})
+}
+
+/** 探测系统对指定语言（BCP-47）有没有可用的识别引擎（缺语言包回 false） */
+export function aiDictationProbe(lang) {
+  return invoke('ai_dictation_probe', { lang })
+}
+
+/** 订阅原生听写事件：payload = { reqId, kind:'hypothesis'|'result'|'end'|'error', text? }。
+ *  事件广播到所有窗口，调用方按自己的 reqId 过滤。返回退订函数；纯网页给空实现。 */
+export function aiDictationListen(handler) {
+  if (!window.__TAURI_INTERNALS__) return Promise.resolve(() => {})
+  return listen('nl:dictation', (e) => handler(e.payload))
+}
+
 /** 用系统默认浏览器打开 http(s) 链接 */
 export function openUrl(url) {
   return invoke('open_url', { url })

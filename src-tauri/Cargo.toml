@@ -48,4 +48,13 @@ pulldown-cmark = "0.13"
 # Security.framework，都不引 openssl（reqwest 0.13 的 rustls feature 默认绑 aws-lc-rs，
 # Windows 构建要 NASM/CMake，故不用）。json 只为 .json(&body)；流式读用 Response::chunk()，
 # 不需要 stream feature。若未来 Linux 打包嫌 openssl，再换 rustls-no-provider + ring。
-reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls", "multipart"] }
+# 语音输入（voice.rs）：录音在 Rust 侧做（cpal 采集默认输入设备），不走 WebView 的
+# getUserMedia——WebView2 对未经处理的权限请求默认拒绝，而主窗口来自 tauri.conf.json
+# 挂不了 on_permission_request，Rust 侧采集把权限这条路整个绕开。
+cpal = "0.15"
+
+# Windows 原生听写回落（未配服务商 ASR 时用系统自带 SpeechRecognizer）。
+# windows 0.62 已经由 tauri 传递引入，这里只是挑 feature；识别引擎依赖系统语言包。
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Media_SpeechRecognition", "Foundation", "Foundation_Collections", "Globalization", "Win32_System_Com"] }

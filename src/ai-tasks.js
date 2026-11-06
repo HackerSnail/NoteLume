@@ -77,7 +77,7 @@ export function buildDocContext(title, text) {
 
 // —— AI 设置（settings.json 的 ai 段）——
 
-export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
+export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', asrModel: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
 
 /** 字段上限。保存前由 validateAiConfig 拒绝超长，normalizeAiConfig 只做存储层兜底截断。 */
 export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
@@ -129,6 +129,8 @@ export function normalizeAiConfig(raw) {
   if (!raw || typeof raw !== 'object') return s
   if (typeof raw.baseUrl === 'string') s.baseUrl = raw.baseUrl.trim().slice(0, AI_LIMITS.baseUrl)
   if (typeof raw.model === 'string') s.model = raw.model.trim().slice(0, AI_LIMITS.model)
+  // 语音识别模型（OpenAI 兼容 /audio/transcriptions 的 model 参数）；留空 = 语音输入走系统原生识别
+  if (typeof raw.asrModel === 'string') s.asrModel = raw.asrModel.trim().slice(0, AI_LIMITS.model)
   // 上下文窗口：非负整数才收，其余（缺字段 / 坏型 / 负数 / NaN）一律回 0 = 用参考值
   const ct = Number(raw.contextTokens)
   if (Number.isFinite(ct) && ct >= 0) s.contextTokens = Math.min(AI_CTX_WINDOW_MAX, Math.floor(ct))
@@ -174,6 +176,24 @@ export function validateAiConfig(raw) {
 /** 地址是合法 http(s) 且模型名非空才算配好（API Key 允许为空：本地 Ollama 不需要） */
 export function aiConfigured(cfg) {
   return !!(cfg && isHttpUrl(cfg.baseUrl) && String(cfg.model || '').trim())
+}
+
+// —— 语音输入（AI 面板的麦克风按钮）——
+
+/**
+ * 语音输入走哪条路（纯函数，可单测）。优先级：
+ * 1. asr：桌面版 + AI 配好 + 填了语音识别模型——录音在 Rust 侧采，上传服务商转文字；
+ * 2. native：桌面版 + 系统有识别引擎（Windows 原生听写，离线可用）；
+ * 3. webspeech：浏览器版退回 Web Speech API（Chrome 可用；桌面 WebView2 没有可用的
+ *    识别后端，这条在桌面上永远轮不到，只是给网页预览留的口）；
+ * 4. none：环境什么都不支持，按钮点了给提示。
+ * env: { tauri, webSpeech, native }——native 由调用方探测后缓存（探测有 IPC 开销，别每次点都探）。
+ */
+export function voicePath(cfg, env) {
+  if (env.tauri && aiConfigured(cfg) && String(cfg.asrModel || '').trim()) return 'asr'
+  if (env.tauri && env.native) return 'native'
+  if (env.webSpeech) return 'webspeech'
+  return 'none'
 }
 
 /** 零模型时建议拉的本地模型：中文强、体积 1.3 GB 量级、capabilities 带 tools（本机 qwen3:1.7b 实测），

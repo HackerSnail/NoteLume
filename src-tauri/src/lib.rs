@@ -36,6 +36,8 @@ mod qd;
 
 // 大模型接入（AI）：OpenAI 兼容接口的流式代理（HTTPS + SSE 解析 + 取消在 Rust 侧）。
 mod ai;
+// 语音输入：Rust 侧录音（cpal）→ 服务商 ASR（/audio/transcriptions）+ Windows 原生听写回落。
+mod voice;
 // Phase 1（虚拟化方案地基）：Markdown → ProseMirror JSON 的后台解析（保守核心子集）。
 mod mdparse;
 
@@ -4605,6 +4607,14 @@ pub fn run() {
             ai::ai_models_list,
             ai::ollama_probe,
             ai::ollama_pull,
+            // 语音输入：录音 / 服务商 ASR / Windows 原生听写（voice.rs）
+            voice::ai_rec_start,
+            voice::ai_rec_stop,
+            voice::ai_rec_cancel,
+            voice::ai_asr_transcribe,
+            voice::ai_dictation_start,
+            voice::ai_dictation_stop,
+            voice::ai_dictation_probe,
             ai_skills_scan,
             ai_chat_save,
             ai_chat_read,

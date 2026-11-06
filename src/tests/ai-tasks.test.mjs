@@ -29,6 +29,7 @@ import {
   estimateTokens,
   aiContextWindow,
   AI_CTX_WINDOW_TOKENS,
+  voicePath,
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
 import { LOCALES, MESSAGES } from '../locales/index.js'
@@ -117,8 +118,9 @@ t('buildDocContext：带标题与正文，超长截断', () => {
 })
 
 t('normalizeAiConfig：坏类型回落默认，字符串 trim + 限长；contextTokens 非负整数才收', () => {
-  // 默认形状钉住：DEFAULT_AI 加字段时这里要跟着改（toolsCap 是 Agent 能力门控档，默认 auto）
-  const DEF = { baseUrl: '', apiKey: '', model: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
+  // 默认形状钉住：DEFAULT_AI 加字段时这里要跟着改（toolsCap 是 Agent 能力门控档，默认 auto；
+  // asrModel 是语音识别模型，空串 = 语音输入走系统原生识别）
+  const DEF = { baseUrl: '', apiKey: '', model: '', asrModel: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
   assert.deepStrictEqual(normalizeAiConfig(null), DEF)
   assert.deepStrictEqual(normalizeAiConfig(42), DEF)
   const long = 'u'.repeat(400)
@@ -463,6 +465,40 @@ t('buildVaultContext：表头计入 6000 预算，总长不超限', () => {
   const v2 = buildVaultContext(list, 'H'.repeat(6100))
   assert.strictEqual(v2.length, AI_VAULT_CONTEXT_MAX_CHARS)
   assert.strictEqual(v2.split('\n').filter((l) => l.startsWith('- ')).length, 0)
+})
+
+t('normalizeAiConfig：asrModel trim + 限长，缺字段回落空串', () => {
+  const a = normalizeAiConfig({ asrModel: '  FunAudioLLM/SenseVoiceSmall  ' })
+  assert.strictEqual(a.asrModel, 'FunAudioLLM/SenseVoiceSmall')
+  const b = normalizeAiConfig({ asrModel: 'x'.repeat(200) })
+  assert.strictEqual(b.asrModel.length, AI_LIMITS.model)
+  assert.strictEqual(normalizeAiConfig(null).asrModel, '')
+  // 数字等坏类型不收
+  assert.strictEqual(normalizeAiConfig({ asrModel: 42 }).asrModel, '')
+})
+
+t('voicePath：服务商 ASR 优先，原生回落，Web Speech 只在浏览器，全无则 none', () => {
+  const cfg = { baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-chat', asrModel: 'FunAudioLLM/SenseVoiceSmall' }
+  // 桌面 + 配好 ASR：走服务商
+  assert.strictEqual(voicePath(cfg, { tauri: true, webSpeech: false, native: true }), 'asr')
+  // 桌面 + 没填 asrModel：原生
+  assert.strictEqual(voicePath({ ...cfg, asrModel: '' }, { tauri: true, webSpeech: true, native: true }), 'native')
+  // 桌面 + AI 都没配：原生（asrModel 有了但 baseUrl 缺也算没配好）
+  assert.strictEqual(voicePath({ baseUrl: '', model: '', asrModel: 'm' }, { tauri: true, webSpeech: true, native: true }), 'native')
+  // 桌面 + 原生探测失败 + 没有 Web Speech：none
+  assert.strictEqual(voicePath({ ...cfg, asrModel: '' }, { tauri: true, webSpeech: false, native: false }), 'none')
+  // 浏览器（无 Tauri）：即使配了 ASR 也走 Web Speech（录音与上传都要 Rust IPC）
+  assert.strictEqual(voicePath(cfg, { tauri: false, webSpeech: true, native: false }), 'webspeech')
+  assert.strictEqual(voicePath(cfg, { tauri: false, webSpeech: false, native: false }), 'none')
+})
+
+t('voicePath 词条五语言齐全', () => {
+  for (const [id, msgs] of Object.entries(MESSAGES)) {
+    for (const key of ['ai.voiceRec', 'ai.voiceListening', 'ai.voiceAsrBusy', 'ai.voiceErr', 'ai.set.asrModel', 'ai.set.asrModelHint']) {
+      assert.ok(msgs[key], `${id} 缺 ${key}`)
+    }
+    assert.ok(msgs['ai.voiceErr'].includes('{err}'), `${id} ai.voiceErr 缺 {err} 占位符`)
+  }
 })
 
 console.log((fail ? `\n${pass} passed, ${fail} FAILED` : `all ${pass} passed`))
