@@ -187,6 +187,8 @@
 
 ### Fixed
 
+* **中文标点紧贴的强调不再丢加粗，超大文档虚拟化遇此类写法回退源码模式**：两处都在「非 ASCII 标点 / 符号紧邻 `*`、`~`、`_` 定界符」这条链上，一头在 JS 解析器、一头在 Rust 侧的超大文件后台解析。① `src/editor-schema.js` 的 `scanDelims` 掩码原先只认 `\p{P}`，与 markdown-it `isPunctChar` 的 `\p{P}\p{S}` 不一致——`★`、`℃` 这类 Unicode 符号紧贴收尾时（`**注意：★**好`）仍判不出右侧贴合，加粗失效，存盘还把字面 `**` 转义成 `\*\*` 改坏文件。掩码正则放宽到 `[\p{P}\p{S}]`，替换按码点长度补 `'x'.repeat(ch.length)`（`\p{S}` 含增补平面的 emoji，两个 UTF-16 码元换成一个 `x` 会让掩码串整体左移、`start` 与 token 长度一起错位）。放宽只给 `*` / `~`：`_` 另受词内规则约束，把 emoji 掩成字母会让 `_重点_✅`、`_x_★` 的 `can_close` 丢失、退化成字面再被存盘转义，故按 `src.charCodeAt(start)` 选窄（`\p{P}`）/ 宽（`\p{P}\p{S}`）两份掩码，同一 state 各算一次并缓存；ASCII 标点（`**foo:**bar` 不渲染）与词内下划线（`文件_备份`）保持旧行为。② 超大文件虚拟化（`features.virtualLargeMd`）走 `src-tauri/src/mdparse.rs` 的 pulldown-cmark，它按严格 CommonMark 把 `**总结：**大` 判成字面，且返回的 `supported: true` 不触发既有回退——产物与 JS 侧分叉，字面 `**` 经 `serializeMarkdown` 保存即成 `\*\*`。`forbidden_token` 新增 `punct_adjacent_delims` 预闸：`*` / `_` / `~` 紧邻「非 ASCII 且非字母数字非空白」字符时整篇 `supported: false`，`src/main.js` 的 `loadMarkdownIntoEditor` 按既有分支落 `loadAsSource(md)` 回源码模式，不进窗口化视图。判定是保守近似，多拦只是多走一次源码回退（结果仍正确），漏拦才是产物分叉；ASCII 邻居与汉字邻居（`**粗体**`）两侧行为本就一致，不拦。测试：Rust 新增 `cjk_punct_adjacent_delims_fall_back`（5 条应回退 / 3 条不应回退）；前端 `tests/roundtrip.test.mjs` 64 passed、`tests/inline-input-rules.test.mjs` 31 passed，`**总结：**大` 的加粗与序列化不转义照旧；掩码这次没补专门前端单测。未实测：真机 >2MB 文档开着虚拟化开关遇此类写法回退源码模式那条完整链路（Rust 判定有单测、前端分支有代码，未在实机跑）。
+
 * **查找「下一个」落在折叠节里时，窗口不滚到命中位置**：折叠（Ctrl+Shift+H / 标题行三角）只给块挂 `.nl-fold-hidden`（display:none），文档模型不变；查找插件照样命中，`reveal()` 把选区与当前命中高亮都设好了，但目标块没有可见矩形——`coordsAtPos` 回全零，旧的 `scrollMatchIntoView` 按零坐标算 `scrollTop -= rect.top + 72`，反而把窗格拉回文档开头，表现正是「搜索跳了、高亮也在变，窗口却没到命中处」。现在 `src/find-in-doc.js` 的 `reveal()` 在落选区前先展开覆盖命中的折叠：普通模式直接调 `fold-plugin` 的 `unfoldCovering(view.state, from)`；虚拟化模式经 `getFindHooks()` 新增的 `unfoldAt(winPos)` 按窗口坐标展开（折叠集合存 master 坐标，内部经 `foldCoord` 对账；跨窗跳转那条仍由 `jumpToPos` 自己展开）。`scrollMatchIntoView()` 另加一道全零矩形防护：目标仍不可见时干脆不滚，宁可不滚也不再反向拉回开头。测试新增 `src/tests/find-fold-reveal.test.mjs` 4 条（jsdom + 真 EditorState / 折叠插件 / 查找栏控制器，`EditorView` 用最小替身给 `coordsAtPos`）：命中在折叠节内先展开再落选区、命中在折叠外保留其它折叠、全零矩形不改 `scrollTop`、虚拟化模式窗内命中经 `hooks.unfoldAt` 展开；既有 `find-in-doc` 14、`fold` 24、`find-bar-narrow-pane` 10、`editor-virtual` 6 全过，前端 97 个测试文件零失败，`vite build` 无错。真机（`tauri dev` + WebView2 + CDP）实测：折叠「目标节」（`.nl-fold-hidden` 3 块）后从文档顶部搜 NEEDLE → 折叠自动展开（3 → 0），命中矩形 top=690 落在窗格 44.8–850.4 内（visible=true），不再复现「hidden 仍为 3、高亮矩形全零、scrollTop=0」。未实测：>2MB 文件的虚拟化窗口分支（`unfoldAt` 走 master→窗口坐标对齐，jsdom 覆盖不到真实窗格布局）。
 
 * **任务列表勾选框点击复核，并补回归**：issue #IKR91E「预览模式下无法勾选待办任务」。代码侧 2026-10-27 的 `13e25fe` 已把点击接上（勾选框是 CSS `::before` 画的，`li` 的 content hole 只能有一个子节点，故按 li 左侧 padding 区的几何命中后 `setNodeMarkup` 取反 `checked`），本次在 release 构建（内嵌最新 `src/dist`）上用 CDP 真点击复核：顶层、缩进嵌套、引用内、callout 内、有序列表、多段项、已勾选项逐一 false ↔ true 往返都生效。补 `src/tests/task-checkbox-click.test.mjs` 5 条（真 `createEditor` + jsdom 合成 click）：点框勾上、再点取消、点正文区（框外）不动、已勾项取消、有序 + 嵌套项同样可点；jsdom 的 `getComputedStyle` 对继承字号只回 `medium`，用例给 li 一个内联 `font-size:16px` 才能让命中公式拿到数值（真浏览器回 `17px`，不受影响）。未实测：mac 打包版（本机 Windows）、触摸板双击 / 长按这类手势。
@@ -854,7 +856,7 @@
   * ④ 本期已切换：工具条 / 侧栏 / 检查器静态区、命令面板、快捷键设置、confirm3 / prompt 两个通用弹窗的默认按钮、斜杠菜单、文件树与「更多」菜单各条目、模板菜单、新建 / 重命名 / 移动 / 字数目标 / 链接等弹窗及对应状态提示。需要整体重绘的面板订阅 `onLocaleChange`（接入点已留好，本期未用的订阅方在下一批处理）。
   * ⑤ 测试与构建：新增 `tests/i18n.test.mjs` 10 条（语言登记、切换、回退链、插值、命令词条与 id 对齐、订阅退订）；`app-menu.test.mjs` 26 条、`keymap.test.mjs` 23 条、`roundtrip.test.mjs` 58 条仍全过；`npm run build` 通过。未覆盖（下一批）：git-panel、canvas-view、find-in-doc、docx 导入 / 导出 / 校对、site-export、snapshot-panel、frontmatter-panel、outline-tree、img-viewer、mermaid-preview、code-lang-picker、daily-capture、writing-stats、wiki-hover、graph-view 内的文案，以及 main.js 剩余约 90 处 `setStatus` / `messageDialog`（回收站确认、导出结果、拉取冲突等）——这些位置已确认可机械替换，不欠新机制。
 
-## [0.3.0](https://gitee.com/hackerSnail/note-lume/compare/v0.2.0...v0.3.0) - 2026-10-13
+## [0.3.0](https://gitee.com/hackerSnail/note-lume/compare/v0.2.0...v0.3.0) - 2026-11-07
 
 P2 首项落地：简易知识图谱（零外部依赖，基于现有索引，单文件 264 行）。
 
@@ -873,6 +875,8 @@ P2 首项落地：简易知识图谱（零外部依赖，基于现有索引，�
 
 * **标签支持 Unicode CJK**：`is_tag_start` / `is_tag_char` 从 `is_ascii_alphanumeric()` 升为 `is_alphanumeric()`，与 Obsidian 行为一致；新写入单测 `extract_tags_basic_and_cjk` 验证 `#世界` 类中文标签
 * 单测目录新增 4 个 Rust 单测（`extract_wikilinks_basic` / `extract_wikilinks_dedup_and_strip_alias` / `extract_tags_basic_and_cjk` / `extract_graph_merges_undirected_and_skips_self`），为后续索引层改动提供回归保护
+* **中文标点紧贴的强调不再丢加粗**：`src/editor-schema.js` 的 `scanDelims` 掩码对齐 markdown-it `isPunctChar`，从 `\p{P}` 放宽到 `\p{P}\p{S}` 并按码点补位，`★`、`℃`、emoji 紧贴 `**` / `~~` 收尾不再丢标记、存盘不再把 `**` 转义成 `\*\*`；`_` 仍只掩 `\p{P}`，保住词内规则
+* **超大文档虚拟化遇此类写法回退源码模式**：`src-tauri/src/mdparse.rs` 的 `forbidden_token` 新增 `punct_adjacent_delims` 预闸，中文标点 / 符号紧邻强调定界符时整篇 `supported: false`，前端按既有分支回退源码模式，避免 pulldown-cmark 按严格 CommonMark 判出的字面 `**` 经序列化被转义改坏文件
 
 ## [0.2.0](https://gitee.com/hackerSnail/note-lume/compare/v0.1.0...v0.2.0) - 2026-10-13
 

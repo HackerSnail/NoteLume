@@ -300,6 +300,7 @@ jobs:
   # ── 发版：各平台打包全部结束后，汇总 artifact 发一个草稿 Release（仅 v* tag）──
   # 单独收口是为了避免 matrix 各作业并发改同一 Release 产生命令/草稿竞态。
   # needs 必须同时列 package-linux：它已拆成独立作业，漏写会导致 AppImage/deb/rpm 不进 Release。
+  # Release 标题为 `NoteLume <版本>`，正文取 CHANGELOG.md 里该版本段落；发版前须补好对应段落。
   publish:
     name: Publish draft Release
     needs: [package-linux, package-desktop]
@@ -308,6 +309,30 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 要读 CHANGELOG.md，先把 tag 对应的提交检出来
+      - uses: actions/checkout@v4
+
+      - name: Build release notes from CHANGELOG
+        id: notes
+        shell: bash
+        run: |
+          set -e
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # `## [version]` 到下一个 `## ` 之间即这一版的日志；标题行不进正文，段首空行也去掉。
+          # 没有对应段落就让 CI 红掉，不静默发一个空说明的 Release。
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found=1; next }
+            found && /^## / { exit }
+            found && !started && /^[[:space:]]*$/ { next }
+            found { started=1; print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::CHANGELOG.md 里没有 [${version}] 段落，补好更新日志再发版"
+            exit 1
+          fi
+          echo "Release 说明取自 CHANGELOG.md [${version}]：$(wc -l < release-notes.md) 行"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -316,6 +341,7 @@ jobs:
       - name: Publish GitHub Release (draft)
         uses: softprops/action-gh-release@v2
         with:
+          name: NoteLume ${{ steps.notes.outputs.version }}
+          body_path: release-notes.md
           files: artifacts/**/*
           draft: true
-          generate_release_notes: true
