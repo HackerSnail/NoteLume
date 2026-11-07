@@ -454,22 +454,28 @@ mountEmojiRenderer(tokenizer)
 // 整段加粗失效，文档里留着字面星号；序列化时这些 ** 又被当普通文本转义写回，用户保存
 // 一次文件就被改坏（`**总结：**大` 存成 `\*\*总结：\*\*大`）。`这是**「重要」**的内容`、
 // `**“注意”**请看`、`~~提示：~~如下` 同理。Typora / Obsidian 对这些写法照常渲染，本项目
-// 对齐：flanking 计算时把非 ASCII 的 Unicode 标点（全角标点、中文引号、弯引号、破折号
-// 等）当作普通文字，不当标点。
+// 对齐：flanking 计算时把非 ASCII 的 Unicode 标点与符号（全角标点、中文引号、弯引号、
+// 破折号、★、℃ 等）当作普通文字，不当标点。markdown-it 的 isPunctChar 把 \p{S} 也算作
+// 标点（见 common/utils.mjs），掩码集合须与之一致取 \p{P}\p{S}，否则 `**注意：★**好`
+// 这类符号紧贴收尾的写法仍判不出右侧贴合。
 // 实现：包一层 StateInline.prototype.scanDelims，调用期间把 state.src 里这些字符掩码成
 // ASCII 字母后走原逻辑，返回前还原。ASCII 标点的判定不动（`**foo:**bar` 仍不渲染，与
 // GitHub / VS Code 一致），`_` 的词内限制也不动（`文件_备份` 不会变斜体）。掩码按 state
 // 缓存：同一次 inline 解析里强调 / 删除线规则会多次调 scanDelims，而 state.src 在解析
-// 期间不变；无目标字符时掩码与原串相等，直接走原逻辑。
+// 期间不变；无目标字符时掩码与原串相等，直接走原逻辑。\p{S} 含 emoji 等增补平面字符，
+// 替换时按原码点长度补足 x（`'x'.repeat(ch.length)`），保持字符串长度与 posMax 不变，
+// 否则掩码串整体左移、start 指到错位字符，强调判定和 token 长度都会错。
 const NON_ASCII_RE = /[^\x00-\x7F]/gu
-const UNICODE_PUNCT_RE = /\p{P}/u
+const UNICODE_PUNCT_SYMBOL_RE = /[\p{P}\p{S}]/u
 const StateInline = tokenizer.inline.State
 const scanDelimsBase = StateInline.prototype.scanDelims
 StateInline.prototype.scanDelims = function (start, canSplitWord) {
   const src = this.src
   if (this.__nlPunctMaskedFor !== src) {
     this.__nlPunctMaskedFor = src
-    this.__nlPunctMasked = src.replace(NON_ASCII_RE, (ch) => (UNICODE_PUNCT_RE.test(ch) ? 'x' : ch))
+    this.__nlPunctMasked = src.replace(NON_ASCII_RE, (ch) =>
+      UNICODE_PUNCT_SYMBOL_RE.test(ch) ? 'x'.repeat(ch.length) : ch,
+    )
   }
   const masked = this.__nlPunctMasked
   if (masked === src) return scanDelimsBase.call(this, start, canSplitWord)
