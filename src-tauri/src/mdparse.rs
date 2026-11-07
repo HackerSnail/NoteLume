@@ -50,9 +50,9 @@ fn forbidden_token(md: &str) -> Option<&'static str> {
 // 这类写法 JS 侧照常渲染；pulldown-cmark 按严格 CommonMark 判、退回字面，且 supported:true
 // 不触发既有回退。分叉产物里字面 ** 经前端 serializeMarkdown 保存会被转义成 \*\*，损坏
 // 文件，故必须预闸拦截、整篇回退 JS。pulldown 无 flanking 钩子，无法在 Rust 侧复刻放宽。
-// 判定用「非 ASCII 且非字母数字非空白」保守近似 \p{P}\p{S}：多拦只会多走 JS 回退（结果
-// 仍正确），漏拦才是产物分叉。ASCII 邻居不拦（`**foo:**bar` 两侧都按 CommonMark，行为
-// 一致）；邻居是汉字等字母时不拦（`**粗体**` 两侧一致）。
+// 判定用「非 ASCII 且非字母数字非空白」保守近似 \p{P}\p{S}：多拦只会让这类大文档回退源码
+// 模式（结果仍正确），漏拦才是产物分叉。ASCII 邻居不拦（`**foo:**bar` 两侧都按 CommonMark，
+// 行为一致）；邻居是汉字等字母时不拦（`**粗体**` 两侧一致）。
 fn punct_adjacent_delims(md: &str) -> bool {
     let relaxed_punct = |c: char| !c.is_ascii() && !c.is_alphanumeric() && !c.is_whitespace();
     let mut prev: Option<char> = None;
