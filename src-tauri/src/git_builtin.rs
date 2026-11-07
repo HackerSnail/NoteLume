@@ -1297,6 +1297,9 @@ pub mod system {
                 Path::new("/"),
                 &["clone", "-b", "master", bare.to_str().unwrap(), other.to_str().unwrap()],
             );
+            // clone 不继承源仓库的本地身份配置，这里补上，避免依赖 runner 的全局 git 身份
+            git_in(&other, &["config", "user.email", "tester@example.com"]);
+            git_in(&other, &["config", "user.name", "Tester"]);
             fs::write(other.join("b.md"), "二\n").unwrap();
             git_in(&other, &["add", "b.md"]);
             git_in(&other, &["commit", "-m", "远端第二笔"]);

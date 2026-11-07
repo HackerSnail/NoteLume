@@ -997,8 +997,11 @@ mod tests {
     use super::*;
 
     /// 临时排查：独立进程里起 WinRT 持续识别 10 秒，观察状态与事件（需要出声才有 result）
+    // windows 只在 cfg(windows) 下是依赖：这条测试用了 WinRT，必须同样按平台门控，
+    // 否则 Linux 的 cargo test 在编译测试目标时会因 unresolved import `windows` 直接 101。
     #[test]
     #[ignore]
+    #[cfg(windows)]
     fn dictation_live_diagnose() {
         use windows::Foundation::TypedEventHandler;
         use windows::Globalization::Language;
