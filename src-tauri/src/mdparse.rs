@@ -39,7 +39,35 @@ fn forbidden_token(md: &str) -> Option<&'static str> {
             return Some(name);
         }
     }
+    if punct_adjacent_delims(md) {
+        return Some("中文标点紧邻的强调定界符");
+    }
     None
+}
+
+// 中文标点紧邻的强调定界符：editor-schema.js 对 StateInline.scanDelims 做了放宽（非 ASCII
+// 的 \p{P}\p{S} 在 flanking 计算时当普通文字），`**总结：**大`、`这是**「重要」**的内容`
+// 这类写法 JS 侧照常渲染；pulldown-cmark 按严格 CommonMark 判、退回字面，且 supported:true
+// 不触发既有回退。分叉产物里字面 ** 经前端 serializeMarkdown 保存会被转义成 \*\*，损坏
+// 文件，故必须预闸拦截、整篇回退 JS。pulldown 无 flanking 钩子，无法在 Rust 侧复刻放宽。
+// 判定用「非 ASCII 且非字母数字非空白」保守近似 \p{P}\p{S}：多拦只会多走 JS 回退（结果
+// 仍正确），漏拦才是产物分叉。ASCII 邻居不拦（`**foo:**bar` 两侧都按 CommonMark，行为
+// 一致）；邻居是汉字等字母时不拦（`**粗体**` 两侧一致）。
+fn punct_adjacent_delims(md: &str) -> bool {
+    let relaxed_punct = |c: char| !c.is_ascii() && !c.is_alphanumeric() && !c.is_whitespace();
+    let mut prev: Option<char> = None;
+    let mut it = md.chars().peekable();
+    while let Some(c) = it.next() {
+        if matches!(c, '*' | '_' | '~') {
+            let prev_bad = prev.is_some_and(relaxed_punct);
+            let next_bad = it.peek().is_some_and(|&n| relaxed_punct(n));
+            if prev_bad || next_bad {
+                return true;
+            }
+        }
+        prev = Some(c);
+    }
+    false
 }
 
 // mark 在 PM 里按 schema rank 排序输出（link<em<strong<code<strike），与嵌套顺序无关。
@@ -442,5 +470,32 @@ mod tests {
         assert_eq!(md_to_pm_json("[[页]]")["supported"].as_bool(), Some(false));
         assert_eq!(md_to_pm_json("$x^2$")["supported"].as_bool(), Some(false));
         assert_eq!(md_to_pm_json("<b>x</b>")["supported"].as_bool(), Some(false));
+    }
+
+    // 中文标点紧邻强调定界符必须回退：JS 侧 scanDelims 放宽（editor-schema.js）覆盖的写法
+    // pulldown 无对应行为，不拦则产物分叉 + 存盘转义损坏文件（见 punct_adjacent_delims）。
+    #[test]
+    fn cjk_punct_adjacent_delims_fall_back() {
+        for md in [
+            "**总结：**大\n",
+            "这是**「重要」**的内容。\n",
+            "~~提示：~~如下\n",
+            "选*斜体：*这个词。\n",
+            "**注意：★**好\n",
+        ] {
+            assert_eq!(
+                md_to_pm_json(md)["supported"].as_bool(),
+                Some(false),
+                "应回退：{md:?}"
+            );
+        }
+        // 邻居是 ASCII 标点 / 普通字母时两侧行为本就一致，不拦
+        for md in ["**粗体**\n", "a**/**b\n", "**foo:**bar\n"] {
+            assert_eq!(
+                md_to_pm_json(md)["supported"].as_bool(),
+                Some(true),
+                "不应回退：{md:?}"
+            );
+        }
     }
 }
