@@ -76,7 +76,7 @@
 
 ### 7. 移动端
 - Tauri v2 原生支持 iOS/Android，但真正成本在**触屏交互重排**（侧栏/工具条/右键菜单/拖拽/悬浮预览都要改造）。已在 CHANGELOG 标"计划中"，**建议单独立项**，不占功能迭代节奏。
-- 2026-11-08 Android 首版设计完成（[spec](superpowers/specs/2026-11-08-android-mobile-design.md)）：SAF 目录树 + `VaultFs` 统一库内 IO、单窗格、触屏壳层，Git / 剪藏 / 打印 / 插件 / Canvas / 语音首版隐藏。实现前先过 Phase 0 构建闸口。iOS 不在本轮范围。
+- 2026-11-08 Android 首版设计完成（[spec](superpowers/specs/2026-11-08-android-mobile-design.md)）：SAF 单库锁定（首次选一次、启动直达）+ `VaultFs` 统一库内 IO、单窗格、触屏壳层，Git / 剪藏 / 打印 / 插件 / Canvas / 语音首版隐藏。实现前先过 Phase 0 构建闸口。iOS 不在本轮范围。
 
 ## 四、建议执行批次（顺序）
 
