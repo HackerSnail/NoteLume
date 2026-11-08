@@ -1,11 +1,11 @@
-# 设计：NoteLume 安卓手机端（Tauri v2）
+# 设计：NoteLume 安卓手机与平板端（Tauri v2）
 
 - 状态：设计完成，待实现
 - 日期：2026-11-08
-- 范围：Android 手机端首版，不做 iOS
-- 来源：P2 第 5 项「移动端适配」、`docs/ROADMAP.md` 批次 G；2026-11-08 用户指令「开发安卓手机端，按规矩先写 spec」；同日补充「安卓端锁定目录，用户方便」
+- 范围：Android 手机与平板端首版，不做 iOS
+- 来源：P2 第 5 项「移动端适配」、`docs/ROADMAP.md` 批次 G；2026-11-08 用户指令「开发安卓手机端，按规矩先写 spec」；同日补充「安卓端锁定目录，用户方便」「安卓端同样要考虑平板」
 - 最低版本：Android 7.0（API 24），Tauri v2 的默认 `minSdkVersion`
-- 一句话：在 Android 上保留「打开本地文件夹 + 纯 md + WYSIWYG 手感」三条承诺，不是做阅读器，也不是把库导进应用私有目录的云同步客户端。
+- 一句话：在 Android 上保留「打开本地文件夹 + 纯 md + WYSIWYG 手感」三条承诺，手机与平板共用一套内核、按屏宽给不同壳层，不是做阅读器，也不是把库导进应用私有目录的云同步客户端。
 
 ## 一、目标与边界
 
@@ -15,6 +15,7 @@
 2. 编辑器与桌面同源。ProseMirror schema、markdown 解析与序列化、GFM 往返规则不改；手机上保存的文件与桌面版逐字节一致。
 3. 知识库基础能力可用。文件树、`[[链接]]` 跳转、标签、大纲、全库搜索、反链、AI 问答在手机上都能用。
 4. 单库锁定。一个 Android 应用实例只锁一个知识库目录；首次选一次，之后启动直达，不再每次弹目录选择器。换目录必须显式解锁，避免误开别的文件夹把标签、索引与最近记录搅乱。
+5. 手机与平板都是一等设备。手机单窗格；平板按宽度给持久文件树、检查器与最多两个编辑器窗格。不做三栏以上，也不把平板当放大版手机。
 
 ### 1.2 首版验收判据
 
@@ -22,6 +23,9 @@
 - 编辑一篇 1MB md（含中文、列表、表格、代码块、图片），保存后在桌面版打开，内容与格式一致。
 - 全库搜索、反链、AI 问答（HTTPS 服务商与局域网 Ollama 各一条）可用。
 - 按 Android 返回键不会丢未保存内容；后台被系统杀进程后能找回未保存草稿。
+- 600dp 竖屏能看到持久文件树与编辑区，不是抽屉；840dp 横屏有持久文件树 + 编辑区；1200dp 横屏能同时看到文件树、编辑器、检查器。
+- 1000dp 以上横屏可并排两篇文档，各自标签独立；窄回去时多余窗格的标签并回剩余窗格，不丢内容。
+- 旋转、系统分屏、折叠展开不丢标签、滚动位置与未保存内容；外接键盘快捷键、鼠标右键 / hover、触控笔选择按设备能力可用。
 - 桌面端现有测试、`npm run build`、`cargo test --lib` 全部通过。
 
 ### 1.3 明确不做
@@ -31,6 +35,9 @@
 - 把知识库导入应用私有目录作为唯一存储方式。这会直接破坏「零锁定」的产品定位。
 - `MANAGE_EXTERNAL_STORAGE` 全盘文件权限。Google Play 对它有严格审核，且与「用户选文件夹」的模型冲突。
 - 为移动端复制一套前端页面。复用现有 DOM 与模块，用平台分支和 CSS 重排，避免两份 UI 各自漂移。
+- 手写识别、笔迹笔记、压感绘图。触控笔只当精确指针，不把平板做成手写白板。
+- 三栏以上分栏与自研桌面式多窗口管理。系统分屏与自由窗口只做兼容，不自绘窗口边框与任务栏。
+- 折叠屏 hinge 专用双栏放 Phase 5；首版按展开后的可用宽度走平板断点，不承诺铰链两侧各放一栏。
 - 首版不做的桌面功能见 §3.3 与 §7。
 
 ## 二、现状与差距
@@ -44,7 +51,7 @@
 | 命令注册表 | `src/commands.js` | 纯容器，可作为手机「更多」菜单与命令面板的数据源 |
 | 设置存储 | `src/settings-store.js` | Tauri 下走 `app_config_dir()`，Android 有对应的应用私有目录 |
 | i18n / 主题 / 外观 | `src/i18n.js`、`src/locales/`、`src/appearance-settings.js` | 五语言与 CSS 变量体系直接复用 |
-| 标签页与分栏纯逻辑 | `src/tabs.js`、`src/split-pane.js` | 树操作与标签列模型复用，手机端只禁用分栏交互 |
+| 标签页与分栏纯逻辑 | `src/tabs.js`、`src/split-pane.js` | 树操作与标签列模型复用；手机禁用分栏，平板最多两格 |
 | AI 任务与 Agent 循环 | `src/ai-tasks.js`、`src/ai-agent.js`、`src/ai-panel.js` | 纯逻辑与注入式 IO，已有 Node 单测 |
 | 导出渲染器 | `src/site-export.js`、`src/slides-export.js`、`src/plain-export.js`、`src/docx-export.js` | 生成内容与平台无关，只需换写入层 |
 | 预览组件 | `src/mermaid-preview.js`、`src/csv-preview.js`、`src/bibtex-preview.js`、`src/math-nodeviews.js` | 纯前端 |
@@ -94,15 +101,18 @@
 - 最近打开在 Android 上只记锁定库内的文档，不出现其他库的根。桌面端的多库最近列表不受影响。
 - 用户连续取消选择时给「稍后再说」，进入空态，可新建草稿；草稿仍在应用私有目录，保存时要求先锁定一个库或选导出位置。
 
-### 3.2 单窗格，标签保留
+### 3.2 窗格：手机单窗格，平板最多两窗格
 
-手机强制单窗格。启动时把 `panes` 树归一成一个叶子，隐藏拆分按钮、窗格拖拽与「拆分」命令；标签条保留，做成可横向滚动的胶囊，长按标签出「关闭 / 关闭其他 / 固定 / 复制路径」动作表。平板（≥ 640dp）允许侧栏常驻，但同样不做分栏，分栏留到后续版本按平板单独设计。
-
-移动端仍写 `panes` 段（单叶子 + 标签列），不另开一份 `panesMobile`。Android 与桌面是两台设备，`settings.json` 各自一份，不存在互相覆盖；强制单叶子是为了防止从桌面同步配置或未来版本恢复出不可用的分栏。
+- 手机（< 600dp）强制单窗格。启动时把 `panes` 树归一成一个叶子，隐藏拆分按钮、窗格拖拽与「拆分」命令；标签条保留，做成可横向滚动的胶囊，长按标签出「关闭 / 关闭其他 / 固定 / 复制路径」动作表。
+- 平板中等宽度（600-839dp）也是单窗格，但文件树常驻；不做分栏，AI 与检查器走侧边浮层。
+- 平板宽屏（≥ 840dp）允许最多两个编辑器窗格，只做左右并排，不做上下与三窗格。是否可以拆由实际编辑区宽度决定：`canSplit = 可用编辑区宽度 ≥ 720dp && 横屏 && 窗格数 < 2`。检查器常驻会占用宽度，所以检查器打开时通常只能单窗格；要并排就先把检查器收起。
+- 平板分栏复用现有 `split-pane.js`，不新写引擎；拆分按钮只保留「左右拆分」，上下拆分与拖拽落边拆分在手机上隐藏、平板上也只允许一次。已有两窗格时，标签可在两窗格间拖移，落边不再拆第三个。
+- 宽度缩回单窗格阈值或转为竖屏时，保留焦点窗格，把另一个窗格的标签按顺序并回焦点窗格的标签列，去重后保留激活标签；不关闭脏文档，不丢未保存内容。恢复宽屏不自动再拆，用户手动拆。
+- `panes` 树在 Android 上按设备保存，但读取时按当前形态裁剪：手机强制一个叶子，平板最多两个叶子；桌面端的 `panes` 不参与。
 
 ### 3.3 首版功能取舍
 
-首版保留：SAF 单库锁定、文件树、阅读与编辑、保存与自动保存、新建 / 重命名 / 删除 / 回收站、图片插入与查看、单窗格标签、大纲、属性、标签、反链、全库搜索、AI Ask / Agent、单篇导出 HTML / Markdown、主题、五语言、设置、最近打开、草稿恢复。
+首版保留：SAF 单库锁定、文件树、阅读与编辑、保存与自动保存、新建 / 重命名 / 删除 / 回收站、图片插入与查看、手机单窗格与平板双窗格标签、大纲、属性、标签、反链、全库搜索、AI Ask / Agent、单篇导出 HTML / Markdown、主题、五语言、设置、最近打开、草稿恢复。
 
 首版隐藏：Git 面板、网页剪藏服务、打印、Canvas、知识图谱、插件、语音输入、模板、每日速记、Word 导入 / 导出、整站导出、分栏、多窗口、文件关联启动、桌面拖放、Ollama 首启引导。
 
@@ -213,6 +223,7 @@ Builder::new("notelume-mobile-fs")
 | `exportText` | `{fileName, mime, text}` | `{uri}` | `ACTION_CREATE_DOCUMENT` 后写入 |
 | `exportBytes` | `{fileName, mime, base64}` | `{uri}` | 同上，二进制 |
 | `openUrl` | `{url}` | `{}` | `ACTION_VIEW`，仅 http / https |
+| `getInsets` | 无 | `{top,right,bottom,left,imeBottom,cutout}` | 当前窗口安全区与键盘高度；配置变化、分屏、旋转后重取 |
 | `finish` | 无 | `{}` | 返回键确认退出后关闭 Activity |
 
 实现细节：
@@ -327,6 +338,9 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 - Rust 目标：`aarch64-linux-android`、`armv7-linux-androideabi`、`i686-linux-android`、`x86_64-linux-android`。首版发布至少 arm64-v8a + x86_64（模拟器）；armeabi-v7a 视低端机验收结果再决定。
 - 权限：`INTERNET`（AI / 联网图片），SAF 不需要存储权限；首版不申请 `RECORD_AUDIO`。`android:windowSoftInputMode="adjustResize"`。
 - Manifest：`android:allowBackup="false"` 或 data extraction rules 排除 `settings.json`。API Key 存在 `settings.json`，不能让系统云备份把它带走。
+- 尺寸与窗口：`resizeableActivity="true"`、`supportsPictureInPicture="false"`、不锁定 `screenOrientation`；`MainActivity` 声明 `android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density"`，避免旋转、分屏、键盘坞切换时重建 Activity 把编辑器状态打回冷启动。
+- 边到边：`WindowCompat.setDecorFitsSystemWindows(window, false)`，由 `getInsets` 把状态栏 / 导航栏 / 刘海 / 输入法高度交给前端；Android 15 起系统强制边到边，不能靠主题里的 `statusBarColor` 蒙混。
+- 平板资源与断点走 CSS（WebView 的 dp 宽度），不靠 Android `values-sw600dp` 另做一套布局；Android 资源只放图标、主题与启动图。
 - 文件打开：`ACTION_VIEW` 的 `text/markdown` / `text/x-markdown` intent-filter 与 `content` scheme 放 Phase 5；首版可以从应用内选文件夹，不承诺「在其他应用里点 md 打开 NoteLume」。
 - capabilities：`capabilities/default.json` 加 `"platforms": ["windows", "macOS", "linux"]`；新增 `capabilities/mobile.json`，`"platforms": ["android"]`、`windows: ["main"]`，只保留 `core:default`、dialog 的消息框、剪贴板读文本。桌面窗口权限（minimize / maximize / start-dragging / print）不下放给 Android。
 - 签名：release keystore 与 `keystore.properties` 不入库；CI 用 secrets 注入。debug 签名只用于本地真机验证。
@@ -335,6 +349,8 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 
 - `MainActivity` 覆写返回键（Android 13+ 用 `OnBackPressedDispatcher`），不直接 `finish()`，而是向前端发 `nl:android-back`。前端按栈处理：关闭最上层菜单 / 动作表 / 对话框 → 关闭抽屉或面板 → 停止正在流式的 AI → 当前文档有未保存改动则弹「保存 / 不保存 / 取消」→ 都没有才调用插件 `finish`。
 - `onPause` 发 `nl:android-pause`：flush 自动保存、取消 AI 请求、持久化当前标签与滚动位置。`onResume` 发 `nl:android-resume`：若距上次刷新超过 30 秒，后台重建清单并刷新文件树。
+- `onConfigurationChanged` 与 `onMultiWindowModeChanged` 发 `nl:android-config`，带 `{width,height,orientation,multiWindow}`：前端重算 `formFactorFor` / `canSplit`、裁剪窗格、更新 inset CSS 变量；活动不重建，编辑器 state 保留。Activity 真被系统重建时，靠标签与草稿恢复。
+- 折叠屏 Phase 5 用 `androidx.window` 的 `FoldingFeature` 取铰链方向与 posture；首版按展开后的可用宽度走平板断点，不把内容压在铰链上。
 - Intent：Phase 5 接 `ACTION_VIEW`（md 文件）与 `ACTION_SEND`（文本 / 图片）。文件 URI 进来后先提示「选择所在文件夹以启用完整功能」，再通过 `copyIn` 或 tree 授权打开；不在首版承诺。
 - 进程被杀：依赖自动保存与草稿目录，不依赖 `onDestroy` 回调。
 
@@ -346,10 +362,14 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 
 - `detectPlatform(ua, isTauri)` 纯函数，Android 返回 `'android'`，导出 `IS_ANDROID` / `IS_TAURI` / `IS_MOBILE`。
 - 导入期写 `document.documentElement.dataset.tauriPlatform`，Android 不再落到 `linux`。
-- `formFactorFor(width)` 纯函数：`< 640` 为 `phone`，`640-1023` 为 `tablet`，`>= 1024` 为 `desktop`。导入期写 `data-form-factor`，`resize` 去抖更新。
+- `formFactorFor(width, height, coarsePointer)` 纯函数：`< 600` 为 `phone`，`600-839` 为 `tabletMedium`，`>= 840` 为 `tabletExpanded`。不再把 Android 平板叫 `desktop`，避免和 Tauri 桌面混淆。
+- `canSplitEditor(availableEditorWidth, orientation, paneCount)` 纯函数：可用编辑区 ≥ 720dp、横屏、窗格数 < 2 才允许拆第二窗格。窗口宽度只是初判，最终看扣除文件树与检查器后的实测宽度。
+- `inputModality.js` 记录最近一次输入：`pointerdown` 的 `pointerType` 为 `mouse` / `pen` / `touch`，切到 `body.nl-input-mouse` / `nl-input-touch`；混合设备上右键、hover、长按按最近一次输入分流，不按设备型号猜。
 - `titlebar.js` 改为从 `platform.js` 取平台；Android 直接跳过 `initTitlebar` 与 `runWindowRole`。
 
-断点只用两条：`max-width: 639px`（手机）与 `640-1023px`（平板）。桌面 CSS 不动，移动端样式放 `src/mobile.css`，在 `index.html` 里排在 `style.css` 之后。
+断点三条：`max-width: 599px`（手机）、`600-839px`（平板中等）、`min-width: 840px`（平板宽屏）。桌面 CSS 不动，移动端样式放 `src/mobile.css`，在 `index.html` 里排在 `style.css` 之后；平板差异用 `html[data-form-factor="tabletMedium"]` / `tabletExpanded` 收口，不在 JS 里散落宽度判断。
+
+平板按最短边与当前窗口宽度判形态，不按设备名：7-8 英寸竖屏多为 `tabletMedium`，10 英寸以上横屏多为 `tabletExpanded`；同一台设备旋转或进系统分屏会换形态，布局跟着换。
 
 ### 5.2 壳层
 
@@ -371,23 +391,53 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 └─────────────────────────────────┘
 ```
 
-- 编辑区是唯一滚动容器，`.nl-pane` 的滚动语义不变。
-- 左右栏不再常驻。`.body` 在手机上是单列，`.sidebar` / `.inspector` 变成覆盖层（见 §5.4）。
-- 软键盘弹出时隐藏底部导航，编辑区高度按 `visualViewport` 收缩；格式条仍留在编辑器顶部。
+平板中等宽度（600-839dp）：
+
+```
+┌──────────────┬──────────────────────────┐
+│ 库名 + 锁     │ ☰ 文档名 ·        ＋ ⋯   │
+│ 搜索          ├──────────────────────────┤
+│ 文件树        │ 标签条                    │
+│ 240-280dp     ├──────────────────────────┤
+│              │ 格式条                    │
+│              │ 编辑器（占满剩余）         │
+│              │                          │
+└──────────────┴──────────────────────────┘
+  检查器 / AI = 右侧 360dp 浮层
+```
+
+平板宽屏（≥ 1200dp，检查器常驻）：
+
+```
+┌──────────────┬────────────────────────┬──────────────┐
+│ 库名 + 锁     │ ☰ 文档名 ·       ＋ ⋯   │ 属性 / 标签   │
+│ 搜索          ├────────────────────────┤ 反链 / 历史   │
+│ 文件树        │ 标签条                  │              │
+│ 260-320dp     ├────────────────────────┤ 300-360dp    │
+│              │ 格式条                  │              │
+│              │ 编辑器（max 860 居中）   │              │
+└──────────────┴────────────────────────┴──────────────┘
+```
+
+- 手机：编辑区是唯一滚动容器，左右栏是覆盖层（见 §5.4）。
+- 平板：文件树是常驻列，不是抽屉；检查器只在窗口 ≥ 1200dp 且扣除文件树与检查器后编辑区 ≥ 480dp 时常驻，否则改右侧 360dp 浮层；AI 面板同理。840-1199dp 与中等布局一样是两栏，只是文件树更宽。
+- 平板并排两窗格时，检查器自动收成浮层，把宽度让给两个编辑器；每个窗格最小 350dp，窗格间 8dp 分隔条。
+- 所有布局都保持每窗格一个滚动容器，不出现嵌套滚动；格式条与标签条各占一行，不随滚动消失。
+- 软键盘弹出时手机隐藏底部导航；平板不隐藏文件树，只把编辑区高度按 `visualViewport` / `getInsets` 收缩。
 
 ### 5.3 顶栏
 
 复用 `.toolbar` 的 DOM，移动端只显示：
 
-- 左：`☰` 打开文件抽屉（同时提供大纲页签）。抽屉顶部固定一行「库名 + 锁图标」，让用户随时知道当前锁在哪个目录。
+- 左：手机 `☰` 打开文件抽屉；平板 `☰` 收起 / 展开常驻文件树，或切「文件 / 大纲」页签。抽屉与常驻列顶部都固定一行「库名 + 锁图标」。
 - 中：当前文件名，脏标记一个小圆点；单行省略，不换行。
-- 右：`＋` 新建（当前库内新建 md；未开库时落草稿）、`⋯` 打开「更多」动作表。
+- 右：`＋` 新建（当前库内新建 md；未开库时落草稿）、`⋯` 打开「更多」动作表。平板宽屏可多放一个搜索图标，点击聚焦文件树搜索框。
 
 隐藏：窗口按钮、应用名拖拽区、字数统计、查找 / 替换按钮、自动保存勾选、主题按钮、菜单条。这些动作进「更多」或底部导航。顶栏不放「打开其他文件夹」入口，换库只在设置页「知识库目录」。
 
 ### 5.4 底部导航与面板
 
-底部四个入口：
+手机底部四个入口：
 
 | 入口 | 行为 |
 | --- | --- |
@@ -396,66 +446,113 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 | AI | 全屏 AI 面板（复用 `#ai-panel`，移动端用 class 只显示 AI 区块） |
 | 更多 | 底部动作表，条目从命令注册表过滤生成 |
 
+平板不挂底部导航：文件树与「文件 / 大纲」页签常驻在左列，AI、检查器、更多走右侧浮层或顶栏下拉。手机的文件抽屉、平板的中等宽度侧栏、宽屏常驻列共用同一套 `.sidebar` DOM，只换定位与宽度，不复制两份。
+
 抽屉与面板的实现：
 
-- `.sidebar` 与 `.inspector` 在手机上 `position: fixed`，宽 `86vw`（最大 360px），`translateX(-100%)` / `translateX(100%)` 收起；打开时加 `body.nl-drawer-open` 与半透明 backdrop。点击 backdrop、按返回键、点条目后关闭。
+- 手机 `.sidebar` / `.inspector` 是 `position: fixed`，宽 `86vw`（最大 360px），`translateX(-100%)` / `translateX(100%)` 收起；打开时加 `body.nl-drawer-open` 与半透明 backdrop。
+- 平板中等宽度 `.sidebar` 常驻，宽 `clamp(240px, 32vw, 280px)`；`.inspector` 与 AI 是右侧浮层，宽 `min(360px, 42vw)`。
+- 平板宽屏 `.sidebar` 宽 `clamp(260px, 28vw, 320px)`；`.inspector` 在剩余编辑宽度 ≥ 480dp 时常驻，宽 `clamp(300px, 26vw, 360px)`，否则浮层。
 - 检查器内的 Git / 插件 / 历史版本首版隐藏；属性、标签、反链保留。
-- AI 面板全屏，输入卡固定在 `visualViewport` 底部；消息区独立滚动；模型胶囊、停止、清空、设置入口保留，麦克风隐藏。
-- 设置、命令面板、快捷键说明等模态在手机上改为全屏页，宽度 100%，顶部给返回箭头。
+- AI 面板手机全屏；平板是右侧浮层，输入卡固定在浮层底部；消息区独立滚动。麦克风隐藏。
+- 设置、命令面板、快捷键说明：手机全屏页；平板居中模态，最大宽 720dp，不铺满整屏。
 
 ### 5.5 文件树
 
-- 行高 44dp，文件夹行可点开合；文件名单行省略，右侧留 `⋯` 打开文件动作表（新建 / 重命名 / 删除 / 复制路径 / 刷新）。
-- 单击文件 = 打开；长按文件 = 动作表。不做滑动菜单，避免与系统返回手势冲突。
-- 顶部固定「库名 + 锁图标」一行；下面是搜索框，搜索结果点一条后关闭抽屉并打开文档。
-- 抽屉底部只留「刷新」；「更换目录」「解除锁定」放在设置页「知识库目录」，避免在文件树里误触切根。
+- 手机行高 44dp，抽屉内单列；平板行高 40dp，常驻列可拖右侧分隔条调宽，宽度存 localStorage，按形态分别记。
+- 文件夹行可点开合；文件名单行省略，右侧留 `⋯` 打开文件动作表（新建 / 重命名 / 删除 / 复制路径 / 刷新）。
+- 单击文件 = 打开；长按文件 = 动作表；鼠标右键 = 光标位置菜单（见 §5.8）。不做滑动菜单，避免与系统返回手势冲突。
+- 顶部固定「库名 + 锁图标」一行；下面是搜索框，搜索结果点一条后手机关闭抽屉，平板保持文件树并打开文档。
+- 抽屉 / 列底部只留「刷新」；「更换目录」「解除锁定」放在设置页「知识库目录」，避免在文件树里误触切根。
 - 授权丢失时，文件树位置显示「重新授权」按钮，点它重开选择器并预置上次目录；不要提供「随便选一个」的入口。
 - 拖拽移动首版不做；「移动到…」放在动作表里，弹目录选择（后续版本）。
+- 平板把文件树收起到 0 宽时，顶栏 `☰` 仍能拉回；收起状态不写坏 `panes`。
 
 ### 5.6 编辑器
 
-- `.editor` 最大宽度去掉，左右 padding 16px，上下 24px / 80px；字号 16px，行高 1.75，标题层级按比例缩小。
+- 手机：`.editor` 去掉最大宽度，左右 padding 16px，上下 24px / 80px；字号 16px，行高 1.75，标题层级按比例缩小。
+- 平板：编辑区 `max-width: 860px` 居中，左右 padding 40-48px，字号 16-17px，行宽控制在约 80 个字符；编辑区实际宽度不足 720dp 时 padding 收到 24px。
+- 平板宽屏且编辑区 ≥ 720dp 时显示 WYSIWYG 行号装订线；双窗格每格不足 720dp 时自动隐藏，不挤正文。
+- 双窗格时每个窗格是独立 ProseMirror 实例，各有标签条、滚动位置与脏标记；每格最小 350dp，分隔条 8dp，只允许左右排列。
 - 代码块、表格允许横向滚动，外层容器 `overflow-x: auto`；不把整页撑宽。
-- 行号装订线在手机上隐藏（`wysiwyg-gutter`），给正文留宽度；源码模式保留 CodeMirror 行号。
-- 图片默认宽度 100%，点击进查看器；查看器支持双指缩放、单击关闭。
-- 选区工具条（`highlight-toolbar`）移动端只保留一排：加粗 / 斜体 / 链接 / 高亮 / AI，其余进「更多」；按钮 44dp。
+- 图片默认宽度 100%，点击进查看器；查看器支持双指缩放、单击关闭，平板可用双指捏合与鼠标滚轮。
+- 选区工具条：手机保留一排加粗 / 斜体 / 链接 / 高亮 / AI；平板在鼠标或触控笔下显示完整两排，纯触摸时仍用紧凑排但按钮 44dp。
 - 源码模式（CodeMirror）保留，入口在「更多」；软键盘下不自动切模式。
 
 ### 5.7 格式、插入与 AI 入口
 
-- 顶部格式条按钮 44dp，横向滚动；左侧加 `＋` 插入块按钮，打开底部动作表：标题、无序 / 有序 / 任务列表、引用、代码块、表格、图片、分隔线、AI。
-- 插入表格仍用 `table-picker`，移动端把格子尺寸放大到 40dp 以上。
-- 斜杠菜单保留（外接键盘与习惯输入仍可用），浮层改底部动作表样式，避免在窄屏上被虚拟键盘顶出屏幕。
-- 选区 AI 的五个任务保留，结果浮层改全屏底部面板：流式预览区 + 替换 / 插入 / 复制 / 停止。Esc 不存在，用「关闭」按钮与返回键。
+- 手机顶部格式条按钮 44dp，横向滚动；左侧 `＋` 插入块按钮打开底部动作表：标题、无序 / 有序 / 任务列表、引用、代码块、表格、图片、分隔线、AI。
+- 平板格式条可用一到两行展示更多按钮（段落、标题、列表、任务、引用、代码、链接、表格、图片、AI），不横向滚动；剩余项进「更多」。
+- 插入表格仍用 `table-picker`，手机格子 40dp 以上，平板 32dp 以上；鼠标操作时格子可 hover。
+- 斜杠菜单保留：手机用底部动作表；平板有鼠标 / 触控笔时锚在光标旁，纯触摸时仍走底部动作表。
+- 选区 AI 五个任务保留；手机结果用全屏底部面板，平板结果用最大 560dp 的居中 / 侧贴面板，流式预览 + 替换 / 插入 / 复制 / 停止。
 
 ### 5.8 菜单、长按与悬浮
 
-- 现有自绘菜单（`.cv-menu`）在手机上改为底部动作表：CSS 覆盖为 `position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom))`，`placeMenu` 在移动端不再写 `left/top`，只负责打开与关闭。菜单项最小高度 44dp。
-- 长按统一由 `src/mobile/long-press.js` 处理：`pointerdown` 记时，移动超过 8dp 或 500ms 内抬起则取消；命中后触发对应动作表，并吞掉随后的 click。挂在文件行、标签、图片、表格这些非文本区域。
-- 编辑器正文不挂长按菜单：保留系统文本选择手柄与复制 / 粘贴 / 全选菜单；格式操作走选区工具条，避免和选字手势抢事件。
-- 全局 `installGlobalContextMenu` 在 Android 不安装，避免压掉系统文本菜单。
-- 悬浮预览（`wiki-hover.js`）在手机端关闭：点 `[[链接]]` 直接跳转；长按链接触发「打开 / 复制链接 / 新建（目标不存在）」动作表。首版不做预览气泡。
+- 现有自绘菜单（`.cv-menu`）按最近输入分流：触摸用底部动作表（`position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom))`），鼠标 / 触控笔用光标位置菜单；`placeMenu` 在触摸态不写 `left/top`。菜单项最小高度 44dp，鼠标态可 36dp。
+- 长按统一由 `src/mobile/long-press.js` 处理：`pointerdown` 记时，移动超过 8dp 或 500ms 内抬起则取消；命中后触发动作表并吞掉随后的 click。挂在文件行、标签、图片、表格这些非文本区域。
+- 编辑器正文不挂长按菜单：触摸保留系统文本选择手柄与复制 / 粘贴 / 全选；鼠标右键走现有编辑器右键菜单；触控笔按鼠标路径处理。
+- Android 不安装全局 `installGlobalContextMenu` 的压原生逻辑；自绘区域各自绑 `contextmenu`（鼠标）与 long-press（触摸），编辑器正文保留系统菜单。
+- 悬浮预览（`wiki-hover.js`）只在 `hover: hover` 且最近输入是鼠标 / 触控笔时开启；纯触摸关闭，点 `[[链接]]` 直接跳转，长按链接触发「打开 / 复制链接 / 新建（目标不存在）」动作表。
+- 混合设备（平板接键盘、ChromeOS、折叠屏外接鼠标）不按 `pointer: coarse` 一刀切，按 `inputModality.js` 的最近输入切换菜单与 hover。
 
 ### 5.9 键盘与输入法
 
-- 软键盘没有修饰键，快捷键只作为外接键盘能力保留。高频动作全部有可见入口：保存、撤销 / 重做、加粗 / 斜体、标题、列表、图片、AI。
-- `visualViewport` 的 `resize` / `scroll` 更新 CSS 变量 `--nl-kb-h`；`body.nl-kb-open` 时底部导航隐藏，编辑区底部 padding 增加到键盘高度。
-- 中文 / 日文输入法的组合输入依赖 ProseMirror 现有 `composition` 处理，不改 `dispatchTransaction`。真机验收必须覆盖中文候选词上屏、拼音未上屏时按删除、输入法切换。
-- 回车在手机上就是 Enter，不另造「换行」按钮；Shift+Enter 的硬换行只对外接键盘可用。
+- 手机软键盘没有修饰键，快捷键只作为外接键盘能力保留；高频动作全部有可见入口。
+- 平板外接键盘 / 触控板：Ctrl / Cmd / Alt 快捷键、Tab、F2、Ctrl+Tab、命令面板全部可用；触控板双指滚动等同鼠标滚轮，不触发文本选择。
+- `visualViewport` 的 `resize` / `scroll` 更新 `--nl-kb-h`；手机软键盘弹出时隐藏底部导航，平板只收缩编辑区，不隐藏文件树。
+- 中文 / 日文输入法的组合输入依赖 ProseMirror 现有 `composition` 处理，不改 `dispatchTransaction`。手机与平板软键盘都要覆盖中文候选词上屏、拼音未上屏时按删除、输入法切换。
+- 回车就是 Enter；Shift+Enter 的硬换行只对外接键盘可用。
+- 触控笔只当精确指针：选择、拖选区、点击链接、hover 预览；不做手写识别。
 
 ### 5.10 安全区与屏幕适配
 
 - `index.html` 的 viewport 改为 `width=device-width, initial-scale=1.0, viewport-fit=cover`。
-- `#app` 高度：先 `100vh` 回退，再 `@supports (height: 100dvh) { height: 100dvh }`；底部导航与抽屉加 `env(safe-area-inset-bottom)`，顶栏加 `env(safe-area-inset-top)`。
+- `#app` 高度：先 `100vh` 回退，再 `@supports (height: 100dvh) { height: 100dvh }`；容器用 `min-height: 0` + flex，避免固定高度在分屏和键盘弹出时溢出。
+- 安全区以 `getInsets` 返回值为准：`--nl-inset-top/right/bottom/left` 与 `--nl-kb-h` 由 JS 写到 `:root`，`env(safe-area-inset-*)` 只作回退。横屏刘海、平板圆角、手势导航条、折叠屏铰链都走同一套变量。
+- 系统栏：Android 15 起强制边到边，状态栏 / 导航栏颜色与图标明暗由主题配置；不能只靠状态栏底色遮住内容。
+- 旋转、系统分屏、自由窗口、折叠展开都会改变可用宽高：`nl:android-config` 后重新算形态、窗格上限与 inset，不重载页面；标签、滚动位置与未保存内容保留。
+- `@media (hover: none)` 只用于没有 hover 的设备；混合设备用 `body.nl-input-mouse` / `nl-input-touch` 覆盖具体样式，避免平板接鼠标时还禁用 hover。
 - `-webkit-text-size-adjust: 100%`，禁止系统字体缩放把布局撑坏；应用内字号设置仍然生效。
-- `@media (hover: none)` 下关掉 hover 样式与 `mouseenter` 依赖；菜单条在手机端本来就不显示。
-- 横屏时不强制双栏，仍是单列；平板横屏宽度到 1024 以上时按桌面断点恢复侧栏常驻。
 
-### 5.11 平板
+### 5.11 平板布局
 
-- 640-1023dp：侧栏 280px 常驻，编辑区占剩余；检查器与 AI 用抽屉；标签条保留。
-- ≥ 1024dp：按现有桌面布局，但不启用分栏（分栏仍由 `panes` 强制单叶子）。
-- 平板不是首版验收重点，只保证不破布局。
+平板按宽度分两档，不做“放大版手机”，也不做桌面式三栏以上：
+
+| 形态 | 可用宽度 | 文件树 | 编辑器 | 检查器 / AI | 窗格 |
+| --- | --- | --- | --- | --- | --- |
+| `phone` | < 600dp | 抽屉 | 全宽 | 全屏 / 抽屉 | 1 |
+| `tabletMedium` | 600-839dp | 常驻 240-280dp | 剩余宽度，max 860 | 右侧浮层 360dp | 1 |
+| `tabletExpanded` | ≥ 840dp | 常驻 260-320dp，可收起 | 剩余宽度，max 860 | 窗口 ≥ 1200dp 且扣除两栏后编辑区 ≥ 480dp 时常驻 300-360dp，否则浮层 | 默认 1，宽屏可 2 |
+
+分栏规则：
+
+- 只有 `canSplitEditor` 为真才显示「左右拆分」；上下拆分、三窗格、拖拽落边拆第三格一律禁用。
+- 两窗格时检查器收成浮层，AI 也走浮层；每个窗格最小 350dp，分隔条 8dp，比例限制 25%-75%。
+- 宽度缩回单窗格阈值或转竖屏时，保留焦点窗格，把另一窗格的标签按顺序并回焦点窗格并去重；脏文档不关闭，未保存内容不丢。恢复宽屏不自动再拆。
+- 关闭一个窗格时，如果它还有标签，先处理未保存改动，再把剩余标签并回另一窗格；只剩一个窗格时保留空态。
+- 两窗格的标签可互相拖移；已有两窗格时落边不再拆新格，落中间是移动 / 排序。
+
+多窗口与折叠：
+
+- Android 系统分屏把窗口压到 < 600dp 时，切回手机单窗格布局；返回全屏后恢复平板布局与窗格，不重载页面。
+- 自由窗口 / ChromeOS 拖动改宽时实时重算形态；跨过 600 / 840 阈值只调整布局，不重建编辑器。
+- 折叠屏展开后按可用宽度走 `tabletExpanded`；铰链方向与 posture 放 Phase 5 用 `androidx.window` 处理，首版不把内容压在铰链上。
+- ChromeOS / 外接键盘鼠标：鼠标右键、hover 预览、触控板滚动、快捷键按桌面习惯可用；仍不挂托盘、窗口按钮与自研多窗口管理。
+
+持久化：
+
+- 文件树宽度、检查器宽度与开合、分栏比例、焦点窗格、各窗格标签按形态分别存；手机不写分栏比例。
+- 同一份 `settings.json`，但读取时按当前 `formFactor` 裁剪；桌面 `panes` 不参与。
+- 旋转 / 分屏 / 折叠切换不写坏 `panes`，下一次恢复按上次形态的布局。
+
+平板验收：
+
+- 600dp 竖屏：文件树常驻 + 编辑区，能看到正文而不是只剩抽屉入口。
+- 840dp 横屏：文件树 + 编辑区两栏；检查器 / AI 从右侧浮层打开；正文行宽不超过 860dp。
+- 1000dp 横屏：可并排两篇文档，各自标签独立；检查器收起为浮层；旋转回竖屏后多余窗格标签并回，内容不丢。
+- 1200dp 横屏：文件树 + 编辑区 + 检查器三栏同时可见；收起检查器后可并排两格。
+- 系统分屏半屏：自动退回手机单窗格，返回全屏恢复；外接键盘快捷键、鼠标右键、触控笔选择可用。
 
 ### 5.12 无障碍
 
@@ -555,16 +652,20 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 | 切换知识库 | 菜单 / 最近列表 | 仅设置页「更换目录」 | 文件树、最近、拖入、Intent 都不能改根 |
 | 单文件打开 | 支持 | 不做 | Phase 5 接 `ACTION_VIEW` |
 | 文件监听 | `notify` | 不做 | 回前台刷新 + 保存前 mtime 校验 |
-| 标签页 | 多窗格 | 单窗格 | 标签条保留 |
-| 分栏 | 支持 | 不做 | 平板也不做 |
+| 标签页 | 多窗格 | 手机单窗格，平板最多 2 | 平板宽屏且检查器收起时可并排 |
+| 分栏 | 支持 | 手机不做，平板最多左右 2 | 不做上下拆分与三栏以上 |
 | WYSIWYG / 源码 | 支持 | 支持 | 同源 |
 | 大纲 / 标签 / 属性 / 反链 | 支持 | 支持 | 索引改 `VaultFs` |
 | 全库搜索 | 支持 | 支持 | 批量读 + 可选缓存 |
-| 双链 / 悬停预览 | 支持 | 跳转保留，预览关闭 | 长按链接触发动作表 |
-| 右键菜单 | 支持 | 长按动作表 | 复用 `.cv-menu` 数据 |
-| 快捷键 | 支持 | 外接键盘保留 | 软键盘靠可见入口 |
-| 拖放打开 | 支持 | 不做 | Android 用系统 Intent |
-| 多窗口 | 支持 | 不做 | |
+| 双链 / 悬停预览 | 支持 | 触摸关闭，鼠标 / 笔保留 | 触摸用长按动作表 |
+| 右键菜单 | 支持 | 鼠标右键 / 触摸长按 | 按最近输入分流 |
+| 快捷键 | 支持 | 外接键盘保留 | 手机软键盘靠可见入口 |
+| 拖放打开 | 支持 | 不做 | Android 用系统 Intent；平板多窗口拖入不承诺 |
+| 多窗口 | 支持 | 兼容系统分屏 / 自由窗口 | 不自研桌面式窗口管理 |
+| 平板布局 | 支持 | 中等与宽屏两档 | 600 / 840dp 断点，宽屏最多两窗格 |
+| 外接键盘 / 鼠标 | 支持 | 支持 | 快捷键、hover、右键、触控板滚动 |
+| 触控笔 | 支持 | 精确指针 | 选择 / hover / 点击；不做手写识别 |
+| 折叠屏 | 支持 | 按展开宽度走平板断点 | 铰链双栏 Phase 5 |
 | AI Ask / Agent | 支持 | 支持 | TLS 换 rustls / ring |
 | 语音输入 | Windows / 浏览器 | 不做 | Phase 5 单独做 |
 | 图片插入 / 查看 | 支持 | 支持 | 选择器 + data URI |
@@ -590,42 +691,39 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 - 按 §4.10 拆 `Cargo.toml` 目标依赖；修 `trash`、`reveal_in_folder`、`open_url`、`set_decorations` 的编译阻断。
 - 写一个最小 Kotlin 插件，跑通 `pickTree`（带 `initialUri`）/ `listAll` / `readText` / `writeText` 四个命令。
 - 用 500 篇 md 的库量一次 `listAll` 与批量读耗时；用 DeepSeek HTTPS 与局域网 Ollama HTTP 各发一次请求，确认 rustls / ring 可用。
+- 在 800dp 平板模拟器上确认 `configChanges` 不重建 Activity、`getInsets` 返回值正确；系统分屏压到 500dp 时能退回手机布局。
 - 退出判据：应用装到真机，能选一个 SAF 目录、读出文件树、打开一篇 md、写回一次；杀进程重开直接进入同一目录，不再弹选择器；构建命令可在 CI 复现。
 
 ### Phase 1：可打开的壳
 
 - `platform.js`、`titlebar.js` 平台修正；隐藏桌面工具栏、菜单条、窗口按钮。
-- `mobile.css` 响应式壳、顶部栏、底部导航、抽屉与面板骨架。
+- `mobile.css` 三档壳层：手机、平板中等（600-839dp）、平板宽屏（≥840dp）；手机底部导航，平板文件树常驻、无底部导航。
+- 平板安全区：`getInsets` → CSS 变量；`nl:android-config` 重算形态、窗格上限与 inset。
 - 首次启动引导页与单库锁定：`src/mobile/locked-vault.js`、`pickTree(initialUri)`、持久化授权、启动直达、授权丢失页。
-- 单窗格归一；标签条与文件树可打开文档；WYSIWYG 只读渲染。
-- 退出判据：真机 360dp 宽下首次选目录后能打开库、点文件、阅读；杀进程重开直达，返回键关闭抽屉。
+- 手机单窗格；平板宽屏可拆左右两格，标签条与文件树可打开文档；WYSIWYG 只读渲染。
+- 退出判据：360dp 手机和 600dp / 840dp 平板都能打开库、点文件、阅读；旋转与系统分屏不重载；杀进程重开直达。
 
 ### Phase 2：可编辑
 
 - `VaultFs` 写路径；保存、自动保存、冲突检测、草稿恢复。
 - 新建 / 重命名 / 删除 / 回收站；图片插入与查看。
+- 平板双窗格：`canSplitEditor`、左右拆分、标签并回、分栏比例持久化；两窗格各自标签与脏标记。
 - 返回键未保存询问；`onPause` flush；中文输入法验收。
-- 退出判据：1MB 文档编辑保存后与桌面版逐字节一致；后台杀进程能恢复草稿。
+- 退出判据：1MB 文档编辑保存后与桌面版逐字节一致；1000dp 横屏能并排两篇且各自标签独立；后台杀进程能恢复草稿。
 
 ### Phase 3：知识库能力
 
 - 索引重建改 `VaultFs`；全库搜索、反链、大纲、标签、属性。
 - 最近打开、授权丢失恢复、回前台刷新。
 - 设置页「知识库目录」：更换 / 解除锁定，先保存当前文档再释放旧授权。
-- 设置页、外观、五语言在手机上的排版。
+- 平板检查器常驻 / 浮层切换、属性与反链在宽屏下的排版。
 - 退出判据：200 篇库搜索命中正确；反链与桌面一致；授权回收后能重新授权；更换目录后索引与标签重建，旧库文件不被删除。
-
-### Phase 4：AI 与导出
-
-- AI 面板移动布局；Ask / Agent 工具循环；TLS 与后台取消。
-- 单篇 HTML / Markdown / 幻灯片导出到 SAF；分享入口可选。
-- 退出判据：HTTPS 服务商与局域网 Ollama 各跑一轮 Ask 与 Agent；导出文件能在系统浏览器打开。
 
 ### Phase 5：打磨与发布
 
-- 平板断点、横屏、安全区、暗色状态栏、TalkBack。
+- 折叠屏铰链、ChromeOS / 自由窗口、触控笔、鼠标 / 触摸混合输入、横屏安全区、暗色状态栏、TalkBack。
 - `ACTION_VIEW` / `ACTION_SEND`（file association 与分享接收）。
-- 性能优化：清单缓存、索引缓存、图片懒加载、长列表。
+- 性能优化：清单缓存、索引缓存、图片懒加载、长列表、两窗格内存。
 - release 签名、`--aab`、Play 上架材料；桌面端回归。
 - 退出判据：§9 的真机清单全过，桌面测试与打包不受影响。
 
@@ -635,12 +733,13 @@ if (/^content:\/\//i.test(s)) return s.replace(/\/+$/, '')
 
 新增：
 
-- `src/tests/platform.test.mjs`：UA → 平台；Android 不再落 `linux`；`formFactorFor` 边界 639 / 640 / 1023 / 1024。
+- `src/tests/platform.test.mjs`：UA → 平台；Android 不再落 `linux`；`formFactorFor` 边界 599 / 600 / 839 / 840；`canSplitEditor` 的宽度、横竖屏、窗格数组合。
 - `src/tests/vault-path.test.mjs` 补：`content://` 不做 lowercase、尾斜杠归一、`rootChanged`。
 - `src/tests/mobile-back.test.mjs`：返回栈顺序（动作表 → 抽屉 → AI 流 → 脏文档询问 → 退出），每一步只做一件事。
-- `src/tests/mobile-shell.test.mjs`（jsdom）：底部导航切换抽屉、单窗格归一、AI 面板全屏态、键盘 inset 变量。
+- `src/tests/mobile-shell.test.mjs`（jsdom）：手机底部导航；平板无底部导航、文件树常驻、检查器浮层；单窗格归一；宽屏两窗格；窄回时标签并回；AI 面板全屏 / 侧浮层；键盘 inset 变量。
+- `src/tests/mobile-input-modality.test.mjs`：pointer type 切换；鼠标右键 / hover / 长按按最近输入分流；触控笔走鼠标路径。
 - `src/tests/mobile-locked-vault.test.mjs`：首次引导 → 锁定；启动直达；授权丢失保留锁；重新授权选到别的目录先确认；非锁定 root 的 `openVaultPath` / 最近 / 拖入被拒；更换与解除的状态迁移。
-- `src/tests/mobile-menu.test.mjs`：命令注册表在 Android 上过滤掉 Git / 打印 / 剪藏 / Canvas / 插件 / 语音 / 模板 / 速记。
+- `src/tests/mobile-menu.test.mjs`：命令注册表在 Android 上过滤掉 Git / 打印 / 剪藏 / Canvas / 插件 / 语音 / 模板 / 速记；平板上 `splitH` 可见、`splitV` 不可见。
 
 Rust：
 
@@ -665,10 +764,14 @@ Kotlin（可选但推荐）：
 
 | 设备 | 版本 | 用途 |
 | --- | --- | --- |
-| Pixel 6 或同级 | Android 14 | 主验收，arm64 |
+| Pixel 6 或同级 | Android 14 | 手机主验收，arm64 |
 | 低端机（4GB 内存） | Android 10 | 性能与内存下限 |
+| 7 英寸平板 | Android 13，600dp 宽 | 平板中等：常驻文件树 |
+| 10 英寸平板 | Android 14，800dp 宽 | 平板中等 / 宽屏切换 |
+| 12.9 英寸平板 | Android 14，1024dp 宽 | 宽屏三栏与两窗格 |
+| 折叠屏 | Android 14，展开 700-900dp | 展开 / 折叠、旋转 |
+| ChromeOS / 自由窗口 | 最新稳定版 | 鼠标、键盘、窗口缩放 |
 | 模拟器 | API 24 x86_64 | 最低版本兼容 |
-| 平板 | Android 13，800dp 宽 | 断点与侧栏常驻 |
 
 ### 9.4 验收场景
 
@@ -684,6 +787,11 @@ Kotlin（可选但推荐）：
 10. 生命周期：后台 10 分钟回来，文件树刷新，当前文档未丢；低内存杀进程后草稿恢复。
 11. 性能：冷启动 ≤ 3s；500 篇库打开 ≤ 2s（有缓存）；切文件 ≤ 300ms；输入无可感知卡顿；5MB 文档内存峰值 ≤ 400MB。
 12. 锁定闸门：从最近、拖入、外部 Intent 尝试切到另一个库，全部被拒绝并提示；设置页更换目录成功后旧库文件仍在、新库索引重建；解除锁定回引导页。
+13. 600dp 竖屏：文件树常驻 + 编辑区，正文可见；没有底部导航；检查器与 AI 是右侧浮层。
+14. 840dp 横屏：文件树 + 编辑区两栏；检查器 / AI 从右侧浮层打开；正文最大宽 860dp 居中；文件树可收起，编辑区随之变宽。
+15. 1000dp 横屏两窗格：左右各开一篇，标签、滚动、脏标记独立；检查器收起为浮层；旋转回竖屏后另一窗格标签并回焦点窗格，内容不丢；恢复宽屏不自动再拆。
+16. 系统分屏 / 自由窗口：半屏时退回手机单窗格；拖宽到 840dp 恢复两栏；跨阈值不重载页面；外接键盘快捷键、鼠标右键 / hover、触控笔选择、触控板滚动各走一遍。
+17. 1200dp 横屏：文件树 + 编辑区 + 检查器三栏；正文仍不超过 860dp；收起检查器后可并排两格。
 
 ## 十、风险与未决
 
@@ -694,6 +802,12 @@ Kotlin（可选但推荐）：
 | rustls + ring 交叉编译 | Android 构建失败 | Phase 0 先验；不通再评估 vendored OpenSSL（不推荐） |
 | `trash` / `git2` / `cpal` 的平台分支 | 编译失败或功能误暴露 | 目标依赖 + `cfg` 收口；命令注册 stub；前端能力表过滤 |
 | WebView 版本碎片 | `dvh` / `backdrop-filter` / `:has` 不支持 | 只用渐进增强；`100vh` 回退；`@supports` 分支；低端机真机验收 |
+| Android 15 边到边 / 多窗口 inset | 内容被系统栏压住或错位 | `getInsets` + CSS 变量；`configChanges` 不重建；真机覆盖分屏 / 横屏 / 折叠 |
+| 平板两窗格内存与 DOM | 低端平板卡顿 | 上限 2 格、每格 350dp、第二格按需装载；只读预览优先；真机测量 |
+| Activity 重建 / WebView 未 resize | 旋转后布局错或丢状态 | `configChanges` + `nl:android-config`；标签与草稿兜底；不依赖 `100vh` |
+| 折叠屏铰链 / ChromeOS 窗口 | 内容压铰链或窗口缩放错 | Phase 5 用 `FoldingFeature`；窗口 resize 重算；不承诺桌面式多窗口 |
+| 混合输入 | 接鼠标的平板仍被当触摸 | `inputModality.js`；hover / 右键 / 长按按最近输入分流 |
+| 常驻文件树挤压正文 | 600dp 正文过窄 | 树宽 `clamp(240px, 32vw, 280px)`、可收起；< 700dp 默认 240 |
 | 系统杀进程 | 未保存内容丢失 | 2s 自动保存 + `onPause` flush + 草稿恢复 |
 | 外部改动无法实时发现 | 覆盖别人刚改的内容 | 保存前 mtime 校验；回前台刷新；三选一提示 |
 | API Key 进系统备份 | 密钥随 Google 备份离开设备 | `allowBackup=false` 或 data extraction rules 排除；设置页写明 |
@@ -711,7 +825,7 @@ Kotlin（可选但推荐）：
 1. 是否在首个版本就支持「在其他应用里点 md 用 NoteLume 打开」。涉及 Intent、单文件授权与图片相对路径，建议放 Phase 5。
 2. 包名是否在 `android init` 前改成 `app.notelume`。改则要迁移桌面设置目录，不改则 Play 包名不理想。
 3. 模板、每日速记、docx 导入导出是否在第二个 Android 版本补。它们都依赖 SAF 写路径，技术上可复用首版能力，但会拉长首版验收。
-4. 平板是否要做分栏。首版明确不做，避免把单窗格内核改回多实例。
+4. 平板两窗格首版做左右两格，不做上下与三格；12.9 英寸是否需要三格，等真实使用再评估。
 5. 单库锁定是否要升级成多工作区（每个工作区一个锁）。首版不做；如果做，入口必须和「更换目录」分开，避免文件树里出现两套根。
 6. 是否在首次引导里提供示例库或模板库。示例库要写进用户选中的目录，涉及批量创建文件与进度提示，首版不做。
 
@@ -720,8 +834,8 @@ Kotlin（可选但推荐）：
 - 实现分支 `feat/android`，从最新 `origin/master` 拉出；不合并 `web`，不把 `web` 的内容摘进来。
 - 生成并入库 `src-tauri/gen/android`；keystore、`keystore.properties`、签名口令不入库。
 - 实现完成后同步更新：
-  - `CHANGELOG.md` 的 `Added`（Android 首版能力、平台分支、构建命令）。
+  - `CHANGELOG.md` 的 `Added`（Android 首版能力、手机 / 平板布局、平台分支、构建命令）。
   - `docs/ROADMAP.md` 批次 G 状态与链接。
-  - `README.md` 中英两版：平台徽标、安装表、Android 首版能力与限制（SAF 单库锁定、首次选一次、换目录在设置、无 Git / 剪藏 / 打印 / 插件）。
-  - `docs/CLAUDE.MD` 的「技术栈」「架构设计」补 Android 目标与 `VaultFs` 口径；「功能清单」P2 移动端标注为 Android 首版设计中。
+  - `README.md` 中英两版：平台徽标、安装表、Android 首版能力与限制（SAF 单库锁定、首次选一次、换目录在设置、手机单窗格 / 平板两窗格、无 Git / 剪藏 / 打印 / 插件）。
+  - `docs/CLAUDE.MD` 的「技术栈」「架构设计」补 Android 手机 / 平板目标与 `VaultFs` 口径；「功能清单」P2 移动端标注为 Android 首版设计中。
 - 本文件只定设计与阶段，不在本轮写实现代码；实现前先按 Phase 0 做构建闸口，闸口不过不进入 UI 改造。
