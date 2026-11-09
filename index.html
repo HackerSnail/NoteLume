@@ -489,6 +489,41 @@ try {
     border-radius: 5px;
   }
 
+  /* ---------- 视频演示 · B 站播放器 ---------- */
+  #video {
+    padding: 110px clamp(20px, 5vw, 64px) 40px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  #video .section-head { text-align: center; margin-bottom: 36px; }
+  #video .section-head h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+  /* 播放器自带深色画面：外框同色，浅色页面上不露白缝；圆角与阴影跟卡片一致，
+     深浅色背景里都当成一块独立的影像卡片，不是嵌进版式的异物 */
+  .video-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid var(--card-border);
+    border-radius: 18px;
+    background: #0b0b0d;
+    box-shadow: var(--card-shadow);
+  }
+  .video-frame iframe {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  #video .video-note { margin-top: 14px; text-align: center; font-size: 12px; color: var(--text-dim); }
+
   /* ---------- 功能演示 · GIF 墙 ---------- */
   #demo {
     padding: 40px clamp(20px, 5vw, 64px) 0;
@@ -833,6 +868,7 @@ try {
   @media (max-width: 860px) {
     .card-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
     #features { padding-top: 100px; padding-bottom: 110px; }
+    #video { padding-top: 90px; }
     #demo { padding-bottom: 110px; }
     .demo-stage.ring .demo-track { height: 46vh; min-height: 300px; }
     .demo-stage.ring .demo-item { width: var(--ring-w, min(280px, 62vw)); }
@@ -1182,6 +1218,24 @@ try {
         <p>纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 端口，数据直达你配置的服务。</p>
       </div>
     </div>
+  </section>
+
+  <!-- 视频演示 · B 站播放器 -->
+  <section id="video">
+    <div class="section-head">
+      <div class="eyebrow">视频演示</div>
+      <h2>九分钟，看它怎么用。</h2>
+    </div>
+    <div class="video-frame">
+      <iframe
+        src="https://player.bilibili.com/player.html?bvid=BV1QTW46dECG&page=1&high_quality=1&danmaku=0&autoplay=0"
+        title="NoteLume 演示视频（B 站播放器）"
+        loading="lazy"
+        scrolling="no"
+        frameborder="0"
+        allowfullscreen></iframe>
+    </div>
+    <p class="video-note">完整演示 · 播放器来自 B 站</p>
   </section>
 
   <!-- 功能演示 -->
@@ -1609,6 +1663,7 @@ var I18N = (function () {
     c3h3: '完全本地，零锁定',
     c3p: '纯 GFM 文件，Typora 和 Obsidian 能直接打开同一份库。默认不联网、不上传，删除进系统回收站；要接大模型时自己填 API 端口，数据直达你配置的服务。',
     demoEyebrow: '功能演示', demoH2: '写作时，它长这样。', demoCta: '在线沙盒体验', demoNote: '试用版，部分功能以桌面版为准',
+    videoEyebrow: '视频演示', videoH2: '九分钟，看它怎么用。', videoNote: '完整演示 · 播放器来自 B 站',
     caps: [
       '所写即所得', '富文本渲染', '斜杠菜单插入块', '[[ 双链 ]] 输入补全', '双向链接', '全局标签', '全库搜索', '知识图谱',
       '图谱拖节点跳转', 'Canvas 便签板', '今日速记浮层', '正文与源码互切', '图表就地改码', '表格编辑', '图片拖拽缩放', '大纲层级折叠',
@@ -1716,6 +1771,7 @@ var I18N = (function () {
     c3h3: '完全本地，零鎖定',
     c3p: '純 GFM 檔案，Typora 和 Obsidian 能直接打開同一份庫。預設不聯網、不上傳，刪除進系統資源回收筒；要接大模型時自己填 API 埠，數據直達你設定的服務。',
     demoEyebrow: '功能演示', demoH2: '寫作時，它長這樣。', demoCta: '線上沙盒體驗', demoNote: '試用版，部分功能以桌面版為準',
+    videoEyebrow: '影片示範', videoH2: '九分鐘，看它怎麼用。', videoNote: '完整示範 · 播放器來自 B 站',
     caps: [
       '所寫即所得', '富文字渲染', '斜槓選單插入塊', '[[ 雙鏈 ]] 輸入補全', '雙向連結', '全域標籤', '全庫搜尋', '知識圖譜',
       '圖譜拖節點跳轉', 'Canvas 便籤板', '今日速記浮層', '正文與原始碼互切', '圖表就地改碼', '表格編輯', '圖片拖曳縮放', '大綱層級摺疊',
@@ -1823,6 +1879,7 @@ var I18N = (function () {
     c3h3: 'Fully local, zero lock-in',
     c3p: 'Plain GFM files — Typora and Obsidian open the very same vault. Offline by default, nothing uploaded, deletions go to the system trash; for AI you plug in your own model API endpoint, and data goes straight to the service you configured.',
     demoEyebrow: 'In action', demoH2: 'This is what writing looks like here.', demoCta: 'Try it in your browser', demoNote: 'Web trial — the desktop app has the full feature set',
+    videoEyebrow: 'Video', videoH2: 'Nine minutes, start to finish.', videoNote: 'Full walkthrough · Bilibili player',
     caps: [
       'Live WYSIWYG', 'Rich rendering', 'Slash menu', 'Wikilink autocomplete', 'Backlinks', 'Global tags', 'Vault search', 'Knowledge graph',
       'Drag nodes in the graph', 'Canvas board', 'Daily capture', 'Source toggle', 'Edit diagram inline', 'Table editing', 'Image resize', 'Outline folding',
@@ -1930,6 +1987,7 @@ var I18N = (function () {
     c3h3: '100 % local, zéro enfermement',
     c3p: 'Fichiers GFM purs — Typora et Obsidian ouvrent le même coffre. Hors ligne par défaut, rien n\'est envoyé, la suppression passe par la corbeille système ; pour l\'IA, branchez votre propre endpoint d\'API de modèle.',
     demoEyebrow: 'En action', demoH2: 'Voilà à quoi ressemble l\'écriture ici.', demoCta: 'Essayer dans le navigateur', demoNote: 'Version web d\'essai — la version bureau reste la référence',
+    videoEyebrow: 'Vidéo', videoH2: 'Neuf minutes, de zéro à la page écrite.', videoNote: 'Démonstration complète · lecteur Bilibili',
     caps: [
       'WYSIWYG en direct', 'Rendu riche', 'Menu slash', 'Autocomplétion des liens', 'Rétroliens', 'Tags globaux', 'Recherche globale', 'Graphe de connaissances',
       'Graphe : glisser et ouvrir', 'Tableau de notes', 'Capture du jour', 'Source / rendu', 'Diagramme édité sur place', 'Édition de tableau', 'Redimensionner l’image', 'Plan repliable',
@@ -2037,6 +2095,7 @@ var I18N = (function () {
     c3h3: 'Vollständig lokal, kein Lock-in',
     c3p: 'Reine GFM-Dateien — Typora und Obsidian öffnen denselben Vault. Standardmäßig offline, nichts wird hochgeladen, Löschen geht in den Papierkorb; für KI tragen Sie Ihren eigenen Modell-API-Endpunkt ein, die Daten gehen direkt an den von Ihnen konfigurierten Dienst.',
     demoEyebrow: 'In Aktion', demoH2: 'So sieht Schreiben hier aus.', demoCta: 'Im Browser ausprobieren', demoNote: 'Webtest — die Desktop-App bietet den vollen Funktionsumfang',
+    videoEyebrow: 'Video', videoH2: 'Neun Minuten, von leer bis zum fertigen Text.', videoNote: 'Komplette Tour · Bilibili-Player',
     caps: [
       'Live-WYSIWYG', 'Rich-Text-Darstellung', 'Slash-Menü', 'Wikilink-Vervollständigung', 'Backlinks', 'Globale Tags', 'Vault-Suche', 'Wissensgraph',
       'Graph: ziehen und öffnen', 'Canvas-Board', 'Tagesnotiz', 'Quelle und Ansicht', 'Diagramm direkt bearbeiten', 'Tabelle bearbeiten', 'Bild skalieren', 'Gliederung einklappen',
@@ -2218,6 +2277,9 @@ var I18N = (function () {
       card.querySelector('h3').textContent = cKeys[i][0];
       card.querySelector('p').innerHTML = cKeys[i][1];
     });
+    put('#video .section-head .eyebrow', t.videoEyebrow);
+    put('#video .section-head h2', t.videoH2);
+    put('#video .video-note', t.videoNote);
     put('#demo .section-head .eyebrow', t.demoEyebrow);
     put('#demo .section-head h2', t.demoH2);
     put('#demo .demo-cta span', t.demoCta);
