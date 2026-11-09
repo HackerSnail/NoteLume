@@ -7,7 +7,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, lumenote-promo-page]
     # 发版：推 v* 标签（如 v0.1.0）时自动打包并挂到该 tag 的草稿 Release
     tags: ['v*']
   pull_request:
@@ -76,6 +76,114 @@ jobs:
 
       - name: Web tests
         run: npm run web:test
+
+  # ── 推广页：纯静态 index.html 静态体检（仅 lumenote-promo-page 分支）──
+  # 页面由 GitHub Pages legacy 直接发布该分支根目录，没有构建步骤，
+  # 所以只做三件有价值的事：HTML 结构闭合、本地静态资源存在、内联脚本能被 node 解析。
+  promo:
+    name: Promo page checks
+    if: github.ref == 'refs/heads/lumenote-promo-page' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate index.html
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          import vm from 'node:vm';
+          import { execFileSync } from 'node:child_process';
+
+          const errors = [];
+          const fail = (msg) => errors.push(msg);
+          const FILE = 'index.html';
+
+          if (!fs.existsSync(FILE)) {
+            console.error('✗ 根目录找不到 index.html');
+            process.exit(1);
+          }
+          const html = fs.readFileSync(FILE, 'utf8');
+          if (!html.trim()) fail('index.html 是空文件');
+
+          // ① 必要结构
+          const lower = html.toLowerCase();
+          for (const t of ['<!doctype html', '<html', '<head', '<body']) {
+            if (!lower.includes(t)) fail(`缺少 ${t} 结构`);
+          }
+
+          // ② 标签闭合：注释与 script/style 正文先剔除，正文里的 "<" 不是标签
+          const VOID = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+          const skeleton = html
+            .replace(/<!--[\s\S]*?-->/g, '')
+            .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '<script></script>')
+            .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '<style></style>');
+          const tagRe = /<\/([a-zA-Z][\w:-]*)\s*>|<([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+          const stack = [];
+          for (const m of skeleton.matchAll(tagRe)) {
+            if (m[1]) {
+              const name = m[1].toLowerCase();
+              const top = stack.pop();
+              if (top !== name) { fail(`标签闭合不匹配：</${name}> 对应 <${top ?? '空'}>`); break; }
+            } else {
+              const name = m[2].toLowerCase();
+              if (!VOID.has(name) && !/\/\s*$/.test(m[3] || '')) stack.push(name);
+            }
+          }
+          if (stack.length) fail(`存在未闭合标签：${stack.map((t) => `<${t}>`).join(' ')}`);
+
+          // ③ 本地静态资源必须真实存在（站外链接、data:/javascript: 等一律跳过）
+          const root = process.cwd();
+          const refs = new Set();
+          for (const m of html.matchAll(/(?:src|href|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+            const raw = (m[1] ?? m[2] ?? '').trim();
+            if (!raw || raw.startsWith('#') || /^(?:https?:|mailto:|tel:|javascript:|data:|\/\/)/i.test(raw)) continue;
+            const p = raw.split(/[?#]/)[0];
+            if (!p) continue;
+            refs.add(p);
+          }
+          for (const ref of refs) {
+            let decoded;
+            try { decoded = decodeURIComponent(ref); } catch { decoded = ref; }
+            const abs = path.resolve(root, decoded.replace(/^\/+/, ''));
+            if (!abs.startsWith(root + path.sep)) { fail(`资源引用越出仓库根目录：${ref}`); continue; }
+            if (!fs.existsSync(abs)) fail(`本地资源不存在：${ref}`);
+          }
+
+          // ④ 内联脚本语法：JSON-LD 走 JSON.parse，经典脚本走 vm.Script，module 交给 node --check
+          const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+          for (const [idx, m] of scripts.entries()) {
+            const attrs = m[1] || '';
+            if (/\bsrc\s*=/i.test(attrs)) continue;
+            const type = ((attrs.match(/\btype\s*=\s*["']([^"']+)["']/i) || [])[1] || 'text/javascript').trim();
+            const label = `内联脚本 #${idx + 1}（${type}）`;
+            const code = m[2];
+            if (/^application\/(?:ld\+)?json$/i.test(type)) {
+              try { JSON.parse(code); } catch (e) { fail(`${label} JSON 解析失败：${e.message}`); }
+            } else if (/module/i.test(type)) {
+              const tmp = path.join(os.tmpdir(), `promo-inline-${idx + 1}.mjs`);
+              fs.writeFileSync(tmp, code);
+              try { execFileSync(process.execPath, ['--check', tmp], { stdio: 'pipe' }); }
+              catch (e) { fail(`${label} 语法错误：${(e.stderr ? e.stderr.toString() : e.message).trim()}`); }
+              finally { fs.rmSync(tmp, { force: true }); }
+            } else {
+              try { new vm.Script(code, { filename: `index.html#inline-${idx + 1}` }); }
+              catch (e) { fail(`${label} 语法错误：${e.message}`); }
+            }
+          }
+
+          if (errors.length) {
+            console.error('✗ 推广页校验失败：');
+            for (const e of errors) console.error(`  - ${e}`);
+            process.exit(1);
+          }
+          console.log(`✓ index.html 校验通过：${refs.size} 个本地资源、${scripts.length} 段内联脚本`);
+          NODE
 
   # ── Rust：Tauri 后端 cargo check + test（src-tauri）──
   rust:
