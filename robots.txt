@@ -1,0 +1,5 @@
+# NoteLume (Wensu) promo site
+User-agent: *
+Allow: /
+
+Sitemap: https://hackersnail.github.io/NoteLume/sitemap.xml

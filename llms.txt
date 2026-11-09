@@ -1,0 +1,28 @@
+# NoteLume（文溯）
+
+> NoteLume（文溯）是一款免费开源（Apache-2.0）的本地优先 Markdown 编辑器，把所见即所得的写作体验与双链知识库做进同一个桌面应用。
+
+NoteLume（文溯）是一款本地 Markdown 编辑器：公式、图表、表格在渲染态直接改，双链、标签、全库搜索与 Git 面板对着原生文件夹干活；默认不联网、不上传，文件是纯 GFM，Typora 与 Obsidian 能直接打开同一份库。支持 Windows / macOS / Linux，界面提供简体中文、繁體中文、English、Français、Deutsch 五种语言。
+
+## 产品与功能
+
+- [官网首页](https://hackersnail.github.io/NoteLume/): 产品定位、核心特性与下载入口
+- [能力清单](https://hackersnail.github.io/NoteLume/#capabilities): 写作体验、知识管理、开发工具、隐私与数据四组功能
+- [功能演示](https://hackersnail.github.io/NoteLume/#demo): 所写即所得、双链、知识图谱、Git 面板等界面录屏
+- [与 Typora、Obsidian 对比](https://hackersnail.github.io/NoteLume/#compare): 编辑模式、知识管理、Git 集成、开源协议等维度对照
+- [上手五步](https://hackersnail.github.io/NoteLume/#quickstart): 下载安装、选择知识库文件夹、写作、双链、版本管理与导出
+- [常见问题](https://hackersnail.github.io/NoteLume/#faq): 平台支持、开源协议、数据安全、迁移等十个问答
+
+## 下载与平台
+
+- [GitHub Releases](https://github.com/HackerSnail/NoteLume/releases): Windows .exe、macOS .dmg（Apple Silicon / Intel）、Linux AppImage / deb / rpm、浏览器扩展
+- [Gitee Releases](https://gitee.com/hackerSnail/note-lume/releases): 国内镜像下载，版本与 GitHub 同步
+
+## 开源与源码
+
+- [GitHub 仓库](https://github.com/HackerSnail/NoteLume): 主仓库，Apache-2.0 许可证，Tauri v2 + Rust 后端、ProseMirror 前端
+- [Gitee 仓库](https://gitee.com/hackerSnail/note-lume): 国内镜像仓库
+
+## 在线体验
+
+- [在线沙盒](https://lume.hackersnail.online/): 网页试用版，功能不全，以桌面版为准
