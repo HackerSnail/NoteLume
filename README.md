@@ -24,6 +24,16 @@
   </tr>
 </table>
 
+## 视频演示 · Video demo
+
+<p align="center">
+  <a href="https://www.bilibili.com/video/BV1QTW46dECG" title="在 B 站观看 NoteLume 演示视频">
+    <img src="docs/img/video/bilibili-demo-cover.jpg" alt="NoteLume 演示视频封面（B 站）" width="760">
+  </a>
+  <br>
+  <sub>▶ 点封面去 B 站看九分钟完整演示 · Click the cover to watch the full walkthrough on Bilibili</sub>
+</p>
+
 ## 功能演示 · Feature demos
 
 <table>
