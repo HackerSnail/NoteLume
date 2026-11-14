@@ -344,12 +344,22 @@ async function askSavePanes(ids) {
   if (!dirty.length) return true
   if (state.autosave.enabled) {
     for (const id of dirty) await savePane(id, false)
-    const stuck = dirty.filter((id) => paneCtx(id).dirty)
-    if (stuck.length) {
-      // 自动保存写盘失败原本只进 console，这里返回 false 会让打开 / 关闭链路
-      // 静默中止，用户看来就是「点了没反应」——把失败亮出来
-      await messageDialog(t('msg.autosaveFailed'))
-      return false
+    // 自动保存也写不进去时必须有出口（U 盘拔出、网络盘断开、文件被占用）：
+    // 早先这里只弹一句「自动保存失败」就 return false，打开 / 切换 / 关窗全部被
+    // 这一个失败卡住，关不掉窗口只能重启。现在给「另存为 / 放弃改动 / 取消」三选。
+    let stuck = dirty.filter((id) => paneCtx(id).dirty)
+    while (stuck.length) {
+      const picked = await stuckSaveDialog(stuck)
+      if (picked === 'cancel') return false
+      if (picked === 'neutral') {
+        for (const id of stuck) markPaneDirty(id, false) // 明知存不了，放弃改动继续
+        return true
+      }
+      let saved = false
+      for (const id of stuck) saved = (await savePaneAs(id)) || saved
+      stuck = dirty.filter((id) => paneCtx(id).dirty)
+      // 另存为被取消或也失败：留在原地，不再连环弹同一个框
+      if (stuck.length && !saved) return false
     }
     return true
   }
@@ -371,6 +381,24 @@ async function askSavePanes(ids) {
   }
   for (const id of dirty) markPaneDirty(id, false) // 不保存：放弃改动继续
   return true
+}
+
+// 自动保存写不进去时的三选：另存为 / 放弃改动 / 取消。
+// 必须带上文件名与写盘错误——只说「自动保存失败」，用户既不知道是哪一篇、
+// 也不知道该去插 U 盘还是关掉占用的程序。
+function stuckSaveDialog(ids) {
+  const names = ids.map((id) => baseName(paneCtx(id).rel)).join('、')
+  const err = paneCtx(ids[0]).lastSaveError || t('common.unknownErr')
+  return confirm3Dialog({
+    title: t('dlg.autosaveStuckTitle'),
+    message:
+      ids.length === 1
+        ? t('dlg.autosaveStuckMsg', { name: names, err })
+        : t('dlg.autosaveStuckMulti', { n: ids.length, names, err }),
+    confirmLabel: t('dlg.autosaveStuckSaveAs'),
+    neutralLabel: t('dlg.autosaveStuckDiscard'),
+    cancelLabel: t('common.cancel'),
+  })
 }
 
 // 离开当前文档（切换 / 打开别处 / 新建）前处理未保存改动。
@@ -2897,6 +2925,7 @@ async function savePane(paneId, manual = true) {
     }
     const md = inst.getMarkdown()
     await writeMdFile(ctx.vaultRoot, ctx.rel, md)
+    ctx.lastSaveError = ''
     inst.markSaved()
     markPaneDirty(paneId, false)
     if (pluginManager) pluginManager.fireSave(ctx.rel, md)
@@ -2915,8 +2944,58 @@ async function savePane(paneId, manual = true) {
     if (snapshotPanel && manual && isFocus) snapshotPanel.refresh()
     if (gitPanel && manual && isFocus) gitPanel.refresh()
   } catch (e) {
+    // 失败原因留在窗格上：自动保存平时只进 console，用户要等到切换 / 关窗被拦下来
+    // 才看得到失败框，那时得说清是哪一条路径写不进去
+    ctx.lastSaveError = errText(e)
     if (manual) await messageDialog(t('msg.saveFailedDlg', { err: e }))
     else console.warn(t('msg.autosaveFailed'), e)
+  }
+}
+
+/**
+ * 另存为逃生口（stuckSaveDialog 的「另存为」）：把窗格里的内容写到用户选的位置，
+ * 该窗格改指新文件——之后自动保存写的是新位置，不再反复撞那条写不进去的老路径。
+ * 不碰 state.vaultRoot 与文件树：原库可能只是这一篇写不了（文件被占用），
+ * 把整棵树换到新目录属于另一件事（那是「打开文件夹」）。
+ */
+async function savePaneAs(paneId) {
+  const ctx = paneCtx(paneId)
+  const inst = panes.editors.get(paneId)
+  if (!ctx.rel || !inst) return false
+  // 画布窗格存的是 JSON，另存为走不通这里（画布的失败只能放弃改动）
+  if (state.mode === 'canvas' && paneId === panes.canvasPane) return false
+  const md = inst.getMarkdown()
+  try {
+    const abs = await pickSaveAs(baseName(ctx.rel))
+    if (!abs) return false
+    const { dir, name } = splitAbs(abs)
+    await writeMdFile(dir, name, md)
+    ctx.vaultRoot = dir
+    ctx.rel = name
+    ctx.scratch = false
+    ctx.lastSaveError = ''
+    inst.markSaved()
+    markPaneDirty(paneId, false)
+    const strip = panes.strips.get(paneId)
+    const act = strip && strip.tabs.active()
+    if (act) strip.tabs.update(act.id, { root: dir, rel: name, scratch: false })
+    if (paneId === panes.focused) {
+      state.currentFile = name
+      if (els.filename) els.filename.textContent = abs
+    }
+    try {
+      await updateIndexDoc(name, md)
+      if (paneId === panes.focused) refreshLinkPanels()
+    } catch (e) {
+      console.warn(t('msg.indexUpdateFailed'), e)
+    }
+    recordRecent(dir, name)
+    setStatus(t('status.savedTo', { abs }))
+    return true
+  } catch (e) {
+    ctx.lastSaveError = errText(e)
+    await messageDialog(t('msg.saveAsFailed', { err: errText(e) }))
+    return false
   }
 }
 

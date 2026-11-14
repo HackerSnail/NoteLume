@@ -9,6 +9,8 @@
 
 ### Added
 
+* **修复自动保存写不进去时软件卡死、只能重启**：文档放在 U 盘上，拔盘后编辑内容，之后切文件 / 开文件 / 关窗口全部弹「自动保存失败」，点确定回到原界面，再点还是这一句——窗口关不掉。原因是 `src/main.js` 的 `askSavePanes` 在自动保存分支里写盘失败后只弹一个确定框就 `return false`，而切换文档、打开文件、`onCloseRequested` 关窗都走它，等于把三条路一起锁死；失败原因（os error）只进了 console，用户看不到是哪个文件、为什么写不进去。改为三选：另存为… / 放弃改动 / 取消，文案带上文件名与写盘错误，并提示可能是盘拔出、网络盘断开或文件被占用。另存为走新函数 `savePaneAs`：写到选定位置后把该窗格改指新文件（`ctx.vaultRoot` / `rel` 与标签一起更新），不换知识库根与文件树，之后自动保存写新位置；放弃改动则清脏标记放行。`savePane` 的 catch 顺手把 `errText(e)` 记到 `ctx.lastSaveError`，成功写盘时清空。词条 `dlg.autosaveStuck*` 五语言。
+
 * **修复打印排版弹窗没有标题**：`src/print-options-dialog.js` 的 `printOptionsDialog()` 建好 `h`（`nl-prompt-title`，文案 `dlg.printTitle`）后没有 `appendChild`，四个复选项上面空一块、弹窗没有名字。打包版录屏时肉眼核对到，补一行挂载。
 
 * **定位 mac 打包版打印没有分页**：⌘P 勾完四个选项点确定，系统打印面板里仍是 2 页且带屏幕上的编辑器界面，说明走的是 `printPaged` 的普通打印兜底。分段探针钉住失败点：焦点窗格取到了（`.nl-pane.focused .ProseMirror` 命中）、`pagedjs` 已随主块打进来、`Previewer` 是函数，卡在 `previewer.preview()` 这条 promise 上——60 秒后以 `TimeoutError` 结束，`PREVIEW_TIMEOUT_MS` 到点、`teardown` 摘干净、退回普通打印。同一份 `previewPaged` 源码在 headless Chromium 与一个可见的独立 `WKWebView` 里都正常分页（7 个页面盒、约 0.3 秒），所以不是引擎、不是打包裁剪，差异在应用内那份真实编辑器克隆出来的 DOM。这条坑未修，`print-layout` 动图因此暂缓：确定以后要等满 60 秒才出面板，录出来不可用。挂住的这 60 秒里 Paged.js 插进 `head` 的样式会临时套到当前文档上（行距与字号明显变大），超时收尾后自行恢复。

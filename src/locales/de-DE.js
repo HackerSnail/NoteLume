@@ -346,6 +346,11 @@ export default {
   // —— Dialoge (Aufrufstellen in main.js) ——
   'dlg.unsavedTitle': 'Nicht gespeicherte Änderungen',
   'dlg.unsavedMsg': '„{name}“ hat nicht gespeicherte Änderungen. Speichern?',
+  'dlg.autosaveStuckTitle': 'Automatisches Speichern fehlgeschlagen',
+  'dlg.autosaveStuckMsg': '„{name}“ ließ sich nicht schreiben: {err}. Der ursprüngliche Ort ist womöglich nicht erreichbar (USB-Stick entfernt, Netzlaufwerk offline, Datei von einem anderen Programm belegt). Speichere den Inhalt woanders, um fortzufahren.',
+  'dlg.autosaveStuckMulti': 'Der Inhalt von {n} Ansichten ließ sich nicht schreiben ({names}): {err}. Speichere sie woanders, um fortzufahren.',
+  'dlg.autosaveStuckSaveAs': 'Speichern unter…',
+  'dlg.autosaveStuckDiscard': 'Änderungen verwerfen',
   'dlg.curDoc': 'Aktuelles Dokument',
   'dlg.newFileTitle': 'Neue Markdown-Datei (in {dir})',
   'dlg.newFileTitleRoot': 'Neue Markdown-Datei (Vault-Wurzel)',
