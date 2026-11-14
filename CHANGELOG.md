@@ -857,6 +857,29 @@
   * ④ 本期已切换：工具条 / 侧栏 / 检查器静态区、命令面板、快捷键设置、confirm3 / prompt 两个通用弹窗的默认按钮、斜杠菜单、文件树与「更多」菜单各条目、模板菜单、新建 / 重命名 / 移动 / 字数目标 / 链接等弹窗及对应状态提示。需要整体重绘的面板订阅 `onLocaleChange`（接入点已留好，本期未用的订阅方在下一批处理）。
   * ⑤ 测试与构建：新增 `tests/i18n.test.mjs` 10 条（语言登记、切换、回退链、插值、命令词条与 id 对齐、订阅退订）；`app-menu.test.mjs` 26 条、`keymap.test.mjs` 23 条、`roundtrip.test.mjs` 58 条仍全过；`npm run build` 通过。未覆盖（下一批）：git-panel、canvas-view、find-in-doc、docx 导入 / 导出 / 校对、site-export、snapshot-panel、frontmatter-panel、outline-tree、img-viewer、mermaid-preview、code-lang-picker、daily-capture、writing-stats、wiki-hover、graph-view 内的文案，以及 main.js 剩余约 90 处 `setStatus` / `messageDialog`（回收站确认、导出结果、拉取冲突等）——这些位置已确认可机械替换，不欠新机制。
 
+## [0.3.1](https://gitee.com/hackerSnail/note-lume/compare/v0.3.0...v0.3.1) - 2026-11-14
+
+### Added
+
+* **AI 面板语音输入**：工具条麦克风按钮，说话实时转文字进输入框。桌面版优先走 Windows 系统听写（不出本机），在「AI 设置」填了语音识别模型（如 SiliconFlow 的 `FunAudioLLM/SenseVoiceSmall`）则改走服务商转写；浏览器版走 Chrome 语音识别。系统隐私开关未开启时自动打开设置页
+* **支持应用多开**：双击图标 / 命令行再启就是第二个完整实例，各开各的库，不再只唤起已有窗口
+* **超大文件虚拟化编辑器**：MB 级 markdown 秒开不假死，滚动 / 查找 / 折叠 / 大纲跨整篇可用（设置页开关「超大文件窗口化编辑」，默认关，下次打开生效）
+* **AI 面板**：Agent 模式按模型能力门控，不支持工具调用的模型只给建议、不再自动改文档；「AI 设置」新增「数据流向」一节，说清哪些内容会发出去、是否出本机；本机 Ollama 探测拆四档，零模型时可在设置里一键拉模型
+* **所见即所得敲 ``` 直接变代码块**，敲完 ``` 弹语言联想（Typora 手感）
+* **Git 面板首次推送自动建立上游**，不用再去终端手动 `git push -u`
+* **bibtex 代码块渲染成参考文献条目**（与 mermaid / csv 同族交互）
+* **Typora 式分段全选**：表格等容器里第一次 Ctrl+A 只选当前层，再按一次选整篇
+* **新图标**：主程序图标重绘（纸页 + N 字形），`.md` / `.markdown` / `.canvas` 关联文件有独立图标
+
+### Fixed
+
+* **自动保存写不进去时不再卡死**：三选对话框替代只有「确定」的提示框，另存为后窗格改指新文件
+* **桌面版语音能启动但不出字**：会话被系统异常终止后自动清理，可重试不再卡「听写中」；引擎拿不到麦克风时出改用服务商转写的指引
+* **中文系统下 Git 报错分类失效**：推送非快进、认证失败、网络问题等在中文 locale 下恢复对应专项引导（此前一律显示原始错误）
+* **菜单条长菜单出滚动条**：「段落」等 20 多项的菜单不再撑满整屏
+* HTML 块的源码编辑框按内容自适应高度，不再封顶 24 行
+* 剪藏结果在网页右下角出确认条，mac 不再只靠会被静默挡掉的系统通知
+
 ## [0.3.0](https://gitee.com/hackerSnail/note-lume/compare/v0.2.0...v0.3.0) - 2026-11-07
 
 P2 首项落地：简易知识图谱（零外部依赖，基于现有索引，单文件 264 行）。
