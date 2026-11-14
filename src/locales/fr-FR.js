@@ -351,6 +351,11 @@ export default {
   // —— Boîtes de dialogue (points d’appel dans main.js) ——
   'dlg.unsavedTitle': 'Modifications non enregistrées',
   'dlg.unsavedMsg': '« {name} » comporte des modifications non enregistrées. Les enregistrer ? (Abandonner conserve un instantané de version.)',
+  'dlg.autosaveStuckTitle': 'Échec de l’enregistrement automatique',
+  'dlg.autosaveStuckMsg': 'Impossible d’écrire « {name} » : {err}. L’emplacement d’origine est peut-être inaccessible (clé USB retirée, partage réseau hors ligne, fichier verrouillé par un autre programme). Enregistrez-le ailleurs pour continuer.',
+  'dlg.autosaveStuckMulti': 'Impossible d’écrire le contenu de {n} volets ({names}) : {err}. Enregistrez-les ailleurs pour continuer.',
+  'dlg.autosaveStuckSaveAs': 'Enregistrer sous…',
+  'dlg.autosaveStuckDiscard': 'Abandonner les modifications',
   'dlg.curDoc': 'Document actuel',
   'dlg.newFileTitle': 'Nouveau fichier Markdown (dans {dir})',
   'dlg.newFileTitleRoot': 'Nouveau fichier Markdown (racine du coffre)',

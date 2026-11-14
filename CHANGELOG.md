@@ -80,6 +80,7 @@
 * **AI 对话面板加 Ask / Agent 双模式**：输入框上方加小号分段 pill（Apple 分段控件口径，品牌词不翻译、解释走悬停提示），模式持久化 `nl-ai-mode`。Ask 维持现状（只问答，手动插入 / 复制）；Agent 在回答**完整**结束后自动把内容追加到当前文档末尾——复用「插入到文档」同一条 ProseMirror 链路（`insertAiMarkdown` 以 `caret` 定位 doc 末尾，Ctrl+Z 可撤销），气泡尾缀「已应用到文档 / 写入失败」小标签；手动停止视为用户想留半截自己处理，不自动应用；Agent 请求额外附一条系统提示，让模型只输出要写进文档的内容本身（不寒暄、不复述、不解释操作）。五语言补 `ai.modeAskTip / ai.modeAgentTip / ai.agentHint / ai.applied / ai.applyFail`。无头 CDP 验证 21 项全过（分段默认 Ask / 切 Agent 持久化与激活态迁移），Node 单测 58 项全过。
 
 * **修复「更多」菜单长过窗口时底部项点不到**：工具条「更多」下拉 20 多项（AI 面板搬右栏后又加了 Quarkdown / Git 等条目），菜单没有高度上限，`placeMenu` 的防溢出只会把菜单往上挪，高过窗口时底部照样整块伸出屏幕外。`.tree-menu` 限高 `calc(100vh - 12px)` 出滚动条（`overscroll-behavior: contain` 防滚穿到页面）；`placeMenu` 的滚轮关闭监听豁免菜单内部滚动——原先在菜单里滚一下就等于「外面滚了」，菜单直接被关掉，滚动条根本用不了。所有走 `placeMenu` 的下拉（最近打开 / 导出子菜单 / Git / 语言 / 段落）一并受益。无头 CDP 验证 18 项全过（新增限高滚动可达底部、菜单内滚轮不关菜单两条）。
+* **修复自动保存写不进去时软件卡死、只能重启**：文档放在 U 盘上，拔盘后编辑内容，之后切文件 / 开文件 / 关窗口全部弹「自动保存失败」，点确定回到原界面，再点还是这一句——窗口关不掉。原因是 `src/main.js` 的 `askSavePanes` 在自动保存分支里写盘失败后只弹一个确定框就 `return false`，而切换文档、打开文件、`onCloseRequested` 关窗都走它，等于把三条路一起锁死；失败原因（os error）只进了 console，用户看不到是哪个文件、为什么写不进去。改为三选：另存为… / 放弃改动 / 取消，文案带上文件名与写盘错误，并提示可能是盘拔出、网络盘断开或文件被占用。另存为走新函数 `savePaneAs`：写到选定位置后把该窗格改指新文件（`ctx.vaultRoot` / `rel` 与标签一起更新），不换知识库根与文件树，之后自动保存写新位置；放弃改动则清脏标记放行。`savePane` 的 catch 顺手把 `errText(e)` 记到 `ctx.lastSaveError`，成功写盘时清空。词条 `dlg.autosaveStuck*` 五语言。
 
 * **修复打印排版弹窗没有标题**：`src/print-options-dialog.js` 的 `printOptionsDialog()` 建好 `h`（`nl-prompt-title`，文案 `dlg.printTitle`）后没有 `appendChild`，四个复选项上面空一块、弹窗没有名字。打包版录屏时肉眼核对到，补一行挂载。
 

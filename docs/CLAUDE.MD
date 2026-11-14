@@ -176,6 +176,7 @@
 * `src/split-pane.js` 是引擎：树模型（`split` / `leaf` 两种节点）+ 4px 分割条 + 指针捕获拖拽，纯逻辑可单测；DOM 只做定向手术（拆分 / 关闭各只搬动一个元素），不整树重建——整树重建会把 ProseMirror 的 DOM 连根拔起。手术后按 DOM 现取子节点重算 flex 比例样式（缓存引用会刷到已搬走的元素上）。
 * 每窗格顶部一条 `.nl-pane-strip`（sticky，`src/pane-strip.js`）：左边标签滚动区，右边拆分横 / 竖 / 关窗格三个按钮；关窗格按钮只在多窗格时显示。`.nl-pane` 仍是滚动容器（不套嵌套滚动），查找栏的 top 偏移含条子高度。
 * 脏状态按窗格各自记（每个实例自己的 dirty），`ensurePaneSaved` / 自动保存遍历所有脏窗格；多窗格未保存时一次问清「全部保存 / 全部不保存 / 取消」。面板（大纲 / 属性 / 反链 / git）与查找栏、高亮工具栏都跟焦点窗格的活动标签走。
+* 自动保存写不进去（U 盘拔出、网络盘断开、文件被其他程序占用）时不能把切换 / 打开 / 关窗一起锁死：`askSavePanes` 的自动保存分支改问「另存为 / 放弃改动 / 取消」，文案带文件名与写盘错误。另存为走 `savePaneAs`，把该窗格改指新路径（`ctx.vaultRoot` / `rel` 与标签一起更新），不动库根与文件树，之后自动保存写的是新位置；放弃改动清脏标记放行。失败原因记在 `paneCtx(id).lastSaveError`，写盘成功即清空。
 * 空窗格自动关掉（2026-10-19 起）：关掉窗格最后一个标签、把最后一个标签拖走、删掉当前文档关光标签，这三种情况都整格自动关掉（`closePaneIfEmpty`），只剩最后一个窗格时保留空态承接下一次打开。启动恢复时标签列为空的叶子直接剪掉（`pruneEmptyPanes`，首叶子保留）。关掉 `#canvas-mount` 宿主窗格时挂载点搬进剩余第一个窗格（`rehomeCanvasMount`），`panes.canvasPane` 跟着改——此前手动关掉那个窗格画布就静默残废。
 * 每侧最小 20%、最大 80%（p5plan §6.1）；树结构、比例、各窗格标签列与焦点窗格存 settings.json 的 `panes` 段（`{tree, focused, tabs}`，预览与脏标记不落盘），拆分 / 关闭 / 拖拽结束（pointerup）/ 开关标签都落盘（`persistPanes` 内 update 后立即 flush，不走 500ms 防抖——拖完立刻关窗不丢布局），窗口 resize 不重算（百分比天然自适应）。
 * 恢复：`normalizeTree` 认新形状与旧形状（裸树，迁移时首窗格按 `workspace.lastFile` 建一个固定标签），坏数据退回单窗格空布局。启动时每个窗格只读活动标签的内容，其余标签点击时再读；恢复出的文档已被移走则摘掉该标签，标签光了的多余窗格整格关掉，不打断启动。焦点窗格装载时全局镜像一并回填（`state.vaultRoot` / `currentFile` / `scratch`）——恢复路径只走 `loadDocIntoPane`，不补镜像的话 `state.vaultRoot` 停在 null，重启后点文件树会被 `openFile` 静默拦下（2026-10-19 修）。

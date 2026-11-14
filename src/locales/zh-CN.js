@@ -351,6 +351,11 @@ export default {
   // —— 弹窗（main.js 各调用点） ——
   'dlg.unsavedTitle': '未保存的更改',
   'dlg.unsavedMsg': '「{name}」尚未保存，是否保存更改？（不保存的改动会留一份历史版本快照）',
+  'dlg.autosaveStuckTitle': '自动保存失败',
+  'dlg.autosaveStuckMsg': '「{name}」写不进去：{err}。原位置可能已不可用（U 盘拔出、网络盘断开、文件被其他程序占用），可另存到别处再继续。',
+  'dlg.autosaveStuckMulti': '有 {n} 个窗格的内容写不进去（{names}）：{err}，可逐个另存到别处再继续。',
+  'dlg.autosaveStuckSaveAs': '另存为…',
+  'dlg.autosaveStuckDiscard': '放弃改动',
   'dlg.curDoc': '当前文档',
   'dlg.newFileTitle': '新建 Markdown 文件（于 {dir}）',
   'dlg.newFileTitleRoot': '新建 Markdown 文件（库根）',
