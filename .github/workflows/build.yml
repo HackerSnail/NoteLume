@@ -355,14 +355,19 @@ jobs:
           # mac 两个型号各起一台对应架构的 runner 原生打：Apple Silicon 出 aarch64 卷，Intel 出 x64 卷。
           # 不做通用二进制（universal）：那要把 webkit2gtk 那类依赖在两种架构都齐，本机也没有 x86_64 目标库。
           # 无开发者证书，两种架构都走 ad-hoc 签名（Wrap mac dmg 那一步）。
+          # bundles 只报 app 不报 dmg（2026-11-14）：Tauri 的 dmg 用 bundle_dmg.sh（create-dmg
+          # 那套 AppleScript 组卷）在 CI runner 上不稳——0.3.1 的 Intel 格就死在这一步、arm64 格
+          # 侥幸过了。wrap-mac-dmg.mjs 本来就要按 stage 用 hdiutil 重卷（Tauri 卷的会被清掉重做），
+          # 让 Tauri 只出 .app，dmg 全走 hdiutil，绕开这条不稳定路径；只要 app 时 Tauri 不会清
+          # bundle/macos/NoteLume.app，收尾脚本照常拿到它。
           - platform: macos-arm64
             runs_on: macos-latest      # Apple Silicon runner（=macos-26 arm64）
-            bundles: app dmg           # 必须连 app 一起要：只要 dmg 时 Tauri 组完卷会把 bundle/macos/NoteLume.app 清掉，收尾脚本就没法按它重卷 dmg
+            bundles: app
             artifact_name: NoteLume-macOS-ARM64
             artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
           - platform: macos-intel
             runs_on: macos-26-intel    # Intel x64 runner（与 macos-26-large 同一镜像，macOS 的 x64 图只剩这一族）
-            bundles: app dmg
+            bundles: app
             artifact_name: NoteLume-macOS-Intel
             artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.runs_on }}
