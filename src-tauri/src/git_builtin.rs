@@ -252,6 +252,11 @@ impl BuiltinErrCode {
 /// 2) NonFastForward 先于 LocalChanges（"Merge is not possible - divergent" 归 Divergent 语义）
 /// 3) LocalChanges 先于 Auth（"local changes would be overwritten" 不含 auth 词）
 /// 4) Auth 先于 Network（"authentication failed" 可能同时含 "connect"）
+///
+/// 系统 git 的错误文案会随 LANG 本地化：中文 locale 下「当前分支没有跟踪信息」和
+/// 「无法找到远程引用」不含上面任何英文关键词，漏判会让 pull_ff / pull_merge 把无上游
+/// 归成 git_error，从而不再改走显式 refspec，中文 Linux 上「拉取」直接失败。
+/// push 的无上游提示在 git 2.43 里仍是英文，但同一份分类表也一并兜住中文说法。
 pub fn map_err_text(msg: &str) -> BuiltinErrCode {
     let l = msg.to_ascii_lowercase();
     let has = |needle: &str| l.contains(needle);
@@ -259,6 +264,10 @@ pub fn map_err_text(msg: &str) -> BuiltinErrCode {
         || has("no upstream")
         || has("couldn't find remote ref")
         || has("cannot find the remote ref")
+        || l.contains("没有跟踪信息")
+        || l.contains("没有上游分支")
+        || l.contains("无法找到远程引用")
+        || l.contains("找不到远程引用")
     {
         return BuiltinErrCode::NoUpstream;
     }
@@ -2657,6 +2666,15 @@ gitee.com ssh-ed25519 AAAAC3NzaFake2
         );
         assert_eq!(
             map_err_text("fatal: couldn't find remote ref master"),
+            BuiltinErrCode::NoUpstream
+        );
+        // 中文 locale 下 git 的两种说法：漏掉任一都会让无上游拉取判成 git_error
+        assert_eq!(
+            map_err_text("当前分支没有跟踪信息。\n请指定您要合并哪一个分支。"),
+            BuiltinErrCode::NoUpstream
+        );
+        assert_eq!(
+            map_err_text("fatal: 无法找到远程引用 master"),
             BuiltinErrCode::NoUpstream
         );
         assert_eq!(BuiltinErrCode::NoUpstream.as_str(), "no_upstream");
