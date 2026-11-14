@@ -346,11 +346,6 @@ export default {
   // —— 彈窗（main.js 各呼叫點） ——
   'dlg.unsavedTitle': '未儲存的變更',
   'dlg.unsavedMsg': '「{name}」尚未儲存，是否儲存變更？',
-  'dlg.autosaveStuckTitle': '自動儲存失敗',
-  'dlg.autosaveStuckMsg': '「{name}」寫不進去：{err}。原位址可能已不可用（USB 隨身碟拔出、網路磁碟中斷、檔案被其他程式佔用），可另存到別處再繼續。',
-  'dlg.autosaveStuckMulti': '有 {n} 個窗格的內容寫不進去（{names}）：{err}，可逐一另存到別處再繼續。',
-  'dlg.autosaveStuckSaveAs': '另存新檔…',
-  'dlg.autosaveStuckDiscard': '放棄變更',
   'dlg.curDoc': '當前文件',
   'dlg.newFileTitle': '新增 Markdown 文件（於 {dir}）',
   'dlg.newFileTitleRoot': '新增 Markdown 文件（庫根）',

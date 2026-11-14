@@ -347,11 +347,6 @@ export default {
   // —— Dialogs (call sites in main.js) ——
   'dlg.unsavedTitle': 'Unsaved Changes',
   'dlg.unsavedMsg': '"{name}" has unsaved changes. Save them?',
-  'dlg.autosaveStuckTitle': 'Auto-save Failed',
-  'dlg.autosaveStuckMsg': 'Could not write "{name}": {err}. The original location may be unreachable (USB drive removed, network share offline, file held by another program). Save it somewhere else to continue.',
-  'dlg.autosaveStuckMulti': 'Could not write the contents of {n} panes ({names}): {err}. Save them somewhere else to continue.',
-  'dlg.autosaveStuckSaveAs': 'Save As…',
-  'dlg.autosaveStuckDiscard': 'Discard Changes',
   'dlg.curDoc': 'Current Document',
   'dlg.newFileTitle': 'New Markdown File (in {dir})',
   'dlg.newFileTitleRoot': 'New Markdown File (vault root)',
