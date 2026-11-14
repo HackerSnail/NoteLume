@@ -271,14 +271,24 @@ pub fn map_err_text(msg: &str) -> BuiltinErrCode {
     {
         return BuiltinErrCode::NoUpstream;
     }
-    if has("host key") || has("known_hosts") || has("known hosts") || has("hostkey") {
+    if has("host key")
+        || has("known_hosts")
+        || has("known hosts")
+        || has("hostkey")
+        || has("主机密钥")
+    {
         return BuiltinErrCode::HostkeyMismatch;
     }
+    // 中文 locale 关键词：具体短语而不是单字，避免跨类误判——「更新被拒绝」（推送
+    // 非快进）与「连接被拒绝」（网络）是两回事；「快进」覆盖「非快进 / 无法快进」。
     if has("fast-forward")
         || has("non-fast-forward")
         || has("divergent")
         || has("diverge")
         || has("not possible to fast-forward")
+        || has("更新被拒绝")
+        || has("快进")
+        || has("分歧")
     {
         return BuiltinErrCode::NonFastForward;
     }
@@ -287,6 +297,8 @@ pub fn map_err_text(msg: &str) -> BuiltinErrCode {
         || has("not clean")
         || has("uncommitted changes")
         || has("untracked")
+        || has("本地修改")
+        || has("未跟踪")
     {
         return BuiltinErrCode::LocalChanges;
     }
@@ -296,6 +308,10 @@ pub fn map_err_text(msg: &str) -> BuiltinErrCode {
         || has("403")
         || has("invalid username")
         || has("could not read")
+        || has("认证失败")
+        || has("身份验证失败")
+        || has("无法读取用户名")
+        || has("权限被拒绝")
     {
         return BuiltinErrCode::Auth;
     }
@@ -306,6 +322,12 @@ pub fn map_err_text(msg: &str) -> BuiltinErrCode {
         || has("resolve")
         || has("network")
         || has("unreachable")
+        || has("无法解析主机")
+        || has("连接被拒绝")
+        || has("无法连接")
+        || has("连接失败")
+        || has("网络不可达")
+        || has("超时")
     {
         return BuiltinErrCode::Network;
     }
@@ -2678,6 +2700,45 @@ gitee.com ssh-ed25519 AAAAC3NzaFake2
             BuiltinErrCode::NoUpstream
         );
         assert_eq!(BuiltinErrCode::NoUpstream.as_str(), "no_upstream");
+    }
+    #[test]
+    fn map_err_chinese_locale_variants() {
+        // 中文 locale（git zh_CN po）的各类错误文案都要归对类，否则非英文环境
+        // 全落 git_error：拉取不走 refspec 重试、推送非快进不出分叉引导、认证
+        // 失败不弹凭证提示。样例取自 zh_CN po 的实际译法。
+        assert_eq!(
+            map_err_text("更新被拒绝，因为您当前分支的最新提交落后于其对应的远程分支"),
+            BuiltinErrCode::NonFastForward
+        );
+        assert_eq!(
+            map_err_text("fatal: 无法快进，中止。"),
+            BuiltinErrCode::NonFastForward
+        );
+        assert_eq!(
+            map_err_text("error: 您对下列文件的本地修改将被合并操作覆盖："),
+            BuiltinErrCode::LocalChanges
+        );
+        assert_eq!(
+            map_err_text("fatal: 身份验证失败"),
+            BuiltinErrCode::Auth
+        );
+        assert_eq!(
+            map_err_text("fatal: 无法解析主机 github.com"),
+            BuiltinErrCode::Network
+        );
+        assert_eq!(
+            map_err_text("ssh: 连接超时"),
+            BuiltinErrCode::Network
+        );
+        assert_eq!(
+            map_err_text("fatal: 主机密钥验证失败。"),
+            BuiltinErrCode::HostkeyMismatch
+        );
+        // 两个「拒绝」要分对家：推送非快进 vs 网络连接被拒绝
+        assert_eq!(
+            map_err_text("ssh: connect to host: 连接被拒绝"),
+            BuiltinErrCode::Network
+        );
     }
     #[test]
     fn map_err_host_key_beats_network_keyword() {
