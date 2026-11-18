@@ -341,7 +341,7 @@ export default {
   'pn.splitVDone': 'Split up / down',
   'pn.closeTip': 'Close this pane',
   'pn.closed': 'Pane closed',
-  'pn.emptyHint': 'Empty pane: pick a file from the sidebar or tabs, or drag one in, to open it here',
+  'pn.emptyHint': 'Empty pane: create (Ctrl+N) or open a note before typing — pick a file from the sidebar or tabs, or drag one in',
   'pn.canvasSplit': 'Canvas does not support split panes yet: close the other panes first',
   'dlg.unsavedMulti': '{n} panes have unsaved changes ({names}). Save them? (Discarding keeps a version snapshot.)',
 

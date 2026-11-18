@@ -139,6 +139,7 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
   const CM = await loadCM()
   let applying = false // 程序化写入标志：期间不回调 onChange（避免进入/切文件被误判为“编辑”）
   const themeComp = new CM.state.Compartment()
+  const editableComp = new CM.state.Compartment() // 空态（没打开文档）时整体关掉编辑
 
   const buildExt = (isDark) => [
     buildTheme(CM, isDark, themeExtra),
@@ -160,6 +161,7 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
     doc: '',
     extensions: [
       themeComp.of(buildExt(isDark)),
+      editableComp.of([]),
       CM.view.lineNumbers(),
       CM.view.EditorView.lineWrapping,
       CM.commands.history(),
@@ -214,6 +216,10 @@ export async function createSourceEditor({ mountEl, theme = 'light', onChange, t
     },
     setTheme(name) {
       view.dispatch({ effects: themeComp.reconfigure(buildExt(name !== 'light')) })
+    },
+    // 没有文档打开时禁止输入（与 ProseMirror 侧 setEditable 同口径）
+    setEditable(enabled) {
+      view.dispatch({ effects: editableComp.reconfigure(CM.view.EditorView.editable.of(!!enabled)) })
     },
     focus() {
       view.focus()

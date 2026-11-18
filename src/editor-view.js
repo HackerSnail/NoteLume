@@ -195,6 +195,7 @@ export function createEditor(opts) {
   let rawSource = null // 进入源码应展示的文本：打开即原始字节；WYSIWYG 改后置为最新全文
   let modelDirty = false // 自上次同步以来 WYSIWYG 是否改过模型（决定进源码展示 raw 还是序列化）
   let src = null // 懒建的 CodeMirror 封装实例
+  let wantsEditable = true // 空态（没打开文档）时为 false；懒建的 CM 也要继承它
   let srcChangeTimer = null
   // 专注/打字机模式插件（初始态由 main.js 从 localStorage 传入）
   const modes = createModesPlugin({ focus: !!opts.initialFocus, typewriter: !!opts.initialTypewriter })
@@ -566,6 +567,8 @@ export function createEditor(opts) {
     if (src) return src
     const mod = await import('./source-editor.js')
     src = await mod.createSourceEditor({ mountEl: opts.sourceMountEl, theme: currentThemeName(), onChange: onSourceChange })
+    // 空态期间第一次进源码：CM 是此刻才建的，此前 setEditable(false) 碰不到它
+    src.setEditable(wantsEditable)
     return src
   }
   function onSourceChange(text) {
@@ -920,6 +923,14 @@ export function createEditor(opts) {
     focus() {
       view.focus()
     },
+    // 没有文档打开时由 main.js 的 showPaneEmpty 关掉编辑：ProseMirror 仍可聚焦输入，
+    // 空态提示盖在正文上就成了「水印和文字重叠」，写进去的内容也无处保存。
+    // 源码态的 CodeMirror 同一开关，退出源码 / 装载文档时再打开。
+    setEditable(enabled) {
+      wantsEditable = !!enabled
+      view.setProps({ editable: () => wantsEditable })
+      if (src) src.setEditable(wantsEditable)
+    },
     // —— 选区高亮（p5plan §6.4）：浮动工具栏的取数口与动作口 ——
     // 一次拿全：DOM 选区的 PM 区间不直接给工具栏，位置用视口矩形、现状用 marks 判定。
     // 选区不在编辑器内（焦点在侧栏 / 对话框）或已折叠 → null，工具栏据此隐藏。
@@ -959,6 +970,9 @@ export function createEditor(opts) {
     },
     // 面板/设置页/原生菜单「主动执行」一条编辑命令：聚焦后对当前 state 求值 PM 命令
     runEditorCommand(id) {
+      // 空态下编辑器不可编辑：菜单 / 命令面板仍能把命令派到这里，别让它们改动
+      // 一篇根本不存在的文档（编辑器的 keydown 链在 editable=false 时已经不走）
+      if (!view.editable) return false
       // 源码态下可见的是 CodeMirror：撤销/重做归它自己的历史，动 PM 等于改错对象
       if (sourceMode && src && (id === 'editor.undo' || id === 'editor.redo')) {
         return id === 'editor.undo' ? src.undo() : src.redo()

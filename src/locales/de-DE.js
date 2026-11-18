@@ -340,7 +340,7 @@ export default {
   'pn.splitVDone': 'Oben / unten geteilt',
   'pn.closeTip': 'Diese Ansicht schließen',
   'pn.closed': 'Ansicht geschlossen',
-  'pn.emptyHint': 'Leere Ansicht: Datei aus der Seitenleiste oder den Tabs wählen oder hierher ziehen',
+  'pn.emptyHint': 'Leere Ansicht: erst erstellen (Strg+N) oder eine Notiz öffnen — Datei aus der Seitenleiste oder den Tabs wählen oder hierher ziehen',
   'pn.canvasSplit': 'Canvas unterstützt noch keine geteilten Ansichten: zuerst die anderen schließen',
   'dlg.unsavedMulti': '{n} Ansichten haben ungespeicherte Änderungen ({names}). Speichern? (Beim Verwerfen bleibt eine Versionsmomentaufnahme erhalten.)',
 

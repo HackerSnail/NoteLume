@@ -340,7 +340,7 @@ export default {
   'pn.splitVDone': 'Fractionné en haut / en bas',
   'pn.closeTip': 'Fermer ce volet',
   'pn.closed': 'Volet fermé',
-  'pn.emptyHint': 'Volet vide : choisissez un fichier dans la barre latérale ou les onglets, ou glissez-en un ici',
+  'pn.emptyHint': 'Volet vide : créez (Ctrl+N) ou ouvrez une note avant d’écrire — choisissez un fichier dans la barre latérale ou les onglets, ou glissez-en un ici',
   'pn.canvasSplit': 'Le canvas ne prend pas encore en charge les volets : fermez d’abord les autres',
   'dlg.unsavedMulti': '{n} volets ont des modifications non enregistrées ({names}). Les enregistrer ? (Abandonner conserve un instantané de version.)',
 

@@ -33,6 +33,8 @@
     "test:site-export": "node tests/site-export.test.mjs",
     "test:plain-export": "node tests/plain-export.test.mjs",
     "test:save-guard": "node tests/save-guard.test.mjs",
+    "test:empty-editor": "node tests/empty-editor.test.mjs",
+    "test:empty-source-editor": "node tests/empty-source-editor.test.mjs",
     "test:slides-export": "node tests/slides-export.test.mjs",
     "test:print-toc": "node tests/print-toc.test.mjs",
     "test:emoji": "node tests/emoji.test.mjs",

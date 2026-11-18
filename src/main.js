@@ -2924,6 +2924,11 @@ function showPaneEmpty(paneId, on) {
   } else if (hint) {
     hint.remove()
   }
+  // 没文档就把这一格的编辑器关成只读（含源码态的 CodeMirror）：空态提示只是浮层，
+  // 底下 ProseMirror 仍可输入，用户打字就和水印叠在一起，内容也无处保存。
+  // 新建 / 打开文档走 showPaneEmpty(false) 恢复编辑。
+  const inst = panes.editors.get(paneId)
+  if (inst && typeof inst.setEditable === 'function') inst.setEditable(!on)
   syncFmtBars()
 }
 

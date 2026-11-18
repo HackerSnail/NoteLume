@@ -340,7 +340,7 @@ export default {
   'pn.splitVDone': '已上下拆分窗格',
   'pn.closeTip': '關閉此窗格',
   'pn.closed': '已關閉窗格',
-  'pn.emptyHint': '空窗格：點左側檔案樹、標籤頁，或把檔案拖進來，在這裡開啟',
+  'pn.emptyHint': '空窗格：先新增（Ctrl+N）或開啟一篇文件再編輯——點左側檔案樹、標籤頁，或把檔案拖進來',
   'pn.canvasSplit': '畫布暫不支持分欄：請先關閉其它窗格',
   'dlg.unsavedMulti': '有 {n} 個窗格有未儲存的更改（{names}），是否儲存？（不儲存的改動會留一份歷史版本快照）',
 

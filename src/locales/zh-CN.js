@@ -340,7 +340,7 @@ export default {
   'pn.splitVDone': '已上下拆分窗格',
   'pn.closeTip': '关闭此窗格',
   'pn.closed': '已关闭窗格',
-  'pn.emptyHint': '空窗格：点左侧文件树、标签页，或把文件拖进来，在这里打开',
+  'pn.emptyHint': '空窗格：先新建（Ctrl+N）或打开一篇文档再编辑——点左侧文件树、标签页，或把文件拖进来',
   'pn.canvasSplit': '画布暂不支持分栏：请先关闭其它窗格',
   'dlg.unsavedMulti': '有 {n} 个窗格有未保存的更改（{names}），是否保存？（不保存的改动会留一份历史版本快照）',
 
