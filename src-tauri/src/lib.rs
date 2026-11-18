@@ -366,6 +366,44 @@ fn read_md_file(vault_root: String, path: String) -> Result<String, String> {
     fs::read_to_string(&abs).map_err(|e| ui_msg!("readFailed", "err" => e))
 }
 
+/// 同目录临时文件 + rename 替换。直接 fs::write 原文件在部分写入失败时会把原文件截断
+/// （实测：4096 字节旧内容写到一半失败，磁盘上只剩 1024 字节新内容）。这里先写同目录的
+/// 临时文件，写成功再原子替换；任一步失败原文件都保持完整，临时文件当场清掉。
+/// 写入动作收成闭包，测试可以注入「写一半就失败」的故障。
+fn atomic_write<F>(target: &Path, write_tmp: F) -> std::io::Result<()>
+where
+    F: FnOnce(&Path) -> std::io::Result<()>,
+{
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let parent = target.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "目标路径没有父目录")
+    })?;
+    let name = target.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "目标路径没有文件名")
+    })?;
+    // PID + 序号：同目录多个进程保存同名文件时不会抢同一个临时文件
+    let tmp = parent.join(format!(
+        ".{}.{}.{}.tmp",
+        name.to_string_lossy(),
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    if let Err(e) = write_tmp(&tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    // Unix 上新写的临时文件按 umask 取权限；沿用原文件权限，保存一次不改模式
+    if let Ok(meta) = fs::metadata(target) {
+        let _ = fs::set_permissions(&tmp, meta.permissions());
+    }
+    if let Err(e) = fs::rename(&tmp, target) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
+}
+
 /// 写回库内 md 文件（UTF-8，标准 GFM，不引入任何私有格式）
 #[tauri::command]
 fn write_md_file(vault_root: String, path: String, content: String) -> Result<(), String> {
@@ -387,7 +425,8 @@ fn write_md_file(vault_root: String, path: String, content: String) -> Result<()
         return Err(ui_msg!("pathOutsideVault"));
     }
     // 文案带相对路径：库里改错哪个文件一眼可辨（QA GU-007/008：错误里没有文件名）
-    fs::write(&abs, content).map_err(|e| ui_msg!("saveFailed", "path" => path, "err" => e))
+    atomic_write(&abs, |tmp| fs::write(tmp, &content))
+        .map_err(|e| ui_msg!("saveFailed", "path" => path, "err" => e))
 }
 
 /// 在库根按文件名查找 md（wikilink 解析），命中返回相对路径
@@ -3171,6 +3210,51 @@ fn open_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn atomic_write_replaces_existing_file_and_leaves_no_tmp() {
+        let dir = std::env::temp_dir().join(format!("notelume-atomic-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("note.md");
+        fs::write(&file, "原文").unwrap();
+
+        atomic_write(&file, |tmp| fs::write(tmp, "新内容")).unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), "新内容");
+        // 同目录不残留临时文件
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "写成功后不该留下临时文件");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // 复现测试报告 T-02：写临时文件失败（这里是写一半返回 Err），原文件必须一字未动
+    #[test]
+    fn atomic_write_failure_keeps_original_content() {
+        let dir = std::env::temp_dir().join(format!("notelume-atomic-fail-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("note.md");
+        let original = "O".repeat(4096);
+        fs::write(&file, &original).unwrap();
+
+        let err = atomic_write(&file, |tmp| {
+            fs::write(tmp, vec![b'N'; 1024])?; // 先写一部分，再报失败，模拟部分写入失败
+            Err(std::io::Error::new(std::io::ErrorKind::Other, "注入的写盘失败"))
+        });
+        assert!(err.is_err());
+        assert_eq!(fs::read_to_string(&file).unwrap(), original, "写盘失败不能截断原文件");
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "失败时半成品临时文件要清掉");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn parse_skill_md_frontmatter_and_body() {

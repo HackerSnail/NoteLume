@@ -97,6 +97,7 @@ import { createRegistry } from './commands.js'
 import { createTabs } from './tabs.js'
 import { createPaneStrip } from './pane-strip.js'
 import { normVaultPath, rootChanged } from './vault-path.js'
+import { withSaveLock, saveSnapshot, saveVersionStillCurrent } from './save-guard.js'
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, defaultKeyFor, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createMenuBar } from './menu-bar.js'
@@ -2965,6 +2966,7 @@ async function cycleTab(dir) {
 async function saveScratchAs() {
   try {
     const md = editor.getMarkdown()
+    const version = editor.getVersion ? editor.getVersion() : 0
     const abs = await pickSaveAs(state.currentFile || t('doc.untitledMd'))
     if (!abs) {
       setStatus(t('status.saveCanceled'))
@@ -2981,8 +2983,7 @@ async function saveScratchAs() {
     ctx.vaultRoot = dir
     ctx.rel = name
     ctx.scratch = false
-    editor.markSaved()
-    markPaneDirty(panes.focused, false)
+    if (editor.markSaved(version)) markPaneDirty(panes.focused, false)
     els.filename.textContent = abs
     const tabs = ftabs()
     if (tabs && tabs.active()) {
@@ -3164,41 +3165,56 @@ async function savePane(paneId, manual = true) {
   if (manual && isFocus && state.tempImportRoot && normVaultPath(ctx.vaultRoot) === normVaultPath(state.tempImportRoot)) {
     return saveTempAsFormal()
   }
-  try {
-    if (state.mode === 'canvas' && paneId === panes.canvasPane) {
-      await canvasView.save()
-      setStatus(manual
-        ? t('status.saved', { name: ctx.rel, time: timeStr() })
-        : t('status.autoSaved', { name: ctx.rel, time: timeStr() }))
-      return
-    }
-    const md = inst.getMarkdown()
-    await writeMdFile(ctx.vaultRoot, ctx.rel, md)
-    ctx.lastSaveError = ''
-    inst.markSaved()
-    markPaneDirty(paneId, false)
-    if (pluginManager) pluginManager.fireSave(ctx.rel, md)
-    setStatus(manual
-      ? t('status.saved', { name: ctx.rel, time: timeStr() })
-      : t('status.autoSaved', { name: ctx.rel, time: timeStr() }))
-    // 索引增量：无需重扫全库
+  // 同一文件的保存排队：取快照放到锁内，后一条等前一条写完再取，写的是用户最新的内容。
+  // 分栏下两个窗格开同一篇也共用这把锁，不会两条写盘互相覆盖。
+  const lockKey = normVaultPath(ctx.vaultRoot) + '\u0000' + String(ctx.rel).replace(/\\/g, '/')
+  return withSaveLock(lockKey, async () => {
+    const cur = paneCtx(paneId)
+    const editorInst = panes.editors.get(paneId)
+    if (!cur.rel || !cur.vaultRoot || !editorInst) return
     try {
-      await updateIndexDoc(ctx.rel, md)
-      if (isFocus) refreshLinkPanels()
+      if (state.mode === 'canvas' && paneId === panes.canvasPane) {
+        await canvasView.save()
+        setStatus(manual
+          ? t('status.saved', { name: cur.rel, time: timeStr() })
+          : t('status.autoSaved', { name: cur.rel, time: timeStr() }))
+        return
+      }
+      const md = editorInst.getMarkdown()
+      // 快照记下写盘目标与内容版本；写盘期间的新编辑 / 换文档在返回后核对出来
+      const snap = saveSnapshot(cur.vaultRoot, cur.rel, editorInst.getVersion ? editorInst.getVersion() : 0)
+      await writeMdFile(snap.root, snap.rel, md)
+      cur.lastSaveError = ''
+      const now = paneCtx(paneId)
+      const nowVersion = editorInst.getVersion ? editorInst.getVersion() : 0
+      const sameDoc = panes.editors.get(paneId) === editorInst &&
+        saveVersionStillCurrent(snap, saveSnapshot(now.vaultRoot, now.rel, nowVersion))
+      // 版本变了就保留脏标记：磁盘上是快照那份，编辑器里更新的一份还没落盘
+      const clean = sameDoc && editorInst.markSaved(snap.version)
+      if (clean) markPaneDirty(paneId, false)
+      if (pluginManager) pluginManager.fireSave(snap.rel, md)
+      setStatus(manual
+        ? t('status.saved', { name: snap.rel, time: timeStr() })
+        : t('status.autoSaved', { name: snap.rel, time: timeStr() }))
+      // 索引增量：无需重扫全库（索引按刚写盘的那篇更新，不用当前标签的 rel）
+      try {
+        await updateIndexDoc(snap.rel, md)
+        if (paneId === panes.focused && sameDoc) refreshLinkPanels()
+      } catch (e) {
+        console.warn(t('msg.indexUpdateFailed'), e)
+      }
+      // 备份：手动保存一定做一次；自动保存受间隔约束（在 scheduleAutosave 里）
+      await maybeBackup(snap.root, snap.rel, md, manual)
+      if (snapshotPanel && manual && paneId === panes.focused) snapshotPanel.refresh()
+      if (gitPanel && manual && paneId === panes.focused) gitPanel.refresh()
     } catch (e) {
-      console.warn(t('msg.indexUpdateFailed'), e)
+      // 失败原因留在窗格上：自动保存平时只进 console，用户要等到切换 / 关窗被拦下来
+      // 才看得到失败框，那时得说清是哪一条路径写不进去
+      cur.lastSaveError = errText(e)
+      if (manual) await messageDialog(t('msg.saveFailedDlg', { err: e }))
+      else console.warn(t('msg.autosaveFailed'), e)
     }
-    // 备份：手动保存一定做一次；自动保存受间隔约束（在 scheduleAutosave 里）
-    await maybeBackup(ctx.vaultRoot, ctx.rel, md, manual)
-    if (snapshotPanel && manual && isFocus) snapshotPanel.refresh()
-    if (gitPanel && manual && isFocus) gitPanel.refresh()
-  } catch (e) {
-    // 失败原因留在窗格上：自动保存平时只进 console，用户要等到切换 / 关窗被拦下来
-    // 才看得到失败框，那时得说清是哪一条路径写不进去
-    ctx.lastSaveError = errText(e)
-    if (manual) await messageDialog(t('msg.saveFailedDlg', { err: e }))
-    else console.warn(t('msg.autosaveFailed'), e)
-  }
+  })
 }
 
 /**
@@ -3214,6 +3230,7 @@ async function savePaneAs(paneId) {
   // 画布窗格存的是 JSON，另存为走不通这里（画布的失败只能放弃改动）
   if (state.mode === 'canvas' && paneId === panes.canvasPane) return false
   const md = inst.getMarkdown()
+  const version = inst.getVersion ? inst.getVersion() : 0
   try {
     const abs = await pickSaveAs(baseName(ctx.rel))
     if (!abs) return false
@@ -3223,8 +3240,7 @@ async function savePaneAs(paneId) {
     ctx.rel = name
     ctx.scratch = false
     ctx.lastSaveError = ''
-    inst.markSaved()
-    markPaneDirty(paneId, false)
+    if (inst.markSaved(version)) markPaneDirty(paneId, false)
     const strip = panes.strips.get(paneId)
     const act = strip && strip.tabs.active()
     if (act) strip.tabs.update(act.id, { root: dir, rel: name, scratch: false })
@@ -3260,8 +3276,10 @@ async function saveTempAsFormal() {
     if (state.mode === 'canvas') {
       await canvasView.save()
     } else {
-      await writeMdFile(tempRoot, state.currentFile, editor.getMarkdown())
-      editor.markSaved()
+      const md = editor.getMarkdown()
+      const version = editor.getVersion ? editor.getVersion() : 0
+      await writeMdFile(tempRoot, state.currentFile, md)
+      editor.markSaved(version) // 对话框期间又有输入就别清脏，那份新内容还没落盘
     }
     // 2) 选目标目录
     const target = await pickFolder()

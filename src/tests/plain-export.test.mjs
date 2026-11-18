@@ -6,7 +6,7 @@
 
 import assert from 'node:assert'
 import { JSDOM } from 'jsdom'
-import { convertPlainMd } from '../plain-export.js'
+import { convertPlainMd, exportPlainMd } from '../plain-export.js'
 import { buildWikiLookup } from '../site-export.js'
 
 const jsdom = new JSDOM('<!doctype html><html><body></body></html>')
@@ -20,6 +20,17 @@ let fail = 0
 function check(name, fn) {
   try {
     fn()
+    pass++
+    console.log(`ok  ${name}`)
+  } catch (e) {
+    fail++
+    console.error(`FAIL ${name}: ${e.message}`)
+  }
+}
+
+async function checkAsync(name, fn) {
+  try {
+    await fn()
     pass++
     console.log(`ok  ${name}`)
   } catch (e) {
@@ -111,6 +122,34 @@ check('frontmatter 不在本函数处理范围（上层已拆），普通 md 原
 check('basename 兜底解析：wiki 表没有时按文件名找', () => {
   const c = ctx({ docByBase: new Map([['b', 'refs/b.md']]) })
   assert.strictEqual(convertPlainMd('[[b]]', c), '[b](../refs/b.md)')
+})
+
+// 整条导出流程的回归：collectImages 回的是数组，曾直接塞给 imageSet，
+// resolveImageRel 调 has() 抛 TypeError，导出循环跳过带 ![[图片]] 的整篇笔记。
+await checkAsync('整库导出：![[图片]] 所在笔记不被跳过，图片资源一并写出', async () => {
+  const written = new Map()
+  const copied = []
+  const res = await exportPlainMd({
+    vaultRoot: '/vault',
+    outDir: '/out',
+    io: {
+      buildGraph: async () => ({ docs: [{ rel: '普通.md' }, { rel: '带图.md' }] }),
+      // scanVault 真实回的是顶层 TreeNode 数组，不是合成根节点
+      scanTree: async () => [
+        { name: '普通.md', path: '普通.md', type: 'file' },
+        { name: '带图.md', path: '带图.md', type: 'file' },
+        { name: '照片.png', path: '照片.png', type: 'file' },
+      ],
+      readMd: async (_root, rel) => (rel === '带图.md' ? '![[照片.png]]' : '普通文字'),
+      writeFile: async (path, content) => { written.set(path, content) },
+      copyAssets: async (_root, rels, out) => { copied.push(...rels); assert.strictEqual(out, '/out') },
+    },
+  })
+  assert.deepStrictEqual(res, { ok: 2, failed: 0, total: 2, assets: 1 })
+  assert.strictEqual(written.get('/out/普通.md'), '普通文字')
+  // encHref 里的 normRel 会剥掉 ./ 前缀，中文走 encodeURI
+  assert.strictEqual(written.get('/out/带图.md'), '![照片](%E7%85%A7%E7%89%87.png)')
+  assert.deepStrictEqual(copied, ['照片.png'])
 })
 
 console.log(`\n${pass} passed, ${fail} failed`)

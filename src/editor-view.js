@@ -184,6 +184,10 @@ function buildEditorKeymap(overrides, virtualApi) {
  */
 export function createEditor(opts) {
   let dirty = false
+  // 内容版本：每次正文 / frontmatter / 源码改动都 +1。保存是异步的，取快照到写盘回来
+  // 之间用户还能打字；写盘结束后只有版本没变才允许 markSaved 清脏，否则那批新编辑
+  // 会被误标成已保存（关窗 / 切文档时不再提示）。换文档归零，避免旧版本撞上新文档。
+  let editVersion = 0
   askLinkUrl = typeof opts.onAskLinkUrl === 'function' ? opts.onAskLinkUrl : null
   let fmRaw = null // 当前文档 YAML frontmatter 原文（不含围栏）；null=无
   // 源码模式（CodeMirror）：与 WYSIWYG 整篇互切
@@ -389,6 +393,7 @@ export function createEditor(opts) {
         const prevMaster = virtual.doc
         virtual.applyWindowTr(tr)
         if (tr.docChanged) {
+          editVersion++
           modelDirty = true
           if (!dirty) {
             dirty = true
@@ -404,6 +409,7 @@ export function createEditor(opts) {
       const next = view.state.apply(tr)
       view.updateState(next)
       if (tr.docChanged) {
+        editVersion++
         if (!sourceMode) modelDirty = true
         if (!dirty) {
           dirty = true
@@ -564,6 +570,7 @@ export function createEditor(opts) {
   }
   function onSourceChange(text) {
     rawSource = text
+    editVersion++ // 源码里打字同样是内容改动，保存期间的新输入不能被旧保存清脏
     modelDirty = false // 源码即最新全文，模型将据其重建
     if (!dirty) { dirty = true; opts.onDirty && opts.onDirty(true) }
     if (srcChangeTimer) clearTimeout(srcChangeTimer)
@@ -777,6 +784,7 @@ export function createEditor(opts) {
     view,
     setMarkdown(md) {
       fold.api.reset() // 换文档：旧的折叠位置与新文档无关，一律清空
+      editVersion = 0
       rawSource = md
       modelDirty = false
       if (sourceMode && src) {
@@ -809,6 +817,7 @@ export function createEditor(opts) {
     // 当前 PM 模型序列化取文，本方法从原始 md 直取，适用于尚未建模型的初次装载。
     async loadAsSource(md) {
       fold.api.reset()
+      editVersion = 0
       rawSource = md
       modelDirty = false
       fmRaw = splitFrontmatter(md).yaml
@@ -830,6 +839,7 @@ export function createEditor(opts) {
     /** 虚拟模式入口（超大文档）：main.js 拿 Rust 解析产物后调它。
      *  rawText 用于回填 fmRaw 与 rawSource；docJson 是与 schema 对齐的 PM JSON。 */
     enterVirtualJson(docJson, rawText) {
+      editVersion = 0
       fmRaw = rawText != null ? splitFrontmatter(rawText).yaml : null
       rawSource = rawText != null ? rawText : null
       modelDirty = false
@@ -875,6 +885,7 @@ export function createEditor(opts) {
     },
     // 面板编辑后写回：raw=null 表示移除 frontmatter；置脏并触发自动保存与面板刷新
     setFrontmatter(raw) {
+      editVersion++ // 属性面板写回的 frontmatter 也是内容，旧保存快照不能覆盖它的脏标记
       if (sourceMode && src) {
         const { body } = splitFrontmatter(src.getDoc())
         src.setDoc(joinFrontmatter(raw, body)) // 程序化写入，不触发 onChange
@@ -890,9 +901,17 @@ export function createEditor(opts) {
       opts.onDirty && opts.onDirty(true)
       opts.onFrontmatterChange && opts.onFrontmatterChange()
     },
-    markSaved() {
+    // 当前内容版本，保存开始时取快照；写盘期间的版本变化由 markSaved 比对出来
+    getVersion() {
+      return editVersion
+    },
+    /** 写盘成功后调。version 是取 Markdown 快照时记下的版本；期间又编辑过就不清脏，
+     *  返回 false 让调用方保留未保存标记。不传 version 是旧的无条件清脏语义（显式弃稿等路径）。 */
+    markSaved(version) {
+      if (version != null && version !== editVersion) return false
       dirty = false
       opts.onDirty && opts.onDirty(false)
+      return true
     },
     // 重发一次大纲 / 标签元数据（分栏后焦点切回本窗格时，面板要从这个实例重新取数）
     refreshMeta() {
