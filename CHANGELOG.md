@@ -190,7 +190,7 @@
 
 * **标题栏应用名上的光标改回箭头**：`.appbar-lead` 里的应用名是可选文本，浏览器默认在文字上画 I 型输入光标，可它其实是 `data-tauri-drag-region` 窗口拖拽区，拖的时候还会把应用名选中。CSS 给 `.appbar-lead` 补 `cursor:default` + `user-select:none`，中部空白拖拽区 `.toolbar .spacer` 补 `cursor:default`。测试 `src/tests/drag-region-cursor.test.mjs` 钉声明与拖拽区标记。
 
-* **中文界面显示「文溯」，其它语言仍是 NoteLume（含桌面快捷方式）**：产品名此前在所有语言里写死为 NoteLume。新增 `ui.appName` 词条（zh-CN / zh-Hant = 文溯，en / fr / de = NoteLume），工具条应用名、`<title>`、`ui.docTitle`、关于框标题与版权都改走词条；Windows / Linux 的 OS 窗口标题在启动与切语言时由 `syncAppWindowTitle()` 重设（mac 仍写文档名）。快捷方式两处收口：安装器 `nsis-hooks.nsh` 按系统 UI 语言（LANG_CHINESE）把 `NoteLume.lnk` 改名为 `文溯.lnk` 并在卸载时补删；应用启动与切语言时再调 Rust 命令 `sync_shortcut_name` 按当前界面语言校正一次——安装器只能按系统语言猜，用户在设置里切语言后只有运行时知道真实口径。测试 `src/tests/app-name.test.mjs` 钉五语言词条与四处接线，Rust 侧 `shortcut_name_pair_follows_ui_language` 钉简繁 / 英法德的改名方向。
+* **中文界面显示「文 溯」，其它语言仍是 NoteLume（含桌面快捷方式）**：产品名此前在所有语言里写死为 NoteLume。新增 `ui.appName` 词条（zh-CN / zh-Hant = 文 溯——两字之间留一个空格，左右间距看着一致；en / fr / de = NoteLume），工具条应用名、`<title>`、`ui.docTitle`、关于框标题与版权都改走词条；Windows / Linux 的 OS 窗口标题在启动与切语言时由 `syncAppWindowTitle()` 重设（mac 仍写文档名）。快捷方式两处收口：安装器 `nsis-hooks.nsh` 按系统 UI 语言（LANG_CHINESE）把 `NoteLume.lnk` 改名为 `文溯.lnk` 并在卸载时补删；应用启动与切语言时再调 Rust 命令 `sync_shortcut_name` 按当前界面语言校正一次——安装器只能按系统语言猜，用户在设置里切语言后只有运行时知道真实口径。测试 `src/tests/app-name.test.mjs` 钉五语言词条与四处接线，Rust 侧 `shortcut_name_pair_follows_ui_language` 钉简繁 / 英法德的改名方向。
 
 * **空窗格右键菜单不再把「粘贴」高亮**：没打开文档时编辑器虽已关成只读，右键菜单只按有没有选区灰掉剪切 / 复制，粘贴与加粗 / 插入块等一律高亮，点下去什么也粘不进。新增 `src/edit-state.js` 的 `canEditPane` / `isReadOnlyTarget` 收口判定：`src/main.js` 的 `attachEditorContextMenu` 与 `openEditContextMenu` 在没文档 / 编辑器只读 / 目标 `contenteditable=false` 时把整组编辑项置灰；`Ctrl+Shift+V` 与 Ctrl+Shift+I 也补上同一道闸，不从键盘绕过去。测试 `src/tests/empty-context-menu.test.mjs` 钉判定表与两处接线。
 

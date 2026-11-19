@@ -14,8 +14,8 @@ const { MESSAGES } = await import('../locales/index.js')
 
 // 1. 词条：两种中文是「文溯」，其余三种语言保留 NoteLume
 {
-  assert.strictEqual(MESSAGES['zh-CN']['ui.appName'], '文溯')
-  assert.strictEqual(MESSAGES['zh-Hant']['ui.appName'], '文溯')
+  assert.strictEqual(MESSAGES['zh-CN']['ui.appName'], '文 溯')
+  assert.strictEqual(MESSAGES['zh-Hant']['ui.appName'], '文 溯')
   for (const id of ['en-US', 'fr-FR', 'de-DE']) {
     assert.strictEqual(MESSAGES[id]['ui.appName'], 'NoteLume', `${id} 应保留 NoteLume`)
   }
