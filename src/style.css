@@ -175,6 +175,10 @@ body {
   white-space: nowrap;
   flex: none;
   padding-right: 10px;
+  /* 这一块是窗口拖拽区，不是可编辑文本：浏览器默认会在文字上显示 I 型光标，
+     拖窗口时还会选中应用名。这里固定成箭头并禁选。 */
+  cursor: default;
+  user-select: none;
 }
 [data-tauri-platform="windows"] .appbar-lead,
 [data-tauri-platform="linux"] .appbar-lead {
@@ -366,6 +370,7 @@ body {
 }
 .toolbar .spacer {
   flex: 1;
+  cursor: default; /* 与 .appbar-lead 同为拖拽区，别在空白热区显示输入光标 */
 }
 /* 菜单条（Windows / Linux）：一级是分类名，下一级复用 .cv-menu 自绘；mac 走系统菜单栏，整条隐藏。
    窄窗口里横向滚动，不折行（与顶栏其它条子同一口径） */
