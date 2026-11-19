@@ -33,6 +33,18 @@ function cssOf(selector) {
   console.log('ok 应用名拖拽区光标与禁选')
 }
 
+// 1b. 左右留白相等：.toolbar 左 12px，右侧 = padding-right 10 + gap 8 = 18px，
+//     所以这里必须补 padding-left 6px，两侧才都是 18px。
+{
+  const css = cssOf('.appbar-lead')
+  assert.match(css, /padding-left:\s*6px/, '.appbar-lead 缺 padding-left:6px（左右留白会差 6px）')
+  assert.match(css, /padding-right:\s*10px/, '.appbar-lead 的 padding-right 变了，6px 补偿不再成立')
+  const toolbar = cssOf('.toolbar')
+  assert.match(toolbar, /gap:\s*8px/, '.toolbar 的 gap 变了，18px 的计算不再成立')
+  assert.match(toolbar, /padding:\s*8px 12px/, '.toolbar 的左 padding 变了，18px 的计算不再成立')
+  console.log('ok 应用名左右留白算齐')
+}
+
 // 2. 中部空白拖拽区同样不显示输入光标
 {
   assert.match(cssOf('.toolbar \.spacer'), /cursor:\s*default/)

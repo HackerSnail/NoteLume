@@ -185,7 +185,7 @@ export default {
   'menu.gitPrefix': 'Git：',
 
   // —— 靜態界面（鍵名與所在位置對應） ——
-  'ui.appName': '文 溯',
+  'ui.appName': '文  溯',
   'ui.docTitle': '文溯 — Markdown 知識庫編輯器',
   'ui.openFile': '開啟檔案',
   'ui.tipOpenFile': '開啟單一 Markdown 檔案 (Ctrl+O)',

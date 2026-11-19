@@ -174,6 +174,9 @@ body {
   color: var(--fg);
   white-space: nowrap;
   flex: none;
+  /* 左右留白算齐：.toolbar 左 padding 12px，右侧是这里 10px + 工具条 gap 8px = 18px，
+     差 6px（约等于两个半角空格的宽度），补在左边后两侧都是 18px。 */
+  padding-left: 6px;
   padding-right: 10px;
   /* 这一块是窗口拖拽区，不是可编辑文本：浏览器默认会在文字上显示 I 型光标，
      拖窗口时还会选中应用名。这里固定成箭头并禁选。 */
