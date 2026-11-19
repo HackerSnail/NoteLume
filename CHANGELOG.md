@@ -188,6 +188,8 @@
 
 ### Fixed
 
+* **中文界面显示「文溯」，其它语言仍是 NoteLume（含桌面快捷方式）**：产品名此前在所有语言里写死为 NoteLume。新增 `ui.appName` 词条（zh-CN / zh-Hant = 文溯，en / fr / de = NoteLume），工具条应用名、`<title>`、`ui.docTitle`、关于框标题与版权都改走词条；Windows / Linux 的 OS 窗口标题在启动与切语言时由 `syncAppWindowTitle()` 重设（mac 仍写文档名）。快捷方式两处收口：安装器 `nsis-hooks.nsh` 按系统 UI 语言（LANG_CHINESE）把 `NoteLume.lnk` 改名为 `文溯.lnk` 并在卸载时补删；应用启动与切语言时再调 Rust 命令 `sync_shortcut_name` 按当前界面语言校正一次——安装器只能按系统语言猜，用户在设置里切语言后只有运行时知道真实口径。测试 `src/tests/app-name.test.mjs` 钉五语言词条与四处接线，Rust 侧 `shortcut_name_pair_follows_ui_language` 钉简繁 / 英法德的改名方向。
+
 * **空窗格右键菜单不再把「粘贴」高亮**：没打开文档时编辑器虽已关成只读，右键菜单只按有没有选区灰掉剪切 / 复制，粘贴与加粗 / 插入块等一律高亮，点下去什么也粘不进。新增 `src/edit-state.js` 的 `canEditPane` / `isReadOnlyTarget` 收口判定：`src/main.js` 的 `attachEditorContextMenu` 与 `openEditContextMenu` 在没文档 / 编辑器只读 / 目标 `contenteditable=false` 时把整组编辑项置灰；`Ctrl+Shift+V` 与 Ctrl+Shift+I 也补上同一道闸，不从键盘绕过去。测试 `src/tests/empty-context-menu.test.mjs` 钉判定表与两处接线。
 
 * **空窗格不再显示行号「1」**：WYSIWYG 行号插件把 PM 的空段落算成第 1 行，没打开文档时面板左上角仍挂着一个 `1`；源码态的 CodeMirror 也自带行号槽。`src/main.js` 的 `showPaneEmpty` 给 `.nl-pane-body` 挂/摘 `nl-no-doc`，`src/style.css` 用它把 `.nl-ln-gutter` 与 `.cm-gutters` 一起 `display:none !important`。测试 `src/tests/empty-gutter.test.mjs` 钉声明与接线。

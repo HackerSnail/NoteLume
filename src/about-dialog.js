@@ -49,7 +49,7 @@ export function openAboutDialog() {
 
   const name = document.createElement('div')
   name.className = 'nl-about-name'
-  name.textContent = 'NoteLume'
+  name.textContent = t('ui.appName')
 
   const ver = document.createElement('div')
   ver.className = 'nl-about-version'

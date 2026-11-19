@@ -366,6 +366,46 @@ fn read_md_file(vault_root: String, path: String) -> Result<String, String> {
     fs::read_to_string(&abs).map_err(|e| ui_msg!("readFailed", "err" => e))
 }
 
+/// 快捷方式名按界面语言取：中文（简繁）叫「文溯」，其余语言保留 NoteLume。
+/// 返回 (旧名, 新名)：zh 时把 NoteLume.lnk 改成 文溯.lnk，非 zh 时反向改回去。
+fn shortcut_name_pair(lang: &str) -> (&'static str, &'static str) {
+    if lang.to_ascii_lowercase().starts_with("zh") {
+        ("NoteLume", "文溯")
+    } else {
+        ("文溯", "NoteLume")
+    }
+}
+
+/// 应用侧按界面语言修正自己的快捷方式名。安装器按系统语言猜（nsis-hooks.nsh），
+/// 但用户可以在应用里把界面切到别的语言，只有运行时知道自己当前用的是哪一口。
+#[tauri::command]
+fn sync_shortcut_name(lang: String) {
+    #[cfg(windows)]
+    {
+        let (from, to) = shortcut_name_pair(&lang);
+        let mut dirs = Vec::new();
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            dirs.push(PathBuf::from(home).join("Desktop"));
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            dirs.push(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs"));
+        }
+        for dir in dirs {
+            let src = dir.join(format!("{from}.lnk"));
+            let dst = dir.join(format!("{to}.lnk"));
+            if src.exists() && !dst.exists() {
+                let _ = fs::rename(&src, &dst);
+            }
+            // 安装器可能在钩子之后又补了一条旧名快捷方式，别让桌面上同时出现两个图标
+            if src.exists() {
+                let _ = fs::remove_file(&src);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = lang;
+}
+
 /// 同目录临时文件 + rename 替换。直接 fs::write 原文件在部分写入失败时会把原文件截断
 /// （实测：4096 字节旧内容写到一半失败，磁盘上只剩 1024 字节新内容）。这里先写同目录的
 /// 临时文件，写成功再原子替换；任一步失败原文件都保持完整，临时文件当场清掉。
@@ -3212,6 +3252,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn shortcut_name_pair_follows_ui_language() {
+        assert_eq!(shortcut_name_pair("zh-CN"), ("NoteLume", "文溯"));
+        assert_eq!(shortcut_name_pair("zh-Hant"), ("NoteLume", "文溯"));
+        assert_eq!(shortcut_name_pair("EN-us"), ("文溯", "NoteLume"));
+        assert_eq!(shortcut_name_pair("fr-FR"), ("文溯", "NoteLume"));
+    }
+
+    #[test]
     fn atomic_write_replaces_existing_file_and_leaves_no_tmp() {
         let dir = std::env::temp_dir().join(format!("notelume-atomic-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -4604,6 +4652,7 @@ pub fn run() {
             scan_vault,
             read_md_file,
             write_md_file,
+            sync_shortcut_name,
             resolve_wiki_link,
             create_md_file,
             delete_file,

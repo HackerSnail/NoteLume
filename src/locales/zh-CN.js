@@ -71,7 +71,7 @@ export default {
   'cmd.app.git.pullMerge': 'Git：拉取（合并）…',
   'cmd.app.git.remote': 'Git：设置远端 origin…',
   'cmd.app.lang': '界面语言：{name}',
-  'cmd.app.about': '关于 NoteLume',
+  'cmd.app.about': '关于 文溯',
 
   'cmd.editor.undo': '撤销',
   'cmd.editor.redo': '重做',
@@ -185,7 +185,8 @@ export default {
   'menu.gitPrefix': 'Git：',
 
   // —— 静态界面（键名与所在位置对应） ——
-  'ui.docTitle': 'NoteLume — Markdown 知识库编辑器',
+  'ui.appName': '文溯',
+  'ui.docTitle': '文溯 — Markdown 知识库编辑器',
   'ui.openFile': '打开文件',
   'ui.tipOpenFile': '打开单个 Markdown 文件 (Ctrl+O)',
   'ui.openVault': '打开知识库',
@@ -551,11 +552,11 @@ export default {
   'msg.newTplFailed': '新建模板失败：{err}',
 
   // —— 关于页面 ——
-  'about.title': '关于 NoteLume',
+  'about.title': '关于 文溯',
   'about.version': '版本 {version}',
   'about.slogan': '写字与知识，都在本地',
   'about.desc': '离线、无账号，文件夹即知识库',
-  'about.copyright': '{year} NoteLume Team',
+  'about.copyright': '{year} 文溯 团队',
   'about.checkUpdate': '检查更新',
   'about.licenses': '开源许可',
   'about.website': '访问官网',

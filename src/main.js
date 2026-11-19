@@ -13,6 +13,7 @@ import {
   scanVault,
   readMdFile,
   writeMdFile,
+  syncShortcutName,
   resolveWikiLink,
   createMdFile,
   deleteFile,
@@ -4188,6 +4189,8 @@ function switchLocale(id) {
   registerAppCommands()
   registerEditorCommands()
   applyStaticDom(document)
+  syncAppWindowTitle()
+  syncAppShortcutName()
   // 标题栏文件名不在静态 DOM 的刷新范围内（index.html 里特意没给它挂 data-i18n），
   // 所以只有当前显示的正是「没打开文档」那句占位时才要手动跟着语言走；开着文档时
   // 它是路径（画布态也是），与界面语言无关，不能动
@@ -4463,10 +4466,27 @@ async function pushMacMenu() {
   }
 }
 
+// Windows / Linux 标题栏是应用自绘的（.appbar-lead 已随语言走），但 OS 窗口标题与任务栏
+// 悬浮提示仍取 tauri.conf.json 里的静态产品名。启动时与切语言后按当前界面语言改一次；
+// mac 的标题留给 syncWindowTitle 写文档名，不动。
+function syncAppWindowTitle() {
+  if (IS_MAC || !window.__TAURI_INTERNALS__) return
+  getCurrentWindow()
+    .setTitle(t('ui.docTitle'))
+    .catch(() => { /* 缺 core:window:allow-set-title 时静默跳过 */ })
+}
+
+// 快捷方式名以应用当前界面语言为准：安装器按系统语言猜一次，进入应用后再按真实
+// 语言校正（包括用户在设置里切换语言）。纯 web 预览没有 IPC，静默跳过。
+function syncAppShortcutName() {
+  if (IS_MAC || !window.__TAURI_INTERNALS__) return
+  syncShortcutName(getLocale()).catch(() => {})
+}
+
 // mac 的标题属于系统标题栏：当前文档名写进窗口标题，工具条里的文件名不再重复
 function syncWindowTitle() {
   if (!IS_MAC || !window.__TAURI_INTERNALS__) return
-  const name = (els.filename.textContent || '').trim() || 'NoteLume'
+  const name = (els.filename.textContent || '').trim() || t('ui.appName')
   if (name === macTitle) return
   macTitle = name
   getCurrentWindow()
@@ -5209,6 +5229,8 @@ async function boot() {
   // 这里把 <html lang> 与静态文案对齐当前语言（默认词条也是中文，重复一遍无副作用）
   document.documentElement.lang = getLocale()
   applyStaticDom(document)
+  syncAppWindowTitle()
+  syncAppShortcutName()
   // 后端同理：命令错误 / docx 警告 / git 结果 / 托盘菜单按当前语言取词（ui_lang.rs 词表）
   if (window.__TAURI_INTERNALS__) setUiLang(getLocale()).catch(() => {})
   // —— Ollama 首启探测：探测每次启动都跑（本机 HTTP、1.2s 超时、异步不挡启动），

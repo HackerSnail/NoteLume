@@ -185,6 +185,7 @@ export default {
   'menu.gitPrefix': 'Git: ',
 
   // —— Statische Oberfläche (Schlüssel folgen dem Fundort des Texts) ——
+  'ui.appName': 'NoteLume',
   'ui.docTitle': 'NoteLume — Markdown-Editor für Wissensbasen',
   'ui.openFile': 'Datei öffnen',
   'ui.tipOpenFile': 'Einzelne Markdown-Datei öffnen (Ctrl+O)',

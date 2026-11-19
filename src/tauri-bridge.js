@@ -90,6 +90,11 @@ export function writeMdFile(vaultRoot, path, content) {
   return invoke('write_md_file', { vaultRoot, path, content })
 }
 
+/** 按界面语言修正桌面 / 开始菜单快捷方式名（中文 文溯，其它 NoteLume）。 */
+export function syncShortcutName(lang) {
+  return invoke('sync_shortcut_name', { lang })
+}
+
 /** Quarkdown 求值：源 md → { expanded, diagnostics }。无 Tauri（网页预览）时透传原文。
  *  docDir = 文档所在目录（绝对路径）：Data 模块文件类函数（.read / .listfiles…）相对它解析，
  *  不传则文件类函数在引擎里诊断降级。
