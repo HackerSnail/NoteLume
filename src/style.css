@@ -1910,6 +1910,11 @@ html.nl-dragging * {
 .nl-split-btn.hidden {
   display: none;
 }
+/* 空窗格没有文档：行号装订线（WYSIWYG 与源码态 CM）一起藏掉，别在空面板上留一个孤零零的 1 */
+.nl-pane-body.nl-no-doc .nl-ln-gutter,
+.nl-pane-body.nl-no-doc .cm-gutters {
+  display: none !important;
+}
 /* 空窗格提示：新拆分出来的窗格 / 关掉文档的窗格 */
 .nl-pane-empty {
   position: absolute;

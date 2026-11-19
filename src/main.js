@@ -2913,6 +2913,9 @@ function clearPane(paneId) {
 function showPaneEmpty(paneId, on) {
   const body = panes.contents.get(paneId)
   if (!body) return
+  // 空态把行号装订线一起藏掉：PM 的空段落仍会被行号插件算作第 1 行，
+  // 源码态的 CM 也自带行号槽，没文档时都不该在面板上留一个孤零零的 1。
+  body.classList.toggle('nl-no-doc', on)
   let hint = body.querySelector('.nl-pane-empty')
   if (on) {
     if (!hint) {
