@@ -100,6 +100,7 @@ import { createPaneStrip } from './pane-strip.js'
 import { normVaultPath, rootChanged } from './vault-path.js'
 import { withSaveLock, saveSnapshot, saveVersionStillCurrent } from './save-guard.js'
 import { canEditPane, isReadOnlyTarget } from './edit-state.js'
+import { splitSourceTab } from './split-source.js'
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, defaultKeyFor, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createMenuBar } from './menu-bar.js'
@@ -4845,10 +4846,12 @@ async function splitFocusedPane(orientation) {
   if (!panes.view) return
   const from = panes.focused
   const fromCtx = paneCtx(from)
-  const dup =
-    fromCtx.rel && !isCanvasPath(fromCtx.rel)
-      ? { root: fromCtx.vaultRoot, rel: fromCtx.rel, scratch: fromCtx.scratch }
-      : null
+  // 复制哪个文档以「源窗格标签条上真正亮着的那个标签」为准。ctx 有可能还停在
+  // 上一次切换的文档上（切标签 / 装载未落地时），直接拿它复制就会让新窗格
+  // 顶着一个旧名字（比如临时文件名），正文却是另一篇——看着就像标题栏坏了。
+  const fromStrip = panes.strips.get(from)
+  const active = fromStrip && fromStrip.tabs.active()
+  const dup = splitSourceTab(active, fromCtx, isCanvasPath)
   const newId = freshId(panes.tree, 'p')
   ensurePaneEditor(newId) // 壳 + 实例先备好（engine 的 contentFor 只取壳）
   panes.tree = panes.view.split(from, orientation, newId)

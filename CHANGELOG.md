@@ -188,6 +188,8 @@
 
 ### Fixed
 
+* **分栏后新窗格的标签名不再带错**：VS Code 式拆分要复制焦点窗格当前那篇，原来的 `splitFocusedPane` 从窗格 ctx 取文档，而 ctx 在切标签 / 装载未落地时可能还停在上一次那篇（典型是一个临时文件），结果新窗格顶着「未命名-…」的名字、正文却是另一篇。现在以标签条上真正亮着的活动标签为准取 root/rel/scratch，没有活动标签才退回 ctx；判定抽到 `src/split-source.js`，测试 `src/tests/split-source.test.mjs` 钉活动标签优先、ctx 回退、空态 / 画布不复制、临时标记保留。
+
 * **标题栏应用名的左右留白算齐**：`.toolbar` 左内边距 12px，右侧是 `.appbar-lead` 的 `padding-right:10px` 加工具条 `gap:8px`，合计 18px，差 6px（约两个半角空格宽）。给 `.appbar-lead` 补 `padding-left:6px`，两侧都成 18px；中文应用名两字之间按两个空格写。测试 `src/tests/drag-region-cursor.test.mjs` 把这几个数值一起钉住，改 padding/gap 就会红。
 
 * **标题栏应用名上的光标改回箭头**：`.appbar-lead` 里的应用名是可选文本，浏览器默认在文字上画 I 型输入光标，可它其实是 `data-tauri-drag-region` 窗口拖拽区，拖的时候还会把应用名选中。CSS 给 `.appbar-lead` 补 `cursor:default` + `user-select:none`，中部空白拖拽区 `.toolbar .spacer` 补 `cursor:default`。测试 `src/tests/drag-region-cursor.test.mjs` 钉声明与拖拽区标记。

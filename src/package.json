@@ -39,6 +39,7 @@
     "test:empty-context-menu": "node tests/empty-context-menu.test.mjs",
     "test:app-name": "node tests/app-name.test.mjs",
     "test:drag-region-cursor": "node tests/drag-region-cursor.test.mjs",
+    "test:split-source": "node tests/split-source.test.mjs",
     "test:slides-export": "node tests/slides-export.test.mjs",
     "test:print-toc": "node tests/print-toc.test.mjs",
     "test:emoji": "node tests/emoji.test.mjs",
