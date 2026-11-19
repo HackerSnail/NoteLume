@@ -98,6 +98,7 @@ import { createTabs } from './tabs.js'
 import { createPaneStrip } from './pane-strip.js'
 import { normVaultPath, rootChanged } from './vault-path.js'
 import { withSaveLock, saveSnapshot, saveVersionStillCurrent } from './save-guard.js'
+import { canEditPane, isReadOnlyTarget } from './edit-state.js'
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, defaultKeyFor, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createMenuBar } from './menu-bar.js'
@@ -2210,17 +2211,20 @@ function attachEditorContextMenu(paneId, inst) {
     if (hit && hit.closest && hit.closest(SKIP)) return
     e.preventDefault()
     closeTreeMenu()
-    // 右键落在这个窗格：命令对这个窗格的编辑器求值，别打到焦点窗格上去
-    inst.focusEditor()
+    // 右键落在这个窗格：命令对这个窗格的编辑器求值，别打到焦点窗格上去。
+    // 没打开文档时编辑器是只读的（showPaneEmpty 关掉了 editable），整组编辑项都该置灰——
+    // 尤其「粘贴」此前无条件高亮，点下去什么也粘不进，却给人的错觉是能粘贴。
+    const canEdit = canEditPane(paneCtx(paneId).rel, inst.view.editable)
+    if (canEdit) inst.focusEditor()
     const clip = pmClipboardOps(inst)
     const hasSel = clip.canCutCopy()
     const menu = document.createElement('div')
     menu.className = 'cv-menu tree-menu'
-    menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), clip.cut, false, false, null, !hasSel))
-    menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), clip.copy, false, false, null, !hasSel))
-    menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), clip.cut, false, false, null, !hasSel || !canEdit))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), clip.copy, false, false, null, !hasSel || !canEdit))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste, false, false, null, !canEdit))
     menu.appendChild(menuSep())
-    const cmd = (id, labelKey) => makeMenuItem(withKey(t(labelKey), commandBindingFor(id)), () => inst.runEditorCommand(id))
+    const cmd = (id, labelKey) => makeMenuItem(withKey(t(labelKey), commandBindingFor(id)), () => inst.runEditorCommand(id), false, false, null, !canEdit)
     menu.appendChild(cmd('editor.bold', 'cmd.editor.bold'))
     menu.appendChild(cmd('editor.italic', 'cmd.editor.italic'))
     menu.appendChild(cmd('editor.strike', 'cmd.editor.strike'))
@@ -2231,16 +2235,16 @@ function attachEditorContextMenu(paneId, inst) {
     menu.appendChild(cmd('editor.block.quote', 'cmd.block.quote'))
     menu.appendChild(cmd('editor.block.hr', 'cmd.block.hr'))
     menu.appendChild(cmd('editor.block.callout', 'cmd.block.callout'))
-    menu.appendChild(makeMenuItem(t('ctx.qd'), () => openQdInsertMenu(e.clientX, e.clientY, inst), false, false, 'terminal'))
+    menu.appendChild(makeMenuItem(t('ctx.qd'), () => openQdInsertMenu(e.clientX, e.clientY, inst), false, false, 'terminal', !canEdit))
     menu.appendChild(menuSep())
     // AI：选区任务（润色 / 续写 / 翻译 / 摘要 / 自定义提示词）。结果浮层流式预览，
     // 可写回选区 / 追加到选区下方 / 复制；无选区时整组置灰
     const aiIcon = { polish: 'pen', 'continue': 'arrow-down', translate: 'globe', summarize: 'list-bullet', custom: 'sliders' }
     for (const task of AI_TASK_IDS) {
-      menu.appendChild(makeMenuItem(t('ai.task.' + task), () => runSelectionAi(task, inst), false, false, aiIcon[task] || 'sparkle', !hasSel))
+      menu.appendChild(makeMenuItem(t('ai.task.' + task), () => runSelectionAi(task, inst), false, false, aiIcon[task] || 'sparkle', !hasSel || !canEdit))
     }
     menu.appendChild(menuSep())
-    menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll))
+    menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll, false, false, null, !canEdit))
     placeMenu(menu, e.clientX, e.clientY)
   })
 }
@@ -2354,6 +2358,9 @@ function openEditContextMenu(e, target) {
   const editable = target.closest('input, textarea, [contenteditable="true"], .cm-content')
   if (!editable) return
   const isCM = !!(editable.closest && editable.closest('.cm-editor'))
+  // 空窗格的源码态 CM 被 setEditable(false) 关成只读，输入框也可能 disabled / readonly：
+  // 这类目标右键仍出菜单，但粘贴不能再高亮。
+  const readOnly = isReadOnlyTarget(editable)
   const clip = boxClipboardOps(editable)
   const hasSel = clip.canCutCopy()
   const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
@@ -2364,13 +2371,13 @@ function openEditContextMenu(e, target) {
     menu.appendChild(makeMenuItem(withKey(t('ctx.undo'), modKey('Z')), () => {
       editable.focus()
       document.execCommand('undo')
-    }))
+    }, false, false, null, readOnly))
   }
-  menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), clip.cut, false, false, null, !hasSel))
-  menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), clip.copy, false, false, null, !hasSel))
-  menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.cut'), modKey('X')), clip.cut, false, false, null, !hasSel || readOnly))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.copy'), modKey('C')), clip.copy, false, false, null, !hasSel || readOnly))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste, false, false, null, readOnly))
   menu.appendChild(menuSep())
-  menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll))
+  menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll, false, false, null, readOnly))
   placeMenu(menu, e.clientX, e.clientY)
 }
 
@@ -4010,7 +4017,7 @@ function registerAppCommands() {
   app('app.prevTab', 'Ctrl-Shift-Tab', () => cycleTab(-1))
   // 插入图片（Ctrl+Shift+I，Typora 习惯）：file input 选图后走落库路径
   app('app.insertImage', 'Mod-Shift-i', () => {
-    if (editor && state.mode === 'md') editor.pickAndInsertImages()
+    if (editor && state.mode === 'md' && canEditPane(state.currentFile, editor.view.editable)) editor.pickAndInsertImages()
     else setStatus(t('status.imgOnlyMd'))
   })
   // 粘贴为纯文本（Ctrl+Shift+V，Typora/Obsidian 习惯键）
@@ -4029,7 +4036,7 @@ function registerAppCommands() {
       setStatus(t('status.clipEmpty'))
       return
     }
-    if (editor && state.mode === 'md') editor.insertPlainText(text)
+    if (editor && state.mode === 'md' && canEditPane(state.currentFile, editor.view.editable)) editor.insertPlainText(text)
     else setStatus(t('status.noPasteDoc'))
   })
   // 全选（Ctrl/Cmd+A）：Typora 式分段——光标在表格 / 代码块 / 引用这类容器里时先只选

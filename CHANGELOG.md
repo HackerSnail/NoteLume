@@ -188,6 +188,8 @@
 
 ### Fixed
 
+* **空窗格右键菜单不再把「粘贴」高亮**：没打开文档时编辑器虽已关成只读，右键菜单只按有没有选区灰掉剪切 / 复制，粘贴与加粗 / 插入块等一律高亮，点下去什么也粘不进。新增 `src/edit-state.js` 的 `canEditPane` / `isReadOnlyTarget` 收口判定：`src/main.js` 的 `attachEditorContextMenu` 与 `openEditContextMenu` 在没文档 / 编辑器只读 / 目标 `contenteditable=false` 时把整组编辑项置灰；`Ctrl+Shift+V` 与 Ctrl+Shift+I 也补上同一道闸，不从键盘绕过去。测试 `src/tests/empty-context-menu.test.mjs` 钉判定表与两处接线。
+
 * **空窗格不再显示行号「1」**：WYSIWYG 行号插件把 PM 的空段落算成第 1 行，没打开文档时面板左上角仍挂着一个 `1`；源码态的 CodeMirror 也自带行号槽。`src/main.js` 的 `showPaneEmpty` 给 `.nl-pane-body` 挂/摘 `nl-no-doc`，`src/style.css` 用它把 `.nl-ln-gutter` 与 `.cm-gutters` 一起 `display:none !important`。测试 `src/tests/empty-gutter.test.mjs` 钉声明与接线。
 
 * **没打开文档时主面板不再能输入，空态提示不再和正文叠在一起**：空态提示 `.nl-pane-empty` 只是 `pointer-events:none` 的浮层，底下 ProseMirror 仍是可编辑的——启动后没开文件就在主面板打字，文字和居中的提示叠成一团，写进去的内容也没有文件可存。现在 `src/editor-view.js` 给编辑器实例加 `setEditable(enabled)`（ProseMirror 走 `view.setProps({editable})`，源码态的 CodeMirror 走同一开关），`src/main.js` 的 `showPaneEmpty` 在空态关编辑、装载文档时恢复；`runEditorCommand` 在不可编辑时早退，菜单 / 命令面板也不会改动一篇不存在的文档。CM 是懒建的，空态期间第一次进源码时新实例继承 `wantsEditable`，不会出现「创建晚于 setEditable 所以漏关」。空态提示五语言都补上「先新建（Ctrl+N）或打开一篇文档再编辑」。测试新增 `src/tests/empty-editor.test.mjs`（关/开编辑、命令早退、五语言文案）与 `src/tests/empty-source-editor.test.mjs`（CM 的 editable facet 开关）；前端 100 个测试文件全过、`npm run build:web` 无错。未实测：打包版里真机点空态区域打字那一下。
