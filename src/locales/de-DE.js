@@ -771,6 +771,7 @@ export default {
   'canvas.distHTip': 'Horizontal verteilen (Auswahl ≥ 3)',
   'canvas.distVTip': 'Vertikal verteilen (Auswahl ≥ 3)',
   'canvas.colorNeedSelect': 'Zuerst die Karten auswählen, die eingefärbt werden sollen',
+  'canvas.alignNeedTwo': 'Mindestens 2 Karten auswählen, um sie auszurichten',
   'canvas.groupTip': 'Die ausgewählten Karten in einen Gruppenrahmen stecken (am Rand ziehen bewegt alle zusammen)',
   'canvas.ungroupTip': 'Die ausgewählten Gruppenrahmen entfernen (Karten bleiben)',
   'canvas.zoomOutTip': 'Verkleinern (Ctrl -)',

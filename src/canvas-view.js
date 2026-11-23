@@ -704,7 +704,10 @@ export function createCanvasView(deps) {
   }
   function alignSelection(mode) {
     const nodes = selectedCards()
-    if (nodes.length < 2) return
+    if (nodes.length < 2) {
+      hint(t('canvas.alignNeedTwo'))
+      return
+    }
     pushUndo(snapshot())
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const n of nodes) {
@@ -719,7 +722,7 @@ export function createCanvasView(deps) {
       else if (mode === 'bottom') n.y = maxY - n.height
       else if (mode === 'vcenter') n.y = Math.round(minY + (maxY - minY - n.height) / 2)
     }
-    markDirty(); render()
+    markDirty(); clearGuides(); render()
   }
   function distributeSelection(axis) {
     const nodes = selectedCards()
