@@ -4243,6 +4243,24 @@ html.nl-dragging * {
   background: var(--hover);
   color: var(--fg);
 }
+.plugin-banner {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.plugin-banner.err {
+  color: #e5484d;
+  border-color: rgba(229, 72, 77, 0.5);
+}
+.plugin-banner.warn {
+  color: #d9822b;
+  border-color: rgba(217, 130, 43, 0.5);
+}
 .plugin-item {
   display: flex;
   align-items: flex-start;

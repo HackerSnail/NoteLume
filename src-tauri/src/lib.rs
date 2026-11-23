@@ -2007,11 +2007,12 @@ fn read_backup(vault_root: String, backup_rel: String) -> Result<String, String>
 /// 插件包条目（批次 F1：文件夹化安装包）
 /// dir_name = 一级目录名（=== manifest.id，由前端校验）；manifest_raw = manifest.json 原文
 /// （Rust 不解析 JSON、不校验 id/scope——那是前端 plugin-manifest.js 的职责）；
-/// main_exists = 默认 main.js/main.mjs 是否存在的探测。
+/// base_dir = 实际扫描的插件根目录名（带点/不带点两种）；main_exists = manifest.main 指向的入口是否存在。
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginPackage {
     pub dir_name: String,
+    pub base_dir: String,
     pub manifest_path: String,
     pub manifest_raw: String,
     pub main_exists: bool,
@@ -2030,31 +2031,48 @@ pub struct PluginList {
 #[tauri::command]
 fn list_plugins(vault_root: String) -> Result<PluginList, String> {
     let root = fs::canonicalize(&vault_root).map_err(|e| e.to_string())?;
-    let base = root.join(".notelume-plugins");
-    let mut packages = Vec::new();
+    let mut packages: Vec<PluginPackage> = Vec::new();
     let mut legacy_flat = Vec::new();
-    if base.exists() {
+    let mut seen = std::collections::HashSet::new();
+    // 规范目录是 .notelume-plugins。同时认不带点的 notelume-plugins：示例插件整夹拖进库时
+    // 最常见就是漏了开头那个点，旧实现只扫点目录，面板静默显示「未检测到插件」。
+    // 同名目录两个位置都在时以点目录为准。
+    for base_name in [".notelume-plugins", "notelume-plugins"] {
+        let base = root.join(base_name);
+        if !base.exists() {
+            continue;
+        }
         for e in fs::read_dir(&base).map_err(|e| e.to_string())?.flatten() {
             let p = e.path();
             let file_name = e.file_name().to_string_lossy().to_string();
             if p.is_file() {
-                if file_name.ends_with(".js") || file_name.ends_with(".mjs") {
+                if base_name == ".notelume-plugins" && (file_name.ends_with(".js") || file_name.ends_with(".mjs")) {
                     legacy_flat.push(file_name);
                 }
                 continue;
             }
-            if !p.is_dir() {
+            if !p.is_dir() || !seen.insert(file_name.clone()) {
                 continue;
             }
             let manifest = p.join("manifest.json");
             let manifest_raw = fs::read_to_string(&manifest).unwrap_or_default();
-            let main_exists = p.join("main.js").exists() || p.join("main.mjs").exists();
+            // 入口按 manifest.main 探测，缺省 main.js：旧实现硬编码 main.js/main.mjs，
+            // 清单里写 index.js 的合法插件被误判「入口文件不存在」。
+            let entry = serde_json::from_str::<serde_json::Value>(&manifest_raw)
+                .ok()
+                .and_then(|v| v.get("main").and_then(|m| m.as_str()).map(str::to_string))
+                .unwrap_or_else(|| "main.js".to_string())
+                .replace('\\', "/");
+            let entry = entry.trim_start_matches("./");
+            let safe_entry = !entry.is_empty() && entry.split('/').all(|s| !s.is_empty() && s != ".." && s != ".");
+            let main_exists = safe_entry && p.join(entry).is_file();
             let manifest_path = manifest
                 .strip_prefix(&root)
                 .map(|r| r.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_else(|_| file_name.clone());
             packages.push(PluginPackage {
                 dir_name: file_name,
+                base_dir: base_name.to_string(),
                 manifest_path,
                 manifest_raw,
                 main_exists,
@@ -2067,11 +2085,11 @@ fn list_plugins(vault_root: String) -> Result<PluginList, String> {
 }
 
 /// 读取一个插件源码（前端用 Blob URL + 动态 import 加载）。
-/// 前缀白名单 .notelume-plugins/ + abs_in_vault 双重防路径穿越。
+/// 前缀白名单 .notelume-plugins/ 或 notelume-plugins/ + abs_in_vault 双重防路径穿越。
 #[tauri::command]
 fn read_plugin(vault_root: String, plugin_rel: String) -> Result<String, String> {
     let norm = plugin_rel.replace('\\', "/");
-    if !norm.starts_with(".notelume-plugins/") {
+    if !norm.starts_with(".notelume-plugins/") && !norm.starts_with("notelume-plugins/") {
         return Err(ui_msg!("pluginOnly"));
     }
     let abs = abs_in_vault(&vault_root, &norm)?;
