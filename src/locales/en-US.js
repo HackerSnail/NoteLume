@@ -771,6 +771,7 @@ export default {
   'canvas.alignVCenterTip': 'Center vertically',
   'canvas.distHTip': 'Space horizontally (select ≥ 3)',
   'canvas.distVTip': 'Space vertically (select ≥ 3)',
+  'canvas.colorNeedSelect': 'Select the cards to recolor first',
   'canvas.groupTip': 'Put the selected cards into one group frame (drag its edge to move them together)',
   'canvas.ungroupTip': 'Remove the selected group frames (cards are kept)',
   'canvas.zoomOutTip': 'Zoom out (Ctrl -)',

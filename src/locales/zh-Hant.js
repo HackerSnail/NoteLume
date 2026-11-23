@@ -770,6 +770,7 @@ export default {
   'canvas.alignVCenterTip': '垂直置中對齊',
   'canvas.distHTip': '水平等距分佈（選取≥３）',
   'canvas.distVTip': '垂直等距分佈（選取≥３）',
+  'canvas.colorNeedSelect': '請先選取要改色的卡片',
   'canvas.groupTip': '將選取的卡片收進一個群組框（拖曳框邊可整體移動）',
   'canvas.ungroupTip': '刪除選取的群組框（保留卡片）',
   'canvas.zoomOutTip': '縮小（Ctrl -）',

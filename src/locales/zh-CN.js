@@ -771,6 +771,7 @@ export default {
   'canvas.alignVCenterTip': '垂直居中对齐',
   'canvas.distHTip': '水平等距分布（选中≥３）',
   'canvas.distVTip': '垂直等距分布（选中≥３）',
+  'canvas.colorNeedSelect': '请先选中要改色的卡片',
   'canvas.groupTip': '把选中卡片收进一个分组框（拖框边可整体移动）',
   'canvas.ungroupTip': '删除选中的分组框（卡片保留）',
   'canvas.zoomOutTip': '缩小（Ctrl -）',

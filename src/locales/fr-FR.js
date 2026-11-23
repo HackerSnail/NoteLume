@@ -770,6 +770,7 @@ export default {
   'canvas.alignVCenterTip': 'Centrer verticalement',
   'canvas.distHTip': 'Espacer horizontalement (sélection ≥ 3)',
   'canvas.distVTip': 'Espacer verticalement (sélection ≥ 3)',
+  'canvas.colorNeedSelect': 'Sélectionnez d’abord les cartes à colorer',
   'canvas.groupTip': 'Regroupe les cartes sélectionnées dans un cadre (glissez son bord pour les déplacer ensemble)',
   'canvas.ungroupTip': 'Supprime les cadres de groupe sélectionnés (les cartes sont conservées)',
   'canvas.zoomOutTip': 'Zoom arrière (Ctrl -)',

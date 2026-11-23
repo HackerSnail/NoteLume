@@ -2424,6 +2424,19 @@ html.nl-dragging * {
   gap: 4px;
   align-items: center;
 }
+.cv-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  min-height: 18px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.cv-hint.show {
+  opacity: 1;
+  color: var(--accent);
+}
 .cv-swatch {
   width: 18px;
   height: 18px;
@@ -2590,9 +2603,21 @@ html.nl-dragging * {
   stroke: var(--border);
   stroke-width: 1.5;
 }
+/* 卡片改色：颜色写在 --cv-node-color 上，由这里真正落到卡片本体。
+   之前只给 rect.setAttribute('stroke', ...) 被本规则与选中态规则覆盖，只有缩略图变色。 */
+.cv-node.cv-node-colored .cv-node-rect {
+  fill: var(--cv-node-color);
+  fill-opacity: 0.18;
+  stroke: var(--cv-node-color);
+  stroke-width: 2.5;
+}
 .cv-node.selected .cv-node-rect {
   stroke: var(--accent);
   stroke-width: 2;
+}
+.cv-node.cv-node-colored.selected .cv-node-rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
 }
 .cv-node.cv-connect-target .cv-node-rect {
   stroke: var(--accent);
@@ -2610,6 +2635,10 @@ html.nl-dragging * {
   stroke-width: 1.5;
   stroke-dasharray: 6 5;
 }
+.cv-node.cv-node-colored .cv-group-border {
+  stroke: var(--cv-node-color);
+  stroke-width: 2.5;
+}
 .cv-node.selected .cv-group-border {
   stroke: var(--accent);
   stroke-width: 2.5;
@@ -2619,6 +2648,9 @@ html.nl-dragging * {
   font-size: 13px;
   font-weight: 600;
   fill: var(--muted);
+}
+.cv-node.cv-node-colored .cv-group-label {
+  fill: var(--cv-node-color);
 }
 .cv-node-body {
   padding: 10px 12px;

@@ -53,9 +53,18 @@ export function createCanvasView(deps) {
   let zoomLabel = null // 工具条缩放百分比标签（buildToolbar 内赋值，需先于调用声明）
   let undoBtn = null // 撤销/重做按钮（buildToolbar 内赋值，置灰态由 updateHistoryButtons 驱动）
   let redoBtn = null
+  let hintEl = null, hintTimer = null // 工具条内的瞬时提示（选中数不足等），buildToolbar 内赋值
   let minimapEl = null, mmNodesLayer = null, mmViewportRect = null // 缩略图（minimap）
   let mmScale = 1, mmOffX = 0, mmOffY = 0 // 世界→缩略图映射：mx = wx*mmScale + mmOffX
   let mmDragging = false
+
+  function hint(msg) {
+    if (!hintEl) return
+    hintEl.textContent = msg
+    hintEl.classList.add('show')
+    clearTimeout(hintTimer)
+    hintTimer = setTimeout(() => hintEl.classList.remove('show'), 2600)
+  }
 
   // —— DOM 骨架 ——
   mountEl.classList.add('canvas-view')
@@ -171,17 +180,21 @@ export function createCanvasView(deps) {
     if (selected.has(n.id)) g.classList.add('selected')
     if (drag && drag.kind === 'connect' && drag.hover === n.id) g.classList.add('cv-connect-target')
     const col = resolveColor(n.color)
+    // 颜色走 CSS 变量而不是 SVG 表现属性：style.css 的 .cv-node-rect / .cv-group-border
+    // 声明会盖掉 setAttribute('stroke', ...)，此前只有缩略图（inline style）能变色。
+    if (col) {
+      g.classList.add('cv-node-colored')
+      g.style.setProperty('--cv-node-color', col)
+    }
     if (n.type === 'group') {
       // 分组框（Obsidian 兼容 type:"group"）：填充可穿透，仅边框/标签可点选
       const fill = el('rect', { width: n.width, height: n.height, rx: 14, class: 'cv-group-fill' })
       fill.style.pointerEvents = 'none'
       g.appendChild(fill)
       const border = el('rect', { width: n.width, height: n.height, rx: 14, class: 'cv-group-border' })
-      if (col) border.setAttribute('stroke', col)
       g.appendChild(border)
       if (n.label) {
         const t = el('text', { x: 14, y: -10, class: 'cv-group-label' })
-        if (col) t.setAttribute('fill', col)
         t.textContent = n.label
         g.appendChild(t)
       }
@@ -192,10 +205,6 @@ export function createCanvasView(deps) {
       return g
     }
     const rect = el('rect', { width: n.width, height: n.height, rx: 10, class: 'cv-node-rect' })
-    if (col) {
-      rect.setAttribute('stroke', col)
-      rect.setAttribute('stroke-width', '2.5')
-    }
     g.appendChild(rect)
 
     const fo = el('foreignObject', { x: 0, y: 0, width: n.width, height: n.height })
@@ -678,6 +687,8 @@ export function createCanvasView(deps) {
       pushUndo(prev)
       markDirty()
       render()
+    } else {
+      hint(t('canvas.colorNeedSelect'))
     }
   }
   function membersOf(g) {
@@ -1141,6 +1152,11 @@ export function createCanvasView(deps) {
     sw.appendChild(colorSwatch(null, t('canvas.colorDefault')))
     for (const key of Object.keys(PALETTE)) sw.appendChild(colorSwatch(key, t('canvas.colorN', { n: key })))
     toolbar.appendChild(sw)
+
+    hintEl = document.createElement('span')
+    hintEl.className = 'cv-hint'
+    hintEl.setAttribute('role', 'status')
+    toolbar.appendChild(hintEl)
 
     const sp = document.createElement('span')
     sp.className = 'spacer'
