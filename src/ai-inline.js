@@ -99,6 +99,7 @@ export function openAiInline(opts) {
     overlay.style.maxHeight = Math.min(POP_MAX_H, below ? belowRoom : aboveRoom) + 'px'
     if (below) overlay.style.top = anchorRect.bottom + 6 + 'px'
     else overlay.style.bottom = vh - anchorRect.y + 6 + 'px'
+
   }
 
   let reqId = nextReqId()
@@ -111,6 +112,7 @@ export function openAiInline(opts) {
   function dispose() {
     disposed = true
     if (typeof offEvent === 'function') offEvent()
+
     if (offLocale) offLocale()
     if (running) aiChatCancel(reqId).catch(() => {})
     running = false
@@ -140,6 +142,7 @@ export function openAiInline(opts) {
       statusEl.textContent = t('ai.errRequest', { err: err || t('ai.errUnknown') })
       statusEl.classList.add('err')
       retryBtn.classList.remove('hidden')
+
     }
     syncButtons()
   }
@@ -150,6 +153,7 @@ export function openAiInline(opts) {
     statusEl.classList.remove('err')
     statusEl.textContent = t('ai.thinking')
     retryBtn.classList.add('hidden')
+
     running = true
     reqId = nextReqId()
     syncButtons()
@@ -165,6 +169,7 @@ export function openAiInline(opts) {
       finish(false, t('ai.errBadMessages'))
       return
     }
+
     aiChatStream({
       reqId,
       messages,
@@ -174,7 +179,8 @@ export function openAiInline(opts) {
     }).catch((e) => finish(false, (e && e.message) || String(e)))
   }
 
-  aiChatListen((ev) => {
+  const offEvent = aiChatListen((ev) => {
+
     if (!ev || ev.reqId !== reqId) return
     if (ev.kind === 'chunk' && ev.delta && running) {
       text += ev.delta
@@ -188,6 +194,7 @@ export function openAiInline(opts) {
   }).then((un) => {
     if (disposed) un()
     else offEvent = un
+
   })
 
   closeBtn.addEventListener('click', dispose)

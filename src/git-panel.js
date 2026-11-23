@@ -261,6 +261,7 @@ export function createGitPanel(deps) {
     }
   }
 
+
   // —— Changes 区 ——
   function renderChanges(items) {
     const f = foldSec('changes', t('git.sectionChanges'), items.length ? String(items.length) : '')
@@ -359,6 +360,7 @@ export function createGitPanel(deps) {
       f.body.appendChild(empty)
       return f.sec
     }
+
     const list = document.createElement('div')
     list.className = 'nl-git-list nl-git-graph'
     // lane 分配：lanes[i] = 该 lane 顶端待接的 oid。第一个 parent 继承本 lane，
@@ -450,6 +452,7 @@ export function createGitPanel(deps) {
         iconBtn('undo', t('git.revertBtn'), () => doRevert(c)),
       )
       row.appendChild(tools)
+
       if (c.id === headId && branch) {
         const pill = document.createElement('span')
         pill.className = 'nl-git-branch-pill'
@@ -560,6 +563,7 @@ export function createGitPanel(deps) {
     const parts = []
     if (merging) parts.push(renderMergeBar(items))
     else parts.push(renderCommitBox(items))
+
     parts.push(renderChanges(items), renderGraph(commits, branch), sync.sec, diffBox)
     body.append(...parts)
     diffBox.classList.add('hidden')

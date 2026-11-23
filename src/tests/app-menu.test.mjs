@@ -188,6 +188,7 @@ t('编辑组含剪贴板角色，查找 / 替换在组尾', () => {
   assert.deepEqual(ids(group(spec, 'edit')), [
     'editor.undo', 'editor.redo', 'sep', 'Cut', 'Copy', 'Paste', 'app.pastePlain', 'sep',
     'app.selectAll', 'app.insertImage', 'editor.deleteLine', 'sep', 'app.findInDoc', 'app.replace', 'app.search',
+
   ])
 })
 

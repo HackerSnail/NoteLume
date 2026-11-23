@@ -395,6 +395,7 @@ export function createEditor(opts) {
         virtual.applyWindowTr(tr)
         if (tr.docChanged) {
           editVersion++
+
           modelDirty = true
           if (!dirty) {
             dirty = true
@@ -821,6 +822,7 @@ export function createEditor(opts) {
     async loadAsSource(md) {
       fold.api.reset()
       editVersion = 0
+
       rawSource = md
       modelDirty = false
       fmRaw = splitFrontmatter(md).yaml
@@ -843,6 +845,7 @@ export function createEditor(opts) {
      *  rawText 用于回填 fmRaw 与 rawSource；docJson 是与 schema 对齐的 PM JSON。 */
     enterVirtualJson(docJson, rawText) {
       editVersion = 0
+
       fmRaw = rawText != null ? splitFrontmatter(rawText).yaml : null
       rawSource = rawText != null ? rawText : null
       modelDirty = false
@@ -867,6 +870,7 @@ export function createEditor(opts) {
                 const open = unfoldCovering(view.state, p, foldCoord)
                 if (open) view.dispatch(open)
               },
+
               getMasterState: () => virtual.masterState,
               applyMasterTr: (tr) => virtual.applyMasterTr(tr),
             }
@@ -1049,6 +1053,7 @@ export function createEditor(opts) {
         }
       }
       return doc.textBetween(0, doc.content.size, '\n', leafText)
+
     },
     // 源码模式：整篇切换 WYSIWYG <-> Markdown 原文（CodeMirror，懒加载）
     isSourceMode() { return sourceMode },

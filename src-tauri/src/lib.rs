@@ -38,6 +38,7 @@ mod qd;
 mod ai;
 // 语音输入：Rust 侧录音（cpal）→ 服务商 ASR（/audio/transcriptions）+ Windows 原生听写回落。
 mod voice;
+
 // Phase 1（虚拟化方案地基）：Markdown → ProseMirror JSON 的后台解析（保守核心子集）。
 mod mdparse;
 
@@ -467,6 +468,7 @@ fn write_md_file(vault_root: String, path: String, content: String) -> Result<()
     // 文案带相对路径：库里改错哪个文件一眼可辨（QA GU-007/008：错误里没有文件名）
     atomic_write(&abs, |tmp| fs::write(tmp, &content))
         .map_err(|e| ui_msg!("saveFailed", "path" => path, "err" => e))
+
 }
 
 /// 在库根按文件名查找 md（wikilink 解析），命中返回相对路径
@@ -3305,6 +3307,7 @@ mod tests {
     }
 
     #[test]
+
     fn parse_skill_md_frontmatter_and_body() {
         let (name, desc, body) = parse_skill_md("---\nname: 动态图表\ndescription: \"生成 SVG 图表\"\n---\n\n# 用法\n\n第一步。");
         assert_eq!(name, "动态图表");
@@ -4294,6 +4297,8 @@ fn set_ui_lang(lang: String) -> bool {
 //  · macOS LaunchServices：双击关联文件、右键「打开方式」、把文件拖到 Dock 图标。
 //    路径只经 application:openURLs: 递来、不进 argv，要 run callback 接 RunEvent::Opened，
 //    不接就只剩「唤起应用、文件没打开」。
+//  · 单实例二次唤起：第二个进程把新路径交给第一个进程的 argv 回调。
+
 //  · 拖入窗口：桌面版由 wry 原生事件递绝对路径（HTML5 的 drop 在拦截下收不到），前端按平台
 //    补类型后分流——文件走同一套 openAbsPath，文件夹另开一个窗口（open_vault_window）；
 //    纯 web 构建没有事件通道，走 HTML5 的 DataTransfer。
@@ -4744,6 +4749,7 @@ pub fn run() {
             clip_server_apply,
             clip_server_status,
             // 大模型接入（AI）：流式对话 + 取消；模型列表 / Ollama 状态探测与拉取 / 本机技能自动探测
+
             ai::ai_chat_stream,
             ai::ai_chat_cancel,
             ai::ai_models_list,
@@ -4757,6 +4763,7 @@ pub fn run() {
             voice::ai_dictation_start,
             voice::ai_dictation_stop,
             voice::ai_dictation_probe,
+
             ai_skills_scan,
             ai_chat_save,
             ai_chat_read,

@@ -37,6 +37,7 @@ const TASK_BUILDERS = {
  * 递个 {system,user} 过去会在 IPC 反序列化阶段就报错、请求根本发不出去。
  * custom 走用户自填指令；未知任务 / custom 无指令回 null。
  */
+
 export function buildTaskMessages(taskId, text, customPrompt) {
   const sel = String(text || '')
   if (taskId === 'custom') {
@@ -47,6 +48,7 @@ export function buildTaskMessages(taskId, text, customPrompt) {
   const build = TASK_BUILDERS[taskId]
   if (!build) return null
   return [{ role: 'system', content: SYSTEM }, { role: 'user', content: build(sel) }]
+
 }
 
 /** 模型爱客套：剥掉结果外层的 ``` 围栏与「以下是…：/Here is…：」式整行引导 */
@@ -78,6 +80,7 @@ export function buildDocContext(title, text) {
 // —— AI 设置（settings.json 的 ai 段）——
 
 export const DEFAULT_AI = { baseUrl: '', apiKey: '', model: '', asrModel: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
+
 
 /** 字段上限。保存前由 validateAiConfig 拒绝超长，normalizeAiConfig 只做存储层兜底截断。 */
 export const AI_LIMITS = { baseUrl: 300, apiKey: 300, model: 120 }
@@ -141,6 +144,7 @@ export function normalizeAiConfig(raw) {
   s.keys = normalizeAiKeys(raw, host, legacy)
   // apiKey 是当前地址那一格的镜像：调用方（面板 / 浮层 / IPC）照旧只读 cfg.apiKey
   s.apiKey = host ? (s.keys[host] || '') : legacy
+
   return s
 }
 
@@ -255,6 +259,7 @@ export function shouldResumeDictation(s) {
  *  小内存机器也跑得动。换型号只改这里——预设行与首启引导的文案都跟着它走。
  *  与 AI_PRESETS 的 ollama 行同一个值：选了本地预设又建议另一个模型，两个口径迟早漂移。 */
 export const OLLAMA_SUGGEST_MODEL = 'qwen3:1.7b'
+
 
 /** 常见 OpenAI 兼容服务预设：设置面板一键填充地址 + 模型名（Key 仍需用户自填） */
 export const AI_PRESETS = [
@@ -387,6 +392,7 @@ export function isPlaceholderReply(text) {
 }
 
 /**
+
  * Agent 回答落点协议：模型在内容开头放 <insert after="位置"> 或 <insert before="位置">，
  * 「位置」引用文档中已有的标题或段落原文；正文跟在标记后（闭合 </insert> 可省）。
  * 标记前的文字一律视为客套引导剥掉。无标记时 anchor 为 null，body 走 stripFences。
@@ -395,6 +401,7 @@ export function parseAgentReply(raw) {
   const s = String(raw || '')
   // 占位标记不是正文：换成空串，面板改走思考/空回答兜底，Agent 的自动写入跟着跳过
   const bodyOf = (t) => { const b = stripFences(t); return isPlaceholderReply(b) ? '' : b }
+
   const strict = s.match(/<insert\s+(after|before)="([^"]{1,120})"\s*>/i)
   const target = strict ? strict[2].trim() : ''
   if (strict && target) {
@@ -403,6 +410,7 @@ export function parseAgentReply(raw) {
     return {
       anchor: { dir: strict[1].toLowerCase(), target },
       body: bodyOf(body),
+
       anchorBroken: false,
     }
   }
@@ -413,6 +421,7 @@ export function parseAgentReply(raw) {
   let body = s.slice(loose.index + loose[0].length)
   body = stripInsertMarkers(body)
   return { anchor: null, body: bodyOf(body), anchorBroken: true }
+
 }
 
 const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -429,6 +438,7 @@ export function aiContextWindow(cfg) {
   const n = Number(cfg && cfg.contextTokens)
   return Number.isFinite(n) && n > 0 ? n : AI_CTX_WINDOW_TOKENS
 }
+
 
 /** 粗估 token 数：CJK 字符 ≈ 1 token/字，其它按 4 字符 ≈ 1 token（中英混合经验值） */
 export function estimateTokens(text) {
@@ -462,6 +472,7 @@ export const AI_VAULT_CONTEXT_MAX_CHARS = 6000
 /** 单条检索片段的截断长度。提成常量是为了「出机说明」能引用它，别在文案里抄一份数字。 */
 export const AI_VAULT_SNIPPET_MAX_CHARS = 400
 
+
 /**
  * 合并去重后的检索命中 → 注入文本。hits: [{path,title,snippet}]；
  * 超过 AI_VAULT_MAX_DOCS 篇截断，总量 6000 字符封顶（表头计入）。
@@ -475,6 +486,7 @@ export function buildVaultContext(hits, headText) {
   if (text.length >= AI_VAULT_CONTEXT_MAX_CHARS) return text
   for (const h of list.slice(0, AI_VAULT_MAX_DOCS)) {
     const entry = `- ${h.title || h.path}（${h.path}）\n  ${String(h.snippet || '').slice(0, AI_VAULT_SNIPPET_MAX_CHARS)}\n`
+
     const room = AI_VAULT_CONTEXT_MAX_CHARS - text.length
     if (room <= 0) break
     text += entry.slice(0, room)
@@ -560,3 +572,4 @@ export function chatModelsOnly(list) {
   const kept = arr.filter((id) => !isNonChatModel(id))
   return kept.length || !arr.length ? kept : arr
 }
+

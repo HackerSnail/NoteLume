@@ -35,6 +35,7 @@ export default {
   'cmd.app.insertImage': 'Insert Image…',
   'cmd.app.pastePlain': 'Paste as Plain Text',
   'cmd.app.selectAll': 'Select All',
+
   'cmd.app.sourceMode': 'Source Mode',
   'cmd.app.print': 'Export PDF',
   'cmd.app.palette': 'Command Palette',
@@ -168,6 +169,7 @@ export default {
   'menu.group.window': 'Window',
   'menu.group.git': 'Git',
   'menu.group.help': 'Help',
+
   'menu.role.about': 'About {app}',
   'menu.role.services': 'Services',
   'menu.role.hide': 'Hide {app}',
@@ -358,6 +360,7 @@ export default {
   'dlg.autosaveStuckMulti': 'Could not write the contents of {n} panes ({names}): {err}. Save them somewhere else to continue.',
   'dlg.autosaveStuckSaveAs': 'Save As…',
   'dlg.autosaveStuckDiscard': 'Discard Changes',
+
   'dlg.curDoc': 'Current Document',
   'dlg.newFileTitle': 'New Markdown File (in {dir})',
   'dlg.newFileTitleRoot': 'New Markdown File (vault root)',
@@ -1115,12 +1118,14 @@ export default {
   'ai.needConfig': 'Set the base URL and model name in AI Settings first',
   'ai.needSelection': 'Select some text in the editor first',
   'ai.errBadMessages': 'Bad AI request: messages must be a non-empty array',
+
   'ai.errUnknown': 'Unknown error',
   'ai.errRequest': 'Request failed: {err}',
   'ai.insertDoc': 'Insert into document',
   'ai.modeAskTip': 'Chat only — the document is not modified',
   'ai.modeAgentTip': 'Automatically append the answer to the current document',
   'ai.agentHint': 'Agent mode: output only the content to be written into the document. No greetings, no restating the question, no narration of your actions. If the user specifies an insertion location, start with a line <insert after="location"> or <insert before="location"> quoting an existing heading or paragraph from the document, then give the content on the next line; omit the marker when no location is specified. If the message needs nothing written into the document (a greeting, asking what you can do, small talk), just answer in one or two sentences of normal conversation — do not emit an empty reply or a placeholder such as <empty>.',
+
   'ai.applied': 'Applied to document',
   'ai.applyFail': 'Failed to write to the document',
   'ai.appliedAtAfter': 'Inserted after "{where}"',
@@ -1156,6 +1161,7 @@ export default {
   'ai.voiceAudioQuiet': 'The microphone is picking up almost nothing (input volume too low or muted): raise the input volume in System Settings → Sound → Input, or move closer and speak again',
   'ai.voiceAudioNoisy': 'Too noisy around you for system speech recognition — move somewhere quieter and speak again',
   'ai.voiceAudioOther': 'Microphone input looks abnormal (too loud, too fast or too slow), so system speech recognition cannot use it — try a different input device',
+
   'ai.optimize': 'Refine with AI',
   'ai.optimizeEmpty': 'Write something first',
   'ai.skills': 'Skills',
@@ -1167,6 +1173,7 @@ export default {
   'ai.skillOff': 'Skill disabled',
   'ai.removeSkill': 'Remove skill',
   'ai.skillEcho': 'Used skill: {names}',
+
   'ai.vaultCtxHead': 'Relevant excerpts retrieved from the knowledge base (possibly incomplete, for reference):',
   'ai.ctxTip': 'Context usage: ~{pct}% (estimated {tokens} / 32K tokens)',
   'ai.modelsFail': 'Failed to fetch model list: {err}',
@@ -1185,6 +1192,7 @@ export default {
   'ai.set.ollamaNoModels': 'Running, but no models pulled yet — pull one now.',
   'ai.set.ollamaStopped': 'Installed, but not answering on 127.0.0.1:11434.',
   'ai.set.ollamaMissing': 'No local Ollama detected — install it yourself.',
+
   'ai.inserted': 'Inserted into document',
   'ai.copy': 'Copy',
   'ai.copied': 'Copied',
@@ -1240,6 +1248,7 @@ export default {
   'ai.set.modelsLoading': 'Fetching model list…',
   'ai.set.modelFail': 'Could not fetch the model list — enter the model name manually',
   'ai.set.modelNonChat': 'This model name looks like an embedding or rerank model, which cannot chat — use an Instruct / Chat model name',
+
   'ai.set.errBaseUrl': 'The endpoint must be a full http:// or https:// URL',
   'ai.set.errTooLong': '{field} is limited to {max} characters — check for extra pasted content',
   'ai.set.saved': 'AI settings saved',

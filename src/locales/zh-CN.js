@@ -35,6 +35,7 @@ export default {
   'cmd.app.insertImage': '插入图片…',
   'cmd.app.pastePlain': '粘贴为纯文本',
   'cmd.app.selectAll': '全选',
+
   'cmd.app.sourceMode': '源码模式',
   'cmd.app.print': '导出 PDF',
   'cmd.app.palette': '命令面板',
@@ -167,6 +168,7 @@ export default {
   'menu.group.window': '窗口',
   'menu.group.git': 'Git',
   'menu.group.help': '帮助',
+
   'menu.role.about': '关于 {app}',
   'menu.role.services': '服务',
   'menu.role.hide': '隐藏 {app}',
@@ -357,6 +359,7 @@ export default {
   'dlg.autosaveStuckMulti': '有 {n} 个窗格的内容写不进去（{names}）：{err}，可逐个另存到别处再继续。',
   'dlg.autosaveStuckSaveAs': '另存为…',
   'dlg.autosaveStuckDiscard': '放弃改动',
+
   'dlg.curDoc': '当前文档',
   'dlg.newFileTitle': '新建 Markdown 文件（于 {dir}）',
   'dlg.newFileTitleRoot': '新建 Markdown 文件（库根）',
@@ -1115,12 +1118,14 @@ export default {
   'ai.needConfig': '先在 AI 设置里填好接口地址与模型名',
   'ai.needSelection': '先在编辑器里选中一段文字',
   'ai.errBadMessages': 'AI 请求参数不对：消息必须是非空的数组',
+
   'ai.errUnknown': '未知错误',
   'ai.errRequest': '请求失败：{err}',
   'ai.insertDoc': '插入到文档',
   'ai.modeAskTip': '只问答，不改动文档',
   'ai.modeAgentTip': '回答后自动追加到当前文档末尾',
   'ai.agentHint': 'Agent 模式：直接给出要写进文档的内容本身，不要寒暄、不要复述问题、不要解释你的操作。若用户指定了插入位置，第一行先输出 <insert after="位置"> 或 <insert before="位置">（位置引用文档中已有的标题或段落原文），随后另起一行给出内容；未指定位置则不要带标记。若这句话不需要往文档里写内容（打招呼、问你能做什么、闲聊），就用一两句正常对话直接回答，不要输出空内容，也不要输出 <empty> 这类占位符。',
+
   'ai.applied': '已应用到文档',
   'ai.applyFail': '写入文档失败',
   'ai.appliedAtAfter': '已插入到「{where}」之后',
@@ -1156,6 +1161,7 @@ export default {
   'ai.voiceAudioQuiet': '麦克风几乎收不到声音（输入音量太小或已静音）：请在「系统设置 → 声音 → 输入」里提高输入音量，或靠近麦克风再说',
   'ai.voiceAudioNoisy': '周围环境太吵，系统语音识别听不清：请到安静一点的地方再说',
   'ai.voiceAudioOther': '麦克风输入信号异常（太响 / 太快 / 太慢），系统语音识别用不了：换一个输入设备再说',
+
   'ai.optimize': 'AI 优化输入',
   'ai.optimizeEmpty': '先输入内容再优化',
   'ai.skills': '技能',
@@ -1167,6 +1173,7 @@ export default {
   'ai.skillOff': '已停用技能',
   'ai.removeSkill': '移除技能',
   'ai.skillEcho': '用了技能：{names}',
+
   'ai.vaultCtxHead': '以下是从知识库检索到的相关片段（可能不完整，供参考）：',
   'ai.ctxTip': '上下文用量：约 {pct}%（估算 {tokens} / 32K tokens）',
   'ai.modelsFail': '拉取模型列表失败：{err}',
@@ -1185,6 +1192,7 @@ export default {
   'ai.set.ollamaNoModels': '服务已就绪，但本机还没有模型，可直接拉取一个。',
   'ai.set.ollamaStopped': '已安装，但服务没在 127.0.0.1:11434 响应。',
   'ai.set.ollamaMissing': '没有检测到本机 Ollama，需自行下载安装。',
+
   'ai.inserted': '已插入到文档',
   'ai.copy': '复制',
   'ai.copied': '已复制',
@@ -1240,6 +1248,7 @@ export default {
   'ai.set.modelsLoading': '正在获取模型列表…',
   'ai.set.modelFail': '未能获取模型列表，可手动输入模型名',
   'ai.set.modelNonChat': '这个模型名看着是向量或重排模型，不能用来对话；换成 Instruct / Chat 结尾的模型名',
+
   'ai.set.errBaseUrl': '接口地址需要是 http:// 或 https:// 开头的完整地址',
   'ai.set.errTooLong': '{field}最多 {max} 个字符，请检查是否粘贴了多余内容',
   'ai.set.saved': '已保存 AI 设置',

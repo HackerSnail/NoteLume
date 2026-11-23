@@ -2,6 +2,7 @@
   "name": "notelume-web",
   "private": true,
   "version": "0.3.1",
+
   "type": "module",
   "description": "NoteLume 前端：Vanilla JS + ProseMirror WYSIWYG",
   "scripts": {
@@ -40,6 +41,7 @@
     "test:app-name": "node tests/app-name.test.mjs",
     "test:drag-region-cursor": "node tests/drag-region-cursor.test.mjs",
     "test:split-source": "node tests/split-source.test.mjs",
+
     "test:slides-export": "node tests/slides-export.test.mjs",
     "test:print-toc": "node tests/print-toc.test.mjs",
     "test:emoji": "node tests/emoji.test.mjs",
@@ -90,6 +92,7 @@
     "test:ollama-pull": "node tests/ollama-pull.test.mjs",
     "test:ai-data-flow": "node tests/ai-data-flow.test.mjs",
     "audit:osv": "node tools/osv-audit.mjs"
+
   },
   "dependencies": {
     "@codemirror/commands": "^6",
@@ -107,6 +110,7 @@
     "js-yaml": "^5.4.3",
     "katex": "^0.18.2",
     "markdown-it": "^14.3.3",
+
     "markdown-it-emoji": "^3.1.0",
     "markdown-it-footnote": "^4.0.0",
     "mermaid": "^12.2.0",

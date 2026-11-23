@@ -35,6 +35,7 @@ export default {
   'cmd.app.insertImage': 'Bild einfügen…',
   'cmd.app.pastePlain': 'Als reinen Text einfügen',
   'cmd.app.selectAll': 'Alles auswählen',
+
   'cmd.app.sourceMode': 'Quelltextmodus',
   'cmd.app.print': 'Als PDF exportieren',
   'cmd.app.palette': 'Befehlspalette',
@@ -167,6 +168,7 @@ export default {
   'menu.group.window': 'Fenster',
   'menu.group.git': 'Git',
   'menu.group.help': 'Hilfe',
+
   'menu.role.about': 'Über {app}',
   'menu.role.services': 'Dienste',
   'menu.role.hide': '{app} ausblenden',
@@ -357,6 +359,7 @@ export default {
   'dlg.autosaveStuckMulti': 'Der Inhalt von {n} Ansichten ließ sich nicht schreiben ({names}): {err}. Speichere sie woanders, um fortzufahren.',
   'dlg.autosaveStuckSaveAs': 'Speichern unter…',
   'dlg.autosaveStuckDiscard': 'Änderungen verwerfen',
+
   'dlg.curDoc': 'Aktuelles Dokument',
   'dlg.newFileTitle': 'Neue Markdown-Datei (in {dir})',
   'dlg.newFileTitleRoot': 'Neue Markdown-Datei (Vault-Wurzel)',
@@ -1113,12 +1116,14 @@ export default {
   'ai.needConfig': 'Bitte zuerst Basis-URL und Modellnamen in den KI-Einstellungen eintragen',
   'ai.needSelection': 'Bitte zuerst Text im Editor auswählen',
   'ai.errBadMessages': 'Ungültige KI-Anfrage: messages müssen ein nicht leeres Array sein',
+
   'ai.errUnknown': 'Unbekannter Fehler',
   'ai.errRequest': 'Anfrage fehlgeschlagen: {err}',
   'ai.insertDoc': 'Ins Dokument einfügen',
   'ai.modeAskTip': 'Nur Chat – das Dokument wird nicht geändert',
   'ai.modeAgentTip': 'Antwort automatisch ans Ende des Dokuments anhängen',
   'ai.agentHint': 'Agent-Modus: Gib ausschließlich den Inhalt aus, der ins Dokument geschrieben werden soll. Keine Grußformeln, keine Wiederholung der Frage, keine Beschreibung deiner Schritte. Gibt der Nutzer eine Einfügeposition an, beginne mit einer Zeile <insert after="Position"> oder <insert before="Position"> (zitiert eine vorhandene Überschrift oder einen Absatz des Dokuments) und gib den Inhalt in der nächsten Zeile aus; ohne Positionsangabe bleibt der Marker weg. Soll nichts ins Dokument geschrieben werden (Begrüßung, Frage nach deinen Fähigkeiten, Smalltalk), antworte einfach in ein bis zwei normalen Sätzen – kein leerer Inhalt und kein Platzhalter wie <empty>.',
+
   'ai.applied': 'Ins Dokument übernommen',
   'ai.applyFail': 'Schreiben ins Dokument fehlgeschlagen',
   'ai.appliedAtAfter': 'Nach „{where}“ eingefügt',
@@ -1154,6 +1159,7 @@ export default {
   'ai.voiceAudioQuiet': 'Das Mikrofon nimmt kaum etwas auf (Eingabelautstärke zu gering oder stummgeschaltet): Erhöhen Sie die Eingabelautstärke in den Systemeinstellungen unter Ton > Eingabe, oder sprechen Sie näher am Mikrofon',
   'ai.voiceAudioNoisy': 'Die Umgebung ist zu laut für die Systemspracherkennung — gehen Sie an einen ruhigeren Ort und sprechen Sie erneut',
   'ai.voiceAudioOther': 'Das Mikrofonsignal ist ungewöhnlich (zu laut / zu schnell / zu langsam) — die Systemspracherkennung kann es nicht verwenden, bitte ein anderes Eingabegerät wählen',
+
   'ai.optimize': 'Mit KI überarbeiten',
   'ai.optimizeEmpty': 'Zuerst etwas eingeben',
   'ai.skills': 'Fähigkeiten',
@@ -1165,6 +1171,7 @@ export default {
   'ai.skillOff': 'Fähigkeit deaktiviert',
   'ai.removeSkill': 'Fähigkeit entfernen',
   'ai.skillEcho': 'Verwendete Fähigkeit: {names}',
+
   'ai.vaultCtxHead': 'Relevante Ausschnitte aus der Wissensbasis (möglicherweise unvollständig, zur Orientierung):',
   'ai.ctxTip': 'Kontextnutzung: ~{pct}% (geschätzt {tokens} / 32K Tokens)',
   'ai.modelsFail': 'Modellliste konnte nicht geladen werden: {err}',
@@ -1183,6 +1190,7 @@ export default {
   'ai.set.ollamaNoModels': 'Dienst bereit, aber noch kein Modell geladen – jetzt eines laden.',
   'ai.set.ollamaStopped': 'Installiert, antwortet aber nicht auf 127.0.0.1:11434.',
   'ai.set.ollamaMissing': 'Kein lokales Ollama erkannt – selbst installieren.',
+
   'ai.inserted': 'Ins Dokument eingefügt',
   'ai.copy': 'Kopieren',
   'ai.copied': 'Kopiert',
@@ -1238,6 +1246,7 @@ export default {
   'ai.set.modelsLoading': 'Modelliste wird geladen…',
   'ai.set.modelFail': 'Modelliste konnte nicht geladen werden – Modellname manuell eingeben',
   'ai.set.modelNonChat': 'Dieser Modellname sieht nach einem Embedding- oder Rerank-Modell aus – damit lässt sich nicht chatten; nutze einen Instruct-/Chat-Modellnamen',
+
   'ai.set.errBaseUrl': 'Die Adresse muss eine vollständige URL mit http:// oder https:// sein',
   'ai.set.errTooLong': '{field} ist auf {max} Zeichen begrenzt – auf eingefügten Zusatzinhalt prüfen',
   'ai.set.saved': 'KI-Einstellungen gespeichert',

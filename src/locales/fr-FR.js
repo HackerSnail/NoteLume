@@ -35,6 +35,7 @@ export default {
   'cmd.app.insertImage': 'Insérer une image…',
   'cmd.app.pastePlain': 'Coller comme texte brut',
   'cmd.app.selectAll': 'Tout sélectionner',
+
   'cmd.app.sourceMode': 'Mode source',
   'cmd.app.print': 'Exporter PDF',
   'cmd.app.palette': 'Palette de commandes',
@@ -167,6 +168,7 @@ export default {
   'menu.group.window': 'Fenêtre',
   'menu.group.git': 'Git',
   'menu.group.help': 'Aide',
+
   'menu.role.about': 'À propos de {app}',
   'menu.role.services': 'Services',
   'menu.role.hide': 'Masquer {app}',
@@ -357,6 +359,7 @@ export default {
   'dlg.autosaveStuckMulti': 'Impossible d’écrire le contenu de {n} volets ({names}) : {err}. Enregistrez-les ailleurs pour continuer.',
   'dlg.autosaveStuckSaveAs': 'Enregistrer sous…',
   'dlg.autosaveStuckDiscard': 'Abandonner les modifications',
+
   'dlg.curDoc': 'Document actuel',
   'dlg.newFileTitle': 'Nouveau fichier Markdown (dans {dir})',
   'dlg.newFileTitleRoot': 'Nouveau fichier Markdown (racine du coffre)',
@@ -1113,12 +1116,14 @@ export default {
   'ai.needConfig': 'Renseignez d’abord l’URL de base et le modèle dans les Réglages IA',
   'ai.needSelection': 'Sélectionnez d’abord du texte dans l’éditeur',
   'ai.errBadMessages': 'Requête IA invalide : les messages doivent former un tableau non vide',
+
   'ai.errUnknown': 'Erreur inconnue',
   'ai.errRequest': 'Échec de la requête : {err}',
   'ai.insertDoc': 'Insérer dans le document',
   'ai.modeAskTip': 'Discussion seule — le document n\'est pas modifié',
   'ai.modeAgentTip': 'Ajoute automatiquement la réponse à la fin du document',
   'ai.agentHint': 'Mode Agent : donnez uniquement le contenu à écrire dans le document. Pas de salutations, pas de reformulation de la question, pas de description de vos actions. Si l\'utilisateur précise un emplacement d\'insertion, commencez par une ligne <insert after="emplacement"> ou <insert before="emplacement"> citant un titre ou un paragraphe existant du document, puis donnez le contenu à la ligne suivante ; sans emplacement, omettez le marqueur. Si rien ne doit être écrit dans le document (salutation, question sur vos capacités, bavardage), répondez simplement en une ou deux phrases de conversation normale, sans réponse vide ni marqueur de remplissage comme <empty>.',
+
   'ai.applied': 'Appliqué au document',
   'ai.applyFail': 'Échec de l\'écriture dans le document',
   'ai.appliedAtAfter': 'Inséré après « {where} »',
@@ -1154,6 +1159,7 @@ export default {
   'ai.voiceAudioQuiet': 'Le micro ne capte presque rien : volume micro trop faible ou micro coupé — augmentez le volume dans Paramètres système > Son > Entrée, ou parlez plus près du micro',
   'ai.voiceAudioNoisy': 'Environnement trop bruyant pour la reconnaissance vocale système — déplacez-vous dans un lieu plus calme puis recliquez sur le micro',
   'ai.voiceAudioOther': 'Signal micro anormal (trop fort, trop rapide ou trop lent) — la reconnaissance vocale système ne peut pas exploiter ce signal, essayez un autre périphérique',
+
   'ai.optimize': 'Affiner avec l\'IA',
   'ai.optimizeEmpty': 'Écrivez d\'abord quelque chose',
   'ai.skills': 'Compétences',
@@ -1165,6 +1171,7 @@ export default {
   'ai.skillOff': 'Compétence désactivée',
   'ai.removeSkill': 'Retirer la compétence',
   'ai.skillEcho': 'Compétence utilisée : {names}',
+
   'ai.vaultCtxHead': 'Extraits pertinents issus de la base de connaissances (possiblement incomplets, à titre de référence) :',
   'ai.ctxTip': 'Utilisation du contexte : ~{pct}% (estimation {tokens} / 32K tokens)',
   'ai.modelsFail': 'Échec de la récupération des modèles : {err}',
@@ -1183,6 +1190,7 @@ export default {
   'ai.set.ollamaNoModels': 'Service prêt, mais aucun modèle récupéré — lancez la récupération.',
   'ai.set.ollamaStopped': 'Installé, mais ne répond pas sur 127.0.0.1:11434.',
   'ai.set.ollamaMissing': 'Aucun Ollama local détecté — installez-le vous-même.',
+
   'ai.inserted': 'Inséré dans le document',
   'ai.copy': 'Copier',
   'ai.copied': 'Copié',
@@ -1238,6 +1246,7 @@ export default {
   'ai.set.modelsLoading': 'Récupération de la liste des modèles…',
   'ai.set.modelFail': 'Impossible de récupérer la liste des modèles, saisissez le nom manuellement',
   'ai.set.modelNonChat': 'Ce nom ressemble à un modèle d’embeddings ou de reranking, inutilisable en conversation — choisissez un nom Instruct / Chat',
+
   'ai.set.errBaseUrl': 'L’adresse doit être une URL complète en http:// ou https://',
   'ai.set.errTooLong': '{field} est limité à {max} caractères — vérifiez le contenu collé',
   'ai.set.saved': 'Réglages IA enregistrés',

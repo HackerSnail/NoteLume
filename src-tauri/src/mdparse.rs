@@ -70,6 +70,7 @@ fn punct_adjacent_delims(md: &str) -> bool {
     false
 }
 
+
 // mark 在 PM 里按 schema rank 排序输出（link<em<strong<code<strike），与嵌套顺序无关。
 fn mark_rank(t: &str) -> u8 {
     match t {
@@ -498,4 +499,5 @@ mod tests {
             );
         }
     }
+
 }

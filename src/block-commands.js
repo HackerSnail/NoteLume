@@ -228,6 +228,7 @@ export function nlBackspace(state, dispatch, view) {
   const covered = coveredCodeBlock(state)
   if (covered != null) return deleteCodeBlockAt(state, dispatch, covered)
   if (coveredWholeTable(state)) return deleteTable(state, dispatch)
+
   const $cursor = state.selection.$cursor
   if ($cursor && (view ? view.endOfTextblock('backward', state) : $cursor.parentOffset === 0)) {
     const cut = cutBefore($cursor)
@@ -247,6 +248,7 @@ export function nlDelete(state, dispatch, view) {
   const covered = coveredCodeBlock(state)
   if (covered != null) return deleteCodeBlockAt(state, dispatch, covered)
   if (coveredWholeTable(state)) return deleteTable(state, dispatch)
+
   const $cursor = state.selection.$cursor
   if ($cursor && (view ? view.endOfTextblock('forward', state) : $cursor.parentOffset === $cursor.parent.content.size)) {
     const cut = cutAfter($cursor)

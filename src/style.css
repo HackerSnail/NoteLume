@@ -2454,6 +2454,7 @@ html.nl-dragging * {
    * 长条糊到底；收成 60vh 后超出的项就地滚动（极矮窗口下 60vh 也仍小于视口，不会溢出）。
    * 菜单条八格的下拉与 main.js 的右键菜单共用这个类，行为一致 */
   max-height: 60vh;
+
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -5533,6 +5534,7 @@ html.nl-dragging * {
 /* 同上：滚动盒是 .ai-msgs（overflow-y 使 overflow-x 一并成 auto），气泡 8px + 列表 2px 内边距
    只补得上一位数，ol 按 em 留到四位数 */
 .ai-msg.ai-bot ol { margin: 0.4em 0; padding-left: 2.4em; }
+
 .ai-msg.ai-bot blockquote {
   margin: 0.4em 0;
   padding-left: 8px;
@@ -5592,6 +5594,7 @@ html.nl-dragging * {
   line-height: 1.6;
   margin: 2px 0;
 }
+
 .ai-err {
   color: #c0341d;
   font-size: 12px;
@@ -5646,6 +5649,7 @@ html.nl-dragging * {
   font-size: 11px;
   margin-top: 4px;
 }
+
 .ai-actions {
   display: flex;
   gap: 6px;
@@ -5858,6 +5862,7 @@ html.nl-dragging * {
 .ai-skill-echo-tx {
   min-width: 0;
 }
+
 .ai-skill-chip-name {
   min-width: 0;
   overflow: hidden;
@@ -6088,6 +6093,7 @@ html.nl-dragging * {
   background: var(--accent);
   border-color: var(--accent);
 }
+
 
 /* —— 选区 AI 浮层：选区附近的小结果卡（单例，流式预览） —— */
 .nl-ai-pop {

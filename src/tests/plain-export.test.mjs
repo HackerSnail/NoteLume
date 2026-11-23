@@ -7,6 +7,7 @@
 import assert from 'node:assert'
 import { JSDOM } from 'jsdom'
 import { convertPlainMd, exportPlainMd } from '../plain-export.js'
+
 import { buildWikiLookup } from '../site-export.js'
 
 const jsdom = new JSDOM('<!doctype html><html><body></body></html>')
@@ -38,6 +39,7 @@ async function checkAsync(name, fn) {
     console.error(`FAIL ${name}: ${e.message}`)
   }
 }
+
 
 function ctx(over = {}) {
   return {
@@ -151,6 +153,7 @@ await checkAsync('整库导出：![[图片]] 所在笔记不被跳过，图片�
   assert.strictEqual(written.get('/out/带图.md'), '![照片](%E7%85%A7%E7%89%87.png)')
   assert.deepStrictEqual(copied, ['照片.png'])
 })
+
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

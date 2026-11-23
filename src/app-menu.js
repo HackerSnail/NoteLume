@@ -200,6 +200,7 @@ export function buildMacMenuSpec(ctx = {}) {
       'app.pastePlain',
       'sep',
       'app.selectAll',
+
       'app.insertImage',
       'editor.deleteLine',
       'sep',

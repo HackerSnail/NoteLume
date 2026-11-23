@@ -26,6 +26,7 @@ import {
   revealInFolder,
   openUrl,
   readClipboardText,
+
   ollamaProbe,
   confirmDialog,
   messageDialog,
@@ -101,6 +102,7 @@ import { normVaultPath, rootChanged } from './vault-path.js'
 import { withSaveLock, saveSnapshot, saveVersionStillCurrent } from './save-guard.js'
 import { canEditPane, isReadOnlyTarget } from './edit-state.js'
 import { splitSourceTab } from './split-source.js'
+
 import { detectIsMac, eventToBinding, resolveBinding, effectiveBindings, defaultKeyFor, formatBinding, toAccelerator } from './keymap.js'
 import { buildMacMenuSpec } from './app-menu.js'
 import { createMenuBar } from './menu-bar.js'
@@ -127,6 +129,7 @@ import { createAiPanel } from './ai-panel.js'
 import { normalizeReadPath, truncateToolResult, canRevert, revertRange } from './ai-agent.js'
 import { openAiInline } from './ai-inline.js'
 import { mdParser, serializeMarkdown } from './editor-schema.js'
+
 import { TextSelection } from 'prosemirror-state'
 import { Slice } from 'prosemirror-model'
 import { createSettingsStore } from './settings-store.js'
@@ -428,6 +431,7 @@ function stuckSaveDialog(ids) {
     cancelLabel: t('common.cancel'),
   })
 }
+
 
 // 离开当前文档（切换 / 打开别处 / 新建）前处理未保存改动。
 // 返回 true = 可继续离开，false = 取消（留在当前文档不切换）
@@ -826,6 +830,8 @@ async function loadMarkdownIntoEditor(inst, md, focused) {
         if (res && res.supported && res.doc) {
           inst.enterVirtualJson(res.doc, md)
           if (focused) {
+            if (els.btnSource) els.btnSource.classList.remove('active')
+
             syncFmtBars()
             setStatus(t('status.virtualMode'))
           }
@@ -837,6 +843,8 @@ async function loadMarkdownIntoEditor(inst, md, focused) {
     }
     await inst.loadAsSource(md)
     if (focused) {
+      if (els.btnSource) els.btnSource.classList.add('active')
+
       syncFmtBars()
       setStatus(t('status.largeSource'))
     }
@@ -862,6 +870,8 @@ async function toggleSourceMode() {
     if (!ok) return
   }
   const on = await editor.toggleSource()
+  if (els.btnSource) els.btnSource.classList.toggle('active', on)
+
   syncFmtBars()
   setStatus(on ? t('status.sourceOn') : t('status.sourceOff'))
 }
@@ -956,6 +966,7 @@ function persistAi(next) {
 function insertAiMarkdown(inst, md, opts = {}) {
   const text = String(md || '').trim()
   if (!text || !inst) return null
+
   const view = inst.view
   let doc = null
   try { doc = mdParser.parse(text) } catch { doc = null }
@@ -988,6 +999,7 @@ function agentApplyWithRevert(inst, md, opts = {}) {
   const doc = inst.view.state.doc
   return { from: r.from, to: r.to, md: serializeMarkdown(doc.cut(r.from, r.to)), prev: r.prev }
 }
+
 
 /** 恢复 [from, to] 选区后写入（「替换」语义：写回原选区位置） */
 function aiReplaceSelection(inst, from, to, md) {
@@ -1055,6 +1067,7 @@ async function agentExecTool(name, argsJson) {
       return JSON.stringify({ error: 'unknown tool: ' + name })
   }
 }
+
 
 /** AI 全库检索：问题分词后逐词查知识库索引（title 命中优先，去重合并每篇取片段）。
  *  没有知识库（单文件模式 / 草稿）回 ''——AI 只带当前文档上下文，即「只搜本文件」。 */
@@ -1147,6 +1160,7 @@ let ollamaStatusCache = null
 function noteOllamaStatus(st) {
   if (st && st.state) ollamaStatusCache = st
 }
+
 
 /** 选区 AI 入口：未配置先开设置；custom 走提示词输入框；其余直接起浮层流式请求 */
 function runSelectionAi(taskId, inst) {
@@ -2132,6 +2146,151 @@ async function newBlankTemplate() {
   } catch (e) { await messageDialog(t('msg.newTplFailed', { err: errText(e) })) }
 }
 
+// 工具条「模板」菜单：列模板 + 今日速记 + 新建模板 + 今日速记设置
+function openTemplateMenu(anchorEl) {
+  if (!state.vaultRoot) { messageDialog(t('msg.openVaultFirst')); return }
+  refreshTree().then(() => {
+    closeTreeMenu()
+    const menu = document.createElement('div')
+    menu.className = 'cv-menu tree-menu'
+    const tpls = listMdInDir(TEMPLATE_DIR())
+    if (!tpls.length) {
+      menu.appendChild(makeMenuItem(t('menu.noTemplatesInDir', { dir: TEMPLATE_DIR() }), () => {}))
+    } else {
+      tpls.forEach((p) => menu.appendChild(makeMenuItem(baseName(p).replace(/\.md$/i, ''), () => newFromTemplate(p), false, false, 'file')))
+    }
+    // 内置 Quarkdown 模板：装好就能跑的可编程示例（周报 / 变量化文档头 / 编号与交叉引用），
+    // 不写进库内 Templates/，选了现起一个新文件（默认名带日期，重名由用户改名规避覆盖）
+    menu.appendChild(menuSep())
+    for (const tpl of QD_TEMPLATES) {
+      menu.appendChild(makeMenuItem(t(tpl.nameKey), () => newQdTemplate(tpl), false, false, 'terminal'))
+    }
+    menu.appendChild(menuSep())
+    menu.appendChild(makeMenuItem(t('menu.dailyCaptureEntry'), () => toggleDailyCapture(), false, false, 'calendar'))
+    menu.appendChild(makeMenuItem(t('cmd.app.newTemplate'), () => newBlankTemplate(), false, false, 'plus'))
+    menu.appendChild(makeMenuItem(t('cmd.app.dailySettings'), () => configureDailyCapture(), false, false, 'sliders'))
+    const r = anchorEl.getBoundingClientRect()
+    placeMenu(menu, r.left, r.bottom + 4)
+  })
+}
+
+// 工具条「更多」菜单：收纳低频操作（导出/打印/图谱/画布/模板）与视图模式开关（专注/打字机）
+// 文案、键位后缀、勾选态都取注册表那一套（与 mac 原生菜单同源），菜单不自带第二份文案
+function addMenuCmd(menu, id, icon) {
+  const cmd = commandRegistry.get(id)
+  if (!cmd) return
+  const key = commandBindingFor(id)
+  const checked = MENU_CHECKED[id] ? MENU_CHECKED[id]() : false
+  menu.appendChild(makeMenuItem(cmd.title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, icon))
+}
+
+// 命令子菜单（导出 / Git）：与 mac 菜单栏同构——同一组命令 id，剥掉注册表标题里的
+// 归类前缀（「导出」「Git：」，父项已经说了同一件事），勾选态与置灰走同一套口径
+function openCmdSubmenu(anchorEl, text, icon, ids, prefixKey) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  const re = new RegExp('^' + t(prefixKey).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*')
+  for (const id of ids) {
+    const cmd = commandRegistry.get(id)
+    if (!cmd) continue
+    const key = commandBindingFor(id)
+    const checked = MENU_CHECKED[id] ? MENU_CHECKED[id]() : false
+    const title = String(cmd.title).replace(re, '')
+    menu.appendChild(makeMenuItem(title + (key ? ' (' + key + ')' : ''), () => runViaShortcut(id), false, checked, null, !menuEnabled(id)))
+  }
+  placeMenu(menu, anchorEl.getBoundingClientRect().left, anchorEl.getBoundingClientRect().bottom + 4)
+}
+
+function openMoreMenu(anchorEl) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  // 文件：新建 / 打开 → 最近 / 模板 → 保存 / 重命名 / 定位 → 导入导出 → 速记 / 自动保存 / 关闭
+  addMenuCmd(menu, 'app.newFile', 'file-plus')
+  addMenuCmd(menu, 'app.openFile', 'file')
+  addMenuCmd(menu, 'app.openFolder', 'folder')
+  menu.appendChild(makeMenuItem(t('menu.recent'), () => openRecentMenu(anchorEl), false, false, 'clock'))
+  menu.appendChild(makeMenuItem(t('menu.templateSettings'), () => openTemplateMenu(anchorEl), false, false, 'clipboard'))
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.save', 'save')
+  addMenuCmd(menu, 'app.renameFile', 'pen')
+  addMenuCmd(menu, 'app.revealFile', 'folder')
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.importWord', 'file')
+  menu.appendChild(makeMenuItem(t('menu.export'), () => openCmdSubmenu(anchorEl, t('menu.export'), 'export', [
+    'app.print',
+    'app.export',
+    'app.exportPlain',
+    'app.exportWord',
+    'app.exportSlides',
+    'app.exportVaultSlides',
+    'app.exportSite',
+  ], 'menu.exportPrefix'), false, false, 'export'))
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.dailyCapture', 'calendar')
+  addMenuCmd(menu, 'app.autosave', 'save')
+  addMenuCmd(menu, 'app.closeFile', 'close')
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.graph', 'graph')
+  addMenuCmd(menu, 'app.newCanvas', 'board')
+  addMenuCmd(menu, 'app.clipSettings', 'clipboard')
+  addMenuCmd(menu, 'app.qdToggleEval', 'terminal')
+  addMenuCmd(menu, 'app.qdInstallPackage', 'plus')
+  // Git：与 mac 顶级 Git 组同一组命令
+  menu.appendChild(makeMenuItem(t('menu.group.git'), () => openCmdSubmenu(anchorEl, t('menu.group.git'), 'branch', [
+    'app.git.refresh',
+    'app.git.commit',
+    'app.git.fetch',
+    'app.git.pull',
+    'app.git.pullMerge',
+    'app.git.push',
+    'app.git.remote',
+    'app.git.init',
+  ], 'menu.gitPrefix'), false, false, 'branch'))
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.palette', 'terminal')
+  addMenuCmd(menu, 'app.shortcuts', 'sliders')
+  addMenuCmd(menu, 'app.appearance', 'palette')
+  // 语言：子菜单列出全部语言，当前语言打勾
+  menu.appendChild(makeMenuItem(t('menu.language'), () => openLangMenu(anchorEl), false, false, 'globe'))
+  addMenuCmd(menu, 'app.about', 'info')
+  menu.appendChild(menuSep())
+  addMenuCmd(menu, 'app.focusMode', 'target')
+  addMenuCmd(menu, 'app.typewriterMode', 'keyboard')
+  addMenuCmd(menu, 'app.toggleSidebar', 'sidebar')
+  addMenuCmd(menu, 'app.toggleInspector', 'sliders')
+  addMenuCmd(menu, 'app.aiPanel', 'sparkle')
+  const r = anchorEl.getBoundingClientRect()
+  placeMenu(menu, r.left, r.bottom + 4)
+}
+
+// 工具条「段落」菜单（Windows / Linux 用；mac 是原生「段落」菜单，两边不同时挂）：
+// 直接取 buildMacMenuSpec 的「段落」组渲染 —— 分组、顺序、勾选、置灰、剥掉的「段落：」前缀
+// 与 mac 同一份定义，两边不会各改各的。执行走 runViaShortcut → 命令注册表，与命令面板同链路。
+function openParagraphMenu(anchorEl) {
+  closeTreeMenu()
+  const menu = document.createElement('div')
+  menu.className = 'cv-menu tree-menu'
+  const icons = {
+    para: 'pilcrow', quote: 'quote', code: 'code', mermaid: 'diagram', exitBlock: 'arrow-down',
+    bullet: 'list-bullet', ordered: 'list-ordered', task: 'task', hr: 'hr', table: 'table', callout: 'lightbulb',
+    link: 'link', footnote: 'pen', footnoteDelete: 'eraser', mathBlock: 'math', headingUp: 'arrow-up', headingDown: 'arrow-down',
+  }
+  const para = (buildMacMenuSpec(menuSpecCtx()).groups.find((g) => g.id === 'paragraph') || { items: [] }).items
+  for (const it of para) {
+    if (it.type === 'sep') { menu.appendChild(menuSep()); continue }
+    const name = it.id.split('.').pop()
+    const key = commandBindingFor(it.id)
+    const el = makeMenuItem(it.text + (key ? ' (' + key + ')' : ''), () => runViaShortcut(it.id),
+      false, it.type === 'check' && !!it.checked, icons[name] || null, it.enabled === false)
+    menu.appendChild(el)
+  }
+  const r = anchorEl.getBoundingClientRect()
+  placeMenu(menu, r.left, r.bottom + 4)
+}
+
+
 // —— 编辑器通用右键菜单（窗格内：剪切 / 复制 / 粘贴 + 行内格式 + 插入块）——
 // 挂在窗格（.nl-pane）而不是 view.dom：编辑器上下留白、文档下方的空白也归编辑部，
 // 那些位置右键照样出这个菜单。表格范围不接——表格菜单挂在 view.dom 上、事件先到它
@@ -2192,6 +2351,7 @@ function pmClipboardOps(inst) {
   }
 }
 
+
 function attachEditorContextMenu(paneId, inst) {
   const pane = inst.view.dom.closest('.nl-pane')
   if (!pane) return
@@ -2238,6 +2398,7 @@ function attachEditorContextMenu(paneId, inst) {
     menu.appendChild(cmd('editor.block.hr', 'cmd.block.hr'))
     menu.appendChild(cmd('editor.block.callout', 'cmd.block.callout'))
     menu.appendChild(makeMenuItem(t('ctx.qd'), () => openQdInsertMenu(e.clientX, e.clientY, inst), false, false, 'terminal', !canEdit))
+
     menu.appendChild(menuSep())
     // AI：选区任务（润色 / 续写 / 翻译 / 摘要 / 自定义提示词）。结果浮层流式预览，
     // 可写回选区 / 追加到选区下方 / 复制；无选区时整组置灰
@@ -2310,6 +2471,7 @@ function boxClipboardOps(editable) {
     }
     return String(window.getSelection() || '')
   }
+
   const writeClip = async (text) => {
     try { await navigator.clipboard.writeText(text); return true } catch (_) { return false }
   }
@@ -2317,6 +2479,7 @@ function boxClipboardOps(editable) {
     if (isBox) {
       const s = boxSel() || [editable.value.length, editable.value.length]
       editable.setRangeText(text, s[0], s[1], 'end')
+
       editable.dispatchEvent(new Event('input', { bubbles: true }))
     } else {
       document.execCommand('insertText', false, text)
@@ -2365,6 +2528,7 @@ function openEditContextMenu(e, target) {
   const readOnly = isReadOnlyTarget(editable)
   const clip = boxClipboardOps(editable)
   const hasSel = clip.canCutCopy()
+
   const modKey = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k)
   const withKey = (label, key) => (key ? label + '  ' + key : label)
   const menu = document.createElement('div')
@@ -2380,6 +2544,7 @@ function openEditContextMenu(e, target) {
   menu.appendChild(makeMenuItem(withKey(t('ctx.paste'), modKey('V')), clip.paste, false, false, null, readOnly))
   menu.appendChild(menuSep())
   menu.appendChild(makeMenuItem(withKey(t('ctx.selectAll'), modKey('A')), clip.selectAll, false, false, null, readOnly))
+
   placeMenu(menu, e.clientX, e.clientY)
 }
 
@@ -2941,6 +3106,7 @@ function showPaneEmpty(paneId, on) {
   // 新建 / 打开文档走 showPaneEmpty(false) 恢复编辑。
   const inst = panes.editors.get(paneId)
   if (inst && typeof inst.setEditable === 'function') inst.setEditable(!on)
+
   syncFmtBars()
 }
 
@@ -5246,6 +5412,7 @@ async function boot() {
       if (!localStorage.getItem('nl-ollama-probed')) {
         localStorage.setItem('nl-ollama-probed', '1')
         return ollamaGuide(st)
+
       }
     }).catch(() => {})
   }
@@ -5433,6 +5600,7 @@ async function boot() {
   els.btnFind && els.btnFind.addEventListener('click', () => runViaShortcut('app.findInDoc'))
   els.btnReplace && els.btnReplace.addEventListener('click', () => runViaShortcut('app.replace'))
   initMenuBar()
+
   els.docstats && els.docstats.addEventListener('click', setWordGoal)
   updateDocStats()
   els.searchInput.addEventListener('input', onSearchInput)
@@ -5495,6 +5663,7 @@ async function boot() {
     ollamaPull: ollamaPullCtl,
     ollamaGuide,
     noteOllamaStatus,
+
   })
   aiPanel = createAiPanel({
     root: els.aiPanel,
@@ -5516,6 +5685,7 @@ async function boot() {
     insertToDoc: (text) => insertAiMarkdown(editor, text),
     // 能力门控的数据源：本机 Ollama 的 /api/tags 结果（没探到就回 null，面板按现状发 tools）
     getOllamaStatus: () => ollamaStatusCache,
+
     // Agent 模式收尾：锚点协议（自然语言位置）优先——模型回答里 <insert after="…"> 引用的
     // 标题/段落能在文档里找到就直接插到那，找不到回退光标落点并标 missed；
     // 无锚点时按光标智能落位（写到哪补到哪），光标在标题/代码块里插到该块之后，没动过编辑器才落文末
@@ -5529,6 +5699,7 @@ async function boot() {
         if (pos != null) {
           record = agentApplyWithRevert(editor, text, { caret: pos })
           return { ok: true, where: anchor.target, missed: false, record }
+
         }
       }
       const { selection } = view.state
@@ -5541,6 +5712,7 @@ async function boot() {
       const inBlock = $head.parent.type.name === 'heading' || $head.parent.type.name === 'code_block'
       record = agentApplyWithRevert(editor, text, inBlock ? { caret: $head.after(1) } : {})
       return { ok: true, where: missed ? anchor.target : undefined, missed, record }
+
     },
     // 底行模型选择器切模型：写回 settings.json 的 ai 段
     persistModel: (name) => persistAi({ ...currentAi(), model: String(name || '').trim().slice(0, 120) }),

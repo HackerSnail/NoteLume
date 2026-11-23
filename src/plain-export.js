@@ -196,6 +196,7 @@ export async function exportPlainMd({ vaultRoot, outDir, io, setStatus = () => {
     // collectImages 回的是数组，resolveImageRel 用 has() 查它——这里必须转成 Set，
     // 否则 ![[图片]] 一走到图片解析就抛 TypeError，整篇笔记被导出循环跳过。
     imageSet = new Set(ci.images)
+
     imgByBase = ci.byBase
   }
 

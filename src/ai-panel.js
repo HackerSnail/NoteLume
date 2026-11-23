@@ -13,6 +13,7 @@ import { aiChatStream, aiChatCancel, aiChatListen, aiSkillsScan, aiModelsList, a
 import { aiConfigured, stripFences, parseAgentReply, stripInsertMarkers, isPlaceholderReply, modelSupportsVision, buildTaskMessages, aiQueryTerms, estimateTokens, aiContextWindow, chatModelsOnly, AI_MAX_IMAGES, supportsToolCalling, voicePath, dictationDoneInfo, dictationAudioInfo, shouldResumeDictation, DICT_SESSION_MAX_MS } from './ai-tasks.js'
 import { runAgentLoop, pickTools, summarizeToolArgs, repairHangingToolCalls } from './ai-agent.js'
 
+
 let reqSeq = 0
 function nextReqId() {
   reqSeq += 1
@@ -43,6 +44,7 @@ let mode = (() => {
  */
 export function createAiPanel(deps) {
   const { root, getConfig, openSettings, getDocContext, getVaultContext, getVaultRootForChat, insertToDoc, appendToDoc, persistModel, setStatus, execTool, vaultReady, revertAgentEdit, canRevertAgentEdit, streamRequest, getRevertDoc, getOllamaStatus, voiceUiHidden } = deps
+
   const md = MarkdownIt('commonmark', { html: false, linkify: true, breaks: true })
     .enable(['table', 'strikethrough'])
 
@@ -52,6 +54,7 @@ export function createAiPanel(deps) {
   let stopBtn = null
   let optBtn = null // 「AI 优化输入」按钮（流式润色回填）
   let voiceBtn = null // 语音输入按钮（桌面走 Rust 录音 + 服务商 ASR / 原生听写，浏览器走 Web Speech）
+
   let skillBtn = null // 技能按钮（自动探测本机 AI skills，选中后注入对话）
   let skillChips = null // 选中技能的回显 chip 行（composer 内 textarea 上方，可多个、可删）
   let skills = [] // 探测到的技能 [{id,name,description,source,path,content}]
@@ -103,6 +106,7 @@ export function createAiPanel(deps) {
     echo.append(ic, tx)
     bubbleEl.insertBefore(echo, bubbleEl.firstChild) // 放消息顶部，像给这条消息打的标签
   }
+
   let modelPill = null // 底行模型选择器：多模型可下拉切换，单模型/未拉到列表只显示名称
   let modelsCache = { key: '', items: [] } // /models 拉取缓存（key = baseUrl）
   let emptyHint = null
@@ -243,6 +247,7 @@ export function createAiPanel(deps) {
   }
 
   function bubble(role, text, reasoning) {
+
     const wrap = document.createElement('div')
     wrap.className = 'ai-msg ' + (role === 'user' ? 'ai-user' : 'ai-bot')
     if (role === 'user' && Array.isArray(text)) {
@@ -264,6 +269,7 @@ export function createAiPanel(deps) {
       wrap.textContent = text
     } else {
       paintAssistant(wrap, text, reasoning, false)
+
     }
     return wrap
   }
@@ -335,6 +341,7 @@ export function createAiPanel(deps) {
     return row
   }
 
+
   function scrollEnd() {
     msgsEl.scrollTop = msgsEl.scrollHeight
   }
@@ -368,6 +375,7 @@ export function createAiPanel(deps) {
         const r = await aiModelsList(cfg.baseUrl, cfg.apiKey)
         // 与设置面板同一口径：/models 里的向量 / 重排 / 文生图模型不能对话，不混进切换菜单
         modelsCache = { key: cfg.baseUrl, items: chatModelsOnly(r) }
+
       } catch (e) {
         setStatus(t('ai.modelsFail', { err: (e && e.message) || String(e) }))
         return
@@ -430,6 +438,7 @@ export function createAiPanel(deps) {
     emptyHint.classList.add('hidden')
     const userBubble = bubble('user', userContent)
     msgsEl.appendChild(userBubble)
+
     inputEl.value = ''
     attachments = []
     renderAtt()
@@ -451,12 +460,14 @@ export function createAiPanel(deps) {
       return
     }
 
+
     const messages = []
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) messages.push({ role: 'system', content: ctx })
     // 选中的本机技能（可多个）：每条 SKILL.md 指引各作一条 system 消息（扫描未完成时视为无）
     if (skillsLoaded) {
       const used = []
+
       for (const p of activeSkillPaths) {
         const skill = skills.find((s) => s.path === p)
         if (skill && skill.content) {
@@ -469,6 +480,7 @@ export function createAiPanel(deps) {
       if (used.length) userMsg._skills = used // 记进 history，随存档持久化（重启后仍回显）
     }
     // Agent 模式的提示词在 runAgentFlow 里注入（本函数在 mode === 'agent' 时已提前返回）
+
     // 全库检索：有知识库时按问题分词查索引注入相关片段；无知识库回 ''（只带当前文档上下文）
     if (typeof getVaultContext === 'function') {
       try {
@@ -477,6 +489,7 @@ export function createAiPanel(deps) {
       } catch { /* 检索失败不阻断对话 */ }
     }
     messages.push(...history.map(apiMsg))
+
     try {
       await aiChatStream({
         reqId: streaming.reqId,
@@ -503,6 +516,7 @@ export function createAiPanel(deps) {
       }
       return
     }
+
     if (!streaming) return
     aiChatCancel(streaming.reqId).catch(() => {})
     // Rust 侧 abort 后不再有事件，这里直接按「已停止」收尾（半截回答保留，可继续追问）
@@ -672,6 +686,7 @@ export function createAiPanel(deps) {
     syncModelChip()
     updateCtxRing()
     saveChat() // 回答结束自动存档（fire and forget）
+
     scrollEnd()
   }
 
@@ -695,6 +710,7 @@ export function createAiPanel(deps) {
     if (mode === 'agent' && !stopped && body) {
       if (autoApply(body, el, anchor, anchorBroken) && acts) acts.hideInsert()
     }
+
     if (stopped) {
       const tag = document.createElement('div')
       tag.className = 'ai-stopped'
@@ -746,6 +762,7 @@ export function createAiPanel(deps) {
     streaming = null
     setStreamingUi(false)
     syncModelChip()
+
     updateCtxRing()
     saveChat() // 半截回答（出错前已流入的）也归档
     scrollEnd()
@@ -754,12 +771,14 @@ export function createAiPanel(deps) {
   /** 助手气泡尾部的操作行：插入到文档 / 复制。
    *  hideInsert() 给 Agent 模式收尾用：回答已经由 autoApply 写进文档，再留「插入到文档」就是给
    *  同一段内容一个第二次插入的入口；没写成的那几条路径（手动停止 / 步数到顶 / 写入失败）照旧留着。*/
+
   function assistantActions(text) {
     const row = document.createElement('div')
     row.className = 'ai-actions'
     const ins = document.createElement('button')
     ins.type = 'button'
     ins.className = 'nl-ks-btn ai-insert'
+
     ins.textContent = t('ai.insertDoc')
     ins.addEventListener('click', () => {
       insertToDoc(text)
@@ -785,6 +804,7 @@ export function createAiPanel(deps) {
    *  返回是否真写进去了，调用点据此决定还留不留「插入到文档」 */
   function autoApply(text, el, anchor, anchorBroken) {
     if (!appendToDoc) return false
+
     let res = null
     try { res = appendToDoc(text, anchor || null) } catch { res = null }
     const tag = document.createElement('div')
@@ -835,6 +855,7 @@ export function createAiPanel(deps) {
     el.appendChild(tag)
     setStatus(tag.textContent)
     return ok
+
   }
 
   // —— 多模态附件（图片）：选图 / 粘贴 → dataURL，发送时随 content 数组一起走 ——
@@ -859,6 +880,7 @@ export function createAiPanel(deps) {
       return
     }
     if (attachments.length >= AI_MAX_IMAGES) {
+
       showAttNote(t('ai.attMax'))
       return
     }
@@ -938,6 +960,7 @@ export function createAiPanel(deps) {
     aiChatStream({
       reqId: optStreaming.reqId,
       messages: msgs, // buildTaskMessages 已是 OpenAI 数组形态，与选区浮层同一条出口
+
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey,
       model: cfg.model,
@@ -972,6 +995,7 @@ export function createAiPanel(deps) {
   let dictResumes = 0 // 连续自动续场次数（真说过话就清零，它只是循环刹车）
 
   function webspeechSupported() {
+
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
   }
 
@@ -1033,11 +1057,13 @@ export function createAiPanel(deps) {
   function startWebSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) { showAttNote(t('ai.voiceNo')); return }
+
     rec = new SR()
     rec.lang = voiceLang()
     rec.interimResults = true
     rec.continuous = true
-    committed = inputEl.value
+    let committed = inputEl.value // 已定稿文本（final 逐段追加）
+
     rec.onresult = (e) => {
       let final = ''
       let interim = ''
@@ -1165,6 +1191,7 @@ export function createAiPanel(deps) {
     dictResumes += 1
     return await resumeDictation()
   }
+
 
   // —— 输入卡浮层小菜单（模式切换 / 技能共用）：点外 / Esc 关闭，贴底往上弹 ——
 
@@ -1400,6 +1427,7 @@ export function createAiPanel(deps) {
     // 空对话（无历史消息且输入框为空）：文档上下文 / 技能要到第一条消息真正发出后才计入，
     // 一打开面板就显示"已有用量"是误导
     if (history.length === 0 && (!inputEl || !inputEl.value)) return ''
+
     let s = ''
     const ctx = getDocContext ? getDocContext() : ''
     if (ctx) s += ctx
@@ -1421,6 +1449,7 @@ export function createAiPanel(deps) {
     // 小窗口模型（本地 2K/4K）填上后，圆环能在超限前就转热报警，不再拿 32K 谎报余量。
     const win = aiContextWindow(getConfig())
     const pct = Math.min(1, tokens / win)
+
     const C = 2 * Math.PI * 7 // r=7 的周长
     ctxRing.circle.setAttribute('stroke-dasharray', C.toFixed(1))
     ctxRing.circle.setAttribute('stroke-dashoffset', (C * (1 - pct)).toFixed(1))
@@ -1451,6 +1480,7 @@ export function createAiPanel(deps) {
     // 存档前补齐悬挂 tool_calls（协议要求 assistant.tool_calls 与 role:'tool' 成对，
     // 缺了下次带这段历史续聊会被服务端 400）；内存里的 history 不动
     const doc = { v: 1, id: chatId, title: title.slice(0, 40), messages: repairHangingToolCalls(history) }
+
     try {
       await aiChatSave(getVaultRootForChat ? getVaultRootForChat() : null, chatId + '.json', JSON.stringify(doc))
     } catch { /* 存档失败不打断对话 */ }
@@ -1580,6 +1610,7 @@ export function createAiPanel(deps) {
     optBtn = document.createElement('button')
     optBtn.type = 'button'
     optBtn.className = 'ai-icon-btn ai-optimize'
+
     optBtn.title = t('ai.optimize')
     optBtn.setAttribute('aria-label', t('ai.optimize'))
     setIcon(optBtn, 'pen')
@@ -1592,6 +1623,7 @@ export function createAiPanel(deps) {
     setIcon(voiceBtn, 'mic')
     // 不在创建时置灰：走哪条路（ASR / 原生听写 / Web Speech / 都不行）到点击时才判定，
     // 原生识别探测有 IPC 开销且配置中途会变，按钮常亮、不可用时给状态行提示
+
     voiceBtn.addEventListener('click', toggleVoice)
     skillBtn = document.createElement('button')
     skillBtn.type = 'button'
@@ -1646,6 +1678,7 @@ export function createAiPanel(deps) {
     // 圆环那条 margin-left:auto 吃掉中段留白，所以右组恒贴右边缘：优化与语音藏掉后
     // 圆环自己右移补位，不会在发送钮左边留出两个空档。
     bar.append(buildModeMenu(), skillBtn, modelPill, ctxRing.el, ...(hideOptimize ? [] : [optBtn]), ...(hideVoice ? [] : [voiceBtn]), sendBtn, stopBtn)
+
     composer.append(skillChips, inputEl, bar)
 
     root.append(head, msgsEl, attEl, composer)
@@ -1655,6 +1688,7 @@ export function createAiPanel(deps) {
     updateCtxRing()
     renderSkillChips()
     syncVoiceUi() // 换语言重建 DOM 时若还在录音 / 听写，新按钮要点回蓝色
+
     // 技能无感探测：面板建好就静默扫一次（本地几个目录，毫秒级）
     aiSkillsScan().then((r) => {
       if (Array.isArray(r)) skills = r
@@ -1671,6 +1705,7 @@ export function createAiPanel(deps) {
     // 流式事件：全局一路订阅，按 reqId 分发（选区浮层有自己的订阅，互不干扰）。
     // aiChatListen 是异步订阅，退订函数在 .then 里挂进来；挂上之前面板已销毁就立刻退订
     aiChatListen((ev) => {
+
       // 输入优化流先分发（独立 reqId，不进对话）
       if (optStreaming && ev && ev.reqId === optStreaming.reqId) {
         if (ev.kind === 'chunk' && ev.delta) {
@@ -1710,6 +1745,7 @@ export function createAiPanel(deps) {
         }
         return
       }
+
       if (!streaming || !ev || ev.reqId !== streaming.reqId) return
       if (ev.kind === 'chunk' && ev.delta) {
         if (streaming.text === '') streaming.el.innerHTML = '' // 顶掉「思考中」占位
@@ -1718,6 +1754,7 @@ export function createAiPanel(deps) {
       } else if (ev.kind === 'reasoning' && ev.delta) {
         streaming.reasoning += ev.delta
         renderStreaming()
+
       } else if (ev.kind === 'done') {
         finishDone(false)
       } else if (ev.kind === 'error') {
@@ -1767,6 +1804,7 @@ export function createAiPanel(deps) {
     }).then((un) => {
       if (eventStreamDisposed) un()
       else offDictation = un
+
     })
     offLocale = onLocaleChange(() => {
       buildDom()
@@ -1804,6 +1842,7 @@ export function createAiPanel(deps) {
       } else if (voiceState === 'webspeech' && rec) {
         rec.stop()
       }
+
     },
   }
 }

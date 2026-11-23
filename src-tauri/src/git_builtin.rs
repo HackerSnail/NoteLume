@@ -277,6 +277,7 @@ pub fn map_err_text(msg: &str) -> BuiltinErrCode {
         || has("hostkey")
         || has("主机密钥")
     {
+
         return BuiltinErrCode::HostkeyMismatch;
     }
     // 中文 locale 关键词：具体短语而不是单字，避免跨类误判——「更新被拒绝」（推送
@@ -1331,6 +1332,7 @@ pub mod system {
             // clone 不继承源仓库的本地身份配置，这里补上，避免依赖 runner 的全局 git 身份
             git_in(&other, &["config", "user.email", "tester@example.com"]);
             git_in(&other, &["config", "user.name", "Tester"]);
+
             fs::write(other.join("b.md"), "二\n").unwrap();
             git_in(&other, &["add", "b.md"]);
             git_in(&other, &["commit", "-m", "远端第二笔"]);
@@ -1406,6 +1408,7 @@ pub mod system {
             assert!(parse_name_status("").is_empty());
             assert!(parse_name_status("\n \n").is_empty());
         }
+
     }
 }
 
@@ -2741,6 +2744,7 @@ gitee.com ssh-ed25519 AAAAC3NzaFake2
         );
     }
     #[test]
+
     fn map_err_host_key_beats_network_keyword() {
         // 典型 SSH 报的 "Host key verification failed" 也含 verification 但不是 auth/net
         assert_eq!(map_err_text("Host key verification failed"), BuiltinErrCode::HostkeyMismatch);

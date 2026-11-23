@@ -10,6 +10,7 @@ import {
   validateAiConfig,
   isHttpUrl,
   aiKeyHost,
+
   aiConfigured,
   AI_PRESETS,
   AI_LIMITS,
@@ -21,6 +22,7 @@ import {
   OLLAMA_SUGGEST_MODEL,
   sameModelName,
   supportsToolCalling,
+
   resolveAnchorPos,
   modelSupportsVision,
   aiQueryTerms,
@@ -37,6 +39,7 @@ import {
 } from '../ai-tasks.js'
 import { mdParser } from '../editor-schema.js'
 import { LOCALES, MESSAGES } from '../locales/index.js'
+
 
 let pass = 0
 let fail = 0
@@ -71,22 +74,26 @@ t('buildTaskMessages：返回值必须是数组（Rust AiChatArgs.messages 是 V
     assert.deepStrictEqual(m.map((e) => e.role), ['system', 'user'])
     for (const e of m) assert.strictEqual(typeof e.content, 'string')
   }
+
 })
 
 t('buildTaskMessages：continuation 只要求输出续写（指令里带 continue 字样）', () => {
   const m = buildTaskMessages('continue', '前文', '')
   assert.ok(/continue/i.test(m[1].content))
+
 })
 
 t('buildTaskMessages：翻译任务带中英互译指令', () => {
   const m = buildTaskMessages('translate', '你好', '')
   assert.ok(m[1].content.includes('English') && m[1].content.includes('Chinese'))
+
 })
 
 t('buildTaskMessages：custom 无指令回 null，有指令拼进 user', () => {
   assert.strictEqual(buildTaskMessages('custom', '文本', '   '), null)
   const m = buildTaskMessages('custom', '文本', '改成表格')
   assert.ok(m[1].content.startsWith('改成表格\n\n---\n文本\n---'))
+
 })
 
 t('buildTaskMessages：未知任务回 null', () => {
@@ -127,6 +134,7 @@ t('normalizeAiConfig：坏类型回落默认，字符串 trim + 限长；context
   const DEF = { baseUrl: '', apiKey: '', model: '', asrModel: '', contextTokens: 0, keys: {}, toolsCap: 'auto' }
   assert.deepStrictEqual(normalizeAiConfig(null), DEF)
   assert.deepStrictEqual(normalizeAiConfig(42), DEF)
+
   const long = 'u'.repeat(400)
   const n = normalizeAiConfig({ baseUrl: '  https://a.b/v1  ', apiKey: long, model: 123 })
   assert.strictEqual(n.baseUrl, 'https://a.b/v1')
@@ -187,6 +195,7 @@ t('aiContextWindow：填了用真实窗口，未填（0/坏值）回落参考值
   assert.strictEqual(aiContextWindow({ contextTokens: 0 }), AI_CTX_WINDOW_TOKENS)
   assert.strictEqual(aiContextWindow({}), AI_CTX_WINDOW_TOKENS)
   assert.strictEqual(aiContextWindow(null), AI_CTX_WINDOW_TOKENS)
+
 })
 
 t('aiConfigured：地址 + 模型齐才算配好；地址须为 http(s)；Key 可空（Ollama）', () => {
@@ -390,6 +399,7 @@ t('stripInsertMarkers：大小写不敏感、成对剥、残留不粘字', () =>
   assert.strictEqual(stripInsertMarkers('没有标记的正文'), '没有标记的正文')
 })
 
+
 t('resolveAnchorPos：标题命中，after 在标题块之后、before 在标题块之前', () => {
   const doc = mdParser.parse('# 引言\n\n开头一段。\n\n## 结论\n\n收尾。')
   const after = resolveAnchorPos(doc, { dir: 'after', target: '引言' })
@@ -566,6 +576,7 @@ t('dictationDoneInfo：Rust 的哨兵码各走各的文案，引擎自终不算�
     }
   }
 })
+
 
 console.log((fail ? `\n${pass} passed, ${fail} FAILED` : `all ${pass} passed`))
 process.exit(fail ? 1 : 0)

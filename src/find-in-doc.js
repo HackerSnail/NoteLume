@@ -14,6 +14,7 @@ import { t } from './i18n.js'
 import { confirmDialog } from './tauri-bridge.js'
 import { unfoldCovering } from './fold-plugin.js'
 
+
 export const findKey = new PluginKey('nl-find')
 
 /**
@@ -314,6 +315,7 @@ export function createFindBar({ view, paneEl, hooks }) {
   // 虚拟模式命中是 master 坐标：窗外先 jumpTo 移窗（内核落光标），再按窗口坐标选中滚动。
   // 命中可能落在被折叠的标题节里：先展开覆盖它的折叠，否则那块是 display:none，
   // coordsAtPos 只能给全零矩形，后面按零坐标去滚会反把窗口拉回文档开头（高亮也看不见）。
+
   function reveal(idx) {
     const m = findState().matches[idx]
     if (!m) return
@@ -333,6 +335,7 @@ export function createFindBar({ view, paneEl, hooks }) {
     } else {
       const open = unfoldCovering(view.state, from)
       if (open) view.dispatch(open)
+
     }
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)))
     scrollMatchIntoView({ from, to })
@@ -341,6 +344,7 @@ export function createFindBar({ view, paneEl, hooks }) {
   // 把命中矩形滚进滚动容器可视区（上下各留 72px 上下文），已在视野内则不滚
   function scrollMatchIntoView(m) {
     let top, bottom, left, right
+
     try {
       const a = view.coordsAtPos(Math.max(0, Math.min(m.from, view.state.doc.content.size)))
       const b = view.coordsAtPos(Math.max(0, Math.min(m.to, view.state.doc.content.size)))
@@ -354,6 +358,7 @@ export function createFindBar({ view, paneEl, hooks }) {
     // 全零矩形 = 目标仍不可见（被折叠 / 未渲染）：不滚。按零坐标滚会把 scrollTop
     // 往 0 拉，表现成「搜到了但窗口跳回开头、命中位置根本没露出来」。
     if (!left && !right && !top && !bottom) return
+
     const rect = paneEl.getBoundingClientRect()
     const MARGIN = 72
     if (bottom - top >= rect.height - MARGIN * 2) {

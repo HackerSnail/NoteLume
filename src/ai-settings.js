@@ -3,6 +3,7 @@
 // 持久化并进 settings.json 的 ai 段（settings-store.js 读写）；归一化与预设表在
 // ai-tasks.js（纯逻辑，Node 单测）。Key 按接口地址的 host:port 分格存在 ai.keys，
 // 切服务商互不影响。Rust 侧不存任何配置，调用时前端经 IPC 传参。
+
 // 模态壳沿用 appearance-settings.js / clip-settings.js 的模式。
 
 import { t, onLocaleChange } from './i18n.js'
@@ -10,6 +11,7 @@ import { setIcon } from './icons.js'
 import { normalizeAiConfig, validateAiConfig, isHttpUrl, aiKeyHost, AI_LIMITS, AI_CTX_WINDOW_MAX, AI_PRESETS, chatModelsOnly, isNonChatModel, ollamaFlowFor, ollamaUsable, aiEgressVars, AI_TOOL_CAP_MODES } from './ai-tasks.js'
 import { TOOL_RESULT_MAX_CHARS } from './ai-agent.js'
 import { ollamaProbe, openUrl, aiModelsList } from './tauri-bridge.js'
+
 
 /**
  * 「AI 设置」面板。
@@ -24,6 +26,7 @@ import { ollamaProbe, openUrl, aiModelsList } from './tauri-bridge.js'
  */
 export function createAiSettings(deps) {
   const { getAi, apply, flush, setStatus, ollamaPull, ollamaGuide, noteOllamaStatus } = deps
+
   let overlay = null
   let bodyEl = null
   let statusEl = null
@@ -92,6 +95,7 @@ export function createAiSettings(deps) {
       else delete draft.keys[host]
     }
   }
+
 
   function section(titleKey) {
     const head = document.createElement('div')
@@ -328,6 +332,7 @@ export function createAiSettings(deps) {
     egressWhereEl.textContent = t(vars.local ? 'ai.set.dataFlowLocal' : 'ai.set.dataFlowRemote', vars)
   }
 
+
   function render() {
     bodyEl.innerHTML = ''
     section('ai.set.section')
@@ -335,6 +340,7 @@ export function createAiSettings(deps) {
     // 预设：一键填地址 + 模型名（输入框的 change 监听读 DOM，先改 DOM 值再同步草稿）
     // 预设：一键填地址 + 模型名。当前地址落在哪一格，哪颗就一直是选中态；
     // 都不等于就是「自定义」（清空两项，等用户手填自己的兼容接口）。
+
     const presetRow = document.createElement('div')
     presetRow.className = 'nl-ap-row'
     const presetLabel = document.createElement('span')
@@ -343,6 +349,7 @@ export function createAiSettings(deps) {
     const btns = document.createElement('div')
     btns.className = 'nl-ai-presets'
     presetBtnEls = []
+
     for (const p of AI_PRESETS) {
       const b = document.createElement('button')
       b.type = 'button'
@@ -361,6 +368,7 @@ export function createAiSettings(deps) {
         }
         // 先换地址再改模型名：换地址时要把「自定义」那格此刻的模型名记下来，顺序反了就记成预设的
         syncKeyWithBaseUrl(p.baseUrl)
+
         draft.model = p.model
         render()
       })
@@ -465,6 +473,7 @@ export function createAiSettings(deps) {
     egressListEl = hint('ai.set.dataFlow')
     egressWhereEl = hint('ai.set.dataFlow')
     paintEgress()
+
   }
 
   function buildDom() {
@@ -541,6 +550,7 @@ export function createAiSettings(deps) {
     if (overlay.parentNode) return
     draft = normalizeAiConfig(getAi())
     customMemory = null // 每次打开都从设置重读，会话内的暂存不跨面板留
+
     document.body.appendChild(overlay)
     document.addEventListener('keydown', onEsc, true)
     offLocale = onLocaleChange(() => {
@@ -555,6 +565,7 @@ export function createAiSettings(deps) {
         if (c && c.state === 'done') { loadModels(); probeOllama() }
       })
     }
+
     render()
   }
 
@@ -569,6 +580,7 @@ export function createAiSettings(deps) {
       offPull()
       offPull = null
     }
+
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay)
   }
 

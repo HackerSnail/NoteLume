@@ -3,6 +3,7 @@
 <p align="center">
   为「嫌 <strong>Typora</strong> 没组织、嫌 <strong>Obsidian</strong> 太重」的人做的本地 Markdown 编辑器。<br>
   约 8–9 MB 的单体安装包，编辑手感第一；你的笔记就是一堆标准 <code>.md</code> 文件躺在自己的文件夹里：秒开、离线、零格式锁定。
+
 </p>
 
 <p align="center">
@@ -36,6 +37,7 @@
   <br>
   <sub>▶ 点封面去 B 站看九分钟完整演示 · Click the cover to watch the full walkthrough on Bilibili</sub>
 </p>
+
 
 ## 功能演示 · Feature demos
 
@@ -131,6 +133,7 @@ Typora 编辑舒服，但一篇就是一篇，文件多了没组织；Obsidian �
 * 🧩 **功能开关与五语言**：`[[toc]]` 目录块、CSV 表格渲染、emoji 短代码、标题自动编号都是设置里的开关项，全关即标准模式；界面内置简体中文 / 繁體中文 / English / Français / Deutsch
 * 📦 **轻**：macOS DMG 与 Windows 安装包都在 8–9 MB；插件系统（`.notelume-plugins/`）内建
 
+
 ### 快速开始
 
 **安装**：到 [Releases](https://github.com/HackerSnail/NoteLume/releases) 下载对应平台的安装包；国内网络改走 [Gitee 发行版](https://gitee.com/hackerSnail/note-lume/releases)（同一批安装包）——
@@ -209,6 +212,7 @@ node scripts/wrap-mac-dmg.mjs                                           # 补 ad
 
 1. **装扩展**：Edge 地址栏输 `edge://extensions`，打开左下角「开发人员模式」，点「加载已解压缩的扩展」选仓库里的 `extension/` 目录（Chrome 是 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」）。加载后建议在工具栏拼图菜单里把「NoteLume 剪藏」固定出来。
 2. **NoteLume 里开服务**：mac 从菜单栏「NoteLume → 网页剪藏设置」进入，Windows / Linux 走工具条「更多 → 网页剪藏设置」；勾选「启用剪藏服务」后保存，设置面板底部显示「剪藏服务已启动：127.0.0.1:<端口>」。同一个设置里还能选模板（库内 `Templates/` 下的 md）、目标目录（默认 `Clippings/`）、文件名模式（默认 `{{date}}-{{title}}`）、自动关联的篇数，以及图片本地化与整页兜底两个开关。
+
 3. **扩展里填地址**：右键扩展图标 →「选项」，服务器地址填设置里显示的地址（默认 `http://127.0.0.1:3210`），「测试连接」应回「连接正常 · 已打开知识库」。填这一项就够了。
 4. **剪**：点固定出来的扩展图标剪整页；或先在页面上选中文字，右键「剪藏选中内容到 NoteLume」只剪片段（用内置 highlight 模板落盘，来源行进引用块）。
 
@@ -238,6 +242,7 @@ mac 上 `Ctrl` 即 `⌘`。以下键位按 Typora / Obsidian 主流习惯预置�
 | `Ctrl+E`                      | 正文与 Markdown 源码整篇互切    |
 | `Ctrl+F`                      | 本篇文档内查找                |
 | `Ctrl+H`（mac：`⌥⌘F`）        | 本篇文档内查找替换（mac 的 ⌘H 归系统「隐藏」） |
+
 | `Ctrl+Shift+F`                | 聚焦侧栏全局搜索               |
 | `Ctrl+Shift+V`                | 粘贴为纯文本                 |
 | `Ctrl+Shift+I`                | 插入图片（自动入库 `assets/`）   |
@@ -300,6 +305,7 @@ Issue 和 PR 都欢迎，也欢迎任何形式的功能建议。
   <tr>
     <td width="50%" align="center"><img src="img/community/qq.jpg" alt="QQ 群二维码" width="240"><br>QQ 群 1084570261</td>
     <td width="50%" align="center"><img src="img/community/wechat.png" alt="微信群二维码" width="240"><br>微信群</td>
+
   </tr>
 </table>
 
@@ -335,6 +341,7 @@ Typora edits beautifully, but one file is one file — past a handful of notes t
 * 🌐 **Web clipping**: a browser extension (`extension/`, MV3) POSTs page content to a local server; Rust writes it per template into your vault, can localize images under `assets/` (off by default), and appends links to related notes — loopback-only, extension-origin gated
 * 🧩 **Feature flags & five languages**: `[[toc]]` blocks, CSV table rendering, emoji shortcodes, and heading numbering are all toggles — everything off means standard mode; the UI ships in 简体中文 / 繁體中文 / English / Français / Deutsch
 * 📦 **Featherweight**: the macOS DMG and the Windows installer are both in the 8–9 MB range; a plugin system (`.notelume-plugins/`) comes standard
+
 
 ### Quick Start
 
@@ -443,6 +450,7 @@ On macOS, `Ctrl` means `⌘`. Everything below follows Typora / Obsidian convent
 | `Ctrl+E`                      | Toggle between WYSIWYG and Markdown source                |
 | `Ctrl+F`                      | Find in document                                          |
 | `Ctrl+H` (mac: `⌥⌘F`)          | Find & replace in document (⌘H is taken by system Hide)  |
+
 | `Ctrl+Shift+F`                | Focus vault-wide search                                   |
 | `Ctrl+Shift+V`                | Paste as plain text                                       |
 | `Ctrl+Shift+I`                | Insert image (auto-saved to `assets/`)                    |
@@ -505,6 +513,7 @@ Issues and PRs of every kind are welcome.
   <tr>
     <td width="50%" align="center"><img src="img/community/qq.jpg" alt="QQ group QR" width="240"><br>QQ group 1084570261</td>
     <td width="50%" align="center"><img src="img/community/wechat.png" alt="WeChat group QR" width="240"><br>WeChat group</td>
+
   </tr>
 </table>
 

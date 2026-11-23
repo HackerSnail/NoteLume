@@ -95,6 +95,7 @@ export function syncShortcutName(lang) {
   return invoke('sync_shortcut_name', { lang })
 }
 
+
 /** Quarkdown 求值：源 md → { expanded, diagnostics }。无 Tauri（网页预览）时透传原文。
  *  docDir = 文档所在目录（绝对路径）：Data 模块文件类函数（.read / .listfiles…）相对它解析，
  *  不传则文件类函数在引擎里诊断降级。
@@ -131,6 +132,7 @@ export async function readClipboardText() {
     throw err
   }
 }
+
 
 /** 超大文档后台解析（虚拟化 Phase 1）：md → {supported, doc|null, reason?}。
  *  doc 是与 editor-schema.js 同构的 PM JSON，前端 Node.fromJSON 重建 master doc。
@@ -553,6 +555,7 @@ export function gitRRevert(vaultRoot, hash) {
 /** 一个提交改动的文件清单（[{path, kind}]，kind 为 A/M/D/R/T）。 */
 export function gitRCommitFiles(vaultRoot, hash) {
   return invoke('git_r_commit_files', { vaultRoot, hash })
+
 }
 
 /** R3 新增：合并拉取（不带 --ff-only）。resolve 为 `MERGED\n…` 或 `CONFLICTS\n…`；
@@ -633,6 +636,7 @@ export function aiModelsList(baseUrl, apiKey) {
 }
 
 /** 探测本机 Ollama：{ state: 'ready'|'no_models'|'stopped'|'missing', models: string[] }（四档含义见 ai-tasks.ollamaFlowFor） */
+
 export function ollamaProbe() {
   return invoke('ollama_probe', {})
 }
@@ -692,6 +696,7 @@ export function aiDictationListen(handler) {
   if (!window.__TAURI_INTERNALS__) return Promise.resolve(() => {})
   return listen('nl:dictation', (e) => handler(e.payload))
 }
+
 
 /** 用系统默认浏览器打开 http(s) 链接 */
 export function openUrl(url) {

@@ -41,6 +41,7 @@ pub struct AiChatArgs {
 
 /// 推回前端的事件载荷：kind = 'chunk'（delta 有值）| 'reasoning'（推理模型的思考增量）
 /// | 'done' | 'error'（error 有值）
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct AiEvent {
@@ -59,6 +60,7 @@ struct AiEvent {
 /// Send+Sync：跨 await 传递 &EmitFn 的 future 必须整体 Send；带生命周期参数，
 /// 裸别名默认 'static 会让测试闭包没法借局部变量。
 type EmitFn<'a> = dyn Fn(&str, Option<String>, Option<String>, Option<serde_json::Value>) + Send + Sync + 'a;
+
 
 // —— 请求表：reqId → 运行中的任务（abort 句柄）+ 结束标记 ——
 // 结束标记用于插入新请求时顺手清掉已完成的条目；被 abort 的任务来不及置位，
@@ -119,6 +121,7 @@ pub fn ai_chat_stream(app: tauri::AppHandle, args: AiChatArgs) -> Result<(), Str
                          delta: Option<String>,
                          error: Option<String>,
                          tool_calls: Option<serde_json::Value>| {
+
             let _ = emit_app.emit(
                 "nl:ai-event",
                 AiEvent {
@@ -147,6 +150,7 @@ pub fn ai_chat_stream(app: tauri::AppHandle, args: AiChatArgs) -> Result<(), Str
                 }),
             ),
             Err(e) => emit("error", None, Some(e), None),
+
         }
         finished_task.store(true, Ordering::Relaxed);
     });
@@ -188,6 +192,7 @@ pub fn models_url(base_url: &str) -> String {
     if let Some(up) = b.strip_suffix("/chat/completions") {
         b = up.trim_end_matches('/');
     }
+
     if b.ends_with("/models") {
         return b.to_string();
     }
@@ -576,6 +581,7 @@ fn handle_pull_line(line: &[u8], emit: &PullEmit<'_>) -> Option<String> {
         PullLine::Failed(e) => Some(e),
         PullLine::Skip => None,
     }
+
 }
 
 /// SSE 行 → data 载荷。非 data: 行（空行 / 注释 / event: 等字段）回 None；
@@ -623,6 +629,7 @@ pub fn extract_delta_reasoning(payload: &str) -> Option<String> {
     }
     None
 }
+
 
 fn string_or_empty(v: Option<&serde_json::Value>) -> Option<String> {
     match v {
@@ -775,6 +782,7 @@ pub fn build_chat_body(
     messages: &[(String, serde_json::Value)],
     tools: Option<&serde_json::Value>,
 ) -> serde_json::Value {
+
     let mut body = serde_json::json!({
         "model": model,
         "messages": messages
@@ -807,6 +815,7 @@ async fn run_stream(
 ) -> Result<Option<Vec<(String, String, String)>>, String> {
     let body = build_chat_body(model, temperature, messages, tools);
 
+
     let client = reqwest::Client::builder()
         // 整体兜底：长对话不至于挂死进程；流式读本身没有 per-read 超时
         .timeout(std::time::Duration::from_secs(300))
@@ -821,6 +830,7 @@ async fn run_stream(
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
         let via_json = extract_error_body(&text);
+
         return Err(format!(
             "HTTP {status}: {}",
             via_json.unwrap_or_else(|| truncate_utf8(text.trim(), 300))
@@ -830,6 +840,7 @@ async fn run_stream(
     // 字节缓冲逐行处理：SSE 行以 \n 结尾且 JSON 行是完整 UTF-8，按行转码不会
     // 把跨 chunk 的多字节字符切坏（直接 lossy 每个 chunk 就会）。
     let mut acc = ToolCallAccumulator::default();
+
     let mut buf: Vec<u8> = Vec::new();
     loop {
         let chunk = resp.chunk().await.map_err(|e| format!("读取流失败: {e}"))?;
@@ -843,6 +854,7 @@ async fn run_stream(
                     Ok(()) => Ok(acc.finish()),
                     Err(e) => Err(e),
                 };
+
             }
         }
     }
@@ -861,6 +873,7 @@ async fn run_stream(
 
 /// 错误响应体截断（按字符截，chars().take 天然不切坏多字节字符）；空体给占位文案
 pub fn truncate_utf8(t: &str, max_chars: usize) -> String {
+
     if t.is_empty() {
         return "无响应体".to_string();
     }
@@ -878,6 +891,7 @@ fn handle_line(
     emit: &EmitFn<'_>,
     acc: &mut ToolCallAccumulator,
 ) -> Option<Result<(), String>> {
+
     let text = String::from_utf8_lossy(line);
     let text = text.trim_end_matches(['\n', '\r']);
     let payload = sse_data_payload(text)?;
@@ -899,6 +913,7 @@ fn handle_line(
     if let Some(reasoning) = extract_delta_reasoning(payload) {
         emit("reasoning", Some(reasoning), None, None);
     }
+
     None
 }
 
@@ -926,6 +941,7 @@ mod tests {
         // 填到 /chat/completions：剥回上一级，不再挂出 …/chat/completions/models
         assert_eq!(models_url("https://api.siliconflow.cn/v1/chat/completions"), "https://api.siliconflow.cn/v1/models");
         assert_eq!(models_url("https://api.moonshot.cn/v1/chat/completions/"), "https://api.moonshot.cn/v1/models");
+
     }
 
     #[test]
@@ -979,6 +995,7 @@ mod tests {
     }
 
     #[test]
+
     fn sse_error_extraction() {
         assert_eq!(
             extract_sse_error(r#"{"error":{"message":"Incorrect API key"}}"#).as_deref(),
@@ -1009,6 +1026,7 @@ mod tests {
         let mut acc = ToolCallAccumulator::default();
         let r = handle_line(line, &emit, &mut acc);
         (r, out.into_inner().unwrap(), acc.finish())
+
     }
 
     #[test]
@@ -1027,11 +1045,13 @@ mod tests {
 
         // [DONE] → Ok 终止
         let (r, events, _) = run_line(b"data: [DONE]\n");
+
         assert_eq!(r, Some(Ok(())));
         assert!(events.is_empty());
 
         // 流内错误 → Err 终止
         let (r, events, _) = run_line(b"data: {\"error\":{\"message\":\"bad key\"}}\n");
+
         assert_eq!(r, Some(Err("bad key".into())));
         assert!(events.is_empty());
 
@@ -1040,11 +1060,13 @@ mod tests {
         assert!(r.is_none());
         assert!(events.is_empty());
         let (r, events, _) = run_line(b"\n");
+
         assert!(r.is_none());
         assert!(events.is_empty());
 
         // 跨 chunk 拆坏的多字节序列不会 panic（lossy 兜底），无效行回 None
         let (r, _, _) = run_line(&[0xe4, 0xbd, b'\n']);
+
         assert!(r.is_none());
     }
 
@@ -1335,4 +1357,5 @@ mod tests {
         assert!(got.iter().any(|l| l.contains("success")), "末条应是 success：{:?}", got);
         assert!(got.iter().all(|l| l.starts_with("progress|")), "只该有 progress 类型");
     }
+
 }

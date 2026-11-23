@@ -253,6 +253,7 @@ jobs:
             git file sudo binutils \
             libwebkit2gtk-4.1-dev librsvg2-dev patchelf libxdo-dev libssl-dev \
             libayatana-appindicator3-dev libfuse2 libasound2-dev \
+
             libssh2-1-dev \
             rpm
           rm -rf /var/lib/apt/lists/*
@@ -363,11 +364,13 @@ jobs:
           - platform: macos-arm64
             runs_on: macos-latest      # Apple Silicon runner（=macos-26 arm64）
             bundles: app
+
             artifact_name: NoteLume-macOS-ARM64
             artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
           - platform: macos-intel
             runs_on: macos-26-intel    # Intel x64 runner（与 macos-26-large 同一镜像，macOS 的 x64 图只剩这一族）
-            bundles: app
+            bundles: app dmg
+
             artifact_name: NoteLume-macOS-Intel
             artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.runs_on }}
@@ -414,6 +417,7 @@ jobs:
   # 单独收口是为了避免 matrix 各作业并发改同一 Release 产生命令/草稿竞态。
   # needs 必须同时列 package-linux：它已拆成独立作业，漏写会导致 AppImage/deb/rpm 不进 Release。
   # Release 标题为 `NoteLume <版本>`，正文取 CHANGELOG.md 里该版本段落；发版前须补好对应段落。
+
   publish:
     name: Publish draft Release
     needs: [package-linux, package-desktop]
