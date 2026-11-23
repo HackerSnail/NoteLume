@@ -773,6 +773,7 @@ export default {
   'canvas.distVTip': '垂直等距分布（选中≥３）',
   'canvas.colorNeedSelect': '请先选中要改色的卡片',
   'canvas.alignNeedTwo': '对齐至少需要选中 2 张卡片',
+  'canvas.distNeedThree': '等距分布至少需要选中 3 张卡片',
   'canvas.groupTip': '把选中卡片收进一个分组框（拖框边可整体移动）',
   'canvas.ungroupTip': '删除选中的分组框（卡片保留）',
   'canvas.zoomOutTip': '缩小（Ctrl -）',

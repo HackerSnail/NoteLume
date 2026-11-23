@@ -726,19 +726,26 @@ export function createCanvasView(deps) {
   }
   function distributeSelection(axis) {
     const nodes = selectedCards()
-    if (nodes.length < 3) return
+    if (nodes.length < 3) {
+      hint(t('canvas.distNeedThree'))
+      return
+    }
     pushUndo(snapshot())
     nodes.sort((a, b) => (axis === 'h' ? a.x - b.x : a.y - b.y))
     const first = nodes[0], last = nodes[nodes.length - 1]
-    const startC = axis === 'h' ? first.x + first.width / 2 : first.y + first.height / 2
-    const endC = axis === 'h' ? last.x + last.width / 2 : last.y + last.height / 2
-    const step = (endC - startC) / (nodes.length - 1)
-    nodes.forEach((n, i) => {
-      const target = startC + step * i
-      if (axis === 'h') n.x = Math.round(target - n.width / 2)
-      else n.y = Math.round(target - n.height / 2)
-    })
-    markDirty(); render()
+    const pos = axis === 'h' ? 'x' : 'y'
+    const size = axis === 'h' ? 'width' : 'height'
+    const start = first[pos]
+    const span = (last[pos] + last[size]) - start
+    const used = nodes.reduce((s, n) => s + n[size], 0)
+    // 按卡片之间的空隙等距，不是按中心点等距：宽窄混排时中心等距会让间隙不等甚至重合。
+    const gap = Math.max(0, (span - used) / (nodes.length - 1))
+    let cur = start
+    for (const n of nodes) {
+      n[pos] = Math.round(cur)
+      cur += n[size] + gap
+    }
+    markDirty(); clearGuides(); render()
   }
   function groupSelection() {
     const nodes = selectedCards()

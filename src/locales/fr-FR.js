@@ -772,6 +772,7 @@ export default {
   'canvas.distVTip': 'Espacer verticalement (sélection ≥ 3)',
   'canvas.colorNeedSelect': 'Sélectionnez d’abord les cartes à colorer',
   'canvas.alignNeedTwo': 'Sélectionnez au moins 2 cartes à aligner',
+  'canvas.distNeedThree': 'Sélectionnez au moins 3 cartes à répartir',
   'canvas.groupTip': 'Regroupe les cartes sélectionnées dans un cadre (glissez son bord pour les déplacer ensemble)',
   'canvas.ungroupTip': 'Supprime les cadres de groupe sélectionnés (les cartes sont conservées)',
   'canvas.zoomOutTip': 'Zoom arrière (Ctrl -)',
