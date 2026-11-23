@@ -894,6 +894,9 @@ export default {
   'fm.removeConfirm': 'Supprimer le frontmatter (en-tête YAML) de ce document ?',
   'fm.complexArray': '[…] tableau complexe',
   'fm.complexObject': '{…} objet complexe',
+  'fm.created': 'Créé',
+  'fm.modified': 'Modifié',
+  'fm.path': 'Chemin',
 
   // —— Export de site statique (site-export.js) ——
   'site.docs': 'Documents',

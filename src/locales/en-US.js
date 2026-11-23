@@ -896,6 +896,9 @@ export default {
   'fm.removeConfirm': "Remove this document's frontmatter (YAML header)?",
   'fm.complexArray': '[…] complex array',
   'fm.complexObject': '{…} complex object',
+  'fm.created': 'Created',
+  'fm.modified': 'Modified',
+  'fm.path': 'Path',
 
   // —— Static site export (site-export.js) ——
   'site.docs': 'Documents',

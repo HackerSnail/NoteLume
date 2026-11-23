@@ -896,6 +896,9 @@ export default {
   'fm.removeConfirm': '移除本文档的 frontmatter（YAML 头）？',
   'fm.complexArray': '[…] 复杂数组',
   'fm.complexObject': '{…} 复杂对象',
+  'fm.created': '创建时间',
+  'fm.modified': '修改时间',
+  'fm.path': '路径',
 
   // —— 静态站导出（site-export.js） ——
   'site.docs': '文档',

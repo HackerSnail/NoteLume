@@ -23,6 +23,7 @@ import {
   isImagePath,
   importVaultFileFrom,
   probeExternalDrop,
+  getFileMeta,
   revealInFolder,
   openUrl,
   readClipboardText,
@@ -3088,6 +3089,14 @@ async function joinPath(a, b) {
   }
 }
 
+// 文档属性面板的时间戳显示（毫秒 -> 本地时间；后端没有 created 时传 null）
+function formatFileTime(ms) {
+  if (ms == null) return ''
+  const d = new Date(Number(ms))
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString()
+}
+
 // —— 画布模式切换 / 打开 / 新建 ——
 function setMode(mode) {
   state.mode = mode
@@ -5356,6 +5365,23 @@ async function boot() {
     getFm: () => editor.getFrontmatter(),
     setFm: (raw) => editor.setFrontmatter(raw),
     isEditable: () => state.mode === 'md' && !!state.currentFile,
+    getMeta: async () => {
+      const rel = state.currentFile
+      if (!rel || !state.vaultRoot) return null
+      let abs = rel
+      try {
+        abs = await joinPath(state.vaultRoot, rel)
+      } catch (_) { /* 纯 web 预览没有 join，退库内相对路径 */ }
+      let m = null
+      try {
+        m = await getFileMeta(state.vaultRoot, rel)
+      } catch (_) { /* 文件已移走 / 非桌面环境：时间留空，路径照显 */ }
+      return {
+        path: abs,
+        created: formatFileTime(m && m.created),
+        modified: formatFileTime(m && m.modified),
+      }
+    },
   })
   frontmatterPanel.refresh()
 

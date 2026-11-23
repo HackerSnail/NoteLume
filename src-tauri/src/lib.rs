@@ -727,6 +727,31 @@ fn probe_external_drop(path: String) -> Result<ExternalDrop, String> {
     Ok(ExternalDrop { name, is_dir: meta.is_dir() })
 }
 
+/// 文档属性面板用的文件元数据：时间给毫秒时间戳，部分文件系统没有 created，回 None 让前端显示「—」。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileMeta {
+    pub created: Option<u128>,
+    pub modified: Option<u128>,
+    pub size: u64,
+}
+
+#[tauri::command]
+fn file_metadata(vault_root: String, path: String) -> Result<FileMeta, String> {
+    let abs = crate::vault_join(Path::new(&vault_root), &path)?;
+    let m = fs::metadata(&abs).map_err(|e| e.to_string())?;
+    let stamp = |t: std::io::Result<std::time::SystemTime>| {
+        t.ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+    };
+    Ok(FileMeta {
+        created: stamp(m.created()),
+        modified: stamp(m.modified()),
+        size: m.len(),
+    })
+}
+
 /// FNV-1a 64 位哈希：用于图片内容去重（同名不同内容时追加内容指纹）
 pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -4660,6 +4685,7 @@ pub fn run() {
             rename_item,
             import_vault_file,
             probe_external_drop,
+            file_metadata,
             copy_image_asset,
             save_image_bytes,
             read_image_data_uri,

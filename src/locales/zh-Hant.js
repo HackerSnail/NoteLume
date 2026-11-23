@@ -895,6 +895,9 @@ export default {
   'fm.removeConfirm': '移除本文件的 frontmatter（YAML 頭）？',
   'fm.complexArray': '[…] 複雜陣列',
   'fm.complexObject': '{…} 複雜物件',
+  'fm.created': '建立時間',
+  'fm.modified': '修改時間',
+  'fm.path': '路徑',
 
   // —— 靜態站匯出（site-export.js） ——
   'site.docs': '文件',
