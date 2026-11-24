@@ -10,13 +10,26 @@ import * as yaml from 'js-yaml'
 import { hasYamlDoc } from './frontmatter.js'
 import { t } from './i18n.js'
 
-export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) {
+export function createFrontmatterPanel({ container, getFm, setFm, isEditable, getMeta }) {
   let error = ''
   let note = ''
+  let meta = null
+  let refreshSeq = 0
 
-  function refresh() {
+  async function refresh() {
     error = ''
     note = ''
+    meta = null
+    const seq = ++refreshSeq
+    // 创建时间 / 修改时间要过 IPC，取数期间先把已知字段画出来；切文档快时旧结果丢弃
+    if (getMeta) {
+      try {
+        meta = await getMeta()
+      } catch (_) {
+        meta = null
+      }
+    }
+    if (seq !== refreshSeq) return
     render()
   }
 
@@ -79,6 +92,12 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
 
     // —— 只读字段摘要 ——
     const sum = el('div', 'fm-summary')
+    // 文件属性与 frontmatter 无关，放在最前面：没写 YAML 的文档也要能看到路径与时间
+    if (meta) {
+      if (meta.path) sum.appendChild(row(t('fm.path'), meta.path))
+      sum.appendChild(row(t('fm.created'), meta.created || '—'))
+      sum.appendChild(row(t('fm.modified'), meta.modified || '—'))
+    }
     if (!hasFm) {
       sum.appendChild(el('div', 'muted', t('fm.noFm')))
     } else {
@@ -129,6 +148,7 @@ export function createFrontmatterPanel({ container, getFm, setFm, isEditable }) 
     } else {
       v.textContent = String(val)
     }
+    v.title = v.textContent // 路径较长时被 ellipsis 截断，悬停看全
     r.append(k, v)
     return r
   }
