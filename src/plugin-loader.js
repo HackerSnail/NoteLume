@@ -70,6 +70,11 @@ export function createPluginManager(deps) {
   const commands = new Map() // name -> { owner, fn, ctx }
   const hooks = { onEditorReady: [], onDocChange: [], onFileOpen: [], onSave: [] }
   let busy = false
+  let notice = null // 面板顶部的可见结果/错误条：setStatus 只进 console，用户看不到
+
+  function liveView() {
+    return getView ? getView() : null
+  }
 
   // 把插件命令并入统一命令注册表（面板可列、设置页可绑；id 命名空间 plugin.<owner>.<name>）
   function syncPluginCommand(owner, name, fn, ctx) {
@@ -125,18 +130,20 @@ export function createPluginManager(deps) {
 
   // 从当前 state 移除本系统注入的插件，返回干净的 base 列表
   function basePlugins() {
-    return view.state.plugins.filter((p) => !p.__nlPlugin)
+    const v = liveView()
+    return v ? v.state.plugins.filter((p) => !p.__nlPlugin) : []
   }
   function clearInjected() {
     if (injected.length) {
-      view.updateState(view.state.reconfigure({ plugins: basePlugins() }))
+      const v = liveView()
+      if (v) v.updateState(v.state.reconfigure({ plugins: basePlugins() }))
       injected = []
     }
   }
 
   // 读取并装配一个已通过校验+同意的插件包（错误写回 rec.error，不外抛）
   async function importPackage(rec, vaultRoot, acc) {
-    const rel = '.notelume-plugins/' + rec.dirName + '/' + rec.main
+    const rel = (rec.baseDir || '.notelume-plugins') + '/' + rec.dirName + '/' + rec.main
     try {
       const src = await readPlugin(vaultRoot, rel)
       const mod = await importFromSource(src)
@@ -171,9 +178,16 @@ export function createPluginManager(deps) {
     }
   }
 
-  async function reload() {
-    if (busy) return
+  async function reload(manual = false) {
+    if (busy) {
+      if (manual) {
+        notice = { text: t('plugin.busy'), kind: 'warn' }
+        renderPanel()
+      }
+      return
+    }
     busy = true
+    notice = null
     try {
       clearInjected()
       loaded = []
@@ -185,11 +199,15 @@ export function createPluginManager(deps) {
 
       const vaultRoot = getVaultRoot()
       let list = { packages: [], legacyFlat: [] }
-      if (vaultRoot) {
+      if (!vaultRoot) {
+        notice = { text: t('plugin.needVault'), kind: 'warn' }
+      } else {
         try {
           list = await listPlugins(vaultRoot)
         } catch (e) {
-          setStatus(t('plugin.dirReadFailed', { err: (e && e.message) || e }))
+          const msg = t('plugin.dirReadFailed', { err: (e && e.message) || e })
+          notice = { text: msg, kind: 'err' }
+          setStatus(msg)
         }
       }
       legacyFlat = list.legacyFlat || []
@@ -201,6 +219,7 @@ export function createPluginManager(deps) {
       for (const pkg of list.packages) {
         const rec = {
           dirName: pkg.dirName,
+          baseDir: pkg.baseDir || '.notelume-plugins',
           id: pkg.dirName,
           name: pkg.dirName,
           version: '',
@@ -261,6 +280,7 @@ export function createPluginManager(deps) {
           }
         } else {
           for (const { rec } of pending) rec.consentRefused = true
+          notice = { text: t('plugin.stateNoConsent'), kind: 'warn' }
         }
         saveConsent(consent)
       }
@@ -303,8 +323,11 @@ export function createPluginManager(deps) {
         extras.push(ip)
       }
       if (extras.length) {
-        view.updateState(view.state.reconfigure({ plugins: [...basePlugins(), ...extras] }))
-        injected = extras
+        const v = liveView()
+        if (v) {
+          v.updateState(v.state.reconfigure({ plugins: [...basePlugins(), ...extras] }))
+          injected = extras
+        }
       }
 
       for (const fn of hooks.onEditorReady) {
@@ -315,7 +338,18 @@ export function createPluginManager(deps) {
         }
       }
       const runningCount = loaded.filter((r) => r.running).length
-      setStatus(t('plugin.loadedCount', { run: runningCount, total: loaded.length }))
+      const countText = t('plugin.loadedCount', { run: runningCount, total: loaded.length })
+      setStatus(countText)
+      if (manual && !notice) {
+        notice = {
+          text: loaded.length ? countText : t('plugin.noneFound'),
+          kind: loaded.length ? 'ok' : 'warn',
+        }
+      }
+    } catch (e) {
+      const msg = t('plugin.dirReadFailed', { err: (e && e.message) || e })
+      notice = { text: msg, kind: 'err' }
+      console.error(e)
     } finally {
       busy = false
       renderPanel()
@@ -414,13 +448,22 @@ export function createPluginManager(deps) {
     const reloadBtn = document.createElement('button')
     reloadBtn.className = 'plugin-reload'
     setIcon(reloadBtn, 'reload', t('plugin.reloadBtn'))
-    reloadBtn.addEventListener('click', () => reload())
+    reloadBtn.disabled = busy
+    reloadBtn.addEventListener('click', () => reload(true))
     head.appendChild(reloadBtn)
     const hint = document.createElement('span')
     hint.className = 'muted'
     hint.textContent = t('plugin.dropHint')
     head.appendChild(hint)
     panelEl.appendChild(head)
+
+    if (notice) {
+      const banner = document.createElement('div')
+      banner.className = 'plugin-banner' + (notice.kind === 'err' ? ' err' : notice.kind === 'warn' ? ' warn' : '')
+      banner.setAttribute('role', 'status')
+      banner.textContent = notice.text
+      panelEl.appendChild(banner)
+    }
 
     if (legacyFlat.length) {
       const warn = document.createElement('div')

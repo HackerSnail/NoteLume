@@ -1,8 +1,9 @@
-// command-palette.js —— 批次 D：命令面板（Ctrl+P）
+// command-palette.js —— 批次 D：命令面板（Ctrl+Shift+P）
 //
 // 复用 .nl-prompt/.nl-suggest 观感（自建模态，不引 UI 框架）。两种模式（Obsidian 式）：
-//   裸词 = 搜文档（对 {name, rel} 客户端 fuzzy，回车/点击 openFile(rel)）；
-//   以 '>' 开头 = 搜命令（对注册表标题 fuzzy，回车/点击 runCommand(id)）。
+//   裸词 = 文档 + 命令一起搜（命令排在同名文档之后），回车/点击按条目类型分派；
+//   以 '>' 开头 = 只搜命令（对注册表标题 fuzzy，回车/点击 runCommand(id)）。
+// 裸词也搜命令是因为「输功能名找命令」是常见用法，把命令藏在 > 后面看着像没有可执行命令。
 // 面板本身是一条 app 命令（在 main.js 注册），其绑定仍走全局分发器；本模块只负责 UI 与选择。
 import { fuzzyMatch } from './keymap.js'
 import { setIcon } from './icons.js'
@@ -66,6 +67,17 @@ export function createPalette(deps) {
         const m = fuzzyMatch(q, d.name)
         if (!m) continue
         scored.push({ score: m.score, kind: 'doc', label: d.name, hint: d.rel !== d.name ? d.rel : '', payload: d.rel })
+      }
+      for (const c of getCommands()) {
+        const m = fuzzyMatch(q, c.title)
+        if (!m) continue
+        scored.push({
+          score: m.score - 0.5, // 同名时文档在前；关键词只命中命令时照样能找到
+          kind: 'cmd',
+          label: c.title,
+          hint: bindingFor ? bindingFor(c.id) : '',
+          payload: c.id,
+        })
       }
     }
     scored.sort((a, b) => b.score - a.score)

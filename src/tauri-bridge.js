@@ -283,6 +283,11 @@ export function getDocInfo(path) {
   return invoke('get_doc_info', { path })
 }
 
+/** 文档属性面板用的文件元数据（创建/修改时间戳，毫秒；部分文件系统无 created） */
+export function getFileMeta(vaultRoot, path) {
+  return invoke('file_metadata', { vaultRoot, path })
+}
+
 /** 全局搜索：标题/标签/正文；返回 [{path,title,snippet,matchedBy}] */
 export function searchVault(query, limit = 60) {
   return invoke('search_vault', { query, limit })
