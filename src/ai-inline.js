@@ -179,8 +179,7 @@ export function openAiInline(opts) {
     }).catch((e) => finish(false, (e && e.message) || String(e)))
   }
 
-  const offEvent = aiChatListen((ev) => {
-
+  aiChatListen((ev) => {
     if (!ev || ev.reqId !== reqId) return
     if (ev.kind === 'chunk' && ev.delta && running) {
       text += ev.delta
