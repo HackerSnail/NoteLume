@@ -3274,16 +3274,19 @@ html.nl-dragging * {
 /* 图片整体位置：块级排布由 data-align 驱动，未设置时维持原来的行内混排 */
 .nl-img-host[data-align="left"] {
   display: block;
+  width: fit-content;
   margin-left: 0;
   margin-right: auto;
 }
 .nl-img-host[data-align="center"] {
   display: block;
+  width: fit-content;
   margin-left: auto;
   margin-right: auto;
 }
 .nl-img-host[data-align="right"] {
   display: block;
+  width: fit-content;
   margin-left: auto;
   margin-right: 0;
 }
