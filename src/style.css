@@ -3271,6 +3271,22 @@ html.nl-dragging * {
   max-width: 100%;
   position: relative;
 }
+/* 图片整体位置：块级排布由 data-align 驱动，未设置时维持原来的行内混排 */
+.nl-img-host[data-align="left"] {
+  display: block;
+  margin-left: 0;
+  margin-right: auto;
+}
+.nl-img-host[data-align="center"] {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+.nl-img-host[data-align="right"] {
+  display: block;
+  margin-left: auto;
+  margin-right: 0;
+}
 /* 图片右下角把手：按住直接拖宽，双击回原尺寸（尺寸写进 Markdown，不藏 DOM 里） */
 .nl-img-grip {
   position: absolute;
@@ -3338,6 +3354,23 @@ html.nl-dragging * {
 .ProseMirror .tableWrapper {
   margin: 1em 0;
   overflow-x: auto;
+}
+/* 表格整体位置：只改表格本体在容器里的水平落点，单元格 text-align 不受影响 */
+.ProseMirror .tableWrapper[data-align] > table {
+  width: auto;
+  max-width: 100%;
+}
+.ProseMirror .tableWrapper[data-align="left"] > table {
+  margin-left: 0;
+  margin-right: auto;
+}
+.ProseMirror .tableWrapper[data-align="center"] > table {
+  margin-left: auto;
+  margin-right: auto;
+}
+.ProseMirror .tableWrapper[data-align="right"] > table {
+  margin-left: auto;
+  margin-right: 0;
 }
 .ProseMirror table {
   border-collapse: collapse;
@@ -3418,6 +3451,14 @@ html.nl-dragging * {
   bottom: 0;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   pointer-events: none;
+}
+/* 右键菜单里的分组标题：区分「单元格文字对齐」与「整体位置」两组 */
+.cv-menu-heading {
+  padding: 5px 12px 2px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: default;
+  user-select: none;
 }
 /* 表格右键菜单（复用 .cv-menu，fixed 定位避开编辑区内部滚动偏移） */
 .table-menu {

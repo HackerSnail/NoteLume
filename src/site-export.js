@@ -305,6 +305,8 @@ function ensureRenderRules() {
     }
     let out = `<img src="${escAttr(src)}" alt="${alt}"`
     if (titleAttr) out += ` title="${escAttr(titleAttr)}"`
+    const align = t.attrGet('align')
+    if (align) out += ` align="${escAttr(align)}"`
     const w = t.attrGet('width')
     if (w) out += ` style="width:${escAttr(w)}px"`
     out += '>'

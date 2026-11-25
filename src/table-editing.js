@@ -48,13 +48,23 @@ function hasColwidth(tableNode) {
 class AutoTableView extends TableView {
   constructor(node, defaultCellMinWidth, view) {
     super(node, defaultCellMinWidth, view)
+    this.applyAlign(node)
     this.fitLayout()
   }
 
   update(node) {
     const ok = super.update(node)
-    if (ok) this.fitLayout()
+    if (ok) {
+      this.applyAlign(node)
+      this.fitLayout()
+    }
     return ok
+  }
+
+  // 表格整体位置只驱动 wrapper 的 data-align，样式在 style.css；单元格自己的 text-align 不碰
+  applyAlign(node) {
+    if (node.attrs.align) this.dom.setAttribute('data-align', node.attrs.align)
+    else this.dom.removeAttribute('data-align')
   }
 
   // 放在 super.update 之后：基类刚铺好的 col 宽度/整表 min-width 在这里按模式清掉
@@ -319,6 +329,21 @@ function isMergedSel(sel) {
   return !!(n && (n.attrs.colspan > 1 || n.attrs.rowspan > 1))
 }
 
+// 表格整体位置：只改 table 节点 attrs.align，与 setCellAttr('alignment', …) 完全分家
+function setTableAlign(view, align) {
+  const $from = view.state.selection.$from
+  for (let d = $from.depth; d > 0; d--) {
+    if (!$from.node(d).type.spec.tableRole) continue
+    if ($from.node(d).type.name !== 'table') continue
+    const pos = $from.before(d)
+    const node = view.state.doc.nodeAt(pos)
+    if (!node || node.type.name !== 'table') return
+    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, align }))
+    view.focus()
+    return
+  }
+}
+
 // 编辑器内右键：表格上弹本菜单，其余位置不接——通用菜单（main.js 的 attachEditorContextMenu，
 // 挂在窗格上）负责压掉 WebView2 原生菜单与出「剪切 / 复制 / 粘贴 / 插入」那一套。
 // 两个监听器都听 contextmenu：本监听器挂 view.dom（事件先到它这儿），通用那个挂 .nl-pane
@@ -352,6 +377,12 @@ export function attachTableContextMenu(view) {
   const sep = () => {
     const d = document.createElement('div')
     d.className = 'cv-menu-sep'
+    return d
+  }
+  const heading = (label) => {
+    const d = document.createElement('div')
+    d.className = 'cv-menu-heading'
+    d.textContent = label
     return d
   }
 
@@ -397,10 +428,17 @@ export function attachTableContextMenu(view) {
     menu.appendChild(item(t('table.colRight'), run(addColumnAfter)))
     menu.appendChild(item(t('table.colDelete'), run(deleteColumn), true))
     menu.appendChild(sep())
+    menu.appendChild(heading(t('align.group.cell')))
     menu.appendChild(item(t('table.alignLeft'), run(setCellAttr('alignment', 'left'))))
     menu.appendChild(item(t('table.alignCenter'), run(setCellAttr('alignment', 'center'))))
     menu.appendChild(item(t('table.alignRight'), run(setCellAttr('alignment', 'right'))))
     menu.appendChild(item(t('table.alignClear'), run(setCellAttr('alignment', null))))
+    menu.appendChild(sep())
+    menu.appendChild(heading(t('align.group.table')))
+    menu.appendChild(item(t('align.left'), () => setTableAlign(view, 'left')))
+    menu.appendChild(item(t('align.center'), () => setTableAlign(view, 'center')))
+    menu.appendChild(item(t('align.right'), () => setTableAlign(view, 'right')))
+    menu.appendChild(item(t('align.default'), () => setTableAlign(view, null)))
     menu.appendChild(sep())
     menu.appendChild(item(t('table.headerToggle'), run(toggleHeaderRow)))
     // 合并/拆分（仅在对应手势下出现）：多选≥ 2 格→合并；光标/选区落在合并态格→拆分

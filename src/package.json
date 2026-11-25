@@ -17,6 +17,7 @@
     "test:footnote": "node tests/footnote.test.mjs",
     "test:git-push-dom": "node tests/git-push-dom.test.mjs",
     "test:merged-table": "node tests/merged-table.test.mjs",
+    "test:block-align": "node tests/block-align.test.mjs",
     "test:html-block": "node tests/html-block.test.mjs",
     "test:html-block-images": "node tests/html-block-images.test.mjs",
     "test:html-block-click": "node tests/html-block-click.test.mjs",
