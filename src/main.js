@@ -72,7 +72,7 @@ import { anchorSlug } from './heading-anchor.js'
 import { getFeatures, setFeature } from './feature-flags.js'
 import { buildSlidesHtml, buildVaultSlidesHtml } from './slides-export.js'
 import { slidesAssets } from './slides-assets.js'
-import { printPaged } from './print-paged.js'
+import { pdfPrintBaseName, printPaged } from './print-paged.js'
 import { printOptionsDialog } from './print-options-dialog.js'
 import { mountEmojiRenderer } from './emoji-text.js'
 import { numberingCss } from './heading-numbering.js'
@@ -3894,9 +3894,20 @@ async function exportHTML() {
 
 // —— 打印（Ctrl+P）：画布直出老打印；普通文档先弹排版选项窗，Paged.js 预分页后再走系统打印，
 // 预分页失败回退直打（spec 见 docs/superpowers/specs/2026-10-25-print-pagedjs-design.md）——
+// 打印预览的「另存为 PDF」建议名取 document.title；只在打印期间临时换成当前文档名，结束恢复。
+async function withPrintDocTitle(task) {
+  const originalPdfPrintTitle = document.title
+  document.title = pdfPrintBaseName(state.currentFile)
+  try {
+    return await task()
+  } finally {
+    document.title = originalPdfPrintTitle
+  }
+}
+
 async function printViaDialog() {
   if (state.mode === 'canvas') {
-    window.print()
+    await withPrintDocTitle(() => { window.print() })
     return
   }
   const options = await printOptionsDialog()
@@ -3904,11 +3915,11 @@ async function printViaDialog() {
   setStatus(t('status.printPaging'))
   try {
     // 编号开关在设置页（不在打印选项窗），随 settings 并进排版选项
-    await printPaged({ ...options, headingNumbering: getFeatures(settingsStore).headingNumbering }, (state.currentFile || '').replace(/\.md$/i, ''))
+    await withPrintDocTitle(() => printPaged({ ...options, headingNumbering: getFeatures(settingsStore).headingNumbering }, (state.currentFile || '').replace(/\.md$/i, '')))
     setStatus('')
   } catch (e) {
     setStatus(t('status.printPagedFallback'))
-    window.print()
+    await withPrintDocTitle(() => { window.print() })
   }
 }
 

@@ -46,6 +46,7 @@
 
     "test:slides-export": "node tests/slides-export.test.mjs",
     "test:print-toc": "node tests/print-toc.test.mjs",
+    "test:pdf-print-name": "node tests/pdf-print-name.test.mjs",
     "test:emoji": "node tests/emoji.test.mjs",
     "test:toc": "node tests/toc.test.mjs",
     "test:csv": "node tests/csv.test.mjs",
