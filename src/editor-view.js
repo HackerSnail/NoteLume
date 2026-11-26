@@ -1230,6 +1230,8 @@ function makeImageNodeView(getVault) {
       else img.removeAttribute('alt')
       if (n.attrs.title) img.setAttribute('title', n.attrs.title)
       else img.removeAttribute('title')
+      if (n.attrs.align) host.setAttribute('data-align', n.attrs.align)
+      else host.removeAttribute('data-align')
       img.style.width = n.attrs.width ? n.attrs.width + 'px' : ''
       loadImgSrc(img, host, n.attrs.src, getVault)
     }

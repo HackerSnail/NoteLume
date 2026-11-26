@@ -130,5 +130,18 @@ t('标题栏占位文案五个语言齐全（switchLocale 靠它重写 #filename
   }
 })
 
+t('图片/表格整体对齐菜单五语齐全', () => {
+  const keys = [
+    'align.group.image', 'align.group.table', 'align.group.cell',
+    'align.left', 'align.center', 'align.right', 'align.default',
+  ]
+  for (const key of keys) {
+    for (const { id } of LOCALES) {
+      const v = MESSAGES[id][key]
+      assert.ok(typeof v === 'string' && v.length > 0, id + ' 缺 ' + key)
+    }
+  }
+})
+
 console.log('结果：' + pass + ' passed, ' + fail + ' failed')
 if (fail) process.exit(1)

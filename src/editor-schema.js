@@ -57,6 +57,11 @@ function pxNum(v) {
   return m ? Number(m[1]) : null
 }
 
+// 图片/表格的「整体位置」只收三档；其余值（含空串、HTML 遗留关键字）一律回到默认
+function normalizeBlockAlign(v) {
+  return v === 'left' || v === 'center' || v === 'right' ? v : null
+}
+
 // 目的地里的 `\(` `\)` 还原成真实括号：默认规则（parseLinkDestination）已解这一层转义，
 // 自定义尺寸规则要与之对齐，否则同一张图带不带尺寸会解析出两个不同的 src
 function unescDest(s) {
@@ -101,7 +106,26 @@ const extendedNodes = baseSchema.spec.nodes
   // allowGapCursor:false 挡表内落点：间隙光标的判定看「所在父块」，行首/行尾位置的父块是 table_row，
   // 其 contentMatch 默认类型是 table_cell，方向键从格内左右越界就会停在那里（实测 dir=-1 得 pos=10
   // 父=table_row），再敲一次键就往行里插一个格。表前后的落点父块是 doc，不受这条影响。
-  .addToEnd('table', { ...nlTableNodes.table, allowGapCursor: false })
+  .addToEnd('table', {
+    ...nlTableNodes.table,
+    allowGapCursor: false,
+    // 表格整体位置（与 cell.alignment 完全无关）：落盘为 <table align="…">，
+    // 由 HTML 块预处理还原成这张可编辑表；默认管道表不带该属性。
+    attrs: { align: { default: null } },
+    parseDOM: [
+      {
+        tag: 'table',
+        getAttrs(dom) {
+          const styleAlign = dom.style && dom.style.textAlign
+          return { align: normalizeBlockAlign(dom.getAttribute('align') || dom.getAttribute('data-align') || styleAlign) }
+        },
+      },
+    ],
+    toDOM(node) {
+      const attrs = node.attrs.align ? { align: node.attrs.align, 'data-align': node.attrs.align } : {}
+      return ['table', attrs, ['tbody', 0]]
+    },
+  })
   .addToEnd('table_row', { ...nlTableNodes.table_row, allowGapCursor: false })
   .addToEnd('table_header', nlTableNodes.table_header)
   .addToEnd('table_cell', nlTableNodes.table_cell)
@@ -318,6 +342,7 @@ const extendedNodes = baseSchema.spec.nodes
       title: { default: null },
       embed: { default: false },
       width: { default: null },
+      align: { default: null },
     },
     parseDOM: [
       {
@@ -328,16 +353,21 @@ const extendedNodes = baseSchema.spec.nodes
             title: dom.getAttribute('title'),
             alt: dom.getAttribute('alt'),
             embed: dom.getAttribute('data-embed') === '1',
-            width: pxNum(dom.style && dom.style.width),
+            width: pxNum(dom.style && dom.style.width) || pxNum(dom.getAttribute('data-width')),
+            align: normalizeBlockAlign(dom.getAttribute('align') || dom.getAttribute('data-align')),
           }
         },
       },
     ],
     toDOM(node) {
-      const { src, alt, title, embed, width } = node.attrs
+      const { src, alt, title, embed, width, align } = node.attrs
       const attrs = { src, alt: alt || null, title: title || null }
       if (embed) attrs['data-embed'] = '1'
       if (width) attrs.style = 'width:' + width + 'px'
+      if (align) {
+        attrs.align = align
+        attrs['data-align'] = align
+      }
       return ['img', attrs]
     },
   })
@@ -446,6 +476,64 @@ tokenizer.use(footnote)
 // markdown-it-emoji 插件的 core 规则会把 parse 产物里的文本换成 emoji token，prosemirror-markdown
 // 对未知 token 跳过，编辑器会丢字，故不能用那个插件（见 emoji-text.js 头注）
 mountEmojiRenderer(tokenizer)
+
+// 图片整体位置的落盘语法：真 HTML <img align="…">，这样浏览器 / Typora / Obsidian 都直接认；
+// data-* 只给本项目回读 width / embed，其他工具忽略。html:false 下行内 HTML 本会按文本处理，
+// 故在 html_inline 前只截获「带 align 的 img」，其余 HTML 保持原行为。
+const IMG_ATTR_RE = /\b([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g
+tokenizer.inline.ruler.before('html_inline', 'nl_aligned_image', (state, silent) => {
+  const src = state.src
+  const pos = state.pos
+  if (src.charCodeAt(pos) !== 0x3c /* < */) return false
+  const m = /^<img\b([^>]*)>/i.exec(src.slice(pos))
+  if (!m) return false
+  const attrs = {}
+  let am
+  IMG_ATTR_RE.lastIndex = 0
+  while ((am = IMG_ATTR_RE.exec(m[1]))) {
+    const key = am[1].toLowerCase()
+    attrs[key] = state.md.utils.unescapeAll(am[2] != null ? am[2] : am[3] != null ? am[3] : am[4] || '')
+  }
+  const align = normalizeBlockAlign(attrs.align || attrs['data-align'])
+  if (!align || !attrs.src) return false // 无 align 的 <img> 交回原规则，不改既有行为
+  const styleM = /width\s*:\s*([^;]+)/i.exec(attrs.style || '')
+  const w = pxNum(attrs['data-width']) || pxNum(styleM && styleM[1])
+  const href = state.md.normalizeLink(attrs.src)
+  if (!state.md.validateLink(href)) return false
+  if (!silent) {
+    const token = state.push('image', 'img', 0)
+    token.content = attrs.alt || ''
+    token.attrSet('src', href)
+    token.attrSet('align', align)
+    if (attrs.title) token.attrSet('title', attrs.title)
+    if (w) token.attrSet('width', String(w))
+    if (attrs['data-embed'] === '1') token.attrSet('embed', '1')
+  }
+  state.pos = pos + m[0].length
+  return true
+})
+
+// 预览 / 导出侧复用 tokenizer.render()：默认 image 渲染器丢自定义 attrs，带 align 时补出来。
+// 站点导出随后会再挂自己的 R.image（做资源镜像），那里也同步读 align（见 site-export.js）。
+const defaultImageRule = tokenizer.renderer.rules.image
+tokenizer.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  const align = normalizeBlockAlign(token.attrGet('align'))
+  if (!align) {
+    return defaultImageRule
+      ? defaultImageRule(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options, env)
+  }
+  let html =
+    '<img src="' + escapeAttr(token.attrGet('src') || '') + '" alt="' + escapeAttr(token.content || '') +
+    '" align="' + align + '"'
+  const title = token.attrGet('title')
+  if (title) html += ' title="' + escapeAttr(title) + '"'
+  const w = pxNum(token.attrGet('width'))
+  if (w) html += ' style="width:' + w + 'px"'
+  if (token.attrGet('embed') === '1') html += ' data-embed="1"'
+  return html + '>'
+}
 
 // —— 中文标点紧邻的强调（加粗 / 斜体 / 删除线）———————————————————
 // CommonMark 的 flanking 判定假设文字按空白分词：定界符串外侧紧贴标点时，要构成可开合的
@@ -855,7 +943,12 @@ tokenizer.core.ruler.after('block', 'nl_callout', (state) => {
 const parserTokens = {
   ...defaultMarkdownParser.tokens,
   s: { mark: 'strike' },
-  table: { block: 'table' },
+  table: {
+    block: 'table',
+    getAttrs: (tok) => ({
+      align: normalizeBlockAlign(tok.attrGet('align') || alignFromStyle(tok.attrGet('style'))),
+    }),
+  },
   thead: { ignore: true },
   tbody: { ignore: true },
   tr: { block: 'table_row' },
@@ -874,6 +967,8 @@ const parserTokens = {
       title: tok.attrGet('title') || null,
       alt: (tok.children && tok.children[0] && tok.children[0].content) || tok.content || null,
       width: pxNum(tok.attrGet('width')),
+      embed: tok.attrGet('embed') === '1' || tok.attrGet('data-embed') === '1',
+      align: normalizeBlockAlign(tok.attrGet('align') || tok.attrGet('data-align')),
     }),
   },
   wiki_img: {
@@ -884,6 +979,7 @@ const parserTokens = {
       title: null,
       embed: true,
       width: pxNum(tok.attrGet('width')),
+      align: normalizeBlockAlign(tok.attrGet('align')),
     }),
   },
   tag: { node: 'tag', getAttrs: (tok) => ({ tag: tok.attrGet('tag') }) },
@@ -1174,10 +1270,14 @@ function inlineNodeToHTML(node) {
   let html
   if (node.isText) html = escapeText(node.text)
   else if (node.type.name === 'hard_break') html = '<br>'
-  else if (node.type.name === 'image')
-    html =
-      '<img src="' + escapeAttr(node.attrs.src) + '"' +
-      (node.attrs.alt ? ' alt="' + escapeAttr(node.attrs.alt) + '"' : '') + '>'
+  else if (node.type.name === 'image') {
+    html = '<img src="' + escapeAttr(node.attrs.src) + '"' +
+      (node.attrs.alt ? ' alt="' + escapeAttr(node.attrs.alt) + '"' : '') +
+      (node.attrs.title ? ' title="' + escapeAttr(node.attrs.title) + '"' : '') +
+      (node.attrs.align ? ' align="' + node.attrs.align + '"' : '') +
+      (node.attrs.width ? ' style="width:' + node.attrs.width + 'px"' : '') +
+      (node.attrs.embed ? ' data-embed="1"' : '') + '>'
+  }
   else html = escapeText(node.textContent || '') // 其他行内原子：退化为纯文本
   const marks = node.marks.slice().sort((a, b) => a.type.name.localeCompare(b.type.name))
   for (let i = marks.length - 1; i >= 0; i--) html = wrapMarkHTML(marks[i], html)
@@ -1198,7 +1298,8 @@ function tableHasMerge(node) {
   return m
 }
 function serializeTableHTML(node) {
-  const parts = ['<table>']
+  const align = normalizeBlockAlign(node.attrs.align)
+  const parts = [align ? '<table align="' + align + '">' : '<table>']
   node.forEach((row) => {
     parts.push('<tr>')
     row.forEach((cell) => {
@@ -1228,8 +1329,8 @@ function noteRowAnchor(state, pm, pmEnd, line) {
 }
 
 function serializeTable(state, node) {
-  // 含合并单元格 → 输出真 <table> HTML（GitHub/Obsidian 原生渲染、保互操作）
-  if (tableHasMerge(node)) {
+  // 含合并单元格，或设置了表格整体位置 → 输出真 <table> HTML（可移植、可无损读回）
+  if (tableHasMerge(node) || normalizeBlockAlign(node.attrs.align)) {
     state.ensureNewLine()
     state.write(serializeTableHTML(node))
     state.closeBlock(node)
@@ -1311,9 +1412,20 @@ const serializerNodes = {
   },
   table: serializeTable,
   // 图片：embed（Obsidian ![[..]]）原样写回 `![[src|别名]]`；带宽度时走 Typora/Obsidian 的尺寸形态；
-  // 否则走默认 `![alt](src "title")`
+  // 设了整体位置则写回真 HTML <img align=…>，同时把 width / embed 一起带上；否则走默认语法。
   image(state, node) {
     const w = node.attrs.width
+    const align = normalizeBlockAlign(node.attrs.align)
+    if (align) {
+      let html = '<img src="' + escapeAttr(node.attrs.src) + '"' +
+        (node.attrs.alt ? ' alt="' + escapeAttr(node.attrs.alt) + '"' : '') +
+        (node.attrs.title ? ' title="' + escapeAttr(node.attrs.title) + '"' : '') +
+        ' align="' + align + '"'
+      if (w) html += ' style="width:' + w + 'px"'
+      if (node.attrs.embed) html += ' data-embed="1"'
+      state.write(html + '>')
+      return
+    }
     if (node.attrs.embed) {
       const alt = node.attrs.alt && node.attrs.alt !== node.attrs.src ? '|' + node.attrs.alt : ''
       state.write('![[' + node.attrs.src + alt + (w ? '|' + w : '') + ']]')

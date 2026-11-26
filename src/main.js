@@ -1935,6 +1935,12 @@ function menuSep() {
   d.className = 'cv-menu-sep'
   return d
 }
+function menuHeading(label) {
+  const d = document.createElement('div')
+  d.className = 'cv-menu-heading'
+  d.textContent = label
+  return d
+}
 
 // —— 文件 / 文件夹右键菜单 ——
 function showTreeMenu(clientX, clientY, node) {
@@ -2368,7 +2374,7 @@ function attachEditorContextMenu(paneId, inst) {
       : (hit && hit.tagName === 'IMG' ? hit : null)
     if (imgEl) {
       e.preventDefault()
-      openImageContextMenu(e, paneId, imgEl)
+      openImageContextMenu(e, paneId, imgEl, inst)
       return
     }
     if (hit && hit.closest && hit.closest(SKIP)) return
@@ -2595,10 +2601,30 @@ function openTabContextMenu(e, pane) {
   placeMenu(menu, e.clientX, e.clientY)
 }
 
+// 右键命中的 <img> 未必是 ProseMirror 的 image 节点（HTML 块里的图也算），整体对齐只给真节点。
+function resolveImageNodeHit(inst, e, imgEl) {
+  const view = inst && inst.view
+  if (!view) return null
+  const candidates = []
+  const at = view.posAtCoords({ left: e.clientX, top: e.clientY })
+  if (at) candidates.push(at.pos)
+  try { candidates.push(view.posAtDOM(imgEl.closest('.nl-img-host') || imgEl, 0)) } catch { /* 脱离文档时忽略 */ }
+  const seen = new Set()
+  for (const base of candidates) {
+    for (let pos = base - 2; pos <= base + 2; pos++) {
+      if (pos < 0 || seen.has(pos)) continue
+      seen.add(pos)
+      const node = view.state.doc.nodeAt(pos)
+      if (node && node.type.name === 'image') return { pos, node }
+    }
+  }
+  return null
+}
+
 // 图片右键的自绘菜单：另存为 / 复制图像 / 复制图像链接（远程图）。字节统一走 data: URL——
 // 本地图 readImageDataUri（限库内），远程图 fetchRemoteImageDataUri（Rust 系统下载，无 Referer，
 // 前端 fetch 被 CORS 挡死拿不到外链字节）。复制图像经 canvas 转 PNG，避开剪贴板对源格式的挑剔。
-function openImageContextMenu(e, paneId, imgEl) {
+function openImageContextMenu(e, paneId, imgEl, inst) {
   closeTreeMenu()
   const menu = document.createElement('div')
   menu.className = 'cv-menu tree-menu'
@@ -2636,6 +2662,23 @@ function openImageContextMenu(e, paneId, imgEl) {
         setStatus(t('status.imgFail', { msg: errText(err) }))
       }
     }))
+  }
+  const hit = resolveImageNodeHit(inst, e, imgEl)
+  if (hit) {
+    const setAlign = (align) => {
+      const view = inst.view
+      if (!view || !view.editable) return
+      const cur = view.state.doc.nodeAt(hit.pos)
+      if (!cur || cur.type.name !== 'image') return
+      view.dispatch(view.state.tr.setNodeMarkup(hit.pos, undefined, { ...cur.attrs, align }))
+      view.focus()
+    }
+    menu.appendChild(menuSep())
+    menu.appendChild(menuHeading(t('align.group.image')))
+    for (const [key, value] of [['align.left', 'left'], ['align.center', 'center'], ['align.right', 'right']]) {
+      menu.appendChild(makeMenuItem(t(key), () => setAlign(value), false, hit.node.attrs.align === value, null, !inst.view.editable))
+    }
+    menu.appendChild(makeMenuItem(t('align.default'), () => setAlign(null), false, hit.node.attrs.align == null, null, !inst.view.editable))
   }
   placeMenu(menu, e.clientX, e.clientY)
 }
