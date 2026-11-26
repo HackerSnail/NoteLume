@@ -11,6 +11,8 @@ import {
   pickFile,
   pickSaveAs,
   scanVault,
+  inspectMdOpenTarget,
+  decideMdOpenMode,
   readMdFile,
   writeMdFile,
   syncShortcutName,
@@ -1298,6 +1300,25 @@ async function openSingleFile() {
   }
 }
 
+function isMdDocName(name) {
+  return /\.(md|markdown)$/i.test(name || '')
+}
+
+// 双击 md 的智能入口：先问后端目录形态，再决定知识库还是原单文档路径。
+// 后端不可用时按单文档打开，功能退化为老行为，不挡用户打开文件。
+async function openSmartMd(abs, preview = false) {
+  try {
+    const info = await inspectMdOpenTarget(abs)
+    if (decideMdOpenMode(info)) {
+      await openVaultPath(info.root, info.rel || splitAbs(abs).name, info.tree)
+      return
+    }
+  } catch (e) {
+    setStatus(t('status.smartOpenFailed', { msg: (e && e.message) || e }))
+  }
+  await openAbsPath(abs, preview)
+}
+
 // 按绝对路径打开单个文档（P5 §6.6：选择器 / 双击关联 / 单实例转发 / 拖入共用）。
 // 把文件所在目录作为工作根——保存 / 图片 / wikilink 都依赖一个根。
 // preview：拖入 / 单实例转发传 true（预览标签），选择器与启动参数是显式意图、固定标签。
@@ -1338,7 +1359,7 @@ function persistWorkspace() {
 
 // 按路径打开知识库（无对话框）：启动恢复、拖入文件夹、启动参数里的目录共用。
 // 出错抛给调用方：选择器来的要弹窗，启动恢复的只留状态栏（上次的库可能已被移走）。
-async function openVaultPath(root, rel) {
+async function openVaultPath(root, rel, treeNodes) {
   if (!root) return
   if (normVaultPath(root) === normVaultPath(state.vaultRoot)) {
     // 就是当前库：不重扫不重建，只补开指定文档
@@ -1352,7 +1373,7 @@ async function openVaultPath(root, rel) {
   state.vaultFromFolder = true // 这是「把文件夹当库打开」，不是某个文件顺带所在的目录
   state.singleFile = null // 正式库接管，退出单文件模式
   state.tempImportRoot = '' // 正式库接管，不再属于临时导入回显位
-  const tree = await scanVault(root)
+  const tree = treeNodes || await scanVault(root)
   renderTree(tree)
   setStatus(t('status.vaultLoaded', { root }))
   startIndexPolling()
@@ -1402,7 +1423,9 @@ async function handleOpenTargets(targets, { interactive = false, preview = false
   try {
     if (dirs.length) await openVaultPath(dirs[0].path)
     if (files.length) {
-      await openAbsPath(files[0].path, preview)
+      const first = files[0]
+      if (isMdDocName(splitAbs(first.path).name)) await openSmartMd(first.path, preview)
+      else await openAbsPath(first.path, preview)
       for (const f of files.slice(1)) {
         if (normVaultPath(splitAbs(f.path).dir) !== normVaultPath(state.vaultRoot)) {
           setStatus(t('ws.skippedOtherDir', { name: splitAbs(f.path).name }))
@@ -1853,7 +1876,7 @@ function renderNode(node) {
   li.textContent = node.name
   li.dataset.path = node.path
   li.dataset.kind = 'file'
-  if (isImagePath(node.path)) li.classList.add('is-img')
+  if (node.fileKind === 'image' || (!node.fileKind && isImagePath(node.path))) li.classList.add('is-img')
   // 不设 draggable：原生拖没有 data 且一动 pointermove 就断，拖拽走 pane-drag.js 的
   // pointer 链路（bindPaneDragging）
   li.title = node.path

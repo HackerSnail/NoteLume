@@ -2,6 +2,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -234,6 +235,9 @@ pub struct TreeNode {
     #[serde(rename = "type")]
     pub kind: String, // "folder" | "file"
     pub children: Option<Vec<TreeNode>>,
+    /// 文件子类型："md" | "image"；文件夹为 None。供前端按内容类型画图标。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_kind: Option<String>,
 }
 
 /// [[wikilink]] 解析结果
@@ -315,7 +319,25 @@ pub(crate) fn vault_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
-/// 递归扫描目录树：收集 md / canvas / 图片文件与文件夹，同层"文件夹在前、按名称排序"
+/// 单次目录扫描的条目上限：防异常大目录把双击卡死。符号链接不跟随，故不会因环失控。
+const MAX_SCAN_ENTRIES: usize = 20_000;
+
+/// 图片按内容识别：只读文件头，扩展名不参与判断（无扩展名的 Pasted Image 也能入树）。
+fn is_image_file(path: &Path) -> bool {
+    let mut file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut head = [0u8; 512];
+    let n = match file.read(&mut head) {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    looks_like_image(&head[..n])
+}
+
+/// 手动打开知识库的原始扫描规则：md + canvas + 扩展名图片；跳过隐藏目录/SKIP_DIRS，深度 ≤12。
+/// 供 scan_vault 使用；双击智能打开另走 scan_dir_smart，两条路径互不影响。
 fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
     let mut out = Vec::new();
     if depth > 12 {
@@ -337,20 +359,97 @@ fn scan_dir(dir: &Path, rel: &str, depth: usize) -> Vec<TreeNode> {
         if path.is_dir() {
             dirs.push((name, child_rel, path));
         } else if path.is_file() && (is_md(&name) || is_canvas(&name) || is_image(&name)) {
-            files.push(TreeNode { name, path: child_rel, kind: "file".into(), children: None });
+            files.push(TreeNode {
+                name,
+                path: child_rel,
+                kind: "file".into(),
+                children: None,
+                file_kind: None,
+            });
         }
     }
     dirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
     files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     for (name, child_rel, path) in dirs {
         let children = scan_dir(&path, &child_rel, depth + 1);
-        out.push(TreeNode { name, path: child_rel, kind: "folder".into(), children: Some(children) });
+        out.push(TreeNode {
+            name,
+            path: child_rel,
+            kind: "folder".into(),
+            children: Some(children),
+            file_kind: None,
+        });
     }
     out.extend(files);
     out
 }
 
-/// 打开文件夹作为知识库：扫描 md 文件树
+/// 双击智能打开专用扫描：只收 md 与按魔数识别的图片，同层「文件夹在前、按名称排序」。
+/// 隐藏目录 / node_modules 也照常递归（双击判定要求它们算子文件夹，里面的 md 也算文档）。
+fn scan_dir_smart(dir: &Path, rel: &str, budget: &mut usize) -> Vec<TreeNode> {
+    let mut out = Vec::new();
+    if *budget >= MAX_SCAN_ENTRIES {
+        return out;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return out, // 无权限目录直接跳过，不中断整体扫描
+    };
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for entry in entries.flatten() {
+        if *budget >= MAX_SCAN_ENTRIES {
+            break;
+        }
+        *budget += 1;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if ft.is_symlink() {
+            continue; // 跟随符号链接可能成环，且会把库外内容混进树
+        }
+        let child_rel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
+        if ft.is_dir() {
+            dirs.push((name, child_rel, path));
+        } else if ft.is_file() {
+            let file_kind = if is_md(&name) {
+                Some("md")
+            } else if is_image_file(&path) {
+                Some("image")
+            } else {
+                None
+            };
+            if let Some(kind) = file_kind {
+                files.push(TreeNode {
+                    name,
+                    path: child_rel,
+                    kind: "file".into(),
+                    children: None,
+                    file_kind: Some(kind.into()),
+                });
+            }
+        }
+    }
+    dirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    for (name, child_rel, path) in dirs {
+        let children = scan_dir_smart(&path, &child_rel, budget);
+        out.push(TreeNode {
+            name,
+            path: child_rel,
+            kind: "folder".into(),
+            children: Some(children),
+            file_kind: None,
+        });
+    }
+    out.extend(files);
+    out
+}
+
+/// 打开文件夹作为知识库：沿用原有扫描规则（含 canvas / 扩展名图片 / 跳过隐藏目录）
 #[tauri::command]
 fn scan_vault(vault_root: String) -> Result<Vec<TreeNode>, String> {
     let root = fs::canonicalize(&vault_root).map_err(|e| ui_msg!("vaultPathInvalid", "err" => e))?;
@@ -358,6 +457,84 @@ fn scan_vault(vault_root: String) -> Result<Vec<TreeNode>, String> {
         return Err(ui_msg!("vaultNotDir"));
     }
     Ok(scan_dir(&root, "", 0))
+}
+
+/// 双击 md 时的目录判定结果。tree 与判定同次扫描产出，前端走知识库分支时不必再扫一遍。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MdOpenTarget {
+    pub root: String,
+    pub rel: String,
+    pub open_as_vault: bool,
+    pub md_count: usize,
+    pub has_subdir: bool,
+    pub tree: Vec<TreeNode>,
+}
+
+#[derive(Default)]
+struct FolderProbe {
+    md_count: usize,
+    has_subdir: bool,
+    entries: usize,
+}
+
+/// 判定用遍历：统计所有子目录里的 md，并只要遇到任意目录就记 has_subdir。
+/// 与 scan_dir 不同，这里刻意不跳过 .git / node_modules / 点开头目录——用户要求它们也算。
+fn probe_folder(dir: &Path, stats: &mut FolderProbe) {
+    if stats.entries >= MAX_SCAN_ENTRIES {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if stats.entries >= MAX_SCAN_ENTRIES {
+            return;
+        }
+        stats.entries += 1;
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if ft.is_symlink() {
+            continue;
+        }
+        if ft.is_dir() {
+            stats.has_subdir = true;
+            probe_folder(&entry.path(), stats);
+        } else if ft.is_file() && is_md(&entry.file_name().to_string_lossy()) {
+            stats.md_count += 1;
+        }
+    }
+}
+
+/// 双击 md：按所在文件夹内容决定单文档 / 知识库打开，并顺带返回可渲染的文件树。
+#[tauri::command]
+fn inspect_md_open_target(path: String) -> Result<MdOpenTarget, String> {
+    let file = fs::canonicalize(&path).map_err(|e| ui_msg!("pathResolveFailed", "path" => path, "err" => e))?;
+    if !file.is_file() {
+        return Err(ui_msg!("fileNotFound", "path" => path));
+    }
+    let root_buf = file.parent().ok_or_else(|| ui_msg!("badPath"))?.to_path_buf();
+    if !root_buf.is_dir() {
+        return Err(ui_msg!("vaultNotDir"));
+    }
+    let rel = file
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| ui_msg!("badPath"))?;
+    let mut stats = FolderProbe::default();
+    probe_folder(&root_buf, &mut stats);
+    let tree = scan_dir_smart(&root_buf, "", &mut 0);
+    Ok(MdOpenTarget {
+        root: root_buf.to_string_lossy().to_string(),
+        rel,
+        open_as_vault: stats.md_count >= 2 || stats.has_subdir,
+        md_count: stats.md_count,
+        has_subdir: stats.has_subdir,
+        tree,
+    })
 }
 
 /// 读取库内 md 文件
@@ -764,9 +941,9 @@ pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
-/// 魔数嗅探：内容是否为常见图片格式（PNG / JPEG / GIF / WebP / BMP / ICO / SVG）。
-/// 只挡「根本不是图片」的文件（扩展名叫 .png 的文本 / 二进制垃圾，QA GU-027 的 fake.png），
-/// 不校验完整性——截断的真图仍放行，读取端自有降级。
+/// 魔数嗅探：内容是否为常见图片格式（PNG / JPEG / GIF / WebP / BMP / ICO / AVIF / HEIF /
+/// TIFF / SVG）。只挡「根本不是图片」的文件（扩展名叫 .png 的文本 / 二进制垃圾，
+/// QA GU-027 的 fake.png），不校验完整性——截断的真图仍放行，读取端自有降级。
 fn looks_like_image(bytes: &[u8]) -> bool {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
         return true; // PNG
@@ -785,6 +962,15 @@ fn looks_like_image(bytes: &[u8]) -> bool {
     }
     if bytes.len() >= 4 && &bytes[..4] == [0x00, 0x00, 0x01, 0x00] {
         return true; // ICO
+    }
+    if bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*") {
+        return true; // TIFF
+    }
+    if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        let brand = std::str::from_utf8(&bytes[8..12]).unwrap_or("");
+        if matches!(brand, "avif" | "avis" | "heic" | "heix" | "hevc" | "hevx") {
+            return true; // AVIF / HEIF
+        }
     }
     // SVG 是文本：剥 BOM 与行首空白后以 <svg 开头，或 <?xml 声明后跟着 <svg
     let body = bytes.strip_prefix([0xEF, 0xBB, 0xBF].as_slice()).unwrap_or(bytes);
@@ -3296,6 +3482,44 @@ fn open_url(url: String) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    fn temp_case(tag: &str) -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("notelume-{}-{}", tag, stamp));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn png_bytes() -> Vec<u8> {
+        let mut b = b"\x89PNG\r\n\x1a\n".to_vec();
+        b.extend_from_slice(b"payload");
+        b
+    }
+
+    fn collect_paths(nodes: &[TreeNode], out: &mut Vec<String>) {
+        for n in nodes {
+            out.push(n.path.clone());
+            if let Some(kids) = &n.children {
+                collect_paths(kids, out);
+            }
+        }
+    }
+
+    fn file_kind_of(nodes: &[TreeNode], path: &str) -> Option<String> {
+        for n in nodes {
+            if n.path == path && n.kind == "file" {
+                return n.file_kind.clone();
+            }
+            if let Some(kids) = &n.children {
+                if let Some(k) = file_kind_of(kids, path) {
+                    return Some(k);
+                }
+            }
+        }
+        None
+    }
+
     #[test]
     fn shortcut_name_pair_follows_ui_language() {
         assert_eq!(shortcut_name_pair("zh-CN"), ("NoteLume", "文溯"));
@@ -4104,23 +4328,101 @@ mod tests {
     }
 
     #[test]
-    fn scan_includes_canvas_and_images_but_not_text() {
-        let tmp = std::env::temp_dir().join(format!("notelume-scan-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
+    fn scan_dir_vault_keeps_canvas_and_skips_hidden_dirs() {
+        let tmp = temp_case("scan-vault-original");
         fs::write(tmp.join("a.md"), "# A").unwrap();
         fs::write(tmp.join("board.canvas"), r#"{"nodes":[],"edges":[]}"#).unwrap();
         fs::write(tmp.join("notes.txt"), "ignored").unwrap();
-        fs::write(tmp.join("pic.png"), b"x").unwrap();
+        fs::write(tmp.join("real.png"), png_bytes()).unwrap();
+        fs::create_dir_all(tmp.join("node_modules").join("pkg")).unwrap();
+        fs::write(tmp.join("node_modules").join("pkg").join("inside.md"), "# inside").unwrap();
+        fs::create_dir(tmp.join(".hidden")).unwrap();
+        fs::write(tmp.join(".hidden").join("inside.md"), "# hidden").unwrap();
         let root_str = tmp.to_string_lossy().to_string();
 
-        let tree = scan_vault(root_str.clone()).unwrap();
-        let names: Vec<String> = tree.into_iter().map(|n| n.name).collect();
-        assert!(names.contains(&"a.md".to_string()));
-        assert!(names.contains(&"board.canvas".to_string()), "canvas 应入树");
-        assert!(!names.contains(&"notes.txt".to_string()));
-        // 图片附件已入树（见「图片入树」特性：scan_dir 白名单含 is_image）
-        assert!(names.contains(&"pic.png".to_string()), "图片应进文件树");
+        let tree = scan_vault(root_str).unwrap();
+        let mut paths = Vec::new();
+        collect_paths(&tree, &mut paths);
+        assert!(paths.contains(&"a.md".to_string()));
+        assert!(paths.contains(&"board.canvas".to_string()), "手动开库照旧显示 canvas");
+        assert!(paths.contains(&"real.png".to_string()), "手动开库照旧按扩展名识别图片");
+        assert!(!paths.contains(&"notes.txt".to_string()));
+        assert!(!paths.iter().any(|p| p.starts_with("node_modules/")), "手动开库照旧跳过 node_modules");
+        assert!(!paths.iter().any(|p| p.starts_with(".hidden/")), "手动开库照旧跳过隐藏目录");
+        assert!(file_kind_of(&tree, "board.canvas").is_none(), "手动开库树不写 fileKind");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inspect_md_open_target_single_doc_without_subdir() {
+        let tmp = temp_case("smart-single");
+        let file = tmp.join("only.md");
+        fs::write(&file, "# only").unwrap();
+
+        let got = inspect_md_open_target(file.to_string_lossy().to_string()).unwrap();
+        assert!(!got.open_as_vault, "单 md 且无子目录应保持单文档");
+        assert_eq!(got.md_count, 1);
+        assert!(!got.has_subdir);
+        assert_eq!(got.rel, "only.md");
+        assert_eq!(got.root, tmp.to_string_lossy().to_string());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inspect_md_open_target_two_md_without_subdir_opens_vault() {
+        let tmp = temp_case("smart-two-md");
+        fs::write(tmp.join("a.md"), "# A").unwrap();
+        fs::write(tmp.join("b.md"), "# B").unwrap();
+
+        let got = inspect_md_open_target(tmp.join("a.md").to_string_lossy().to_string()).unwrap();
+        assert!(got.open_as_vault, "两个 md 应开知识库");
+        assert_eq!(got.md_count, 2);
+        assert!(!got.has_subdir);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inspect_md_open_target_single_md_with_empty_git_dir_opens_vault() {
+        let tmp = temp_case("smart-empty-dir");
+        fs::write(tmp.join("only.md"), "# only").unwrap();
+        fs::create_dir(tmp.join(".git")).unwrap();
+
+        let got = inspect_md_open_target(tmp.join("only.md").to_string_lossy().to_string()).unwrap();
+        assert!(got.open_as_vault, "空的 .git 也算子文件夹");
+        assert_eq!(got.md_count, 1);
+        assert!(got.has_subdir);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inspect_md_open_target_counts_nested_md_and_magic_image_by_name() {
+        let tmp = temp_case("smart-nested");
+        fs::write(tmp.join("a.md"), "# A").unwrap();
+        fs::write(tmp.join("board.canvas"), r#"{"nodes":[],"edges":[]}"#).unwrap();
+        fs::create_dir_all(tmp.join("node_modules").join("pkg")).unwrap();
+        fs::write(tmp.join("node_modules").join("pkg").join("b.md"), "# B").unwrap();
+        fs::write(tmp.join("Pasted Image 2026-01-01 12.00.00"), png_bytes()).unwrap();
+        fs::write(tmp.join("fake.png"), "not an image").unwrap();
+
+        let got = inspect_md_open_target(tmp.join("a.md").to_string_lossy().to_string()).unwrap();
+        assert!(got.open_as_vault);
+        assert_eq!(got.md_count, 2, "子文件夹里的 md 也要递归统计");
+        assert!(got.has_subdir, "node_modules 也算子文件夹");
+
+        let mut paths = Vec::new();
+        collect_paths(&got.tree, &mut paths);
+        assert!(paths.contains(&"node_modules/pkg/b.md".to_string()), "子目录 md 要在树里");
+        assert!(paths.contains(&"Pasted Image 2026-01-01 12.00.00".to_string()), "无扩展名 PNG 要靠魔数入树");
+        assert!(!paths.contains(&"board.canvas".to_string()), "双击智能打开不显示 canvas");
+        assert!(!paths.contains(&"fake.png".to_string()), "假扩展名非图片不显示");
+        assert_eq!(
+            file_kind_of(&got.tree, "Pasted Image 2026-01-01 12.00.00").as_deref(),
+            Some("image")
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -4698,6 +5000,7 @@ pub fn run() {
             open_external_url,
             reveal_in_folder,
             scan_vault,
+            inspect_md_open_target,
             read_md_file,
             write_md_file,
             sync_shortcut_name,
