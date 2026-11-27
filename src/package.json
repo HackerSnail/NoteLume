@@ -19,6 +19,7 @@
     "test:git-push-dom": "node tests/git-push-dom.test.mjs",
     "test:merged-table": "node tests/merged-table.test.mjs",
     "test:block-align": "node tests/block-align.test.mjs",
+    "test:smart-open": "node tests/smart-open.test.mjs",
     "test:html-block": "node tests/html-block.test.mjs",
     "test:html-block-images": "node tests/html-block-images.test.mjs",
     "test:html-block-click": "node tests/html-block-click.test.mjs",
@@ -45,6 +46,7 @@
 
     "test:slides-export": "node tests/slides-export.test.mjs",
     "test:print-toc": "node tests/print-toc.test.mjs",
+    "test:pdf-print-name": "node tests/pdf-print-name.test.mjs",
     "test:emoji": "node tests/emoji.test.mjs",
     "test:toc": "node tests/toc.test.mjs",
     "test:csv": "node tests/csv.test.mjs",

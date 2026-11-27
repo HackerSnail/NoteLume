@@ -423,6 +423,7 @@ export default {
   'msg.openVaultFailed': 'Ouverture du coffre impossible : {msg}',
   'msg.openFileFailedDlg': 'Ouverture du fichier impossible : {msg}',
   'status.openFailed': 'Ouverture impossible : {msg}',
+  'status.smartOpenFailed': 'Échec de la détection intelligente ; ouverture en document unique : {msg}',
   'status.fileOpened': 'Fichier ouvert : {abs}',
   'status.indexReady': 'Index prêt : {n} documents',
   'status.indexTimeout': 'L’indexation a expiré ; rouvrez le coffre plus tard pour réessayer',

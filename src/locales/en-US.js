@@ -424,6 +424,7 @@ export default {
   'msg.openVaultFailed': 'Failed to open vault: {msg}',
   'msg.openFileFailedDlg': 'Failed to open file: {msg}',
   'status.openFailed': 'Open failed: {msg}',
+  'status.smartOpenFailed': 'Smart open check failed; opening as a single document: {msg}',
   'status.fileOpened': 'Opened file: {abs}',
   'status.indexReady': 'Index ready: {n} documents',
   'status.indexTimeout': 'Index build timed out; reopen the vault later to retry',

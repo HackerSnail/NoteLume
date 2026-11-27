@@ -80,6 +80,16 @@ export function scanVault(vaultRoot) {
   return invoke('scan_vault', { vaultRoot })
 }
 
+/** 双击 md 时一次取回「单文档 / 知识库」判定与同次扫描出的文件树 */
+export function inspectMdOpenTarget(path) {
+  return invoke('inspect_md_open_target', { path })
+}
+
+/** 纯判定：目录内 2 个及以上 md，或存在任意子文件夹 → 知识库 */
+export function decideMdOpenMode({ mdCount = 0, hasSubdir = false } = {}) {
+  return mdCount >= 2 || hasSubdir
+}
+
 /** 读取库内 md 内容 */
 export function readMdFile(vaultRoot, path) {
   return invoke('read_md_file', { vaultRoot, path })

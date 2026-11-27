@@ -143,5 +143,12 @@ t('图片/表格整体对齐菜单五语齐全', () => {
   }
 })
 
+t('智能打开状态文案五语齐全', () => {
+  for (const { id } of LOCALES) {
+    const v = MESSAGES[id]['status.smartOpenFailed']
+    assert.ok(typeof v === 'string' && v.includes('{msg}'), id + ' 缺 status.smartOpenFailed 或占位符')
+  }
+})
+
 console.log('结果：' + pass + ' passed, ' + fail + ' failed')
 if (fail) process.exit(1)

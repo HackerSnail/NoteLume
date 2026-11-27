@@ -423,6 +423,7 @@ export default {
   'msg.openVaultFailed': '打开知识库失败：{msg}',
   'msg.openFileFailedDlg': '打开文件失败：{msg}',
   'status.openFailed': '打开失败：{msg}',
+  'status.smartOpenFailed': '智能打开判定失败，按单文档打开：{msg}',
   'status.fileOpened': '已打开文件：{abs}',
   'status.indexReady': '索引就绪：{n} 篇文档',
   'status.indexTimeout': '索引构建超时，稍后可重新打开知识库重试',

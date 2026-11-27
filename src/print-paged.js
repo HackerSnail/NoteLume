@@ -34,6 +34,19 @@ export function loadPrintOptions() {
   return out
 }
 
+// ============ PDF 另存为默认名 ============
+// Chromium/WebView2 打印预览的「另存为 PDF」建议名取 document.title；打印期间临时把它换成当前文档名。
+/**
+ * @param {string} currentFile 当前库内相对路径（如 docs/验收文档.md）
+ * @returns {string} 去掉路径与 .md、清理 Windows 非法字符后的文档名；空值回退 i18n「未命名」
+ */
+export function pdfPrintBaseName(currentFile = '') {
+  const rel = String(currentFile || '').replace(/\\/g, '/')
+  const base = rel.slice(rel.lastIndexOf('/') + 1).trim().replace(/\.md$/i, '')
+  const cleaned = base.replace(/[\\/:*?"<>|]/g, '_').replace(/[. ]+$/g, '').trim()
+  return cleaned || t('print.untitled')
+}
+
 // ============ 锚点与目录 ============
 
 /**

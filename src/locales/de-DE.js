@@ -423,6 +423,7 @@ export default {
   'msg.openVaultFailed': 'Vault konnte nicht geöffnet werden: {msg}',
   'msg.openFileFailedDlg': 'Datei konnte nicht geöffnet werden: {msg}',
   'status.openFailed': 'Öffnen fehlgeschlagen: {msg}',
+  'status.smartOpenFailed': 'Intelligente Öffnung fehlgeschlagen; einzelnes Dokument wird geöffnet: {msg}',
   'status.fileOpened': 'Datei geöffnet: {abs}',
   'status.indexReady': 'Index bereit: {n} Dokumente',
   'status.indexTimeout': 'Index-Aufbau abgelaufen; Vault später erneut öffnen',
