@@ -877,6 +877,17 @@
   * ④ 本期已切换：工具条 / 侧栏 / 检查器静态区、命令面板、快捷键设置、confirm3 / prompt 两个通用弹窗的默认按钮、斜杠菜单、文件树与「更多」菜单各条目、模板菜单、新建 / 重命名 / 移动 / 字数目标 / 链接等弹窗及对应状态提示。需要整体重绘的面板订阅 `onLocaleChange`（接入点已留好，本期未用的订阅方在下一批处理）。
   * ⑤ 测试与构建：新增 `tests/i18n.test.mjs` 10 条（语言登记、切换、回退链、插值、命令词条与 id 对齐、订阅退订）；`app-menu.test.mjs` 26 条、`keymap.test.mjs` 23 条、`roundtrip.test.mjs` 58 条仍全过；`npm run build` 通过。未覆盖（下一批）：git-panel、canvas-view、find-in-doc、docx 导入 / 导出 / 校对、site-export、snapshot-panel、frontmatter-panel、outline-tree、img-viewer、mermaid-preview、code-lang-picker、daily-capture、writing-stats、wiki-hover、graph-view 内的文案，以及 main.js 剩余约 90 处 `setStatus` / `messageDialog`（回收站确认、导出结果、拉取冲突等）——这些位置已确认可机械替换，不欠新机制。
 
+## [0.3.2](https://gitee.com/hackerSnail/note-lume/compare/v0.3.1...v0.3.2) - 2026-11-28
+
+### Added
+
+* **双击 md 智能判断知识库打开方式**：目录内 ≥2 个 md（递归统计），或仅 1 个 md 但有子目录，则以被双击文件所在文件夹为根打开知识库，左侧出文件树；仅 1 个 md 且无子目录维持单文档。文件树只显示 md 与图片，图片按文件头魔数识别（含无扩展名）。手动打开知识库的既有行为保持不变。
+* **导出 PDF 默认文件名改为当前文档名**：打印期间临时把页面标题设为当前文档名，「另存为 PDF」的默认名跟着文档走，打印结束恢复原标题。
+
+### Fixed
+
+（这版如有其他修复补这里）
+
 ## [0.3.1](https://gitee.com/hackerSnail/note-lume/compare/v0.3.0...v0.3.1) - 2026-11-14
 
 ### Added
