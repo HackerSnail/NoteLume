@@ -253,7 +253,6 @@ jobs:
             git file sudo binutils \
             libwebkit2gtk-4.1-dev librsvg2-dev patchelf libxdo-dev libssl-dev \
             libayatana-appindicator3-dev libfuse2 libasound2-dev \
-
             libssh2-1-dev \
             rpm
           rm -rf /var/lib/apt/lists/*
